@@ -1,0 +1,103 @@
+name: CerberusPlugin
+main: cerberus.world.cerb.cerb
+version: 1.0.0
+api-version: '1.21'
+
+commands:
+  regionselector:
+    description: Gives the player the Region Selector item.
+    usage: /<command>
+    permission: cerberus.use.regionselector
+  unregionizer:
+    description: Gives the player the Unregionizer item.
+    usage: /<command>
+    permission: cerberus.use.unregionizer
+  visualizeregions:
+    description: Visualizes all protected regions for 30 seconds.
+    usage: /<command>
+    permission: cerberus.visualize.regions
+  toggleprotection:
+    description: Toggles protection checking for the player.
+    usage: /<command>
+    permission: cerberus.toggle.protection
+  region:
+    description: Manage regions (list, name, teleport).
+    usage: /<command> <list|name|tp> [regionName]
+    permission: cerberus.manage.regions
+  regiongui:
+    description: Opens the region management GUI.
+    usage: /<command>
+    permission: cerberus.manage.regions
+  giveTestItem:
+    description: Gives a test item to the player.
+    usage: /<command>
+    permission: cerberus.give.testitem
+  testregen:
+    description: Test the virtual health regeneration system.
+    usage: /<command> <damage>
+    permission: cerberus.test.regen
+  givetestarmor:
+    description: Gives the player a custom test armor piece.
+    usage: /<command>
+    permission: cerberus.give.testarmor
+  spawncustomzombie:
+    description: Spawns a custom high-health zombie.
+    usage: /spawncustomzombie <extraHealth>
+    permission: cerberus.spawn.customzombie
+  killholograms:
+    description: Removes all damage and health holograms created by the plugin.
+    usage: /<command>
+    permission: cerberus.admin.killholograms
+
+permissions:
+  cerberus.use.regionselector:
+    description: Allows the player to use the Region Selector command and item.
+    default: op
+  cerberus.use.unregionizer:
+    description: Allows the player to use the Unregionizer command and item.
+    default: op
+  cerberus.create.region:
+    description: Allows the player to create protected regions.
+    default: op
+  cerberus.remove.region:
+    description: Allows the player to remove protected regions.
+    default: op
+  cerberus.visualize.regions:
+    description: Allows the player to visualize protected regions.
+    default: op
+  cerberus.toggle.protection:
+    description: Allows the player to toggle protection checking for themselves.
+    default: op
+  cerberus.manage.regions:
+    description: Allows the player to use region management commands and GUI.
+    default: op
+  cerberus.give.testitem:
+    description: Allows the player to use the giveTestItem command.
+    default: op
+  cerberus.test.regen:
+    description: Allows the player to use the testregen command.
+    default: op
+  cerberus.give.testarmor:
+    description: Allows the player to use the givetestarmor command.
+    default: op
+  cerberus.spawn.customzombie:
+    description: Allows the player to use the spawncustomzombie command.
+    default: op
+  cerberus.admin.killholograms:
+    description: Allows the player to use the killholograms command.
+    default: op
+  cerberus.*:
+    description: Gives access to all Cerberus plugin commands and features.
+    children:
+      cerberus.use.regionselector: true
+      cerberus.use.unregionizer: true
+      cerberus.create.region: true
+      cerberus.remove.region: true
+      cerberus.visualize.regions: true
+      cerberus.toggle.protection: true
+      cerberus.manage.regions: true
+      cerberus.give.testitem: true
+      cerberus.test.regen: true
+      cerberus.give.testarmor: true
+      cerberus.spawn.customzombie: true
+      cerberus.admin.killholograms: true

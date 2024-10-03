@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="Volor">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../Volor" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/../Volor/src/main/java" />
+    </SOURCES>
+  </library>
+</component>
