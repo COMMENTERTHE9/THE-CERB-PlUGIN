@@ -8,6 +8,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.EventPriority;
 
 public class ManaListener implements Listener {
 
@@ -17,29 +18,42 @@ public class ManaListener implements Listener {
         this.playerManaManager = playerManaManager;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        if (player == null) return;          // early‑exit guard
         playerManaManager.startManaRegenTask(player);
     }
 
-    @EventHandler
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        // Handle any necessary cleanup or save operations here
+        Player player = event.getPlayer();
+        if (player == null) return;
+
+        // Example cleanup: stop regen task, save mana to DB, etc.
+        // playerManaManager.stopManaRegenTask(player);
     }
 
-    @EventHandler
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
-        playerManaManager.resetMana(playerManaManager.getMaxMana(player)); // Reset mana to full on respawn
-        playerManaManager.startManaRegenTask(player); // Restart mana regeneration
+        if (player == null) return;
+
+        playerManaManager.resetMana(playerManaManager.getMaxMana(player));
+        playerManaManager.startManaRegenTask(player);
     }
 
-    @EventHandler
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
-        playerManaManager.resetMana( 0); // Reset mana to 0 on death
+        if (player == null) return;
+
+        playerManaManager.resetMana(0);
     }
+
 
     // Additional event handlers can be added as needed to respond to other mana-related events.
     // For example, you could handle custom events that drain or boost mana, or monitor specific actions that affect mana.

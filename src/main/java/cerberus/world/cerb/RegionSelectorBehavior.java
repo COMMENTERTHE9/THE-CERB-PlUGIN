@@ -10,11 +10,11 @@ import java.util.UUID;
 
 public class RegionSelectorBehavior {
 
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
     private final ItemUtils itemUtils;
     private final HashMap<UUID, Location[]> playerSelections = new HashMap<>();
 
-    public RegionSelectorBehavior(cerb plugin) {
+    public RegionSelectorBehavior(CerberusPlugin plugin) {
         this.plugin = plugin;
         this.itemUtils = new ItemUtils(plugin);
     }

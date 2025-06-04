@@ -156,6 +156,22 @@ public class PlayerManaManager {
         }.runTaskTimer(plugin, 0L, 1L); // Run every tick (1 tick = 1/20th of a second)
     }
 
+    /** Spend BASIC mana */
+    public boolean consumeMana(Player player, double amount) {
+        return spendMana(player, ManaType.BASIC, amount);   // ← use BASIC
+    }
+
+    /** Add mana (capped at max) */
+    public void addMana(Player player, double amount) {
+        double newMana = getCurrentMana(player) + amount;
+        setPlayerCurrentMana(player, newMana);
+    }
+
+    /** Get current mana */
+    public double getMana(Player player) {
+        return getCurrentMana(player);
+    }
+
     // Method to regenerate mana
     public void regenerateMana(double amount) {
         this.currentMana += amount;
@@ -371,6 +387,7 @@ public class PlayerManaManager {
 
         player.sendMessage("Elemental Synergy activated! Your elemental spells are more powerful and cost less mana.");
     }
+
 
     public enum ManaShieldType {
         DEFENSIVE, OFFENSIVE, UTILITY, UNIQUE

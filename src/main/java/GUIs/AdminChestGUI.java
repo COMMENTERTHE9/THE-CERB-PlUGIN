@@ -1,6 +1,6 @@
 package GUIs;
 
-import cerberus.world.cerb.cerb;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -11,9 +11,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.Arrays;
 
 public class AdminChestGUI {
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
 
-    public AdminChestGUI(cerb plugin) {
+    public AdminChestGUI(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 

@@ -1,19 +1,27 @@
 package Skills;
 
+import cerberus.world.cerb.CustomPlayer;
+import org.bukkit.Bukkit;          // <<< NEW
 import org.bukkit.entity.Player;
+import java.util.UUID;
 
 public abstract class UtilitySkill extends Skill {
-    public UtilitySkill(String name) {
+    private final SkillManager skillManager;
+
+    public UtilitySkill(String name, SkillManager skillManager) {
         super(name);
+        this.skillManager = skillManager;
     }
 
-    @Override
-    public void applyEffect(cerberus.world.cerb.CustomPlayer player) {
 
-    }
-
-    @Override
+    /** If you ever need to call it with a Bukkit Player object */
     public void applyEffect(Player player) {
-        // Apply utility skill effect to player
+        applyEffect(player.getUniqueId());
+    }
+
+    /** New: lookup by UUID and delegate to your CustomPlayer logic */
+    public void applyEffect(UUID playerId) {
+        Player player = Bukkit.getPlayer(playerId);
+        if (player != null) applyEffect(player);
     }
 }

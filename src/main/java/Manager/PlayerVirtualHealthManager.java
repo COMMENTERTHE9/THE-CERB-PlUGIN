@@ -1,10 +1,11 @@
 package Manager;
 
-import cerberus.world.cerb.cerb;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Projectile;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
@@ -24,20 +25,28 @@ public class PlayerVirtualHealthManager {
     private final Map<UUID, Double> playerColdResistance = new HashMap<>();
     private final Map<UUID, Double> playerDrowningResistance = new HashMap<>();
     private final Map<UUID, Long> playerLastDamageTime = new HashMap<>();
-    private final long invincibilityTimeMillis = 250;  // Invincibility frames after taking damage
+
+    // Customize these values if needed
+    private final long invincibilityTimeMillis = 250;          // Invincibility frames after taking damage
     private final long respawnInvincibilityTimeMillis = 3000;  // Respawn invincibility duration
 
     private boolean isHandlingEvent = false;
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
+    private DefenseBarManager defenseBarManager;
 
-    public PlayerVirtualHealthManager(cerb plugin) {
+    // Updated constructor to use CerberusPlugin instead of cerb
+    public PlayerVirtualHealthManager(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
+    
+    // Setter for DefenseBarManager (called after initialization)
+    public void setDefenseBarManager(DefenseBarManager defenseBarManager) {
+        this.defenseBarManager = defenseBarManager;
+    }
 
-    // Player health management
     public void setPlayerVirtualHealth(Player player, double health) {
         UUID playerId = player.getUniqueId();
-        double maxHealth = playerMaxVirtualHealth.getOrDefault(playerId, 100.0);
+        double maxHealth = getPlayerMaxVirtualHealth(player);
         if (health > maxHealth) {
             health = maxHealth;
         } else if (health < 0) {
@@ -45,6 +54,20 @@ public class PlayerVirtualHealthManager {
         }
         playerVirtualHealth.put(playerId, health);
         checkPlayerDeath(player, health);
+    }
+
+    // --------------------------------------------------
+    // <<< NEW >>> Full restore of both real & virtual HP
+    // --------------------------------------------------
+    public void resetHealth(Player player) {
+        // Virtual HP → max
+        UUID id = player.getUniqueId();
+        double maxVH = getPlayerMaxVirtualHealth(player);
+        setPlayerVirtualHealth(player, maxVH);
+
+        // Real HP → max
+        double maxReal = player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue();
+        player.setHealth(maxReal);
     }
 
     public double getPlayerVirtualHealth(Player player) {
@@ -72,7 +95,6 @@ public class PlayerVirtualHealthManager {
     }
 
     public void increaseMaxHealth(Player player, double amount) {
-        UUID playerId = player.getUniqueId();
         double currentMaxHealth = getPlayerMaxVirtualHealth(player);
         setPlayerMaxVirtualHealth(player, currentMaxHealth + amount);
     }
@@ -83,12 +105,11 @@ public class PlayerVirtualHealthManager {
 
     private void checkPlayerDeath(Player player, double health) {
         if (health <= 0) {
-            player.setHealth(0);  // Kill the player
+            player.setHealth(0);  // This kills the player in-game.
             Bukkit.getScheduler().runTask(plugin, () -> player.spigot().respawn());
         }
     }
 
-    // Set and get player's toughness (damage buffer)
     public void setPlayerToughness(Player player, double toughness) {
         playerToughness.put(player.getUniqueId(), toughness);
     }
@@ -97,7 +118,6 @@ public class PlayerVirtualHealthManager {
         return playerToughness.getOrDefault(player.getUniqueId(), 0.0);
     }
 
-    // Set and get player's resistance (damage reduction)
     public void setPlayerResistance(Player player, double resistance) {
         playerResistance.put(player.getUniqueId(), resistance);
     }
@@ -106,7 +126,6 @@ public class PlayerVirtualHealthManager {
         return playerResistance.getOrDefault(player.getUniqueId(), 0.0);
     }
 
-    // Fire, Cold, and Drowning resistances
     public double getPlayerFireResistance(Player player) {
         return playerFireResistance.getOrDefault(player.getUniqueId(), 0.0);
     }
@@ -119,31 +138,40 @@ public class PlayerVirtualHealthManager {
         return playerDrowningResistance.getOrDefault(player.getUniqueId(), 0.0);
     }
 
-    // Invincibility frames and respawn invincibility
     public void applyRespawnInvincibility(Player player) {
         playerLastDamageTime.put(player.getUniqueId(), System.currentTimeMillis() - invincibilityTimeMillis + respawnInvincibilityTimeMillis);
         player.sendMessage("You are invincible for a few seconds after respawning!");
     }
 
-    // Method to apply damage with toughness, resistances, and invincibility frames
     public void applyDamage(Entity entity, double damage, CustomDamageType damageType, Entity damager) {
         if (isHandlingEvent) {
             return; // Prevent recursion
         }
+
         if (entity instanceof Player) {
             Player player = (Player) entity;
-
             long currentTime = System.currentTimeMillis();
+
             if (playerLastDamageTime.containsKey(player.getUniqueId())) {
                 long lastDamageTime = playerLastDamageTime.get(player.getUniqueId());
                 if (currentTime - lastDamageTime < invincibilityTimeMillis) {
-                    return; // Apply invincibility frames
+                    // Invincibility frames
+                    return;
                 }
             }
 
             playerLastDamageTime.put(player.getUniqueId(), currentTime);
 
-            // Apply toughness (damage buffer)
+            // Apply defense bar first (if available)
+            if (defenseBarManager != null) {
+                damage = defenseBarManager.applyDamageToBar(player, damage);
+                // If defense bar absorbed all damage, we're done
+                if (damage <= 0) {
+                    return;
+                }
+            }
+            
+            // Apply toughness first
             double toughness = getPlayerToughness(player);
             if (toughness > 0) {
                 double absorbed = Math.min(toughness, damage);
@@ -151,11 +179,10 @@ public class PlayerVirtualHealthManager {
                 setPlayerToughness(player, toughness - absorbed);
             }
 
-            // Apply resistance (percentage-based damage reduction)
+            // Apply resistances
             double resistance = getPlayerResistance(player);
             damage *= (1.0 - resistance);
 
-            // Apply environmental resistances
             if (damageType == CustomDamageType.FIRE) {
                 double fireResistance = getPlayerFireResistance(player);
                 damage *= (1.0 - fireResistance);
@@ -171,15 +198,14 @@ public class PlayerVirtualHealthManager {
             double damageReduction = playerDamageReduction.getOrDefault(player.getUniqueId(), 0.0);
             damage *= (1.0 - damageReduction);
 
-            // Decrease player's virtual health
+            // Apply final damage to virtual health
             decreasePlayerVirtualHealth(player, damage);
 
-            // Apply velocity after damage
+            // Apply knockback/velocity
             applyVelocity(entity, damager, damage, damageType);
         }
     }
 
-    // Helper method to apply velocity after damage
     private void applyVelocity(Entity entity, Entity damager, double damage, CustomDamageType damageType) {
         if (damager == null || entity == null) return;
 
@@ -194,7 +220,7 @@ public class PlayerVirtualHealthManager {
         }
 
         velocityStrength += velocityModifier * 0.5;
-        velocityStrength = Math.min(velocityStrength, 2.0);  // Cap velocity strength
+        velocityStrength = Math.min(velocityStrength, 2.0);  // Cap velocity
 
         Location entityLocation = entity.getLocation();
         Location damagerLocation = damager.getLocation();
@@ -207,26 +233,23 @@ public class PlayerVirtualHealthManager {
         }
 
         Vector appliedVelocity = velocityDirection.multiply(velocityStrength);
-        appliedVelocity.setY(0.1);  // Add small vertical lift
+        appliedVelocity.setY(0.1);  // Add a small vertical component
 
         if (!damageType.shouldApplyKnockback()) {
-            appliedVelocity.multiply(0.1);  // Dampen velocity
+            appliedVelocity.multiply(0.1);  // Reduce knockback if damageType shouldn't apply full knockback
         }
 
         entity.setVelocity(appliedVelocity);
     }
 
-    // Method to handle projectiles and their effect
     public void handleProjectileHit(Projectile projectile, Entity target) {
         if (target instanceof Player || target instanceof Entity) {
-            double damage = projectile.getVelocity().length();  // Use projectile speed as damage
-
-            // Apply damage and velocity
-            applyDamage(target, damage, CustomDamageType.PROJECTILE, projectile.getShooter() instanceof Entity ? (Entity) projectile.getShooter() : null);
+            double damage = projectile.getVelocity().length();  // Projectile speed as damage
+            Entity shooter = projectile.getShooter() instanceof Entity ? (Entity) projectile.getShooter() : null;
+            applyDamage(target, damage, CustomDamageType.PROJECTILE, shooter);
         }
     }
 
-    // Method to handle periodic health regeneration with reduced regen while taking damage
     public void applyHealthRegen(Player player, double normalRegenRate, double reducedRegenRate, long duration, long damageTimeout) {
         new BukkitRunnable() {
             long timeElapsed = 0;
@@ -249,23 +272,15 @@ public class PlayerVirtualHealthManager {
                     increasePlayerVirtualHealth(player, regenRate);
                 }
 
-                timeElapsed += 20;  // 1 second (20 ticks)
+                timeElapsed += 20;  // Increase by 20 ticks (1 second)
             }
-
-            @Override
-            public void cancel() {
-                super.cancel();
-            }
-
         }.runTaskTimerAsynchronously(plugin, 0L, 20L);
     }
 
-    // Overloaded method to handle regeneration with fewer parameters
     public void applyHealthRegen(Player player, double regenRate, long duration) {
-        applyHealthRegen(player, regenRate, regenRate / 2, duration, 5000L);  // Default damageTimeout is 5 seconds
+        applyHealthRegen(player, regenRate, regenRate / 2, duration, 5000L);
     }
 
-    // Method to start the health update task for a player
     public void startHealthUpdateTask(Player player, PlayerHUDManager hudManager) {
         new BukkitRunnable() {
             @Override
@@ -276,54 +291,32 @@ public class PlayerVirtualHealthManager {
                 }
                 hudManager.updateHUD(player);
             }
-        }.runTaskTimer(plugin, 0, 20);  // Runs every 20 ticks (1 second)
+        }.runTaskTimer(plugin, 0, 20);
     }
 
-    // Method to check if velocity should be applied based on CustomDamageType
-    private boolean shouldApplyVelocity(CustomDamageType damageType) {
-        return damageType.shouldApplyKnockback();
-    }
-
-    // Method to set the damage reduction for a player
     public void reduceVirtualHealthDamage(Player player, double reduction) {
         playerDamageReduction.put(player.getUniqueId(), reduction);
     }
 
-    // Method to get the damage reduction for a player
     public double getDamageReduction(Player player) {
         return playerDamageReduction.getOrDefault(player.getUniqueId(), 0.0);
     }
 
-    // Method to set the knockback reduction for a player
     public void setKnockbackReductionFactor(Player player, double reduction) {
         playerKnockbackReductionFactor.put(player.getUniqueId(), reduction);
     }
 
-    // Method to get the knockback reduction for a player
     public double getKnockbackReductionFactor(Player player) {
         return playerKnockbackReductionFactor.getOrDefault(player.getUniqueId(), 1.0);
     }
 
-    // Method to get the max health of a player
     public double getMaxHealth(Player player) {
-        // Check if the player is in the map
-        UUID playerUUID = player.getUniqueId();
-        return playerMaxVirtualHealth.getOrDefault(playerUUID, 20.0); // Default to 20.0 if not found (default Minecraft health)
+        return getPlayerMaxVirtualHealth(player); // Use the defined method to get max health
     }
 
-    // Method to get the damage multiplier for a player
     public double getDamageMultiplier(Player player) {
-        // Assume some default base multiplier (e.g., 1.0 means no change)
         double baseMultiplier = 1.0;
-
-        UUID playerUUID = player.getUniqueId();
-
-        // Apply virtual health damage reduction multiplier (if any)
-        double damageReduction = getDamageReduction(player); // Use the existing method for damage reduction
-        double damageMultiplier = baseMultiplier * (1.0 - damageReduction); // Apply reduction
-
-        // Apply any other custom multipliers here (e.g., based on toughness, buffs, etc.)
-        // For now, let's assume we only use the damage reduction multiplier
-        return damageMultiplier;
+        double damageReduction = getDamageReduction(player);
+        return baseMultiplier * (1.0 - damageReduction);
     }
 }

@@ -1,0 +1,51 @@
+# Cerberus Plugin Configuration
+
+# Defense Bar System Settings
+defense-bar:
+  # Base defense pool (before toughness/effectiveness calculation)
+  base-pool: 1000.0
+  
+  # How much damage drains from the bar (multiplier)
+  drain-multiplier: 1.0
+  
+  # Defense regeneration per second when not taking damage
+  regen-rate: 10.0
+  
+  # Seconds to wait after taking damage before regeneration starts
+  regen-delay: 3.0
+  
+  # Show defense bar in the action bar HUD
+  show-in-action-bar: true
+
+# Virtual Health System
+virtual-health:
+  # Default maximum virtual health
+  default-max: 100.0
+  
+  # Million-scale caps (from roadmap)
+  max-hp-cap: 1000000.0
+  max-mp-cap: 1000000.0
+
+# Mana System
+mana:
+  # Default maximum mana
+  default-max: 100.0
+  
+  # Mana regeneration per second
+  regen-rate: 5.0
+
+# Combat Settings
+combat:
+  # Invincibility frames after damage (milliseconds)
+  invincibility-frames: 250
+  
+  # Respawn invincibility duration (milliseconds)  
+  respawn-invincibility: 3000
+  
+  # Combat timeout (milliseconds)
+  combat-timeout: 20000
+
+# Database Settings
+database:
+  # Save interval for async operations (milliseconds)
+  save-cooldown: 1000

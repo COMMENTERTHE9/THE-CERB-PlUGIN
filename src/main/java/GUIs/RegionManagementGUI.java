@@ -1,6 +1,7 @@
 package GUIs;
 
-import cerberus.world.cerb.cerb;
+import cerberus.world.cerb.CerberusPlugin;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -13,9 +14,9 @@ import java.util.List;
 
 public class RegionManagementGUI {
 
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
 
-    public RegionManagementGUI(cerb plugin) {
+    public RegionManagementGUI(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 

@@ -1,8 +1,8 @@
 package Commands;
 
+import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.CerberusWorldProtection;
 import cerberus.world.cerb.Region;
-import cerberus.world.cerb.cerb;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -15,9 +15,9 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.List;
 
 public class RegionVisualizerCommand implements CommandExecutor {
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
 
-    public RegionVisualizerCommand(cerb plugin) {
+    public RegionVisualizerCommand(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 

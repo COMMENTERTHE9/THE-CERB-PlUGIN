@@ -3,6 +3,7 @@ package Spells;
 import Manager.ManaType;
 import Manager.PlayerManaManager;
 import Manager.EffectManager;  // Import the EffectManager
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Entity;
@@ -10,7 +11,6 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
-import cerberus.world.cerb.cerb;
 import org.bukkit.Location;
 
 import java.util.List;
@@ -90,7 +90,7 @@ public class FireballSpell extends Spell {
 
                 distanceTraveled++;
             }
-        }.runTaskTimer(cerb.getInstance(), 0, 1); // Runs every tick
+        }.runTaskTimer(CerberusPlugin.getInstance(), 0, 1); // Runs every tick
 
         player.sendMessage("You have cast a Fireball spell!");
     }

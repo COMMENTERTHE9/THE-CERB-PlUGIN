@@ -9,7 +9,7 @@ import java.io.IOException;
 
 public class CerberusGameMode {
 
-    private static final PlayerVirtualHealthManager virtualHealthManager = cerb.getInstance().getPlayerVirtualHealthManager();
+    private static final PlayerVirtualHealthManager virtualHealthManager = CerberusPlugin.getInstance().getPlayerVirtualHealthManager();
 
     // Method to set up a player for the first time
     public static void setupPlayerForFirstTime(Player player, FileConfiguration playerDataConfig, String playerUUID) {
@@ -44,7 +44,7 @@ public class CerberusGameMode {
     // Method to save player data to the file
     private static void savePlayerData(FileConfiguration playerDataConfig, String playerUUID) {
         try {
-            playerDataConfig.save(new File(cerb.getInstance().getDataFolder(), "playerData.yml"));
+            playerDataConfig.save(new File(CerberusPlugin.getInstance().getDataFolder(), "playerData.yml"));
         } catch (IOException e) {
             e.printStackTrace();
         }

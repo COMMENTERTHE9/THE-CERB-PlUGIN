@@ -2,8 +2,8 @@ package Skills;
 
 import Manager.ManaType;
 import Manager.PlayerManaManager;
+import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.CustomPlayer;
-import cerberus.world.cerb.cerb; // Import your main plugin class
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
 
@@ -13,7 +13,7 @@ public class SpellWeavingSkill extends MagicSkill {
 
     private final PlayerManaManager manaManager;
     private final ManaType manaType = ManaType.SPELL_WEAVING;
-    private final cerb plugin; // Reference to your main plugin class
+    private final CerberusPlugin plugin; // Reference to your main plugin class
     private final double baseManaCost = 100;
     private final double baseEffectivenessMultiplier = 1.2;
 
@@ -23,7 +23,7 @@ public class SpellWeavingSkill extends MagicSkill {
     // Time frame within which spells are considered for combination (in milliseconds)
     private static final long COMBINATION_TIME_FRAME = 5000L; // 5 seconds
 
-    public SpellWeavingSkill(String name, PlayerManaManager manaManager, cerberus.world.cerb.cerb plugin) {
+    public SpellWeavingSkill(String name, PlayerManaManager manaManager, CerberusPlugin plugin) {
         super(name);
         this.manaManager = manaManager;
         this.plugin = plugin;

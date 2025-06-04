@@ -47,6 +47,10 @@
       <url>https://repo.papermc.io/repository/maven-public/</url>
     </repository>
     <repository>
+      <id>jitpack.io</id>
+      <url>https://jitpack.io</url>
+    </repository>
+    <repository>
       <id>sonatype</id>
       <url>https://oss.sonatype.org/content/groups/public/</url>
     </repository>
@@ -71,18 +75,17 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>com.github.DecentSoftware-eu</groupId>
+      <artifactId>DecentHolograms</artifactId>
+      <version>2.8.11</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>cerberus.plugins</groupId>
       <artifactId>DTR</artifactId>
       <version>1.0.0</version>
       <scope>system</scope>
       <systemPath>C:/Users/Gabri/IdeaProjects/Cerberus DTR Engine/target/DTR-1.0.0.jar</systemPath>
-    </dependency>
-    <dependency>
-      <groupId>com.github.decentsoftware-eu</groupId>
-      <artifactId>DecentHolograms</artifactId>
-      <version>2.8.11</version>
-      <scope>system</scope>
-      <systemPath>C:/Users/Gabri/OneDrive/Desktop/Cerberus/plugins/DecentHolograms-2.8.11 (1).jar</systemPath>
     </dependency>
   </dependencies>
   <properties>

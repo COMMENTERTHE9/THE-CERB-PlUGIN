@@ -165,7 +165,16 @@ public class LuckManager {
      * Integrates luck into finding rare loot, chest generation, fishing results, etc.
      */
     public boolean isRareLootObtained(Player player, double baseChance) {
-        CustomPlayer customPlayer = new CustomPlayer(player, skillManager, virtualHealthManager, defenseManager, strengthManager);
+        // Get customId from skillManager - this is the safer approach
+        String customId = skillManager.getCustomId(player);
+        CustomPlayer customPlayer = new CustomPlayer(
+                player,
+                skillManager,
+                virtualHealthManager,
+                defenseManager,
+                strengthManager,
+                customId  // Add the required customId parameter
+        );
         double luckFactor = calculateLuckFactor(customPlayer);
         double adjustedChance = baseChance * luckFactor;
         return random.nextDouble() <= adjustedChance;

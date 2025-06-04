@@ -5,12 +5,13 @@ import GUIs.PlayerMenuGUI;
 import Manager.*;
 import Listener.CraftingListener;
 import Manager.PlayerVirtualHealthManager;
+import java.util.UUID;
 import Manager.PlayerStrengthManager;
 import org.bukkit.NamespacedKey;
 import Traps.TrapManager;
 import cerberus.world.cerb.CustomPlayer;
 import cerberus.world.cerb.DatabaseManager;
-import cerberus.world.cerb.cerb;
+import cerberus.world.cerb.CerberusPlugin; // Use CerberusPlugin instead of cerb
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -21,52 +22,60 @@ import java.util.Map;
 import java.util.UUID;
 
 public class SkillManager {
-    private final cerb plugin; // Reference to main plugin class
-    private final Map<String, Skill> skills; // Holds all player skills
-    private final Map<String, Integer> skillLevels; // Skill levels for each skill
-    private final Map<String, Integer> skillXP; // XP for each skill
-    private final Inventory skillMenu; // Inventory GUI for skills
+    private final CerberusPlugin plugin; // Changed from cerb to CerberusPlugin
+    private final AsyncSaveManager asyncSaver;
+    private static String url;
+    private final Map<String, Skill> skills;
+    private final Map<String, Integer> skillLevels;
+    private final Map<String, Integer> skillXP;
+    private final Inventory skillMenu;
     private final DatabaseManager databaseManager;
-    private final String customId; // Use customId instead of playerUUID
-    private final Map<UUID, CustomPlayer> customPlayers; // This will hold CustomPlayer instances
-    private final SeaMonsterManager seaMonsterManager; // Custom manager example
-    private final Map<String, Map<String, Integer>> playerSkillLevels = new HashMap<>();
-    private final Map<String, Map<String, Integer>> playerSkillXP = new HashMap<>();
+    private final Map<UUID, CustomPlayer> customPlayers;
+    private final SeaMonsterManager seaMonsterManager;
+    private final Map<UUID, Map<String,Integer>> playerSkillLevels = new HashMap<>();
+    private final Map<UUID, Map<String,Integer>> playerSkillXP     = new HashMap<>();
 
     // Other managers
     private final PlayerVirtualHealthManager virtualHealthManager;
     private PlayerDefenseManager playerDefenseManager;
-    private PlayerManaManager playerManaManager;
+    private PlayerManaManager playerManaManager; // Set this later with a setter if not provided in constructor
     private ResourceYieldManager resourceYieldManager;
     private TrapManager trapManager;
     private LuckManager luckManager;
     private MagicFindManager magicFindManager;
     private final CraftingManager craftingManager;
-    private final CraftingListener craftingListener; // Added craftingListener dependency
-    private final PlayerStrengthManager strengthManager; // Added strengthManager dependency
-    private PlayerMenuGUI playerMenuGUI; // New PlayerMenuGUI instance
+    private final CraftingListener craftingListener;
+    private final PlayerStrengthManager strengthManager;
+    private PlayerMenuGUI playerMenuGUI;
 
-    public SkillManager(cerb plugin, Map<String, Integer> skillLevels, Map<String, Integer> skillXP, Inventory skillMenu,
-                        DatabaseManager databaseManager, UUID playerUUID, PlayerVirtualHealthManager playerVirtualHealthManager,
-                        PlayerDefenseManager playerDefenseManager, CraftingManager craftingManager, CraftingListener craftingListener,
-                        PlayerStrengthManager strengthManager, SeaMonsterManager seaMonsterManager) {
+    public SkillManager(CerberusPlugin plugin,
+                        Map<String, Integer> skillLevels,
+                        Map<String, Integer> skillXP,
+                        Inventory skillMenu,
+                        DatabaseManager databaseManager,
+                        UUID playerUUID,
+                        PlayerVirtualHealthManager playerVirtualHealthManager,
+                        PlayerDefenseManager playerDefenseManager,
+                        CraftingManager craftingManager,
+                        CraftingListener craftingListener,
+                        PlayerStrengthManager strengthManager,
+                        SeaMonsterManager seaMonsterManager) {
+
+        this.asyncSaver = plugin.getAsyncSaver();  // ← initialize it here
         this.plugin = plugin;
         this.skills = new HashMap<>();
         this.databaseManager = databaseManager;
 
-        // Generate or retrieve the custom identifier for this player
-        this.customId = databaseManager.getOrCreateCustomId(playerUUID, "player_skills"); // <-- Get or create customId
+        UUID uuid = playerUUID;
+        this.skillLevels = databaseManager.loadPlayerSkillLevels(uuid);
+        this.skillXP = databaseManager.loadPlayerSkillXP(uuid);
 
-        // Load skills from the database using customId
-        this.skillLevels = databaseManager.loadSkillLevelsByCustomId(this.customId);  // <-- Load skill levels
-        this.skillXP = databaseManager.loadSkillXPByCustomId(this.customId);  // <-- Load skill XP
+        System.out.println("[DEBUG] Loaded skill levels for player " + uuid + ": " + this.skillLevels);
+        System.out.println("[DEBUG] Loaded skill XP     for player " + uuid + ": " + this.skillXP);
 
-        // Debug messages for loading skills
-        System.out.println("[DEBUG] Loaded skill levels for custom_id " + this.customId + ": " + this.skillLevels);
-        System.out.println("[DEBUG] Loaded skill XP for custom_id " + this.customId + ": " + this.skillXP);
 
         this.skillMenu = skillMenu;
-        this.customPlayers = new HashMap<>(); // Initialize customPlayers map
+        this.customPlayers = new HashMap<>();
         this.virtualHealthManager = playerVirtualHealthManager;
         this.playerDefenseManager = playerDefenseManager;
         this.craftingManager = craftingManager;
@@ -74,45 +83,21 @@ public class SkillManager {
         this.strengthManager = strengthManager;
         this.seaMonsterManager = seaMonsterManager;
 
-        // Initialize the PlayerMenuGUI here
-        this.playerMenuGUI = new PlayerMenuGUI(plugin, this); // Initialize PlayerMenuGUI
+        // Initialize the PlayerMenuGUI here (if needed)
+        this.playerMenuGUI = new PlayerMenuGUI(plugin, this);
 
-        initializeSkills(); // Initialize all skills
+        initializeSkills();
     }
 
-    public void addPlayer(Player player) {
-        UUID playerUUID = player.getUniqueId();
-
-        if (!customPlayers.containsKey(playerUUID)) {
-            // Load the player's skill levels and XP from the database
-            Map<String, Integer> skillLevels = databaseManager.loadSkillLevelsByCustomId(this.customId);
-            Map<String, Integer> skillXP = databaseManager.loadSkillXPByCustomId(this.customId);
-
-            // Set these values in the SkillManager
-            this.skillLevels.putAll(skillLevels);
-            this.skillXP.putAll(skillXP);
-
-            CustomPlayer customPlayer = new CustomPlayer(
-                    player,
-                    this,
-                    virtualHealthManager,
-                    playerDefenseManager,
-                    strengthManager
-            );
-            customPlayers.put(playerUUID, customPlayer); // Add the player to the map
-            System.out.println("CustomPlayer created and skills loaded for custom_id: " + this.customId);
-        } else {
-            System.out.println("CustomPlayer already exists for custom_id: " + this.customId);
-        }
+    public String getCustomId(Player player) {
+        return databaseManager.getOrCreateCustomId(player.getUniqueId(), player.getName());
     }
 
 
-    // Remove a custom player from the map
     public void removePlayer(UUID playerUUID) {
-        customPlayers.remove(playerUUID);  // Remove player data when they leave the server
+        customPlayers.remove(playerUUID);
     }
 
-    // Setters for additional managers
     public void setPlayerManaManager(PlayerManaManager playerManaManager) {
         this.playerManaManager = playerManaManager;
     }
@@ -133,7 +118,6 @@ public class SkillManager {
         this.magicFindManager = magicFindManager;
     }
 
-    // Initialize skills
     private void initializeSkills() {
         // Combat skills
         skills.put("Blade Mastery", new BladeMasterySkill("Blade Mastery", virtualHealthManager));
@@ -144,18 +128,18 @@ public class SkillManager {
         skills.put("Dual Wielding", new DualWieldingSkill("Dual Wielding"));
         skills.put("Critical Strike", new CriticalStrikeSkill("Critical Strike"));
 
-        // Magic skills
+        // Magic skills (only if playerManaManager is available)
         if (playerManaManager != null) {
             skills.put("Intelligence", new IntelligenceSkill("Intelligence", playerManaManager));
             skills.put("Arcane Knowledge", new ArcaneKnowledgeSkill("Arcane Knowledge", playerManaManager, databaseManager, plugin));
             skills.put("Elemental Mastery", new ElementalMasterySkill("Elemental Mastery", playerManaManager, plugin.getSpellManager()));
-            skills.put("Summoning", new SummoningSkill("Summoning", playerManaManager, cerb.getInstance()));
+            skills.put("Summoning", new SummoningSkill("Summoning", playerManaManager, plugin));
             skills.put("Spell Weaving", new SpellWeavingSkill("Spell Weaving", playerManaManager, plugin));
             skills.put("Mana Regeneration", new ManaRegenerationSkill("Mana Regeneration", playerManaManager));
-            skills.put("Defensive Magic", new DefensiveMagicSkill("Defensive Magic", playerManaManager, cerb.getInstance()));
+            skills.put("Defensive Magic", new DefensiveMagicSkill("Defensive Magic", playerManaManager, plugin));
         }
 
-        // Utility skills
+        // Utility skills (only if resourceYieldManager is available)
         if (resourceYieldManager != null) {
             skills.put("Mining", new MiningSkill("Mining", resourceYieldManager));
             skills.put("Farming", new FarmingSkill("Farming", resourceYieldManager));
@@ -175,45 +159,65 @@ public class SkillManager {
         if (trapManager != null) {
             skills.put("Trap Mastery", new TrapMasterySkill("Trap Mastery", trapManager));
         }
+
         if (luckManager != null && magicFindManager != null) {
-            skills.put("Scavenging", new ScavengingSkill("Scavenging", luckManager, magicFindManager, plugin)); // Pass 'plugin' instance
+            skills.put("Scavenging", new ScavengingSkill("Scavenging", luckManager, magicFindManager, plugin));
         }
+
         skills.put("Repairing", new RepairingSkill("Repairing", craftingManager));
         skills.put("Trading", new TradingSkill("Trading", craftingManager));
         skills.put("Navigation", new NavigationSkill("Navigation", craftingManager, this));
         skills.put("Animal Taming", new AnimalTamingSkill("Animal Taming", craftingManager));
         skills.put("Riding", new RidingSkill("Riding", craftingManager));
         skills.put("Lockpicking", new LockpickingSkill("Lockpicking", luckManager));
-        skills.put("Survival", new SurvivalSkill("Survival", playerDefenseManager, craftingManager)); // Pass 'craftingManager' as well
+        skills.put("Survival", new SurvivalSkill("Survival", playerDefenseManager, craftingManager));
     }
 
-    // Retrieve skill by name
     public Skill getSkill(String skillName) {
         return skills.get(skillName);
     }
 
-    // Add experience to a skill
-    public void addExperience(String skillName, double amount) {
-        addExperience(skillName, amount, 0, 0, false, false);
+    public void addExperience(Player player, String skillName, double amount) {
+        addExperience(
+                player,
+                skillName,
+                amount,
+                0.0,    // health
+                0.0,    // damage
+                false,  // isRare
+                false   // isBoss
+        );
     }
 
-    // Add experience to a skill (advanced)
-    public void addExperience(String skillName, double amount, double health, double damage, boolean isRare, boolean isBoss) {
+    public void addExperience(
+            Player player,                   // ← now we pass in the player
+            String skillName,
+            double amount, double health,
+            double damage, boolean isRare,
+            boolean isBoss
+    ) {
         Skill skill = skills.get(skillName);
         if (skill != null) {
             skill.addExperience(amount, health, damage, isRare, isBoss);
             skillLevels.put(skillName, skill.getLevel());
             skillXP.put(skillName, (int) skill.getExperience());
-            saveSkills();
-            refreshSkillMenu();
+
+            saveSkills(player);            // ← call the one that takes a player
+            refreshSkillDisplay(player);   // ← ditto
         }
     }
 
-    private void saveSkills() {
-        databaseManager.saveSkillsByCustomId(this.customId, skillLevels, skillXP);
+
+    private void saveSkills(Player player) {
+        databaseManager.savePlayerSkills(
+                player.getUniqueId(),
+                player.getName(),
+                skillLevels,
+                skillXP
+        );
     }
 
-    // Calculate dynamic XP based on enemy properties
+
     public double calculateDynamicXp(double health, double damage, boolean isRare, boolean isBoss) {
         double baseXp = 0;
         double healthFactor = health * 0.50;
@@ -224,13 +228,16 @@ public class SkillManager {
         return baseXp + healthFactor + damageFactor * rarityFactor * bossFactor;
     }
 
-    // Add XP for killing a mob
-    public void addXpForMobKill(String skillName, double health, double damage, boolean isRare, boolean isBoss) {
+    public void addXpForMobKill(Player player,
+                                String skillName,
+                                double health,
+                                double damage,
+                                boolean isRare,
+                                boolean isBoss) {
         double xp = calculateDynamicXp(health, damage, isRare, isBoss);
-        addExperience(skillName, xp, health, damage, isRare, isBoss);
+        addExperience(player, skillName, xp, health, damage, isRare, isBoss);
     }
 
-    // Get total effect multiplier for multiple skills
     public double getTotalEffectMultiplier(String... skillNames) {
         double totalMultiplier = 1.0;
         for (String skillName : skillNames) {
@@ -242,17 +249,14 @@ public class SkillManager {
         return totalMultiplier;
     }
 
-    // Add a setter for PlayerMenuGUI
     public void setPlayerMenuGUI(PlayerMenuGUI playerMenuGUI) {
         this.playerMenuGUI = playerMenuGUI;
     }
 
-    // Add a getter for PlayerMenuGUI
     public PlayerMenuGUI getPlayerMenu() {
         return playerMenuGUI;
     }
 
-    // Refresh the skill menu in the inventory
     public void refreshSkillMenu() {
         int slot = 0;
         for (Map.Entry<String, Integer> entry : skillLevels.entrySet()) {
@@ -260,153 +264,136 @@ public class SkillManager {
         }
     }
 
-    // Create a skill item in the inventory (placeholder logic)
     private ItemStack createSkillItem(String skillName, int level, int xp) {
-        // Create ItemStack based on skill name, level, and XP
-        return new ItemStack(Material.BOOK); // Placeholder, replace with actual item logic
+        // Placeholder logic
+        return new ItemStack(Material.BOOK);
     }
 
-    // Add XP and check if the player levels up
     public boolean addXpAndCheckLevelUp(String skillName, double xpGained, Player player) {
         int currentLevel = skillLevels.getOrDefault(skillName, 1);
         int currentXP = skillXP.getOrDefault(skillName, 0);
 
-        // Add the gained XP
         int newXP = currentXP + (int) xpGained;
-
-        // Calculate XP needed for next level
         int requiredXPForNextLevel = calculateRequiredXpForNextLevel(currentLevel);
 
         boolean leveledUp = false;
 
         if (newXP >= requiredXPForNextLevel) {
-            // Handle level-up and carry over XP
             int excessXP = newXP - requiredXPForNextLevel;
             skillLevels.put(skillName, currentLevel + 1);
             skillXP.put(skillName, excessXP);
 
             if (isMaxLevel(skillName, currentLevel + 1)) {
-                skillXP.put(skillName, 0); // Reset XP at max level
+                skillXP.put(skillName, 0);
             }
 
-            saveSkills();
+            saveSkills(player);
             refreshSkillDisplay(player);
             leveledUp = true;
-
-            // Send level-up message
-            String levelUpMessage = createLevelUpMessage(skillName, currentLevel + 1);
-            player.sendMessage(levelUpMessage);
+            player.sendMessage(createLevelUpMessage(skillName, currentLevel + 1));
         } else {
             skillXP.put(skillName, newXP);
-            saveSkills();
+            saveSkills(player);
         }
 
         return leveledUp;
     }
 
-    // Check if the skill has reached max level
     public boolean isMaxLevel(String skillName, int newLevel) {
-        int maxLevel = 100;  // Define the max level for your skills
+        int maxLevel = 100;
         return newLevel >= maxLevel;
     }
 
-    // Refresh the player's skill display in GUI or HUD
     public void refreshSkillDisplay(Player player) {
         PlayerMenuGUI gui = new PlayerMenuGUI(plugin, this);
         gui.updatePlayerSkillInfo(player);
     }
 
-    // Create a level-up message to notify the player
     public String createLevelUpMessage(String skillName, int level) {
         return "Congratulations! Your " + skillName + " skill has reached level " + level + "!";
     }
 
     public int calculateRequiredXpForNextLevel(int currentLevel) {
         int currentLevelXP = 100;
-        int printCounter = 0; // Add a counter to limit the output frequency
-
-        // Loop to calculate the XP for the current level using your formula
         for (int i = 1; i < currentLevel; i++) {
-            currentLevelXP = currentLevelXP * 2;  // Double the XP required at each level
-            printCounter++;
-
+            currentLevelXP = currentLevelXP * 2;
         }
-
         return currentLevelXP;
     }
 
-    // Method to get XP for a specific skill
     public int getSkillXP(String skillName) {
         return skillXP.getOrDefault(skillName, 0);
     }
 
-    // Method to set XP for a specific skill
     public void setSkillXP(String skillName, int xp) {
         skillXP.put(skillName, xp);
     }
 
-    // Upgrade a skill (example logic)
     public void upgradeSkill(Player player, String skillName) {
-        addExperience(skillName, 10, 100, 50, false, false); // Example XP increment
-        saveSkills();
+        // pass the player into addExperience
+        addExperience(player, skillName, 10, 100, 50, false, false);
+        saveSkills(player);
     }
 
-    // Get the level of a specific skill
     public int getSkillLevel(String skillName) {
-        return skillLevels.getOrDefault(skillName, 1); // Default to level 1 if skill not found
+        return skillLevels.getOrDefault(skillName, 1);
     }
 
-    // Retrieve all skills
     public Map<String, Skill> getSkills() {
         return skills;
     }
 
-    // Get a custom player by UUID
-    public CustomPlayer getCustomPlayer(UUID playerUUID) {
-        return customPlayers.get(playerUUID);
-    }
-
-    // Add a custom player to the manager
-    public void addCustomPlayer(CustomPlayer customPlayer) {
-        customPlayers.put(customPlayer.getUniqueId(), customPlayer);
+    public void savePlayerSkills(Player player) {
+        UUID id = player.getUniqueId();
+        databaseManager.savePlayerSkills(
+                id,
+                player.getName(),
+                playerSkillLevels.getOrDefault(id, Map.of()),
+                playerSkillXP    .getOrDefault(id, Map.of())
+        );
     }
 
     @Override
     public String toString() {
-        return null; // Placeholder
+        return null;
     }
 
     public void setPlayerDefenseManager(PlayerDefenseManager playerDefenseManager) {
         this.playerDefenseManager = playerDefenseManager;
     }
 
-    // Method to get the player's skill levels
-    public Map<String, Integer> getPlayerSkillLevels(Player player) {
-        String customId = databaseManager.getOrCreateCustomId(player.getUniqueId(), player.getName());
-        return playerSkillLevels.getOrDefault(customId, new HashMap<>());
+    public Map<String,Integer> getPlayerSkillLevels(Player player) {
+        UUID uid = player.getUniqueId();
+        return playerSkillLevels.getOrDefault(uid, new HashMap<>());
     }
 
-    // Method to get the player's skill XP
-    public Map<String, Integer> getPlayerSkillXP(Player player) {
-        String customId = databaseManager.getOrCreateCustomId(player.getUniqueId(), player.getName());
-        return playerSkillXP.getOrDefault(customId, new HashMap<>());
+    public Map<String,Integer> getPlayerSkillXP(Player player) {
+        UUID uid = player.getUniqueId();
+        return playerSkillXP.getOrDefault(uid, new HashMap<>());
     }
 
-    // Set player skills manually (for testing or other purposes)
-    public void setPlayerSkills(Player player, Map<String, Integer> skillLevels, Map<String, Integer> skillXP) {
-        String customId = databaseManager.getOrCreateCustomId(player.getUniqueId(), player.getName());
-        playerSkillLevels.put(customId, skillLevels);
-        playerSkillXP.put(customId, skillXP);
+    public void setPlayerSkills(Player player, Map<String,Integer> skillLevels, Map<String,Integer> skillXP) {
+        UUID uid = player.getUniqueId();
+        playerSkillLevels.put(uid, skillLevels);
+        playerSkillXP    .put(uid, skillXP);
+    }
+
+    public int getPlayerLevel(Player player) {
+        Map<String, Integer> levels = getPlayerSkillLevels(player);  // method already exists
+        int total = 0;
+        for (int lvl : levels.values()) total += lvl;
+        return total;
     }
 
     public void loadPlayerSkills(Player player) {
-        String customId = databaseManager.getOrCreateCustomId(player.getUniqueId(), player.getName());
+        UUID playerUUID = player.getUniqueId();
 
-        // Load from the database and populate the maps
-        Map<String, Integer> skillLevels = databaseManager.loadSkillLevelsByCustomId(customId);
-        Map<String, Integer> skillXP = databaseManager.loadSkillXPByCustomId(customId);
+        // Load by UUID, not by customId
+        Map<String, Integer> skillLevels = databaseManager.loadPlayerSkillLevels(playerUUID);
+        Map<String, Integer> skillXP = databaseManager.loadPlayerSkillXP(playerUUID);
 
-        // Store in memory for quick access
-        playerSkillLevels.put(customId, skillLevels);
-        playerSkillXP.put(customId, skillXP);
-    }}
+        // Store them keyed off the UUID (or however your maps are keyed now)
+        playerSkillLevels.put(playerUUID, skillLevels);
+        playerSkillXP.put(playerUUID, skillXP);
+    }
+}

@@ -1,0 +1,94 @@
+skill-triggers:
+  # Combat skills
+  Martial Expertise:
+    patterns: ["AIR"]
+  Blade Mastery:
+    patterns: [".*_SWORD"]
+  Weapon Mastery:
+    patterns: [".*_(AXE|HAMMER)"]
+  Ranged Precision:
+    patterns: ["BOW","CROSSBOW"]
+  Heavy Armor Training:
+    patterns: []     # no item→skill mapping; you may leave empty
+  Dual Wielding:
+    patterns: []     # handled in code via off‑hand check
+  Critical Strike:
+    patterns: []     # permission or special proc
+
+  # Magic skills
+  Intelligence:
+    patterns: []     # stat only
+  Arcane Knowledge:
+    patterns: ["ENCHANTED_BOOK"]
+  Elemental Mastery:
+    patterns: []     # elemental‑tagged “<TYPE>”
+  Summoning:
+    patterns: []     # permission‑based
+  Spell Weaving:
+    patterns: [".*WAND.*","STICK"]
+  Mana Regeneration:
+    patterns: []     # permission‑based
+  Defensive Magic:
+    patterns: []     # stat only
+
+  # Utility skills
+  Mining:
+    patterns: ["WOODEN_PICKAXE","STONE_PICKAXE","IRON_PICKAXE","GOLDEN_PICKAXE","DIAMOND_PICKAXE","NETHERITE_PICKAXE"]
+  Farming:
+    patterns: ["WOODEN_HOE","STONE_HOE","IRON_HOE","GOLDEN_HOE","DIAMOND_HOE","NETHERITE_HOE"]
+  Woodcutting:
+    patterns: ["WOODEN_AXE","STONE_AXE","IRON_AXE","GOLDEN_AXE","DIAMOND_AXE","NETHERITE_AXE"]
+  Fishing:
+    patterns: ["FISHING_ROD"]
+  Crafting:
+    patterns: ["CRAFTING_TABLE"]
+  Smithing:
+    patterns: ["ANVIL","GRINDSTONE"]
+  Alchemy:
+    patterns: ["BREWING_STAND"]
+  Enchanting:
+    patterns: ["ENCHANTING_TABLE"]
+  Herbalism:
+    patterns: ["SHEARS"]
+  Cooking:
+    patterns: ["CAULDRON"]
+  First Aid:
+    patterns: ["POTION","SPLASH_POTION"]  # adjust to your healing‑item identifiers
+  Stealth:
+    patterns: ["LEATHER_BOOTS","LEATHER_HELMET"]  # example triggers
+
+  # Other skills
+  Trap Mastery:
+    patterns: ["TRIPWIRE_HOOK","LEVER"]
+  Scavenging:
+    patterns: []     # depends on loot tables or luckManager
+  Repairing:
+    patterns: []     # use anvils? leave empty if code‑only
+  Trading:
+    patterns: ["GOLD_NUGGET","EMERALD","DIAMOND"]
+  Navigation:
+    patterns: ["ELYTRA"]      # triggers any movement; you may leave empty
+  Animal Taming:
+    patterns: ["LEAD","SADDLE"]
+  Riding:
+    patterns: ["SADDLE"]
+  Lockpicking:
+    patterns: ["TRIPWIRE_HOOK"]  # or leave empty if code only
+  Survival:
+    patterns: ["FLINT_AND_STEEL"]  # example
+
+  # Elemental‑tagged skills (triggered by NBT, not material name)
+  Pyromancy:
+    patterns: []     # maps FIRE
+  Cryomancy:
+    patterns: []     # maps ICE
+  Electromancy:
+    patterns: []     # maps LIGHTNING
+  Dark Arts:
+    patterns: []     # maps DARK
+  Geomancy:
+    patterns: []     # maps EARTH
+  Aeromancy:
+    patterns: []     # maps WIND
+  Binding Mastery:
+    patterns: []     # maps BINDING

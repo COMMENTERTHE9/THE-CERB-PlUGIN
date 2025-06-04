@@ -1,18 +1,21 @@
 package Listener;
 
+import cerberus.world.cerb.CerberusPlugin;
+import cerberus.world.cerb.CustomPlayer;
 import Manager.PlayerVirtualHealthManager;
 import Manager.DamageTypeMapper;
 import Manager.CustomDamageType;
 import Skills.FirstAidSkill;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -23,62 +26,59 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
+/**
+ * Manages virtual health: intercepts damage, prevents vanilla regen,
+ * handles custom death/respawn logic, and schedules regeneration.
+ */
 public class VirtualHealthListener implements Listener {
-
     private final PlayerVirtualHealthManager virtualHealthManager;
     private final FirstAidSkill firstAidSkill;
+    private final CerberusPlugin plugin;
     private boolean isHandlingEvent = false;
 
-    public VirtualHealthListener(PlayerVirtualHealthManager virtualHealthManager, FirstAidSkill firstAidSkill) {
+    public VirtualHealthListener(PlayerVirtualHealthManager virtualHealthManager,
+                                 FirstAidSkill firstAidSkill,
+                                 CerberusPlugin plugin) {
         this.virtualHealthManager = virtualHealthManager;
         this.firstAidSkill = firstAidSkill;
+        this.plugin = plugin;
     }
 
-    @EventHandler
+    // ------------------------------------------------------------
+    // Main damage handler: early exits, priority, and custom flow
+    // ------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageEvent event) {
-        if (isHandlingEvent) return;
+        if (event.getDamage() <= 0) return;                       // no damage
+        if (!(event.getEntity() instanceof LivingEntity)) return;
+        if (isHandlingEvent) return;                              // re‑entrant guard
+
         isHandlingEvent = true;
-
         try {
-            Entity entity = event.getEntity();
+            LivingEntity entity = (LivingEntity) event.getEntity();
             CustomDamageType damageType = DamageTypeMapper.mapToCustomDamageType(event.getCause());
-            Entity damagerEntity = null;
+            Entity damager = null;
 
-            if (event instanceof EntityDamageByEntityEvent) {
-                EntityDamageByEntityEvent entityEvent = (EntityDamageByEntityEvent) event;
-                damagerEntity = entityEvent.getDamager();
-
-                if (damagerEntity instanceof Projectile) {
-                    handleProjectileHit((Projectile) damagerEntity, entity, event.getDamage());
+            if (event instanceof EntityDamageByEntityEvent ede) {
+                damager = ede.getDamager();
+                if (damager instanceof Projectile proj) {
+                    handleProjectileHit(proj, entity, event.getDamage());
                     return;
-                } else if (shouldApplyKnockback(damageType)) {
-                    applyKnockback(entity, damagerEntity, event.getDamage());
+                } else if (damageType.shouldApplyKnockback()) {
+                    applyKnockback(entity, damager, event.getDamage());
                 }
             }
 
-
-
-            double damage = event.getDamage();
-
-            if (entity instanceof Player) {
-                Player player = (Player) entity;
-
-                // Apply the damage multiplier based on the player's Virtual Health
-                double damageMultiplier = virtualHealthManager.getDamageMultiplier(player);
-                damage *= damageMultiplier;
-
-                // Apply the damage to Virtual Health
-                virtualHealthManager.applyDamage(player, damage, damageType, damagerEntity);
-                // Cancel event damage to prevent affecting real health
+            double dmg = event.getDamage();
+            if (entity instanceof Player player) {
+                dmg *= virtualHealthManager.getDamageMultiplier(player);
+                virtualHealthManager.applyDamage(player, dmg, damageType, damager);
                 event.setCancelled(true);
-                // Reset player's health to max (real health should not decrease)
                 player.setHealth(player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
-            } else if (entity instanceof LivingEntity) {
-                // Apply damage multiplier for non-player entities as well
-                damage = applyDamageMultiplierToEntity(entity, damage);
-                event.setDamage(damage);
+            } else {
+                dmg = applyDamageMultiplierToEntity(entity, dmg);
+                event.setDamage(dmg);
             }
-
             playDamageAnimation(entity);
         } finally {
             isHandlingEvent = false;
@@ -86,204 +86,101 @@ public class VirtualHealthListener implements Listener {
     }
 
     private double applyDamageMultiplierToEntity(Entity entity, double damage) {
-        // Implement any additional logic to modify damage for non-player entities if needed
-        return damage; // Default: return unmodified damage
+        return damage; // customize if needed
     }
 
     private void handleProjectileHit(Projectile projectile, Entity target, double originalDamage) {
-        double damage = projectile.getVelocity().length(); // Or use originalDamage if preferred
-        Entity damager = projectile.getShooter() instanceof Entity ? (Entity) projectile.getShooter() : null;
-
-        if (target instanceof Player) {
-            Player player = (Player) target;
-
-            // Apply the damage multiplier based on the player's Virtual Health
-            double damageMultiplier = virtualHealthManager.getDamageMultiplier(player);
-            damage *= damageMultiplier;
-
-            // Apply the damage to the virtual health instead of normal health
-            virtualHealthManager.applyDamage(player, damage, CustomDamageType.PROJECTILE, damager);
-
-            // Set the event damage to zero to prevent normal health from being affected
+        double dmg = originalDamage;
+        if (target instanceof Player player) {
+            dmg *= virtualHealthManager.getDamageMultiplier(player);
+            virtualHealthManager.applyDamage(player, dmg, CustomDamageType.PROJECTILE, projectile.getShooter() instanceof Entity e ? e : null);
             player.setHealth(player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
-
-            // Apply horizontal knockback based on the projectile's velocity
-            Vector knockback = projectile.getVelocity().normalize().multiply(0.3 * damage);
-            knockback.setY(0); // Keep the knockback horizontal
-            player.setVelocity(knockback);
-
-            // Trigger the damage animation (red flash effect)
             playDamageAnimation(player);
-        } else if (target instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) target;
-            // Apply damage directly to the mob's real health with multiplier
-            damage = applyDamageMultiplierToEntity(livingEntity, damage);
-            livingEntity.damage(damage);
+        } else if (target instanceof LivingEntity leb) {
+            dmg = applyDamageMultiplierToEntity(leb, dmg);
+            leb.damage(dmg);
         }
-
-        // Apply horizontal knockback based on the projectile's velocity
-        Vector knockback = projectile.getVelocity().normalize().multiply(0.3 * damage);
-        knockback.setY(0); // Keep the knockback horizontal
-        target.setVelocity(knockback);
-
-        // Trigger the damage animation (red flash effect)
+        Vector kb = projectile.getVelocity().normalize().multiply(0.3 * dmg);
+        kb.setY(0);
+        target.setVelocity(kb);
         playDamageAnimation(target);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityRegainHealth(EntityRegainHealthEvent event) {
-        event.setCancelled(true); // Cancel any natural regeneration
+        if (event.getEntity() instanceof Player) {
+            event.setCancelled(true);
+        }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerDeath(PlayerDeathEvent event) {
         if (isHandlingEvent) return;
         isHandlingEvent = true;
-
         try {
             Player player = event.getEntity();
-            EntityDamageEvent lastDamageCause = player.getLastDamageCause();
-            Entity damagerEntity = null;
+            Entity damager = (player.getLastDamageCause() instanceof EntityDamageByEntityEvent ede)
+                    ? ede.getDamager() : null;
 
-            if (lastDamageCause instanceof EntityDamageByEntityEvent) {
-                damagerEntity = ((EntityDamageByEntityEvent) lastDamageCause).getDamager();
-            }
-
-            double currentVirtualHealth = virtualHealthManager.getPlayerVirtualHealth(player);
-            if (currentVirtualHealth <= 0) {
+            if (virtualHealthManager.getPlayerVirtualHealth(player) <= 0) {
                 event.setKeepInventory(true);
             }
-
-            virtualHealthManager.applyDamage(player, player.getHealth(), CustomDamageType.ENTITY_ATTACK, damagerEntity);
-
+            virtualHealthManager.applyDamage(
+                    player,
+                    player.getHealth(),
+                    CustomDamageType.ENTITY_ATTACK,
+                    damager
+            );
             player.setHealth(0);
-            player.getWorld().playSound(player.getLocation(), "entity.player.death", 1.0F, 1.0F);
+            player.getWorld().playSound(player.getLocation(), Sound.ENTITY_PLAYER_DEATH, 1.0F, 1.0F);
         } finally {
             isHandlingEvent = false;
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
-        startHealthRegenTask(event.getPlayer());
+        scheduleRegen(event.getPlayer());
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerJoin(PlayerJoinEvent event) {
-        startHealthRegenTask(event.getPlayer());
+        scheduleRegen(event.getPlayer());
     }
 
+    // ------------------------------------------------------------
+    // Schedule health regen safely on main thread
+    // ------------------------------------------------------------
+    private void scheduleRegen(Player player) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (player.isOnline()) {
+                    // Use the real API that exists:
+                    virtualHealthManager.startHealthUpdateTask(player, plugin.getPlayerHUDManager());
+                }
+            }
+        }.runTask(plugin);
+    }
+
+    // ------------------------------------------------------------
+    // Knockback utility
+    // ------------------------------------------------------------
     private void applyKnockback(Entity entity, Entity damager, double damage) {
-        if (damager == null || entity == null) return;
-
-        Location entityLocation = entity.getLocation();
-        Location damagerLocation = damager.getLocation();
-
-        Vector direction = entityLocation.toVector().subtract(damagerLocation.toVector()).normalize();
-
-        double knockbackStrength = 0.5 * damage;
-
-        // Apply knockback reduction if the entity is a player
-        if (entity instanceof Player) {
-            Player player = (Player) entity;
-            double knockbackReductionFactor = virtualHealthManager.getKnockbackReductionFactor(player);
-            knockbackStrength *= knockbackReductionFactor;
-        }
-
-        Vector knockback = direction.multiply(knockbackStrength);
-        knockback.setY(0);
-
-        entity.setVelocity(knockback);
-    }
-
-    private boolean shouldApplyKnockback(CustomDamageType damageType) {
-        switch (damageType) {
-            // Cases where knockback should be applied:
-            case ENTITY_ATTACK:
-            case ENTITY_SWEEP_ATTACK:
-            case PROJECTILE:
-            case ENTITY_EXPLOSION:
-            case BLOCK_EXPLOSION:
-            case THORNS:
-            case SONIC_BOOM:
-            case CUSTOM_EXPLOSION:
-                return true;
-
-            // Cases where knockback should not be applied:
-            case FALL:
-            case FIRE:
-            case FIRE_TICK:
-            case LAVA:
-            case DROWNING:
-            case SUFFOCATION:
-            case STARVATION:
-            case POISON:
-            case MAGIC:
-            case WITHER:
-            case FALLING_BLOCK:
-            case LIGHTNING:
-            case HOT_FLOOR:
-            case CRAMMING:
-            case DRAGON_BREATH:
-            case DRYOUT:
-            case FREEZE:
-            case VOID:
-            case FLY_INTO_WALL:
-            case WORLD_BORDER:
-            case CONTACT:
-            case MELTING:
-            case CAMPFIRE:
-            case SUICIDE:
-            case CUSTOM_MAGIC:
-            case CUSTOM_ENVIRONMENTAL:
-                return false;
-
-            default:
-                return false;
-        }
+        if (!(entity instanceof Player) || damager == null) return;
+        Location locE = entity.getLocation();
+        Location locD = damager.getLocation();
+        Vector dir = locE.toVector().subtract(locD.toVector()).normalize();
+        double strength = 0.5 * damage * virtualHealthManager.getKnockbackReductionFactor((Player)entity);
+        dir.setY(0);
+        entity.setVelocity(dir.multiply(strength));
     }
 
     private void playDamageAnimation(Entity entity) {
-        if (entity instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) entity;
-            livingEntity.damage(0.1);
-            livingEntity.setHealth(Math.min(livingEntity.getHealth() + 0.1, livingEntity.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue()));
+        if (entity instanceof LivingEntity leb) {
+            leb.damage(0.1);
+            double newHp = Math.min(leb.getHealth() + 0.1, leb.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
+            leb.setHealth(newHp);
         }
-    }
-
-    private void startHealthRegenTask(Player player) {
-        new BukkitRunnable() {
-            long lastDamageTime = System.currentTimeMillis();
-
-            @Override
-            public void run() {
-                if (!player.isOnline()) {
-                    this.cancel();
-                    return;
-                }
-
-                double currentHealth = virtualHealthManager.getPlayerVirtualHealth(player);
-                double maxHealth = virtualHealthManager.getPlayerMaxVirtualHealth(player);
-
-                if (currentHealth >= maxHealth) {
-                    return;
-                }
-
-                long timeSinceLastDamage = System.currentTimeMillis() - lastDamageTime;
-                double regenRate = timeSinceLastDamage > 10000 ? 1.0 : 0.2;
-
-                // Integrate FirstAidSkill regeneration boost
-                CustomPlayer customPlayer = CustomPlayer.getCustomPlayer(player);
-                if (customPlayer != null) {
-                    firstAidSkill.applyEffect(customPlayer);
-                }
-
-                virtualHealthManager.increasePlayerVirtualHealth(player, regenRate);
-
-                if (timeSinceLastDamage <= 10000) {
-                    lastDamageTime = System.currentTimeMillis();
-                }
-            }
-        }.runTaskTimerAsynchronously(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), 0L, 20L);
     }
 }

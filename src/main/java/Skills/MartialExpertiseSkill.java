@@ -1,7 +1,7 @@
 package Skills;
 
+import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.CustomPlayer;
-import cerberus.world.cerb.cerb;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -62,6 +62,6 @@ public class MartialExpertiseSkill extends CombatSkill {
                 player.getInventory().setItemInMainHand(weapon);
                 player.sendMessage("Your weapon is usable again.");
             }
-        }.runTaskLater(cerb.getInstance(), 100L); // Delay of 5 seconds (100 ticks)
+        }.runTaskLater(CerberusPlugin.getInstance(), 100L); // Delay of 5 seconds (100 ticks)
     }
 }

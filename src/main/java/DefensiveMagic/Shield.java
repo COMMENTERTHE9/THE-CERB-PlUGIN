@@ -7,55 +7,105 @@ import org.bukkit.Bukkit;
 
 public class Shield extends DefensiveStructure {
     private double strength;
-    private boolean active;
+    private BukkitRunnable particleTask;
 
     public Shield(Player player, double strength) {
         super(player);
         this.strength = strength;
-        this.active = true; // Initialize the shield as active
     }
 
     @Override
     public void activate() {
-        player.sendMessage("A magical shield surrounds you, absorbing damage.");
-        playParticleEffect(); // Play spherical particle effect
+        isActive = true; // Using parent class isActive
+        player.sendMessage("§bA magical shield surrounds you, absorbing damage.");
+        playParticleEffect();
+    }
+
+    @Override
+    public void deactivate() {
+        isActive = false;
+        if (particleTask != null) {
+            particleTask.cancel();
+            particleTask = null;
+        }
+
+        // Final shield break effect
+        for (double phi = 0; phi <= Math.PI; phi += Math.PI / 15) {
+            double y = Math.cos(phi);
+            for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 15) {
+                double x = Math.sin(phi) * Math.cos(theta);
+                double z = Math.sin(phi) * Math.sin(theta);
+                player.getWorld().spawnParticle(
+                        Particle.WITCH,
+                        player.getLocation().add(x, y + 1, z),
+                        3,
+                        0.1, 0.1, 0.1,
+                        0.05
+                );
+            }
+        }
+
+        player.sendMessage("§cYour magical shield has dissipated!");
     }
 
     private void playParticleEffect() {
-        new BukkitRunnable() {
+        particleTask = new BukkitRunnable() {
             @Override
             public void run() {
+                if (!isActive || !player.isOnline()) {
+                    deactivate();
+                    return;
+                }
+
                 for (double phi = 0; phi <= Math.PI; phi += Math.PI / 10) {
                     double y = Math.cos(phi);
                     for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
                         double x = Math.sin(phi) * Math.cos(theta);
                         double z = Math.sin(phi) * Math.sin(theta);
-                        player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(x, y, z), 1, 0, 0, 0, 0);
+                        player.getWorld().spawnParticle(
+                                Particle.WITCH,
+                                player.getLocation().add(x, y + 1, z),
+                                1,
+                                0, 0, 0,
+                                0
+                        );
                     }
                 }
             }
-        }.runTaskTimer(Bukkit.getPluginManager().getPlugin("cerb"), 0L, 20L); // 1-second interval
+        };
+        particleTask.runTaskTimer(plugin, 0L, 20L);
     }
 
     @Override
     public double getManaCost() {
-        return 50.0; // Example mana cost
-    }
-
-    // Method to check if the shield is still active
-    public boolean isActive() {
-        return active && strength > 0;
+        return 50.0;
     }
 
     // Method to absorb damage using the shield
     public void absorbDamage(double damage) {
-        if (strength > 0) {
+        if (isActive && strength > 0) {
             strength -= damage;
+
+            // Visual feedback for shield hit
+            player.getWorld().spawnParticle(
+                    Particle.FLASH,
+                    player.getLocation(),
+                    10,
+                    0.5, 0.5, 0.5,
+                    0.1
+            );
+
             if (strength <= 0) {
                 strength = 0;
-                active = false;
-                player.sendMessage("Your shield has been broken!");
+                deactivate();
+            } else {
+                // Show remaining shield strength
+                player.sendMessage(String.format("§bShield strength: §f%.1f", strength));
             }
         }
+    }
+
+    public double getStrength() {
+        return strength;
     }
 }

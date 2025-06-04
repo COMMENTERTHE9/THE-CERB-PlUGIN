@@ -12,11 +12,11 @@ import java.util.UUID;
 
 public class ItemUtils {
 
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
     private final NamespacedKey REGION_SELECTOR_KEY;
     private final NamespacedKey UNREGIONIZER_KEY;
 
-    public ItemUtils(cerb plugin) {
+    public ItemUtils(CerberusPlugin plugin) {
         this.plugin = plugin;
         this.REGION_SELECTOR_KEY = new NamespacedKey(plugin, "region_selector");
         this.UNREGIONIZER_KEY = new NamespacedKey(plugin, "unregionizer");

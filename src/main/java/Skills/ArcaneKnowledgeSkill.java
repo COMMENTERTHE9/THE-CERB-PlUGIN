@@ -1,6 +1,7 @@
 package Skills;
 
 import Manager.PlayerManaManager;
+import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.CustomPlayer;
 import cerberus.world.cerb.DatabaseManager;
 import org.bukkit.entity.Player;
@@ -11,9 +12,9 @@ import java.util.UUID;
 public class ArcaneKnowledgeSkill extends MagicSkill {
     private final PlayerManaManager manaManager;
     private final DatabaseManager databaseManager;
-    private final cerberus.world.cerb.cerb plugin; // Reference to the main plugin class
+    private final cerberus.world.cerb.CerberusPlugin plugin; // Reference to the main plugin class
 
-    public ArcaneKnowledgeSkill(String name, PlayerManaManager manaManager, DatabaseManager databaseManager, cerberus.world.cerb.cerb plugin) {
+    public ArcaneKnowledgeSkill(String name, PlayerManaManager manaManager, DatabaseManager databaseManager, CerberusPlugin plugin) {
         super(name);
         this.manaManager = manaManager;
         this.databaseManager = databaseManager;

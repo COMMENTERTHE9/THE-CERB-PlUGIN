@@ -1,55 +1,53 @@
 package Listener;
 
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;                         // <<< NEW
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.plugin.java.JavaPlugin;
-import cerberus.world.cerb.cerb;
+import org.bukkit.inventory.InventoryView;
+
+import java.util.Set;                                         // <<< NEW
 
 public class MenuProtectionListener implements Listener {
+    private final CerberusPlugin plugin;
 
-    private final cerb plugin;
+    // <<< NEW: define protected inventory titles in one place
+    private static final Set<String> PROTECTED_TITLES = Set.of(
+            "Main Player Menu",
+            "Skill Management",
+            "Combat Skills",
+            "Magic Skills",
+            "Utility Skills",
+            "Admin Control Panel",
+            "Player Management",
+            "Server Settings",
+            "Advanced Settings"
+    );
 
-    public MenuProtectionListener(cerb plugin) {
+    public MenuProtectionListener(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< UPDATED
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getClickedInventory() != null) {
-            String inventoryTitle = event.getView().getTitle();
+        InventoryView view = event.getView();                               // <<< NEW
+        if (view == null) return;                                           // <<< EARLY EXIT
 
-            // Prevent moving items in protected inventories
-            if (inventoryTitle.equals("Main Player Menu") ||
-                    inventoryTitle.equals("Skill Management") ||
-                    inventoryTitle.equals("Combat Skills") ||
-                    inventoryTitle.equals("Magic Skills") ||
-                    inventoryTitle.equals("Utility Skills") ||
-                    inventoryTitle.equals("Admin Control Panel") ||
-                    inventoryTitle.equals("Player Management") ||
-                    inventoryTitle.equals("Server Settings") ||
-                    inventoryTitle.equals("Advanced Settings")) {
-                event.setCancelled(true);
-            }
-        }
+        String title = view.getTitle();
+        if (!PROTECTED_TITLES.contains(title)) return;                      // <<< EARLY EXIT
+
+        // Prevent moving items in protected inventories
+        event.setCancelled(true);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< UPDATED
     public void onInventoryDrag(InventoryDragEvent event) {
-        String inventoryTitle = event.getView().getTitle();
+        String title = event.getView().getTitle();
+        if (!PROTECTED_TITLES.contains(title)) return;                      // <<< EARLY EXIT
 
         // Prevent dragging items in protected inventories
-        if (inventoryTitle.equals("Main Player Menu") ||
-                inventoryTitle.equals("Skill Management") ||
-                inventoryTitle.equals("Combat Skills") ||
-                inventoryTitle.equals("Magic Skills") ||
-                inventoryTitle.equals("Utility Skills") ||
-                inventoryTitle.equals("Admin Control Panel") ||
-                inventoryTitle.equals("Player Management") ||
-                inventoryTitle.equals("Server Settings") ||
-                inventoryTitle.equals("Advanced Settings")) {
-            event.setCancelled(true);
-        }
+        event.setCancelled(true);
     }
 }

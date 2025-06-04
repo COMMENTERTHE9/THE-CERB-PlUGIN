@@ -1,9 +1,11 @@
-C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\cerb.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\CerberusGameMode.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\CerberusPlugin.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\CerberusWorldProtection.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\CommandHandler.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\ConfigSkillMapper.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\CustomPlayer.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\DatabaseManager.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\events\PlayerDefenseUpdateEvent.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\ItemUtils.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\QualityBuffs.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\Region.java
@@ -11,6 +13,7 @@ C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\RegionManager
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\RegionSelectorBehavior.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\Stat.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\cerberus\world\cerb\StatManager.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Commands\CerbCommand.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Commands\GiveTestArmorCommand.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Commands\GiveTestItemCommand.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Commands\KillHologramsCommand.java
@@ -41,7 +44,7 @@ C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\CraftingListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\CustomArmorListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\CustomItemListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\DamageDisplayListener.java
-C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\DefenseListener.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\DefenseUpdateListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\ManaListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\MenuListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\MenuProtectionListener.java
@@ -53,6 +56,7 @@ C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\RegionManagementGUIListe
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\SpeedLimiterListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Listener\VirtualHealthListener.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Manager\AdvancedDropManager.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Manager\AsyncSaveManager.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Manager\BrokenItemManager.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Manager\CombatScoreboardManager.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Manager\CraftingManager.java
@@ -122,4 +126,17 @@ C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Spells\FireballSpell.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Spells\Ritual.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Spells\Spell.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Spells\SpellManager.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\PatternDimensions.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\Trap.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapBlock.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapBlockRole.java
 C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapManager.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapPattern.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapSetup.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapState.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapTool.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapToolType.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapToolVariant.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapTrigger.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TrapType.java
+C:\Users\Gabri\IdeaProjects\Cerb\src\main\java\Traps\TriggerType.java

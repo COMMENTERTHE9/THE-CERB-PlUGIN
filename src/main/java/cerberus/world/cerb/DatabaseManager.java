@@ -1,11 +1,17 @@
 package cerberus.world.cerb;
 
+import Manager.AsyncSaveManager;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.bukkit.plugin.java.JavaPlugin;
+import java.io.File;
+
 import java.sql.Connection;
+import java.sql.*;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import cerberus.world.cerb.CerberusPlugin;
 // Import HashMap, Map, UUID, SecureRandom, and other necessary classes
 import java.util.HashMap;
 import java.util.Map;
@@ -20,8 +26,10 @@ public class DatabaseManager {
     private static final int RANDOM_PART_LENGTH = 6; // Length of the random alphanumeric part
     private static final String ALPHANUMERIC_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final SecureRandom random = new SecureRandom();
+    private final AsyncSaveManager asyncSaver;
+    private final CerberusPlugin plugin;
 
-    // List of all skill names
+
     private static final String[] ALL_SKILL_NAMES = {
             "Blade Mastery", "Martial Expertise", "Weapon Mastery", "Ranged Precision",
             "Heavy Armor Training", "Dual Wielding", "Critical Strike",
@@ -35,70 +43,49 @@ public class DatabaseManager {
             "Survival"
     };
 
-    public DatabaseManager(String pluginFolder) {
-        // SQLite connection string
-        this.url = "jdbc:sqlite:" + pluginFolder + "/cerberus.db";  // Adjust the path as needed
+    public DatabaseManager(CerberusPlugin plugin) {
+        this.plugin    = plugin;
+        this.asyncSaver= plugin.getAsyncSaver();
+        url            = "jdbc:sqlite:"+plugin.getDataFolder().getAbsolutePath()+"/cerberus.db";
         initializeDatabase();
     }
 
     private void initializeDatabase() {
-        // SQL queries to create the necessary tables if they don't exist
-        String createSkillsTable = "CREATE TABLE IF NOT EXISTS player_skills (" +
-                "custom_id TEXT," +
-                "skill_name TEXT," +
-                "skill_level INTEGER DEFAULT 0," +
-                "skill_xp INTEGER DEFAULT 0," +
-                "PRIMARY KEY (custom_id, skill_name))"; // Use custom_id as part of the primary key
+        // build a single “profile” table: one row per player, two columns per skill
+        StringBuilder ddl = new StringBuilder("""
+        CREATE TABLE IF NOT EXISTS player_profiles (
+          player_uuid TEXT PRIMARY KEY,
+          player_name TEXT
+        """);
+        for (String skill : ALL_SKILL_NAMES) {
+            // turn “Blade Mastery” → “blade_mastery”
+            String col = skill.toLowerCase().replaceAll("[^a-z0-9]+","_");
+            ddl.append(",\n  ").append(col).append("_level INTEGER DEFAULT 0");
+            ddl.append(",\n  ").append(col).append("_xp    INTEGER DEFAULT 0");
+        }
+        ddl.append("\n);");
 
-        String createEffectsTable = "CREATE TABLE IF NOT EXISTS skill_effects (" +
-                "player_uuid TEXT," +
-                "skill_name TEXT," +
-                "effect_name TEXT," +
-                "effect_value REAL," +
-                "PRIMARY KEY (player_uuid, skill_name, effect_name))";
-
-        String createMagicFindTable = "CREATE TABLE IF NOT EXISTS player_magic_find (" +
-                "player_uuid TEXT PRIMARY KEY," +
-                "magic_find REAL DEFAULT 0)";
-
-        // Table to store the unique custom_id for each player
-        String createCustomIdsTable = "CREATE TABLE IF NOT EXISTS player_custom_ids (" +
-                "player_uuid TEXT PRIMARY KEY," + // Ensure each player has one unique entry
-                "custom_id TEXT UNIQUE," +        // Ensure the custom_id is unique and doesn't change
-                "player_name TEXT)";              // Store the player's name as well
-
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt1 = conn.prepareStatement(createSkillsTable);
-             PreparedStatement pstmt2 = conn.prepareStatement(createEffectsTable);
-             PreparedStatement pstmt3 = conn.prepareStatement(createMagicFindTable);
-             PreparedStatement pstmt4 = conn.prepareStatement(createCustomIdsTable)) {
-
-            pstmt1.execute();
-            pstmt2.execute();
-            pstmt3.execute();
-            pstmt4.execute();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
+        try (Connection conn = getConnection();
+             Statement  stmt = conn.createStatement()) {
+            stmt.execute(ddl.toString());
+        } catch (SQLException ex) {
+            ex.printStackTrace();
         }
     }
 
-    public static Connection getConnection() throws SQLException {
+    public Connection getConnection() throws SQLException {
         return DriverManager.getConnection(url);
     }
 
     // Generate or retrieve custom identifier
     public String getOrCreateCustomId(UUID playerUUID, String playerName) {
-        String customId = loadCustomId(playerUUID); // Try to load an existing custom_id
+        String existing = loadCustomId(playerUUID);
+        if (existing != null) return existing;
 
-        if (customId == null) {
-            // Generate a new custom identifier if it does not exist
-            customId = generateCustomId();
-            saveCustomId(playerUUID, customId, playerName); // Save the new custom_id only once
-            initializePlayerSkills(customId); // Initialize skills for the new player
-        }
-
-        return customId;
+        String newId = "CUST-" + RandomStringUtils.randomAlphanumeric(6).toUpperCase();
+        saveCustomId(playerUUID, newId, playerName);
+        initializePlayerSkills(newId);
+        return newId;
     }
 
     private String generateCustomId() {
@@ -107,80 +94,92 @@ public class DatabaseManager {
     }
 
     private void saveCustomId(UUID playerUUID, String customId, String playerName) {
-        // Insert only if the player does not already have an entry
-        String query = "INSERT INTO player_custom_ids (player_uuid, custom_id, player_name) " +
-                "VALUES (?, ?, ?) " +
-                "ON CONFLICT(player_uuid) DO NOTHING"; // Do nothing if there's already a custom_id for this player
-
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(query)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.setString(2, customId);
-            pstmt.setString(3, playerName);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        String sql = "INSERT INTO player_custom_ids(player_uuid,custom_id,player_name) VALUES(?,?,?) "
+                + "ON CONFLICT(player_uuid) DO NOTHING";
+        asyncSaver.scheduleDbSave(
+                "customId:" + playerUUID,
+                () -> {
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setString(1, playerUUID.toString());
+                        ps.setString(2, customId);
+                        ps.setString(3, playerName);
+                        ps.executeUpdate();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+        );
     }
 
-    // Load custom identifier from the database
     private String loadCustomId(UUID playerUUID) {
         String query = "SELECT custom_id FROM player_custom_ids WHERE player_uuid = ?";
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(query)) {
-            pstmt.setString(1, playerUUID.toString());
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                return rs.getString("custom_id");
+        try (Connection     conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(query)) {
+            ps.setString(1, playerUUID.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("custom_id");
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return null; // Return null if not found
+        return null;
     }
 
-    // Initialize all skills for a new player
     private void initializePlayerSkills(String customId) {
-        String insertSkill = "INSERT INTO player_skills (custom_id, skill_name, skill_level, skill_xp) " +
-                "VALUES (?, ?, 0, 0) " +
-                "ON CONFLICT(custom_id, skill_name) DO NOTHING";
-
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(insertSkill)) {
-
-            for (String skillName : ALL_SKILL_NAMES) {
-                pstmt.setString(1, customId);
-                pstmt.setString(2, skillName);
-                pstmt.addBatch();
-            }
-            pstmt.executeBatch();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        String sql = "INSERT INTO player_skills(custom_id,skill_name,skill_level,skill_xp) "
+                + "VALUES(?,?,0,0) ON CONFLICT(custom_id,skill_name) DO NOTHING";
+        asyncSaver.scheduleDbSave(
+                "initSkills:" + customId,
+                () -> {
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(sql)) {
+                        for (String skill : ALL_SKILL_NAMES) {
+                            ps.setString(1, customId);
+                            ps.setString(2, skill);
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+        );
     }
+
 
     // Load skill levels using custom_id
-    public Map<String, Integer> loadSkillLevelsByCustomId(String customId) {
-        Map<String, Integer> skillLevels = new HashMap<>();
-        String query = "SELECT skill_name, skill_level FROM player_skills WHERE custom_id = ?";
+    /**
+     * Load all skill levels for a given player UUID.
+     */
+    public Map<String,Integer> loadSkillLevels(UUID playerUUID) {
+        Map<String,Integer> skillLevels = new HashMap<>();
+        String sql = """
+        SELECT skill_name, skill_level
+          FROM player_skills
+         WHERE player_uuid = ?
+        """;
 
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(query)) {
-            pstmt.setString(1, customId);
-            ResultSet rs = pstmt.executeQuery();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            while (rs.next()) {
-                String skillName = rs.getString("skill_name");
-                int level = rs.getInt("skill_level");
-                skillLevels.put(skillName, level);
-                System.out.println("[DEBUG] Loaded skill level by custom_id: " + skillName + " - Level: " + level);
+            ps.setString(1, playerUUID.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    skillLevels.put(
+                            rs.getString("skill_name"),
+                            rs.getInt   ("skill_level")
+                    );
+                }
             }
         } catch (SQLException e) {
+            plugin.getLogger().severe("Error loading skill levels for " + playerUUID);
             e.printStackTrace();
         }
 
         return skillLevels;
     }
+
 
     // Load skill XP using custom_id
     public Map<String, Integer> loadSkillXPByCustomId(String customId) {
@@ -206,36 +205,31 @@ public class DatabaseManager {
     }
 
     // Save skills using custom_id
-    public void saveSkillsByCustomId(String customId, Map<String, Integer> skillLevels, Map<String, Integer> skillXP) {
-        if (customId == null) {
-            System.err.println("[ERROR] customId is null. Cannot save skills.");
-            return;
-        }
-
-        String insertOrUpdate = "INSERT INTO player_skills (custom_id, skill_name, skill_level, skill_xp) " +
-                "VALUES (?, ?, ?, ?) " +
-                "ON CONFLICT(custom_id, skill_name) " + // Make sure this matches the primary key
-                "DO UPDATE SET skill_level = excluded.skill_level, skill_xp = excluded.skill_xp";
-
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(insertOrUpdate)) {
-
-            for (Map.Entry<String, Integer> entry : skillLevels.entrySet()) {
-                String skillName = entry.getKey();
-                int level = entry.getValue();
-                int xp = skillXP.getOrDefault(skillName, 0);
-
-                pstmt.setString(1, customId);
-                pstmt.setString(2, skillName);
-                pstmt.setInt(3, level);
-                pstmt.setInt(4, xp);
-                pstmt.addBatch();
-            }
-
-            pstmt.executeBatch();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+    public void saveSkillsByCustomId(String customId,
+                                     Map<String,Integer> skillLevels,
+                                     Map<String,Integer> skillXP) {
+        String sql = "INSERT INTO player_skills(custom_id,skill_name,skill_level,skill_xp) "
+                + "VALUES(?,?,?,?) "
+                + "ON CONFLICT(custom_id,skill_name) DO UPDATE "
+                + "SET skill_level=excluded.skill_level,skill_xp=excluded.skill_xp";
+        asyncSaver.scheduleDbSave(
+                "saveSkills:" + customId,
+                () -> {
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(sql)) {
+                        for (Map.Entry<String,Integer> e : skillLevels.entrySet()) {
+                            ps.setString(1, customId);
+                            ps.setString(2, e.getKey());
+                            ps.setInt(3, e.getValue());
+                            ps.setInt(4, skillXP.getOrDefault(e.getKey(),0));
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+        );
     }
 
     // Save player skills (wrapper method)
@@ -246,14 +240,13 @@ public class DatabaseManager {
 
     // Load player skill levels (wrapper method)
     public Map<String, Integer> loadPlayerSkillLevels(UUID playerUUID) {
-        String customId = loadCustomId(playerUUID);
+       String customId = loadCustomId(playerUUID);
         if (customId == null) {
             System.err.println("[ERROR] No customId found for playerUUID: " + playerUUID);
-            return new HashMap<>();
-        }
-        return loadSkillLevelsByCustomId(customId);
+           return new HashMap<>();
+       }
+        return loadSkillLevels(playerUUID);
     }
-
     // Load player skill XP (wrapper method)
     public Map<String, Integer> loadPlayerSkillXP(UUID playerUUID) {
         String customId = loadCustomId(playerUUID);
@@ -325,24 +318,32 @@ public class DatabaseManager {
     }
 
     // Save skill effects to the database
-    public void saveSkillEffect(UUID playerUUID, String skillName, String effectName, double value) {
-        String insertOrUpdate = "INSERT INTO skill_effects (player_uuid, skill_name, effect_name, effect_value) " +
-                "VALUES (?, ?, ?, ?) " +
-                "ON CONFLICT(player_uuid, skill_name, effect_name) " +
-                "DO UPDATE SET effect_value = excluded.effect_value";
 
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(insertOrUpdate)) {
-
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.setString(2, skillName);
-            pstmt.setString(3, effectName);
-            pstmt.setDouble(4, value);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+    public void saveSkillEffect(UUID playerUUID,
+                                String skillName,
+                                String effectName,
+                                double value) {
+        String sql = "INSERT INTO skill_effects(player_uuid,skill_name,effect_name,effect_value) "
+                + "VALUES(?,?,?,?) "
+                + "ON CONFLICT(player_uuid,skill_name,effect_name) DO UPDATE "
+                + "SET effect_value=excluded.effect_value";
+        asyncSaver.scheduleDbSave(
+                "skillEffect:" + playerUUID + ":" + skillName + ":" + effectName,
+                () -> {
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setString(1, playerUUID.toString());
+                        ps.setString(2, skillName);
+                        ps.setString(3, effectName);
+                        ps.setDouble(4, value);
+                        ps.executeUpdate();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+        );
     }
+
 
     // Load skill effects from the database
     public double loadSkillEffect(UUID playerUUID, String skillName, String effectName, double defaultValue) {
@@ -367,15 +368,20 @@ public class DatabaseManager {
 
     // Save magic find to the database (for MagicFindManager)
     public void saveMagicFind(UUID playerUUID, double magicFind) {
-        String query = "REPLACE INTO player_magic_find (player_uuid, magic_find) VALUES (?, ?)";
-        try (Connection conn = this.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(query)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.setDouble(2, magicFind);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        String sql = "REPLACE INTO player_magic_find(player_uuid,magic_find) VALUES(?,?)";
+        asyncSaver.scheduleDbSave(
+                "magicFind:" + playerUUID,
+                () -> {
+                    try (Connection conn = getConnection();
+                         PreparedStatement ps = conn.prepareStatement(sql)) {
+                        ps.setString(1, playerUUID.toString());
+                        ps.setDouble(2, magicFind);
+                        ps.executeUpdate();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                }
+        );
     }
 
     // Load magic find from the database (for MagicFindManager)

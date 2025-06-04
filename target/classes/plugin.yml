@@ -1,9 +1,14 @@
 name: CerberusPlugin
-main: cerberus.world.cerb.cerb
+main: cerberus.world.cerb.CerberusPlugin
 version: 1.0.0
 api-version: '1.21'
 
 commands:
+  cerb:
+    description: Umbrella admin command
+    usage: /cerb <reload|…|showqueues>
+    permission: cerb.admin
+    permission-message: You don’t have permission to use /cerb.
   regionselector:
     description: Gives the player the Region Selector item.
     usage: /<command>

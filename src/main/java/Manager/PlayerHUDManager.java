@@ -6,14 +6,31 @@ import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 
 public class PlayerHUDManager {
-    private final PlayerManaManager manaManager;
-    private final PlayerDefenseManager defenseManager;
-    private final PlayerVirtualHealthManager healthManager;
+    private PlayerManaManager manaManager;
+    private PlayerDefenseManager defenseManager;
+    private PlayerVirtualHealthManager healthManager;
+    private DefenseBarManager defenseBarManager;
 
     public PlayerHUDManager(PlayerManaManager manaManager, PlayerDefenseManager defenseManager, PlayerVirtualHealthManager healthManager) {
         this.manaManager = manaManager;
         this.defenseManager = defenseManager;
         this.healthManager = healthManager;
+    }
+    
+    public void setDefenseBarManager(DefenseBarManager defenseBarManager) {
+        this.defenseBarManager = defenseBarManager;
+    }
+
+    public void setDefenseManager(PlayerDefenseManager defenseManager) {
+        this.defenseManager = defenseManager;
+    }
+
+    public void setVirtualHealthManager(PlayerVirtualHealthManager healthManager) {
+        this.healthManager = healthManager;
+    }
+
+    public void setManaManager(PlayerManaManager manaManager) {
+        this.manaManager = manaManager;
     }
 
     public void updateHUD(Player player) {
@@ -29,14 +46,26 @@ public class PlayerHUDManager {
         ChatColor manaColor = getManaColor(mana);
         ChatColor effectivenessColor = getEffectivenessColor(effectiveness);
 
-        // Create the HUD line with effectiveness symbol (★) and percentage symbol
-        String hud = String.format("%s%.0f/%.0f♥   %s%.2f%%★   %s%.2f/%.2f✎",
+        // Build HUD string
+        StringBuilder hudBuilder = new StringBuilder();
+        
+        // Add defense bar if available
+        if (defenseBarManager != null) {
+            DefenseBarManager.DefenseBar defenseBar = defenseBarManager.getDefenseBar(player);
+            double defensePercentage = defenseBar.getPercentage();
+            ChatColor defenseColor = getDefenseBarColor(defensePercentage);
+            hudBuilder.append(String.format("%s%.0f/%.0f⛨  ", 
+                defenseColor, defenseBar.getCurrent(), defenseBar.getMaximum()));
+        }
+        
+        // Add health, effectiveness, and mana
+        hudBuilder.append(String.format("%s%.0f/%.0f♥   %s%.2f%%★   %s%.2f/%.2f✎",
                 healthColor, health, maxHealth,
-                effectivenessColor, effectiveness * 100, // Display effectiveness as a percentage with a star symbol and percentage sign
-                manaColor, mana, maxMana);
+                effectivenessColor, effectiveness * 100,
+                manaColor, mana, maxMana));
 
         // Send the action bar message to the player
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hud));
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hudBuilder.toString()));
     }
 
     private ChatColor getHealthColor(double health) {
@@ -80,5 +109,12 @@ public class PlayerHUDManager {
     private double getMaxMana(Player player) {
         // Retrieve actual max mana value from PlayerManaManager
         return manaManager.getMaxMana(player);  // Pass the player object here
+    }
+    
+    private ChatColor getDefenseBarColor(double percentage) {
+        if (percentage > 0.75) return ChatColor.GREEN;
+        if (percentage > 0.5) return ChatColor.YELLOW;
+        if (percentage > 0.25) return ChatColor.GOLD;
+        return ChatColor.RED;
     }
 }

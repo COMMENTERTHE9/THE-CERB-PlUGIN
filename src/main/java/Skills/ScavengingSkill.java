@@ -14,6 +14,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.event.EventPriority;
+
 
 import java.util.Random;
 
@@ -104,27 +106,34 @@ public class ScavengingSkill extends UtilitySkill implements Listener {
         }
     }
 
-    // Event handler for opening chests
-    @EventHandler
+    // ------------------------------------------------------------
+// Tier‑chest open handler (optimized)
+// ------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onChestOpen(InventoryOpenEvent event) {
         Inventory inventory = event.getInventory();
-        Player player = (Player) event.getPlayer();
+        Player player       = (Player) event.getPlayer();
 
-        // Check if the chest has a tier tag
+        /* ---------- EARLY EXIT ---------- */
+        // Bail out if this inventory has none of the tier keys
+        if (!(isTieredChest(inventory, commonChestKey)     ||
+                isTieredChest(inventory, uncommonChestKey)   ||
+                isTieredChest(inventory, rareChestKey)       ||
+                isTieredChest(inventory, epicChestKey)       ||
+                isTieredChest(inventory, legendaryChestKey))) {
+            return;
+        }
+
+        // ---------- Existing tier logic ----------
         if (isTieredChest(inventory, commonChestKey)) {
-            // Randomize loot for common chest tier (handled in another class)
-            handleChestLoot(inventory, "common", player);
+            handleChestLoot(inventory, "common",    player);
         } else if (isTieredChest(inventory, uncommonChestKey)) {
-            // Randomize loot for uncommon chest tier
-            handleChestLoot(inventory, "uncommon", player);
+            handleChestLoot(inventory, "uncommon",  player);
         } else if (isTieredChest(inventory, rareChestKey)) {
-            // Randomize loot for rare chest tier
-            handleChestLoot(inventory, "rare", player);
+            handleChestLoot(inventory, "rare",      player);
         } else if (isTieredChest(inventory, epicChestKey)) {
-            // Randomize loot for epic chest tier
-            handleChestLoot(inventory, "epic", player);
+            handleChestLoot(inventory, "epic",      player);
         } else if (isTieredChest(inventory, legendaryChestKey)) {
-            // Randomize loot for legendary chest tier
             handleChestLoot(inventory, "legendary", player);
         }
     }

@@ -1,6 +1,6 @@
 package Listener;
 
-import cerberus.world.cerb.cerb;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -8,55 +8,64 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.EventPriority;
+import org.bukkit.inventory.ItemStack;
+
 
 public class RegionManagementGUIListener implements Listener {
 
-    private final cerb plugin;
+    private final CerberusPlugin plugin;
 
-    public RegionManagementGUIListener(cerb plugin) {
+    public RegionManagementGUIListener(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 
-    @EventHandler
+    // ------------------------------------------------------------
+// Block clicks inside the “Region Management” GUI
+// ------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) {
-            return;
-        }
 
-        Player player = (Player) event.getWhoClicked();
-        String inventoryTitle = event.getView().getTitle();
+        if (!(event.getWhoClicked() instanceof Player player)) return;   // EARLY EXIT 1
+        if (!event.getView().getTitle().equals(ChatColor.DARK_PURPLE + "Region Management"))
+            return;                                                      // EARLY EXIT 2
 
-        if (inventoryTitle.equals(ChatColor.DARK_PURPLE + "Region Management")) {
-            event.setCancelled(true);
+        event.setCancelled(true);                                        // lock GUI
 
-            if (event.getCurrentItem() == null || !event.getCurrentItem().hasItemMeta()) {
-                return;
-            }
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;           // EARLY EXIT 3
 
-            String itemName = event.getCurrentItem().getItemMeta().getDisplayName();
-
-            if (itemName.equals(ChatColor.RED + "Back")) {
-                plugin.getRegionManagementGUI().openMainMenu(player);
-            }
+        String itemName = clicked.getItemMeta().getDisplayName();
+        if (itemName.equals(ChatColor.RED + "Back")) {
+            plugin.getRegionManagementGUI().openMainMenu(player);
         }
     }
 
-    @EventHandler
+
+    // ------------------------------------------------------------
+// Prevent drag events in the GUI
+// ------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryDrag(InventoryDragEvent event) {
-        String inventoryTitle = event.getView().getTitle();
-        if (inventoryTitle.equals(ChatColor.DARK_PURPLE + "Region Management")) {
+
+        if (event.getView().getTitle()
+                .equals(ChatColor.DARK_PURPLE + "Region Management")) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+
+    // ------------------------------------------------------------
+// Stop hoppers or other inventories from pulling items out
+// ------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryMoveItem(InventoryMoveItemEvent event) {
-        if (event.getInitiator().getHolder() instanceof Player) {
-            Player player = (Player) event.getInitiator().getHolder();
-            String inventoryTitle = player.getOpenInventory().getTitle();
-            if (inventoryTitle.equals(ChatColor.DARK_PURPLE + "Region Management")) {
-                event.setCancelled(true);
-            }
+
+        if (!(event.getInitiator().getHolder() instanceof Player player)) return;  // EARLY EXIT
+
+        if (player.getOpenInventory().getTitle()
+                .equals(ChatColor.DARK_PURPLE + "Region Management")) {
+            event.setCancelled(true);
         }
     }
 }

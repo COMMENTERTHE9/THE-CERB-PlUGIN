@@ -1,135 +1,125 @@
 package Listener;
 
 import cerberus.world.cerb.QualityBuffs;
-import Manager.PlayerVirtualHealthManager;
-import Manager.PlayerManaManager;
 import Manager.PlayerDefenseManager;
+import Manager.PlayerManaManager;
+import Manager.PlayerVirtualHealthManager;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;          // <<< NEW
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerItemHeldEvent;
-import org.bukkit.event.player.PlayerItemConsumeEvent;
-import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
+/**
+ * Applies / removes Quality‑Buffs whenever the player equips, swaps,
+ * consumes or otherwise touches an item that carries a quality tag.
+ */
 public class PlayerItemListener implements Listener {
 
     private final QualityBuffs qualityBuffs;
-    private final PlayerVirtualHealthManager virtualHealthManager;
-    private final PlayerManaManager manaManager;
-    private final PlayerDefenseManager defenseManager;
+    private final PlayerVirtualHealthManager virtualHealthManager;  // (unused for now)
+    private final PlayerManaManager manaManager;                    // (unused for now)
+    private final PlayerDefenseManager defenseManager;              // (unused for now)
 
-    public PlayerItemListener(QualityBuffs qualityBuffs, PlayerVirtualHealthManager virtualHealthManager, PlayerManaManager manaManager, PlayerDefenseManager defenseManager) {
-        this.qualityBuffs = qualityBuffs;
-        this.virtualHealthManager = virtualHealthManager;
-        this.manaManager = manaManager;
-        this.defenseManager = defenseManager;
+    public PlayerItemListener(QualityBuffs buffs,
+                              PlayerVirtualHealthManager vh,
+                              PlayerManaManager mana,
+                              PlayerDefenseManager def) {
+        this.qualityBuffs       = buffs;
+        this.virtualHealthManager = vh;
+        this.manaManager        = mana;
+        this.defenseManager     = def;
     }
 
-    // When player switches the item in their main hand
-    @EventHandler
-    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
-        Player player = event.getPlayer();
-        ItemStack newItem = player.getInventory().getItem(event.getNewSlot());
-        ItemStack oldItem = player.getInventory().getItem(event.getPreviousSlot());
-
-        // Remove buffs from the previously held item
-        if (oldItem != null) {
-            qualityBuffs.removeQualityBuffs(player);
-        }
-
-        // Apply buffs to the newly held item in the main hand
-        if (newItem != null) {
-            qualityBuffs.applyQualityBuffs(player, newItem);
-        }
-
-        // Also check if the off-hand item has any buffs to apply
-        ItemStack offHandItem = player.getInventory().getItemInOffHand();
-        if (offHandItem != null) {
-            qualityBuffs.applyQualityBuffs(player, offHandItem);
-        }
+    /* -----------------------------------------------------------
+       Helper: true if stack isn’t null/air and has any ItemMeta
+       ----------------------------------------------------------- */
+    private boolean isValid(ItemStack stack) {                      // <<< NEW
+        return stack != null && stack.getType().isItem() && stack.hasItemMeta();
     }
 
-    // When player equips or unequips armor
-    @EventHandler
-    public void onPlayerArmorEquip(PlayerArmorStandManipulateEvent event) {
-        Player player = (Player) event.getPlayer();
-        ItemStack armorPiece = event.getArmorStandItem();
+    // ----------------------------------------------------------------
+    // MAIN‑HAND SCROLL (number‑keys or wheel) → apply / remove buffs
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onItemHeld(PlayerItemHeldEvent e) {
 
-        // Apply armor buffs when equipped
-        if (armorPiece != null) {
-            qualityBuffs.applyQualityBuffs(player, armorPiece);
-        } else {
-            // Remove armor buffs when unequipped
-            qualityBuffs.removeQualityBuffs(player);
-        }
+        Player    p   = e.getPlayer();
+        ItemStack old = p.getInventory().getItem(e.getPreviousSlot());
+        ItemStack neu = p.getInventory().getItem(e.getNewSlot());
+
+        if (isValid(old)) qualityBuffs.removeQualityBuffs(p);       // remove old
+        if (isValid(neu)) qualityBuffs.applyQualityBuffs(p, neu);   // apply new
+
+        // off‑hand might still give buffs:
+        ItemStack off = p.getInventory().getItemInOffHand();
+        if (isValid(off)) qualityBuffs.applyQualityBuffs(p, off);
     }
 
-    // When player interacts with items (such as right-clicking with a tool or weapon)
-    @EventHandler
-    public void onPlayerInteract(PlayerInteractEvent event) {
-        Player player = event.getPlayer();
-        ItemStack mainHandItem = player.getInventory().getItemInMainHand();
-        ItemStack offHandItem = player.getInventory().getItemInOffHand();
+    // ----------------------------------------------------------------
+    // ARMOR swap via right‑click / hot‑swap
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onArmorSwap(PlayerArmorStandManipulateEvent e) {
 
-        // Apply buffs when interacting with a tool or weapon in the main hand
-        if (mainHandItem != null) {
-            qualityBuffs.applyQualityBuffs(player, mainHandItem);
-        }
+        if (!(e.getPlayer() instanceof Player p)) return;           // safety
+        ItemStack item = e.getArmorStandItem();
 
-        // Apply buffs when interacting with an item in the off-hand if applicable
-        if (offHandItem != null) {
-            qualityBuffs.applyQualityBuffs(player, offHandItem);
-        }
+        if (isValid(item)) qualityBuffs.applyQualityBuffs(p, item);
+        else               qualityBuffs.removeQualityBuffs(p);
     }
 
-    // When player consumes an item (like food or potion)
-    @EventHandler
-    public void onPlayerConsume(PlayerItemConsumeEvent event) {
-        Player player = event.getPlayer();
-        ItemStack consumedItem = event.getItem();
+    // ----------------------------------------------------------------
+    // Any right‑click interaction with held items
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onInteract(PlayerInteractEvent e) {
+        Player p = e.getPlayer();
 
-        // Apply buffs if the consumed item has relevant buffs (e.g., custom potion or food)
-        if (consumedItem != null) {
-            qualityBuffs.applyQualityBuffs(player, consumedItem);
-        }
+        ItemStack main = p.getInventory().getItemInMainHand();
+        if (isValid(main)) qualityBuffs.applyQualityBuffs(p, main);
+
+        ItemStack off  = p.getInventory().getItemInOffHand();
+        if (isValid(off))  qualityBuffs.applyQualityBuffs(p, off);
     }
 
-    // When player swaps items between main hand and offhand
-    @EventHandler
-    public void onPlayerSwapItems(PlayerSwapHandItemsEvent event) {
-        Player player = event.getPlayer();
-        ItemStack newMainHandItem = event.getOffHandItem();
-        ItemStack newOffHandItem = event.getMainHandItem();
-
-        // Apply buffs to the new main hand item
-        if (newMainHandItem != null) {
-            qualityBuffs.applyQualityBuffs(player, newMainHandItem);
-        }
-
-        // Apply buffs to the new off-hand item
-        if (newOffHandItem != null) {
-            qualityBuffs.applyQualityBuffs(player, newOffHandItem);
-        }
+    // ----------------------------------------------------------------
+    // Consuming food / potions → buffs from consumable
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onConsume(PlayerItemConsumeEvent e) {
+        ItemStack item = e.getItem();
+        if (isValid(item))
+            qualityBuffs.applyQualityBuffs(e.getPlayer(), item);
     }
 
-    // When player clicks in the inventory (for equipping items or switching slots)
-    @EventHandler
-    public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) return;
+    // ----------------------------------------------------------------
+    // Q‑swap main/off‑hand
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onSwap(PlayerSwapHandItemsEvent e) {
+        Player p = e.getPlayer();
 
-        Player player = (Player) event.getWhoClicked();
-        ItemStack clickedItem = event.getCurrentItem();
+        if (isValid(e.getOffHandItem()))
+            qualityBuffs.applyQualityBuffs(p, e.getOffHandItem());
+        if (isValid(e.getMainHandItem()))
+            qualityBuffs.applyQualityBuffs(p, e.getMainHandItem());
+    }
 
-        // Apply buffs if the clicked item is relevant
-        if (clickedItem != null) {
-            qualityBuffs.applyQualityBuffs(player, clickedItem);
-        } else {
-            // Remove buffs if the player is unequipping or moving the item
-            qualityBuffs.removeQualityBuffs(player);
-        }
+    // ----------------------------------------------------------------
+    // Inventory clicks (equip, move, hot‑bar swap)
+    // ----------------------------------------------------------------
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onInvClick(InventoryClickEvent e) {
+
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        ItemStack clicked = e.getCurrentItem();
+
+        if (isValid(clicked)) qualityBuffs.applyQualityBuffs(p, clicked);
+        else                  qualityBuffs.removeQualityBuffs(p);
     }
 }

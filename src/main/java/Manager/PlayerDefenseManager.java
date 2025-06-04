@@ -179,15 +179,24 @@ public class PlayerDefenseManager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                // Call the recoverDefense method
-                recoverDefense(player);
-
-                // If defense is fully recovered, stop the task
-                if (currentEffectiveness >= 1.0) {
+                // Make sure the player is still online before processing
+                if (!player.isOnline()) {
                     this.cancel();
+                    return;
                 }
+
+                // Run on main thread since we're modifying bukkit API elements
+                Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), () -> {
+                    // Call the recoverDefense method
+                    recoverDefense(player);
+
+                    // If defense is fully recovered, stop the task
+                    if (currentEffectiveness >= 1.0) {
+                        this.cancel();
+                    }
+                });
             }
-        }.runTaskTimerAsynchronously(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), 0L, 20L); // Runs every 20 ticks (1 second)
+        }.runTaskTimer(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), 0L, 20L); // Remove Asynchronously
     }
 
     // Get the current defense effectiveness
