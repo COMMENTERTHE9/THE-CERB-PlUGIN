@@ -95,8 +95,6 @@
             <groupId>cerberus.plugins</groupId>
             <artifactId>DTR</artifactId>
             <version>1.0.0</version>
-            <scope>system</scope>
-            <systemPath>C:/Users/Gabri/IdeaProjects/Cerberus DTR Engine/target/DTR-1.0.0.jar</systemPath>
         </dependency>
 
         <!-- Other dependencies -->
