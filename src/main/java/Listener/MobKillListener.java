@@ -4,11 +4,15 @@ import GUIs.SkillGUI;
 import Skills.SkillManager;
 import Skills.UtilitySkill;
 import CustomTags.ElementalTag;
+import Manager.MobContext;
+import Manager.MobRegistry;
 import cerberus.world.cerb.CustomPlayer;
 import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.ConfigSkillMapper;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -17,18 +21,6 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.entity.LivingEntity;
-import cerberus.world.cerb.ConfigSkillMapper;  // new
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.inventory.ItemStack;
-import cerberus.world.cerb.CerberusPlugin;
-import org.bukkit.NamespacedKey;
 
 
 public class MobKillListener implements Listener {
@@ -36,17 +28,20 @@ public class MobKillListener implements Listener {
     private final ConfigSkillMapper skillMapper;
     private final SkillManager skillManager;
     private final SkillGUI skillGUI;
+    private final MobRegistry mobRegistry;
     private final NamespacedKey elementalTagKey;
 
     public MobKillListener(CerberusPlugin plugin,
                            SkillManager skillManager,
                            SkillGUI skillGUI,
-                           ConfigSkillMapper skillMapper) {
+                           ConfigSkillMapper skillMapper,
+                           MobRegistry mobRegistry) {
         this.plugin        = plugin;
         this.skillManager  = skillManager;
         this.skillGUI      = skillGUI;
         this.elementalTagKey = new NamespacedKey(plugin, "elemental_tag");
-        this.skillMapper   = skillMapper;             // ← assignment, not declaration
+        this.skillMapper   = skillMapper;
+        this.mobRegistry   = mobRegistry;
     }
 
     // -----------------------------------------
@@ -60,30 +55,32 @@ public class MobKillListener implements Listener {
 
         double health = mob.getMaxHealth();
         double damage = mob.getLastDamage();
-        boolean isRare = mob.getCustomName() != null;
-        boolean isBoss = mob.getType() == EntityType.ENDER_DRAGON
-                || mob.getType() == EntityType.WITHER;
+
+        // Resolve mob classification from the registry (config-driven)
+        MobContext ctx = mobRegistry.resolve(mob);
 
         ItemStack weapon = player.getInventory().getItemInMainHand();
 
-        // <<< UPDATED: use determineCombatSkill instead of the old generic determineSkill
-        String skillName = determineCombatSkill(weapon, player);
+        // Config-driven skill routing (skills.yml)
+        String skillName = resolveSkill(weapon, player);
         if (skillName.isEmpty()) return;
 
-        double xpGained = skillManager.calculateDynamicXp(health, damage, isRare, isBoss);
-        boolean leveledUp = skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
-
-        player.sendMessage(ChatColor.GREEN + "XP gained: " + xpGained + " in " + skillName);
-
-        if (leveledUp) {
-            int level = skillManager.getSkillLevel(skillName);
-
-            // <<< UPDATED: call our private createLevelUpMessage, not the SkillManager’s
-            player.sendMessage(createLevelUpMessage(skillName, level));
+        // Spell focus kill XP toggle
+        if (skillMapper.isMagicSkill(skillName) && !skillMapper.shouldAwardKillXpForSpellFocus()) {
+            return; // magic kill XP suppressed — cast XP from SpellManager still fires
         }
 
-        // <<< NEW: refresh the GUI tab based on the skill type
-        skillGUI.startRealTimeXPUpdate(player, determineSkillType(skillName));
+        // Debug logging
+        if (plugin.isCombatDebugEnabled(player.getUniqueId())) {
+            String materialName = weapon == null ? "AIR" : weapon.getType().name();
+            String debugInfo = skillMapper.resolveDebug(materialName);
+            if (debugInfo.isEmpty()) debugInfo = skillName + " (fallback)";
+            player.sendMessage(ChatColor.DARK_GRAY + "[SkillTrigger] Held=" + materialName + " → " + debugInfo);
+        }
+
+        double xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
+        skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
+        player.sendMessage(ChatColor.GREEN + "XP gained: " + xpGained + " in " + skillName);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -99,95 +96,47 @@ public class MobKillListener implements Listener {
     }
 
 
-    // ---- Helper methods ----
+    // ── Skill resolution chain ────────────────────────────────────
+    //
+    // 1. Config lookup (skills.yml — covers all weapons + spell items)
+    // 2. Elemental PDC tag (elemental-tagged weapons → elemental skills)
+    // 3. Heavy armor fallback (melee only, heavy armor only)
+    // 4. Empty (no XP)
 
-    private boolean determineIfBossMob(LivingEntity e) {
-        switch (e.getType()) {
-            case ENDER_DRAGON:
-            case WITHER:
-                return true;
-            default:
-                return false;
-        }
-    }
+    private String resolveSkill(ItemStack weapon, Player player) {
+        String materialName = (weapon == null || weapon.getType() == Material.AIR)
+                ? "AIR" : weapon.getType().name();
 
-    // ----------------------------------------
-    // Determine which combat/magic/utility skill
-    // ----------------------------------------
-    private String determineSkill(ItemStack weapon, Player player) {
-        // Unarmed
-        if (weapon == null || weapon.getType() == Material.AIR) {
-            return "Martial Expertise";
-        }
-        String name = weapon.getType().name();
-        // Bladed
-        if (name.endsWith("_SWORD"))            return "Blade Mastery";
-        // Axes/Hammers
-        if (name.endsWith("_AXE") || name.endsWith("_HAMMER")) return "Weapon Mastery";
-        // Ranged
-        if (weapon.getType() == Material.BOW
-                || weapon.getType() == Material.CROSSBOW) return "Ranged Precision";
-        // Books = magic
-        if (weapon.getType() == Material.ENCHANTED_BOOK)       return "Arcane Knowledge";
-        // Wands/Staffs
-        if (name.contains("WAND") || weapon.getType() == Material.STICK) return "Spell Weaving";
-        // Dual-wield
-        ItemStack off = player.getInventory().getItemInOffHand();
-        if (off != null && off.getType() != Material.AIR)     return "Dual Wielding";
-        // Armor presence
-        if (player.getInventory().getHelmet() != null
-                || player.getInventory().getChestplate() != null
-                || player.getInventory().getLeggings() != null
-                || player.getInventory().getBoots() != null)           return "Heavy Armor Training";
-        // Permissions-based
-        if (player.hasPermission("cerberus.spellweaving"))      return "Spell Weaving";
-        if (player.hasPermission("cerberus.summoning"))         return "Summoning";
-        if (player.hasPermission("cerberus.manaregeneration"))  return "Mana Regeneration";
+        // Step 1: Config-driven lookup (skills.yml)
+        String fromConfig = skillMapper.resolve(materialName);
+        if (!fromConfig.isEmpty()) return fromConfig;
 
-        // Elemental tag
-        String element = weapon.getItemMeta()
-                .getPersistentDataContainer()
-                .get(elementalTagKey, PersistentDataType.STRING);
-        if (element != null) {
-            ElementalTag tag = ElementalTag.fromString(element);
-            if (tag != null) return tag.getSkillName();
-        }
-
-        return "";
-    }
-
-    private String determineCombatSkill(ItemStack weapon, Player player) {
-        // <<< NEW: data‑driven lookup from skills.yml
-        String materialName       = (weapon == null ? "AIR" : weapon.getType().name());
-        String skillFromConfig    = skillMapper.getSkillForMaterial(materialName);
-        if (!skillFromConfig.isEmpty()) {
-            return skillFromConfig;
-        }
-
-        String type = weapon.getType().name();
-        if (type.endsWith("_SWORD"))           return "Blade Mastery";
-        if (type.endsWith("_AXE") || type.endsWith("_HAMMER")) return "Weapon Mastery";
-        if (weapon.getType() == Material.BOW || weapon.getType() == Material.CROSSBOW) return "Ranged Precision";
-        if (weapon.getType() == Material.ENCHANTED_BOOK)       return "Arcane Knowledge";
-        if (type.contains("WAND") || weapon.getType() == Material.STICK) return "Spell Weaving";
-        if (player.getInventory().getItemInOffHand() != null
-                && player.getInventory().getItemInOffHand().getType() != Material.AIR) return "Dual Wielding";
-        if (hasArmor(player))                return "Heavy Armor Training";
-        if (player.hasPermission("cerberus.spellweaving"))     return "Spell Weaving";
-        if (player.hasPermission("cerberus.summoning"))       return "Summoning";
-        if (player.hasPermission("cerberus.manaregeneration")) return "Mana Regeneration";
-
+        // Step 2: Elemental PDC tag on weapon
         ElementalTag tag = getElementalTagFromWeapon(weapon);
-        if (tag != null) return getElementalSkillName(tag);
+        if (tag != null) {
+            String elemSkill = getElementalSkillName(tag);
+            if (!elemSkill.isEmpty()) return elemSkill;
+        }
 
+        // Step 3: Heavy armor fallback — only for melee with heavy armor
+        if (hasHeavyArmor(player)) {
+            return "Heavy Armor Training";
+        }
+
+        // Step 4: No match
         return "";
     }
 
-    private boolean hasArmor(Player player) {
-        return player.getInventory().getHelmet() != null
-                || player.getInventory().getChestplate() != null
-                || player.getInventory().getLeggings() != null
-                || player.getInventory().getBoots() != null;
+    /** Check if player is wearing iron, diamond, or netherite armor (heavy armor only). */
+    private boolean hasHeavyArmor(Player player) {
+        for (ItemStack piece : player.getInventory().getArmorContents()) {
+            if (piece == null) continue;
+            String name = piece.getType().name();
+            if (name.startsWith("IRON_") || name.startsWith("DIAMOND_") || name.startsWith("NETHERITE_")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ElementalTag getElementalTagFromWeapon(ItemStack weapon) {

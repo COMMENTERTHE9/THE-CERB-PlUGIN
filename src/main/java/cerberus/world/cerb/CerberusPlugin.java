@@ -13,7 +13,7 @@ import Listener.*;
 import Manager.*;
 import GUIs.*;
 import Skills.*;
-import Listener.SpeedLimiterListener;
+// SpeedLimiterListener REMOVED — moved to PlayerSessionManager
 import Spells.SpellManager;
 import CustomEntities.SeaMonsterManager;
 import Commands.SpawnZombieCommand;
@@ -28,24 +28,22 @@ import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import Listener.DefenseUpdateListener;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import Manager.DefenseBarManager;
 
 public class CerberusPlugin extends JavaPlugin implements Listener {
@@ -96,6 +94,18 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private final Random random = new Random();
     private final Set<UUID> adminChestReceivers = new HashSet<>();
     private DefenseBarManager defenseBarManager;
+    private MobRegistry mobRegistry;
+    private PlayerSessionManager playerSessionManager;
+    private DamageDisplayListener damageDisplayListener;
+    private CombatConfig combatConfig;
+    private CombatSkillProcessor combatSkillProcessor;
+    private ElementalInfusionManager elementalInfusionManager;
+    private VirtualHealthListener virtualHealthListener;
+    private SessionLogger sessionLogger;
+    private SkillDetailGUI skillDetailGUI;
+
+    /** Players with combat debug mode enabled — see /cerb combatdebug */
+    private final Set<UUID> combatDebugPlayers = ConcurrentHashMap.newKeySet();
 
 
     @Override
@@ -109,7 +119,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         initFiles();
 
         // heavy I/O moves to an async thread
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Bukkit.getAsyncScheduler().runNow(this, task -> {
 
             initDatabase();
             initCoreManagers();
@@ -129,13 +139,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 // ================================================
                 // ←←←  HERE: set up your YAML mapper & listener  ←
                 // ================================================
-                this.skillMapper = new ConfigSkillMapper(this);                // <<< NEW: build & store mapper
-                getServer().getPluginManager().registerEvents(                 // <<< NEW: register with mapper
-                        new MobKillListener(this, skillManager, skillGUI, skillMapper),
-                        this
-                );
+                this.skillMapper = new ConfigSkillMapper(this);                // build & store mapper
+                // MobKillListener registered in initListeners() with mobRegistry
 
-                initListeners();        // registers your other listeners
+                initListeners();        // registers all listeners including PlayerSessionManager
                 startHUDUpdateTask();
                 databaseManager.fixNullCustomIds();
 
@@ -145,8 +152,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     public void saveAllPlayers() {
-        // schedule the entire batch as a single, throttled DB save
-        asyncSaver.scheduleDbSave("saveAllPlayers", () -> {
+        Bukkit.getAsyncScheduler().runNow(this, task -> {
             for (Player player : getServer().getOnlinePlayers()) {
                 UUID playerUUID = player.getUniqueId();
                 Map<String, Integer> levels = skillManager.getPlayerSkillLevels(player);
@@ -160,13 +166,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        // Centralized player cleanup + async skill save
+        if (playerSessionManager != null) playerSessionManager.shutdown();
+
+        if (damageDisplayListener != null) damageDisplayListener.shutdown();
         if (regionManager != null)     regionManager.saveRegions();
         if (seaMonsterManager != null) seaMonsterManager.clearSeaMonsters();
         if (trapManager != null)       trapManager.cleanup();
-
-        // ←←← NEW: persist every online player’s skills on shutdown
-        saveAllPlayers();
-        getLogger().info("All players’ skills saved on shutdown.");
 
         getLogger().info("Cerberus Plugin has been disabled!");
     }
@@ -179,6 +185,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();
         }
+        saveResource("mobs.yml", false);  // create default mobs.yml on first install
         playerDataFile = new File(getDataFolder(), "playerData.yml");
         try {
             if (!playerDataFile.exists()) {
@@ -214,10 +221,15 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         regionManagementCommands = new RegionManagementCommands(this);
         regionManagementGUI = new RegionManagementGUI(this);
         adminChestGUI = new AdminChestGUI(this);
+        mobRegistry = new MobRegistry(this);
     }
 
     public AsyncSaveManager getAsyncSaver() {
         return asyncSaver;
+    }
+
+    public MobRegistry getMobRegistry() {
+        return mobRegistry;
     }
 
     private void initSkillManager() {
@@ -237,7 +249,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         );
 
         playerDefenseManager = new PlayerDefenseManager(skillManager, playerVirtualHealthManager);
-        defenseBarManager = new DefenseBarManager(this, playerDefenseManager);
+        defenseBarManager = new DefenseBarManager(this);
         playerVirtualHealthManager.setDefenseBarManager(defenseBarManager);
         playerManaManager = new PlayerManaManager(skillManager, this);
         resourceYieldManager = new ResourceYieldManager(skillManager, this);
@@ -246,7 +258,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         magicFindManager = new MagicFindManager(databaseManager);
         craftingManager = new CraftingManager(skillManager, this);
         effectManager = new EffectManager(playerVirtualHealthManager, playerDefenseManager, playerManaManager, skillManager);
-        spellManager = new SpellManager(effectManager, playerManaManager);
+        spellManager = new SpellManager(effectManager, playerManaManager, this);
         seaMonsterManager = new SeaMonsterManager();
 
         // Now that these managers exist, set them in skillManager
@@ -257,6 +269,23 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         skillManager.setLuckManager(luckManager);
         skillManager.setMagicFindManager(magicFindManager);
 
+        // Combat system: config, elemental, skill processor
+        combatConfig = new CombatConfig(this);
+        sessionLogger = new SessionLogger(this);
+
+        // GUI identity keys and skill definitions (data-driven GUI metadata)
+        GuiIdentity.init(this);
+        SkillDefinitions.reload(this);
+
+        defenseBarManager.applyCombatConfig(combatConfig);
+        playerVirtualHealthManager.setCombatConfig(combatConfig);
+        playerVirtualHealthManager.setSessionLogger(sessionLogger);
+        playerDefenseManager.setCombatConfig(combatConfig);
+        playerDefenseManager.setDefenseBarManager(defenseBarManager);
+        elementalInfusionManager = new ElementalInfusionManager(this);
+        combatSkillProcessor = new CombatSkillProcessor(
+                skillManager, combatConfig, elementalInfusionManager, playerVirtualHealthManager);
+
         // Update HUD manager now that managers are in place
         playerHUDManager = new PlayerHUDManager(playerManaManager, playerDefenseManager, playerVirtualHealthManager);
         playerHUDManager.setDefenseBarManager(defenseBarManager);
@@ -266,52 +295,68 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private void initGUIs() {
         skillGUI = new SkillGUI(this, skillManager);
         playerMenuGUI = new PlayerMenuGUI(this, skillManager);
+        skillDetailGUI = new SkillDetailGUI(this, skillManager, combatConfig);
     }
 
     private void initCommands() {
         Objects.requireNonNull(getCommand("spawncustomzombie")).setExecutor(new SpawnZombieCommand(this));
         Objects.requireNonNull(getCommand("testregen")).setExecutor(new TestRegenCommand(playerVirtualHealthManager));
-        Objects.requireNonNull(getCommand("giveTestItem")).setExecutor(new GiveTestItemCommand());
+        Objects.requireNonNull(getCommand("giveTestItem")).setExecutor(new GiveTestItemCommand(this));
         Objects.requireNonNull(getCommand("regionselector")).setExecutor(new CommandHandler(this, regionSelectorBehavior));
         Objects.requireNonNull(getCommand("unregionizer")).setExecutor(new CommandHandler(this, regionSelectorBehavior));
         Objects.requireNonNull(getCommand("visualizeregions")).setExecutor(new RegionVisualizerCommand(this));
         Objects.requireNonNull(getCommand("toggleprotection")).setExecutor(protectionToggleCommand);
         Objects.requireNonNull(getCommand("region")).setExecutor(regionManagementCommands);
         Objects.requireNonNull(getCommand("givetestarmor")).setExecutor(new GiveTestArmorCommand());
-        Objects.requireNonNull(getCommand("killholograms")).setExecutor(new KillHologramsCommand(this));
+        // DecentHolograms removed — killholograms command disabled
+        // Objects.requireNonNull(getCommand("killholograms")).setExecutor(new KillHologramsCommand(this));
         Objects.requireNonNull(getCommand("cerb")).setExecutor(new CerbCommand(this));
     }
 
     private void initListeners() {
         PluginManager pm = getServer().getPluginManager();
         pm.registerEvents(this, this);
-        pm.registerEvents(new CombatListener(combatScoreboardManager, this,skillManager,spellManager,playerMenuGUI,skillGUI), this);
-        pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper), this);
-        pm.registerEvents(new PlayerHUDListener(playerHUDManager, playerDefenseManager), this);
-        pm.registerEvents(new CustomItemListener(spellManager), this);
-        pm.registerEvents(new VirtualHealthListener(playerVirtualHealthManager, new FirstAidSkill("First Aid", playerVirtualHealthManager, craftingManager), this), this);        pm.registerEvents(new RegionManagementGUIListener(this), this);
-        pm.registerEvents(new AdminGUIListener(this, adminChestGUI), this);
-        pm.registerEvents(new MenuProtectionListener(this), this);
-        pm.registerEvents(new MenuListener(this, playerMenuGUI, skillGUI, skillManager), this);
-        pm.registerEvents(new ManaListener(playerManaManager), this);
-        pm.registerEvents(new DefenseUpdateListener(playerHUDManager), this);
-        pm.registerEvents(new CustomArmorListener(playerDefenseManager, playerHUDManager), this);
-        pm.registerEvents(new DamageDisplayListener(this), this);
-        pm.registerEvents(
-                new CombatListener(
-                        combatScoreboardManager,
-                        this,
-                        skillManager,
-                        spellManager,
-                        playerMenuGUI,
-                        skillGUI
-                ),
-                this
+
+        // ── Centralized lifecycle manager ──
+        Manager.PlayerServices services = new Manager.PlayerServices(
+                databaseManager, skillManager, playerVirtualHealthManager,
+                playerDefenseManager, playerManaManager, playerHUDManager,
+                playerStrengthManager, effectManager, defenseBarManager,
+                skillGUI, playerMenuGUI, adminChestGUI, mobRegistry
         );
-        pm.registerEvents(craftingListener, this);
+        playerSessionManager = new PlayerSessionManager(this, services);
+        pm.registerEvents(playerSessionManager, this);
+
+        // ── Combat & mobs ──
+        pm.registerEvents(new CombatListener(combatScoreboardManager, this, skillManager, spellManager, playerMenuGUI, skillGUI, mobRegistry), this);
+        pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper, mobRegistry), this);
+
+        // ── HUD & defense (reactive — damage/heal/consume only) ──
+        pm.registerEvents(new PlayerHUDListener(playerHUDManager, playerDefenseManager), this);
         pm.registerEvents(new DefenseUpdateListener(playerHUDManager), this);
-        pm.registerEvents(new PlayerJoinListener(skillManager, databaseManager, this, skillGUI, playerMenuGUI), this);
-        pm.registerEvents(new SpeedLimiterListener(), this);
+        pm.registerEvents(new CustomArmorListener(playerDefenseManager, playerHUDManager, this), this);
+
+        // ── Virtual health (damage interception, regen block) ──
+        this.virtualHealthListener = new VirtualHealthListener(playerVirtualHealthManager,
+                new FirstAidSkill("First Aid", playerVirtualHealthManager, craftingManager), this);
+        virtualHealthListener.setCombatSkillProcessor(combatSkillProcessor);
+        spellManager.setVirtualHealthListener(virtualHealthListener);
+        spellManager.setSkillManager(skillManager);
+        pm.registerEvents(virtualHealthListener, this);
+
+        // ── GUIs & interactions (unified listener replaces old per-GUI listeners) ──
+        pm.registerEvents(new UnifiedGUIListener(this, skillManager, skillGUI, skillDetailGUI, playerMenuGUI, adminChestGUI, regionManagementGUI), this);
+        pm.registerEvents(new PlayerJoinListener(skillManager, this, skillGUI, playerMenuGUI), this);
+
+        // ── Other ──
+        pm.registerEvents(new CustomItemListener(spellManager, this), this);
+        this.damageDisplayListener = new DamageDisplayListener(this);
+        damageDisplayListener.setCombatConfig(combatConfig);
+        pm.registerEvents(damageDisplayListener, this);
+        pm.registerEvents(craftingListener, this);
+
+        // REMOVED: ManaListener (lifecycle moved to PlayerSessionManager)
+        // REMOVED: SpeedLimiterListener (speed limit moved to PlayerSessionManager)
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -322,9 +367,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public void reloadAll() {
         // quick work on main thread
         initFiles();
+        mobRegistry.reload();  // atomic reload with fallback
+        SkillDefinitions.reload(this);
+        if (skillMapper != null) skillMapper.reload();
 
         // heavy I/O off the main thread
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Bukkit.getAsyncScheduler().runNow(this, task -> {
             initDatabase();
             initCoreManagers();
             initSkillManager();
@@ -351,25 +399,22 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (Bukkit.isPrimaryThread()) {
             task.run();
         } else {
-            Bukkit.getScheduler().runTask(this, task);
+            Bukkit.getGlobalRegionScheduler().run(this, scheduledTask -> task.run());
         }
     }
 
 
     private void startHUDUpdateTask() {
-        new BukkitRunnable() {
-            private int index = 0;
-            @Override
-            public void run() {
-                List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
-                if (players.isEmpty()) return;
+        final int[] index = {0};
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, task -> {
+            List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
+            if (players.isEmpty()) return;
 
-                Player p = players.get(index++ % players.size());
-                if (p.isOnline()) {
-                    playerHUDManager.updateHUD(p);
-                }
+            Player p = players.get(index[0]++ % players.size());
+            if (p.isOnline()) {
+                playerHUDManager.updateHUD(p);
             }
-        }.runTaskTimer(this, 0, 1);  // run every tick
+        }, 1, 1);  // initialDelay=1, period=1 tick
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -402,7 +447,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             return;
         }
         // TODO: restore their real + virtual health
-        target.setHealth(target.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
+        target.setHealth(target.getAttribute(Attribute.MAX_HEALTH).getValue());
         playerVirtualHealthManager.resetHealth(target);
         sender.sendMessage(ChatColor.GREEN + "Healed " + playerName + ".");
     }
@@ -415,7 +460,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     /** /cerb skill <player> <skill> <level|xp> <value> */
     public void adjustSkill(CommandSender sender, String[] args) {
-        // TODO: parse args into target, skill name, “level” vs “xp”, and value
+        // TODO: parse args into target, skill name, "level" vs "xp", and value
         sender.sendMessage(ChatColor.YELLOW + "Skill adjustment is not implemented yet.");
     }
 
@@ -451,7 +496,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     /** /cerb repairchunk <x> <z> */
     public void repairChunk(CommandSender sender, String[] args) {
-        // TODO: call your “nature auto‑repair” routine for the chunk at (x,z)
+        // TODO: call your "nature auto‑repair" routine for the chunk at (x,z)
         sender.sendMessage(ChatColor.YELLOW + "Repair‑chunk is not implemented yet.");
     }
 
@@ -504,30 +549,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     // ---------------------------
 // Main Cerberus event handlers
 // ---------------------------
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< NEW flags
-    public void onPlayerJoin(PlayerJoinEvent e) {
-        Player player = e.getPlayer();
+    // onPlayerJoin REMOVED — lifecycle moved to PlayerSessionManager
 
-        // Early‑exit: skip if managers not yet ready
-        if (playerDefenseManager != null) {
-            playerDefenseManager.updateDefense(player);
-        }
-        if (playerHUDManager != null) {
-            playerHUDManager.updateHUD(player);
-        }
-
-        CerberusGameMode.enable(player, playerDataConfig);  // assume safe
-
-        handleFirstJoin(player);
-        giveAdminChestIfNeeded(player);
-
-        if (playerVirtualHealthManager != null) {
-            playerVirtualHealthManager.startHealthUpdateTask(player, playerHUDManager);
-        }
-    }
-
-
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< NEW flags
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPlayerBedEnter(PlayerBedEnterEvent e) {
         e.setCancelled(true);
         String[] msgs = {
@@ -540,29 +564,36 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)  // <<< NEW flags
-    public void onPlayerDeath(PlayerDeathEvent e) {
-        Player player = e.getEntity();
-        if (playerVirtualHealthManager == null) return;   // EARLY‑EXIT
+    // onPlayerDeath REMOVED — lifecycle moved to PlayerSessionManager
 
-        EntityDamageEvent cause = player.getLastDamageCause();
-        Entity damager = (cause instanceof EntityDamageByEntityEvent edb)
-                ? edb.getDamager() : null;
+    // ── Prevent dropping/moving menu items ──────────────────────────
 
-        // Apply virtual damage before real death
-        playerVirtualHealthManager.applyDamage(
-                player,
-                player.getHealth(),
-                CustomDamageType.ENTITY_ATTACK,
-                damager
-        );
-
-        // Force respawn next tick
-        Bukkit.getScheduler().runTask(this, player.spigot()::respawn);
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onPlayerDropItem(PlayerDropItemEvent e) {
+        ItemStack item = e.getItemDrop().getItemStack();
+        if (playerMenuGUI.isPlayerMenuHead(item) || adminChestGUI.isAdminChest(item)) {
+            e.setCancelled(true);
+        }
     }
 
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onInventoryClickProtect(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player)) return;
+        // Protect menu items from being moved out of their slots
+        ItemStack current = e.getCurrentItem();
+        ItemStack cursor = e.getCursor();
+        if (current != null && (playerMenuGUI.isPlayerMenuHead(current) || adminChestGUI.isAdminChest(current))) {
+            e.setCancelled(true);
+            return;
+        }
+        if (cursor != null && (playerMenuGUI.isPlayerMenuHead(cursor) || adminChestGUI.isAdminChest(cursor))) {
+            e.setCancelled(true);
+        }
+    }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< NEW flags
+    // ── Item interactions ───────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent e) {
         Player player = e.getPlayer();
         ItemStack hand = player.getInventory().getItemInMainHand();
@@ -610,77 +641,20 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
 
-    // ─── AFTER ───
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    public void onPlayerMove(PlayerMoveEvent e) {
-        // ignore head‑turns / tiny movements
-        if (e.getFrom().distanceSquared(e.getTo()) < 0.01) return;
-
-        Player player = e.getPlayer();
-        UtilitySkill nav = (UtilitySkill) skillManager.getSkill("Navigation");
-        if (nav == null) return;
-
-        // now pass only the UUID (or the Player) — your UtilitySkill
-        // should look up whatever it needs by that key
-        nav.applyEffect(player.getUniqueId());
-    }
+    // Navigation skill on-move handling is in MobKillListener — removed duplicate here
 
     // ---------------------------
     // Helper Methods
     // ---------------------------
 
-    private void handleFirstJoin(Player player) {
-        String playerPath = "players." + player.getUniqueId().toString();
-        if (!playerDataConfig.contains(playerPath)) {
-            playerDataConfig.set(playerPath + ".joinedBefore", true);
-            savePlayerDataConfig();
-            player.setHealth(player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
-            player.sendMessage(ChatColor.GREEN + "Welcome to Cerberus Mode for the first time! Health and hunger maximized.");
-        }
-    }
-
-    private void giveAdminChestIfNeeded(Player player) {
-        if (player.hasPermission("cerberus.admin")) {
-            boolean hasAdminChest = false;
-            int adminChestCount = 0;
-
-            for (ItemStack item : player.getInventory().getContents()) {
-                if (item != null && adminChestGUI.isAdminChest(item)) {
-                    hasAdminChest = true;
-                    adminChestCount++;
-                }
-            }
-
-            if (!hasAdminChest) {
-                player.getInventory().addItem(adminChestGUI.createAdminChest());
-                player.sendMessage(ChatColor.GREEN + "You have received the Admin Control Panel chest!");
-            } else if (adminChestCount > 1) {
-                removeExcessAdminChests(player, adminChestCount);
-            }
-        }
-    }
-
-    private void removeExcessAdminChests(Player player, int adminChestCount) {
-        int removedCount = 0;
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemStack item = player.getInventory().getItem(i);
-            if (item != null && adminChestGUI.isAdminChest(item)) {
-                if (removedCount < adminChestCount - 1) {
-                    player.getInventory().setItem(i, null);
-                    removedCount++;
-                } else {
-                    break;
-                }
-            }
-        }
-        player.sendMessage(ChatColor.YELLOW + "Excess Admin Control Panel chests have been removed.");
-    }
+    // handleFirstJoin, giveAdminChestIfNeeded, removeExcessAdminChests
+    // REMOVED — moved to PlayerSessionManager
 
     private boolean handleAdminChestInteraction(PlayerInteractEvent event, Player player, ItemStack item) {
         if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             if (adminChestGUI.isAdminChest(item)) {
                 event.setCancelled(true);
-                adminChestGUI.openAdminGUI(player);
+                adminChestGUI.open(player);
                 return true;
             }
         }
@@ -690,7 +664,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private boolean handlePlayerMenuHeadInteraction(PlayerInteractEvent event, Player player, ItemStack item) {
         if (playerMenuGUI.isPlayerMenuHead(item)) {
             event.setCancelled(true);
-            playerMenuGUI.openMainMenu(player);
+            playerMenuGUI.open(player);
             return true;
         }
         return false;
@@ -765,4 +739,24 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public ItemUtils getItemUtils() { return itemUtils; }
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public DefenseBarManager getDefenseBarManager() { return defenseBarManager; }
+    public PlayerSessionManager getPlayerSessionManager() { return playerSessionManager; }
+    public CombatConfig getCombatConfig() { return combatConfig; }
+    public VirtualHealthListener getVirtualHealthListener() { return virtualHealthListener; }
+    public SessionLogger getSessionLogger() { return sessionLogger; }
+
+    /** Check if a player has combat debug enabled. */
+    public boolean isCombatDebugEnabled(UUID playerId) {
+        return combatDebugPlayers.contains(playerId);
+    }
+
+    /** Toggle combat debug for a player. Returns new state. */
+    public boolean toggleCombatDebug(UUID playerId) {
+        if (combatDebugPlayers.contains(playerId)) {
+            combatDebugPlayers.remove(playerId);
+            return false;
+        } else {
+            combatDebugPlayers.add(playerId);
+            return true;
+        }
+    }
 }

@@ -5,17 +5,17 @@ import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.*;
 import org.bukkit.entity.Tameable;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class AnimalTamingSkill extends UtilitySkill {
 
     private final CraftingManager craftingManager;
-    private final Map<UUID, Integer> animalAffinity = new HashMap<>(); // Store affinity per player and their tamed animals
+    private final Map<UUID, Integer> animalAffinity = new ConcurrentHashMap<>(); // Store affinity per player and their tamed animals
     private final Random random = new Random();
 
     public AnimalTamingSkill(String name, CraftingManager craftingManager) {

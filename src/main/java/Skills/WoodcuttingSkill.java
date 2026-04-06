@@ -24,13 +24,11 @@ public class WoodcuttingSkill extends UtilitySkill {
         // Enhance resource yield from woodcutting based on skill level
         yieldManager.applyYieldBonus(player, "Woodcutting");
 
-        // Apply health, defense, and strength bonuses
+        // Apply health and strength bonuses (defense is now gear-based, no longer granted by gathering skills)
         double healthBonus = level * 1.5; // Example: +1.5 health per level
-        double defenseBonus = level * 1.0; // Example: +1.0 defense per level
         double strengthBonus = level * 0.5; // Example: +0.5 strength per level
 
         customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getDefenseManager().increaseDefense(player, defenseBonus);
         customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
     }
 

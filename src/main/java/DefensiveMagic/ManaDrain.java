@@ -8,24 +8,31 @@ import org.bukkit.Particle;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.util.Vector;
-import cerberus.world.cerb.CerberusPlugin;
+import Manager.PlayerVirtualHealthManager;
+import Manager.PlayerManaManager;
 
 public class ManaDrain extends DefensiveStructure {
     private final double effectiveness;
     private final Entity target;
     private final Plugin plugin;
-    private BukkitRunnable particleTask;
-    private static final double DRAIN_INTERVAL = 1.0; // Seconds between drain ticks
+    private final PlayerVirtualHealthManager virtualHealthManager;
+    private final PlayerManaManager manaManager;
+    private ScheduledTask particleTask;
+    private static final double DRAIN_INTERVAL = 1.0;
     private static final double BASE_MANA_DRAIN = 10.0;
     private static final double BASE_DAMAGE = 5.0;
 
-    public ManaDrain(Player player, double effectiveness, Entity target) {
+    public ManaDrain(Player player, double effectiveness, Entity target,
+                     Plugin plugin, PlayerVirtualHealthManager virtualHealthManager,
+                     PlayerManaManager manaManager) {
         super(player);
         this.effectiveness = effectiveness;
         this.target = target;
-        this.plugin = Bukkit.getPluginManager().getPlugin("CerberusPlugin");
+        this.plugin = plugin;
+        this.virtualHealthManager = virtualHealthManager;
+        this.manaManager = manaManager;
     }
 
     @Override
@@ -36,22 +43,19 @@ public class ManaDrain extends DefensiveStructure {
     }
 
     private void startDrainEffect() {
-        new BukkitRunnable() {
-            private int ticks = 0;
-            private static final int MAX_DURATION = 100; // 5 seconds (20 ticks per second)
-
-            @Override
-            public void run() {
-                if (ticks >= MAX_DURATION || !isValidDrain()) {
-                    this.cancel();
-                    deactivate();
-                    return;
-                }
-
-                applyDrainEffect();
-                ticks++;
+        // Player-bound for Folia
+        final int[] ticks = {0};
+        final int MAX_DURATION = 100; // 5 seconds (20 ticks per second)
+        player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (ticks[0] >= MAX_DURATION || !isValidDrain()) {
+                task.cancel();
+                deactivate();
+                return;
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+
+            applyDrainEffect();
+            ticks[0]++;
+        }, null, 1L, 1L);
     }
 
     private void applyDrainEffect() {
@@ -62,7 +66,7 @@ public class ManaDrain extends DefensiveStructure {
             // Apply mana drain
             if (drainMana(targetPlayer, drainAmount)) {
                 // Apply damage if mana was successfully drained
-                CerberusPlugin.getInstance().getPlayerVirtualHealthManager().applyDamage(
+                virtualHealthManager.applyDamage(
                         targetPlayer,
                         damage,
                         CustomDamageType.MANA_DRAIN,
@@ -81,19 +85,16 @@ public class ManaDrain extends DefensiveStructure {
     }
 
     private void playParticleEffect() {
-        particleTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!isValidDrain()) {
-                    this.cancel();
-                    return;
-                }
-
-                drawDrainBeam();
-                spawnDrainParticles();
+        // Player-bound for Folia
+        particleTask = player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (!isValidDrain()) {
+                task.cancel();
+                return;
             }
-        };
-        particleTask.runTaskTimer(plugin, 0L, 2L);
+
+            drawDrainBeam();
+            spawnDrainParticles();
+        }, null, 1L, 2L);
     }
 
     private void drawDrainBeam() {
@@ -171,20 +172,20 @@ public class ManaDrain extends DefensiveStructure {
 
     private boolean drainMana(Player target, double amount) {
         // Get mana manager from your plugin instance
-        return CerberusPlugin.getInstance().getPlayerManaManager().consumeMana(target, amount);
+        return manaManager.consumeMana(target, amount);
     }
 
     private void restoreMana(Player player, double amount) {
-        CerberusPlugin.getInstance().getPlayerManaManager().addMana(player, amount);
+        manaManager.addMana(player, amount);
     }
 
     private boolean isManaDepleted(Player target) {
-        return CerberusPlugin.getInstance().getPlayerManaManager().getMana(target) <= 0;
+        return manaManager.getMana(target) <= 0;
     }
 
     private void applyManaDepletion(Player target) {
         // Apply additional effects when mana is fully drained
-        CerberusPlugin.getInstance().getPlayerVirtualHealthManager().applyDamage(
+        virtualHealthManager.applyDamage(
                 target,
                 BASE_DAMAGE * 2,
                 CustomDamageType.MANA_VOID,

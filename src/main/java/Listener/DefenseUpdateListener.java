@@ -1,6 +1,6 @@
 package Listener;
 
-import cerberus.world.cerb.events.PlayerDefenseUpdateEvent;  // <<< IMPORT YOUR EVENT
+import Manager.PlayerDefenseUpdateEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;

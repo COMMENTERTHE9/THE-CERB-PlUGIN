@@ -3,10 +3,6 @@ package Manager;
 import cerberus.world.cerb.DatabaseManager;
 import org.bukkit.entity.Player;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +22,7 @@ public class MagicFindManager {
         UUID playerUUID = player.getUniqueId();
         double newMagicFind = getMagicFind(player) + amount;
         playerMagicFindMap.put(playerUUID, newMagicFind);
-        saveMagicFindToDatabase(playerUUID, newMagicFind);
+        databaseManager.saveMagicFind(playerUUID, newMagicFind);
     }
 
     // Method to decrease the player's magic find and persist to database
@@ -38,7 +34,7 @@ public class MagicFindManager {
             newMagicFind = 0; // Ensure magic find doesn't go below zero
         }
         playerMagicFindMap.put(playerUUID, newMagicFind);
-        saveMagicFindToDatabase(playerUUID, newMagicFind);
+        databaseManager.saveMagicFind(playerUUID, newMagicFind);
     }
 
     // Method to get the current magic find of a player
@@ -51,7 +47,7 @@ public class MagicFindManager {
         }
 
         // If not found, load from the database
-        double magicFind = loadMagicFindFromDatabase(playerUUID);
+        double magicFind = databaseManager.loadMagicFind(playerUUID);
         playerMagicFindMap.put(playerUUID, magicFind);  // Cache the result in memory
         return magicFind;
     }
@@ -63,42 +59,14 @@ public class MagicFindManager {
             amount = 0; // Ensure magic find doesn't go below zero
         }
         playerMagicFindMap.put(playerUUID, amount);
-        saveMagicFindToDatabase(playerUUID, amount);
+        databaseManager.saveMagicFind(playerUUID, amount);
     }
 
     // Method to reset a player's magic find to zero and persist to the database
     public void resetMagicFind(Player player) {
         UUID playerUUID = player.getUniqueId();
         playerMagicFindMap.put(playerUUID, 0.0);
-        saveMagicFindToDatabase(playerUUID, 0.0);
+        databaseManager.saveMagicFind(playerUUID, 0.0);
     }
 
-    // Save the magic find value to the database
-    private void saveMagicFindToDatabase(UUID playerUUID, double magicFind) {
-        String query = "REPLACE INTO player_magic_find (player_uuid, magic_find) VALUES (?, ?)";
-        try (Connection connection = databaseManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(query)) {
-            statement.setString(1, playerUUID.toString());
-            statement.setDouble(2, magicFind);
-            statement.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Load the magic find value from the database
-    private double loadMagicFindFromDatabase(UUID playerUUID) {
-        String query = "SELECT magic_find FROM player_magic_find WHERE player_uuid = ?";
-        try (Connection connection = databaseManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(query)) {
-            statement.setString(1, playerUUID.toString());
-            ResultSet resultSet = statement.executeQuery();
-            if (resultSet.next()) {
-                return resultSet.getDouble("magic_find");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return 0.0; // Default to 0 if no record found
-    }
 }

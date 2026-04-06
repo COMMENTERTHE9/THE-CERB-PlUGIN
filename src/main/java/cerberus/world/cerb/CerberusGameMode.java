@@ -7,54 +7,56 @@ import org.bukkit.entity.Player;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Handles Cerberus game-mode setup for players (first join and restore).
+ * Instance-based — no static initializer that crashes on early class load.
+ */
 public class CerberusGameMode {
 
-    private static final PlayerVirtualHealthManager virtualHealthManager = CerberusPlugin.getInstance().getPlayerVirtualHealthManager();
+    private final PlayerVirtualHealthManager virtualHealthManager;
+    private final CerberusPlugin plugin;
 
-    // Method to set up a player for the first time
-    public static void setupPlayerForFirstTime(Player player, FileConfiguration playerDataConfig, String playerUUID) {
-        // Set initial virtual health to 100
-        virtualHealthManager.setMaxHealth(player, 100.0); // Set the initial max virtual health
-        virtualHealthManager.setPlayerVirtualHealth(player, 100.0); // Fully heal the player with virtual health
-        player.setFoodLevel(20); // Max out food level
-
-        // Mark the player as having joined before in playerData.yml
-        playerDataConfig.set(playerUUID + ".joinedBefore", true);
-        savePlayerData(playerDataConfig, playerUUID); // Save the data to the file
+    public CerberusGameMode(PlayerVirtualHealthManager virtualHealthManager, CerberusPlugin plugin) {
+        this.virtualHealthManager = virtualHealthManager;
+        this.plugin = plugin;
     }
 
-    // Method to restore player virtual health
-    public static void restorePlayerHealth(Player player) {
-        double maxHealth = virtualHealthManager.getMaxHealth(player);
+    /** Set up a brand-new player with default virtual health. */
+    public void setupPlayerForFirstTime(Player player, FileConfiguration playerDataConfig, String playerUUID) {
+        virtualHealthManager.setMaxHealth(player, 100.0);
+        virtualHealthManager.setPlayerVirtualHealth(player, 100.0);
+        player.setFoodLevel(20);
 
-        // Ensure the player's virtual health is set to the max value
-        if (virtualHealthManager.getPlayerVirtualHealth(player) > maxHealth) {
+        playerDataConfig.set(playerUUID + ".joinedBefore", true);
+        savePlayerData(playerDataConfig);
+    }
+
+    /** Restore player virtual health (clamp to max). */
+    public void restorePlayerHealth(Player player) {
+        double maxHealth = virtualHealthManager.getMaxHealth(player);
+        double current = virtualHealthManager.getPlayerVirtualHealth(player);
+        if (current > maxHealth) {
             virtualHealthManager.setPlayerVirtualHealth(player, maxHealth);
-        } else {
-            virtualHealthManager.setPlayerVirtualHealth(player, virtualHealthManager.getPlayerVirtualHealth(player));
         }
     }
 
-    // Method to check if the player has joined before
-    public static boolean hasPlayerJoinedBefore(Player player, FileConfiguration playerDataConfig) {
+    /** Check if the player has joined before. */
+    public boolean hasPlayerJoinedBefore(Player player, FileConfiguration playerDataConfig) {
         String playerUUID = player.getUniqueId().toString();
         return playerDataConfig.getBoolean(playerUUID + ".joinedBefore", false);
     }
 
-    // Method to save player data to the file
-    private static void savePlayerData(FileConfiguration playerDataConfig, String playerUUID) {
+    private void savePlayerData(FileConfiguration playerDataConfig) {
         try {
-            playerDataConfig.save(new File(CerberusPlugin.getInstance().getDataFolder(), "playerData.yml"));
+            playerDataConfig.save(new File(plugin.getDataFolder(), "playerData.yml"));
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    // Method to enable Cerberus Game Mode for a player
-    public static void enable(Player player, FileConfiguration playerDataConfig) {
+    /** Enable Cerberus Game Mode for a player (first join or restore). */
+    public void enable(Player player, FileConfiguration playerDataConfig) {
         String playerUUID = player.getUniqueId().toString();
-
-        // Check if the player is joining for the first time
         if (!hasPlayerJoinedBefore(player, playerDataConfig)) {
             setupPlayerForFirstTime(player, playerDataConfig, playerUUID);
             player.sendMessage("Welcome to Cerberus Mode! Your virtual health and hunger have been maximized.");

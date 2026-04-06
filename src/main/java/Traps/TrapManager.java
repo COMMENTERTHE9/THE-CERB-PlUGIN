@@ -29,11 +29,12 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import cerberus.world.cerb.CerberusWorldProtection;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Bukkit;
 import org.bukkit.event.EventPriority;
 
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TrapManager implements Listener {
     private final CerberusPlugin plugin;
@@ -46,8 +47,8 @@ public class TrapManager implements Listener {
     public TrapManager(CerberusPlugin plugin, CraftingManager craftingManager) {
         this.craftingManager = craftingManager;
         this.plugin = plugin;
-        this.playerTraps = new HashMap<>();
-        this.activeTraps = new HashMap<>();
+        this.playerTraps = new ConcurrentHashMap<>();
+        this.activeTraps = new ConcurrentHashMap<>();
         // Initialize with default dimensions for basic traps
         this.patternDimensions = new PatternDimensions(3, 2, 3, true,
                 new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST});
@@ -253,13 +254,11 @@ public class TrapManager implements Listener {
     }
 
     private void startTrapCleanup(Trap trap) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                // Cleanup trap
-                cleanupTrap(trap);
-            }
-        }.runTaskLater(plugin, 20L * 5); // 5 second delay
+        // Location-bound cleanup for Folia
+        Bukkit.getRegionScheduler().runDelayed(plugin, trap.getLocation(), task -> {
+            // Cleanup trap
+            cleanupTrap(trap);
+        }, 20L * 5); // 5 second delay
     }
 
     private void cleanupTrap(Trap trap) {

@@ -7,6 +7,13 @@ import Skills.ManaRegenerationSkill;
 import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class EffectManager {
 
     private final PlayerVirtualHealthManager healthManager;
@@ -14,12 +21,45 @@ public class EffectManager {
     private final PlayerManaManager manaManager;
     private final SkillManager skillManager;
 
+    // Tracks which effects are active per player, and the original values before the effect was applied
+    // Structure: playerUUID → effectName → (attributeKey → originalValue)
+    private final Map<UUID, Map<String, Map<String, Double>>> activeEffects = new ConcurrentHashMap<>();
+
     public EffectManager(PlayerVirtualHealthManager healthManager, PlayerDefenseManager defenseManager,
                          PlayerManaManager manaManager, SkillManager skillManager) {
         this.healthManager = healthManager;
         this.defenseManager = defenseManager;
         this.manaManager = manaManager;
         this.skillManager = skillManager;
+    }
+
+    /** Check if a player already has an effect active */
+    public boolean hasEffect(Player player, String effectName) {
+        Map<String, Map<String, Double>> playerEffects = activeEffects.get(player.getUniqueId());
+        return playerEffects != null && playerEffects.containsKey(effectName);
+    }
+
+    /** Track original values before applying an effect */
+    private Map<String, Double> beginEffect(Player player, String effectName) {
+        Map<String, Map<String, Double>> playerEffects =
+                activeEffects.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>());
+        Map<String, Double> originals = new HashMap<>();
+        playerEffects.put(effectName, originals);
+        return originals;
+    }
+
+    /** Get all active effect names for a player */
+    public Set<String> getActiveEffects(Player player) {
+        Map<String, Map<String, Double>> playerEffects = activeEffects.get(player.getUniqueId());
+        return playerEffects != null ? new HashSet<>(playerEffects.keySet()) : Set.of();
+    }
+
+    /** Clean up all effects for a player (call on quit/death) */
+    public void removeAllEffects(Player player) {
+        Set<String> effects = getActiveEffects(player);
+        for (String effect : effects) {
+            removeEffect(player, effect);
+        }
     }
 
     // Method to apply effects from combat skills
@@ -65,33 +105,49 @@ public class EffectManager {
 
     // Blade Mastery effect logic
     private void applyBladeMasteryEffect(Player player) {
-        double baseDamage = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-        player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(baseDamage * 1.10); // 10% increase
+        if (hasEffect(player, "Blade Mastery")) return;
+        Map<String, Double> originals = beginEffect(player, "Blade Mastery");
+
+        double baseDamage = player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE).getBaseValue();
+        originals.put("attackDamage", baseDamage);
+        player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE).setBaseValue(baseDamage * 1.10);
     }
 
     // Dual Wielding effect logic
     private void applyDualWieldingEffect(Player player) {
-        double baseDamage = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-        player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(baseDamage * 1.20); // 20% increase
-        double baseSpeed = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).getBaseValue();
-        player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).setBaseValue(baseSpeed * 1.10); // 10% increase
+        if (hasEffect(player, "Dual Wielding")) return;
+        Map<String, Double> originals = beginEffect(player, "Dual Wielding");
+
+        double baseDamage = player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE).getBaseValue();
+        originals.put("attackDamage", baseDamage);
+        player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE).setBaseValue(baseDamage * 1.20);
+
+        double baseSpeed = player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_SPEED).getBaseValue();
+        originals.put("attackSpeed", baseSpeed);
+        player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_SPEED).setBaseValue(baseSpeed * 1.10);
     }
 
     // Heavy Armor Training effect logic
     private void applyHeavyArmorTrainingEffect(Player player) {
-        double baseDefense = defenseManager.getDefense(player);
-        defenseManager.setDefense(player, baseDefense * 1.10); // 10% increase
+        if (hasEffect(player, "Heavy Armor Training")) return;
+        Map<String, Double> originals = beginEffect(player, "Heavy Armor Training");
+
+        // Defense now comes from gear; recalculate instead of setting directly
+        defenseManager.updateDefense(player);
+
         double baseHealth = healthManager.getMaxHealth(player);
-        healthManager.setMaxHealth(player, baseHealth + 20); // Example health increase
+        originals.put("maxHealth", baseHealth);
+        healthManager.setMaxHealth(player, baseHealth + 20);
     }
 
     // Intelligence skill effect logic
     private void applyIntelligenceEffect(Player player) {
-        double manaBonus = 100.0; // Example mana increase
-        double spellPowerBonus = 1.10; // Example spell power increase
-        manaManager.setMaxMana(manaManager.getMaxMana(player) + manaBonus); // Adjusted to match method signature
-        // Assume you have a method to set spell power in the spell system
-        // spellManager.setSpellPower(player, spellPowerBonus);
+        if (hasEffect(player, "Intelligence")) return;
+        Map<String, Double> originals = beginEffect(player, "Intelligence");
+
+        double baseMana = manaManager.getMaxMana(player);
+        originals.put("maxMana", baseMana);
+        manaManager.setMaxMana(baseMana + 100.0);
     }
 
     // Arcane Knowledge effect logic
@@ -150,23 +206,62 @@ public class EffectManager {
 
     // Method to manage health effects
     public void applyHealthEffect(Player player, double healthBonus) {
+        String key = "health_" + healthBonus;
+        if (hasEffect(player, key)) return;
+        Map<String, Double> originals = beginEffect(player, key);
+        originals.put("maxHealth", healthManager.getMaxHealth(player));
         healthManager.setMaxHealth(player, healthManager.getMaxHealth(player) + healthBonus);
     }
 
-    // Method to manage defense effects
+    // Method to manage defense effects — recalculates defense from gear
     public void applyDefenseEffect(Player player, double defenseBonus) {
-        defenseManager.setDefense(player, defenseManager.getDefense(player) + defenseBonus);
+        String key = "defense_" + defenseBonus;
+        if (hasEffect(player, key)) return;
+        beginEffect(player, key);
+        // Defense now comes from gear; just recalculate
+        defenseManager.updateDefense(player);
     }
 
     // Method to manage mana effects
     public void applyManaEffect(Player player, double manaBonus) {
-        manaManager.setMaxMana(manaManager.getMaxMana(player) + manaBonus); // Adjusted to match method signature
+        String key = "mana_" + manaBonus;
+        if (hasEffect(player, key)) return;
+        Map<String, Double> originals = beginEffect(player, key);
+        originals.put("maxMana", manaManager.getMaxMana(player));
+        manaManager.setMaxMana(manaManager.getMaxMana(player) + manaBonus);
     }
 
-    // Optional: Method to remove or reverse effects if needed
+    /**
+     * Remove an effect by restoring the original values that were captured when the effect was applied.
+     */
     public void removeEffect(Player player, String effectName) {
-        // Logic to reverse or remove an effect from a player
-    }
+        Map<String, Map<String, Double>> playerEffects = activeEffects.get(player.getUniqueId());
+        if (playerEffects == null) return;
 
-    // Add other utility methods to handle effects as needed
+        Map<String, Double> originals = playerEffects.remove(effectName);
+        if (originals == null) return;
+
+        // Restore each tracked original value
+        for (Map.Entry<String, Double> entry : originals.entrySet()) {
+            switch (entry.getKey()) {
+                case "attackDamage" ->
+                    player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_DAMAGE)
+                          .setBaseValue(entry.getValue());
+                case "attackSpeed" ->
+                    player.getAttribute(org.bukkit.attribute.Attribute.ATTACK_SPEED)
+                          .setBaseValue(entry.getValue());
+                case "defense" ->
+                    defenseManager.updateDefense(player);
+                case "maxHealth" ->
+                    healthManager.setMaxHealth(player, entry.getValue());
+                case "maxMana" ->
+                    manaManager.setMaxMana(entry.getValue());
+            }
+        }
+
+        // Clean up empty maps
+        if (playerEffects.isEmpty()) {
+            activeEffects.remove(player.getUniqueId());
+        }
+    }
 }

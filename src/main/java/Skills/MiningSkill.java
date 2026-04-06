@@ -25,13 +25,11 @@ public class MiningSkill extends UtilitySkill {
         // Enhance resource yield from mining based on skill level
         yieldManager.applyYieldBonus(player, "Mining");
 
-        // Apply health, defense, and strength bonuses
+        // Apply health and strength bonuses (defense is now gear-based, no longer granted by gathering skills)
         double healthBonus = level * 2.0; // Example: +2 health per level
-        double defenseBonus = level * 1.5; // Example: +1.5 defense per level
         double strengthBonus = level * 1.0; // Example: +1 strength per level
 
         customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getDefenseManager().increaseDefense(player, defenseBonus);
         customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
 
         // Trigger special effects for mining specific materials (placeholder logic)

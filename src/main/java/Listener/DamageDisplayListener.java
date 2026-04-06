@@ -1,5 +1,8 @@
 package Listener;
 
+import Manager.CerbDamageResultEvent;
+import Manager.CombatConfig;
+import Manager.CombatContext;
 import Manager.CustomDamageType;
 import org.bukkit.Location;
 import org.bukkit.Sound;
@@ -9,66 +12,131 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Bukkit;
 import org.bukkit.Particle;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.event.EventPriority;
 
-
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
+import org.bukkit.event.entity.EntityDeathEvent;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
+import javax.annotation.Nullable;
+
+/**
+ * Displays floating damage numbers, combo counters, sounds, and particles.
+ * Now driven by {@link CerbDamageResultEvent} — uses CombatContext for
+ * accurate damage type, critical status, and final damage values.
+ */
 public class DamageDisplayListener implements Listener {
     private final JavaPlugin plugin;
     private final Random random = new Random();
-    private final Map<UUID, CombatData> combatData = new HashMap<>();
+    private final Map<UUID, CombatData> combatData = new ConcurrentHashMap<>();
+    private static final Logger log = Logger.getLogger("Cerberus");
+    private static final long STALE_ENTRY_MS = 30_000; // 30 seconds
+    private ScheduledTask cleanupTask;
+    private @Nullable CombatConfig combatConfig;
 
     private static class CombatData {
         double totalDamage;
         int hitCount;
+        long firstHitTime;
         long lastHitTime;
         double dps;
     }
 
     public DamageDisplayListener(JavaPlugin plugin) {
         this.plugin = plugin;
+        startCleanupTask();
     }
 
-    // ------------------------------------------------------------
-// Damage‑number handler (pattern‑aligned)
-// ------------------------------------------------------------
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)   // flag + priority
-    public void onEntityDamage(EntityDamageByEntityEvent event) {
-
-        /* ---------- EARLY‑EXIT FILTERS ---------- */
-        if (!(event.getEntity() instanceof LivingEntity)) return;   // not a living mob/player
-        if (event.getDamage() <= 0) return;                         // no real damage
-
-        // ---------- Original logic ----------
-        LivingEntity      entity      = (LivingEntity) event.getEntity();
-        double            damage      = event.getDamage();
-        CustomDamageType  damageType  = determineDamageType(event);
-        boolean           isCritical  = isCriticalHit(event);
-
-        updateCombatStats(event.getDamager().getUniqueId(), damage);
-
-        Location spawnLoc = getRandomizedLocation(entity);
-        showDamageNumber(spawnLoc, damage, damageType, isCritical);
-
-        showComboIfRelevant(event.getDamager().getUniqueId(),
-                spawnLoc.clone().add(0, 0.5, 0));
-
-        playDamageSound(entity.getLocation(), damageType, isCritical);
-
-        spawnDamageEffects(entity.getLocation(), damageType, damage);
+    /** Optional: inject CombatConfig for display tuning values. */
+    public void setCombatConfig(CombatConfig config) {
+        this.combatConfig = config;
     }
 
+    // ── Cleanup infrastructure (Phase 1C) ────────────────────────
+
+    private void startCleanupTask() {
+        cleanupTask = Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, task -> {
+            long now = System.currentTimeMillis();
+            int removed = 0;
+            Iterator<Map.Entry<UUID, CombatData>> it = combatData.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<UUID, CombatData> entry = it.next();
+                if (now - entry.getValue().lastHitTime > STALE_ENTRY_MS) {
+                    it.remove();
+                    removed++;
+                }
+            }
+            if (removed > 0) {
+                log.fine("[DamageDisplay] Cleaned up " + removed + " stale combat data entries.");
+            }
+        }, 600L, 600L);
+    }
+
+    @EventHandler
+    public void onEntityDeath(EntityDeathEvent event) {
+        combatData.remove(event.getEntity().getUniqueId());
+    }
+
+    public void shutdown() {
+        if (cleanupTask != null) {
+            cleanupTask.cancel();
+            cleanupTask = null;
+        }
+        combatData.clear();
+    }
+
+    // ── Main display handler — driven by CerbDamageResultEvent ───
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onDamageResult(CerbDamageResultEvent event) {
+        CombatContext ctx = event.getContext();
+        LivingEntity target = ctx.getTarget();
+
+        // Read from CombatContext — always correct
+        CustomDamageType damageType = ctx.getDamageType();
+        boolean isCritical = ctx.attack().isCritical();
+        double finalDamage = ctx.defense().getFinalDamage();
+
+        // Update combo stats (using attacker UUID if available)
+        if (ctx.getAttacker() != null) {
+            UUID attackerId = ctx.getAttacker().getUniqueId();
+            updateCombatStats(attackerId, finalDamage);
+        }
+
+        // Spawn location near target
+        Location spawnLoc = getRandomizedLocation(target);
+
+        // Show damage number — "BLOCKED" for fully absorbed, normal otherwise
+        if (event.wasFullyAbsorbed()) {
+            showBlockedIndicator(spawnLoc);
+        } else {
+            showDamageNumber(spawnLoc, finalDamage, damageType, isCritical);
+        }
+
+        // Combo counter
+        if (ctx.getAttacker() != null) {
+            showComboIfRelevant(ctx.getAttacker().getUniqueId(),
+                    spawnLoc.clone().add(0, 0.5, 0));
+        }
+
+        // Particles only — sound is now gated in PlayerVirtualHealthManager.applyDamage()
+        if (finalDamage > 0) {
+            spawnDamageEffects(target.getLocation(), damageType, finalDamage);
+        }
+    }
+
+    // ── Display rendering ────────────────────────────────────────
 
     private void showDamageNumber(Location location, double damage, CustomDamageType type, boolean isCritical) {
         TextDisplay display = location.getWorld().spawn(location, TextDisplay.class, textDisplay -> {
@@ -81,7 +149,24 @@ public class DamageDisplayListener implements Listener {
             textDisplay.setPersistent(false);
         });
 
-        animateDisplay(display, location.clone(), isCritical);
+        int displayTicks = isCritical
+                ? (combatConfig != null ? combatConfig.displayCritDamageNumberTicks : 30)
+                : (combatConfig != null ? combatConfig.displayDamageNumberTicks : 20);
+        animateDisplay(display, location.clone(), isCritical, displayTicks);
+    }
+
+    /** Show a grey "BLOCKED" indicator for fully absorbed hits. */
+    private void showBlockedIndicator(Location location) {
+        TextDisplay display = location.getWorld().spawn(location, TextDisplay.class, textDisplay -> {
+            textDisplay.text(Component.text("BLOCKED", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, true));
+            textDisplay.setBillboard(Billboard.CENTER);
+            textDisplay.setDefaultBackground(false);
+            textDisplay.setShadowed(true);
+            textDisplay.setViewRange(16.0f);
+            textDisplay.setPersistent(false);
+        });
+        animateDisplay(display, location.clone(), false, 15);
     }
 
     private Component formatDamageText(double damage, CustomDamageType type, boolean isCritical) {
@@ -94,37 +179,32 @@ public class DamageDisplayListener implements Listener {
                 .decoration(TextDecoration.BOLD, isCritical);
     }
 
-    private void animateDisplay(TextDisplay display, Location startLoc, boolean isCritical) {
-        new BukkitRunnable() {
-            private int ticks = 0;
-            private final int displayTime = isCritical ? 30 : 20;  // Changed to non-static final
-            private double horizontalOffset = 0;
-
-            @Override
-            public void run() {
-                if (ticks >= displayTime || !display.isValid()) {
-                    display.remove();
-                    cancel();
-                    return;
-                }
-
-                double progress = (double) ticks / displayTime;  // Use displayTime instead
-                double height = Math.sin(progress * Math.PI) * (isCritical ? 0.8 : 0.5);
-
-                if (isCritical) {
-                    horizontalOffset = Math.sin(progress * Math.PI * 4) * 0.1;
-                }
-
-                Location newLoc = startLoc.clone().add(horizontalOffset, height, 0);
-                display.teleport(newLoc);
-
-                if (ticks > displayTime * 0.7) {
-                    display.setVisibleByDefault(ticks % 2 == 0);
-                }
-
-                ticks++;
+    private void animateDisplay(TextDisplay display, Location startLoc, boolean isCritical, int displayTime) {
+        final int[] ticks = {0};
+        final double[] horizontalOffset = {0};
+        Bukkit.getRegionScheduler().runAtFixedRate(plugin, startLoc, task -> {
+            if (ticks[0] >= displayTime || !display.isValid()) {
+                display.remove();
+                task.cancel();
+                return;
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+
+            double progress = (double) ticks[0] / displayTime;
+            double height = Math.sin(progress * Math.PI) * (isCritical ? 0.8 : 0.5);
+
+            if (isCritical) {
+                horizontalOffset[0] = Math.sin(progress * Math.PI * 4) * 0.1;
+            }
+
+            Location newLoc = startLoc.clone().add(horizontalOffset[0], height, 0);
+            display.teleportAsync(newLoc);
+
+            if (ticks[0] > displayTime * 0.7) {
+                display.setVisibleByDefault(ticks[0] % 2 == 0);
+            }
+
+            ticks[0]++;
+        }, 1L, 1L);
     }
 
     private Location getRandomizedLocation(LivingEntity entity) {
@@ -135,26 +215,31 @@ public class DamageDisplayListener implements Listener {
         );
     }
 
+    // ── Combat stats / combo ─────────────────────────────────────
+
     private void updateCombatStats(UUID attackerId, double damage) {
         CombatData data = combatData.computeIfAbsent(attackerId, k -> new CombatData());
         long currentTime = System.currentTimeMillis();
 
-        // Reset if more than 5 seconds since last hit
-        if (currentTime - data.lastHitTime > 5000) {
+        long comboTimeout = combatConfig != null ? combatConfig.displayComboTimeoutMs : 5000;
+        if (currentTime - data.lastHitTime > comboTimeout) {
             data.totalDamage = 0;
             data.hitCount = 0;
             data.dps = 0;
+            data.firstHitTime = currentTime;
         }
 
         data.totalDamage += damage;
         data.hitCount++;
         data.lastHitTime = currentTime;
-        data.dps = data.totalDamage / ((currentTime - data.lastHitTime) / 1000.0);
+        double elapsedSeconds = (currentTime - data.firstHitTime) / 1000.0;
+        data.dps = (elapsedSeconds > 0) ? data.totalDamage / elapsedSeconds : damage;
     }
 
     private void showComboIfRelevant(UUID attackerId, Location location) {
         CombatData data = combatData.get(attackerId);
-        if (data != null && data.hitCount > 2) {
+        int threshold = combatConfig != null ? combatConfig.displayComboThreshold : 2;
+        if (data != null && data.hitCount > threshold) {
             String comboText = String.format("%d Hit Combo! (%.1f DPS)",
                     data.hitCount, data.dps);
 
@@ -164,15 +249,13 @@ public class DamageDisplayListener implements Listener {
                 display.setDefaultBackground(false);
             });
 
-            // Remove after 1 second
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    comboDisplay.remove();
-                }
-            }.runTaskLater(plugin, 20L);
+            Bukkit.getRegionScheduler().runDelayed(plugin, location, task -> {
+                comboDisplay.remove();
+            }, 20L);
         }
     }
+
+    // ── Sound & particles ────────────────────────────────────────
 
     private void playDamageSound(Location location, CustomDamageType type, boolean isCritical) {
         Sound sound = switch (type) {
@@ -196,15 +279,5 @@ public class DamageDisplayListener implements Listener {
 
         location.getWorld().spawnParticle(particle, location.add(0, 1, 0),
                 (int)(damage * 2), 0.3, 0.3, 0.3, 0.1);
-    }
-
-    private boolean isCriticalHit(EntityDamageByEntityEvent event) {
-        // Add your critical hit logic here
-        return event.getDamage() > 10.0; // Example threshold
-    }
-
-    private CustomDamageType determineDamageType(EntityDamageByEntityEvent event) {
-        // Add your damage type determination logic here
-        return CustomDamageType.ENTITY_ATTACK; // Default type
     }
 }

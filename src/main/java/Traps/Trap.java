@@ -9,7 +9,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Bukkit;
 import java.util.Random;
 import org.bukkit.util.Vector;
 
@@ -70,128 +70,116 @@ public class Trap {
 
         switch(newState) {
             case ARMED -> {
-                // Start a repeating task for arming animation
-                new BukkitRunnable() {
-                    double angle = 0;
-                    int ticks = 0;
-
-                    @Override
-                    public void run() {
-                        if (ticks >= 40) { // 2 second animation
-                            this.cancel();
-                            return;
-                        }
-
-                        // Double helix effect
-                        for (int i = 0; i < 2; i++) {
-                            double offsetAngle = angle + (i * Math.PI);
-                            double y = ticks * 0.1;
-                            double radius = Math.max(0.5, 2.0 - (y * 0.2));
-
-                            double x = Math.cos(offsetAngle) * radius;
-                            double z = Math.sin(offsetAngle) * radius;
-
-                            Location particleLoc = effectLoc.clone().add(x, y, z);
-                            world.spawnParticle(Particle.WITCH, particleLoc, 1, 0, 0, 0, 0);
-                            world.spawnParticle(Particle.END_ROD, particleLoc, 1, 0, 0, 0, 0);
-                        }
-
-                        // Rune circle at base
-                        for (double a = 0; a < Math.PI * 2; a += Math.PI / 8) {
-                            double x = Math.cos(a + angle) * 1.5;
-                            double z = Math.sin(a + angle) * 1.5;
-                            Location runeLoc = effectLoc.clone().add(x, 0, z);
-                            world.spawnParticle(Particle.ENCHANTED_HIT, runeLoc, 1, 0, 0, 0, 0);
-                        }
-
-                        angle += Math.PI / 16;
-                        ticks++;
+                // Start a repeating task for arming animation (location-bound for Folia)
+                final double[] angle = {0};
+                final int[] ticks = {0};
+                Bukkit.getRegionScheduler().runAtFixedRate(plugin, effectLoc, task -> {
+                    if (ticks[0] >= 40) { // 2 second animation
+                        task.cancel();
+                        return;
                     }
-                }.runTaskTimer(plugin, 0L, 1L);
+
+                    // Double helix effect
+                    for (int i = 0; i < 2; i++) {
+                        double offsetAngle = angle[0] + (i * Math.PI);
+                        double y = ticks[0] * 0.1;
+                        double radius = Math.max(0.5, 2.0 - (y * 0.2));
+
+                        double x = Math.cos(offsetAngle) * radius;
+                        double z = Math.sin(offsetAngle) * radius;
+
+                        Location particleLoc = effectLoc.clone().add(x, y, z);
+                        world.spawnParticle(Particle.WITCH, particleLoc, 1, 0, 0, 0, 0);
+                        world.spawnParticle(Particle.END_ROD, particleLoc, 1, 0, 0, 0, 0);
+                    }
+
+                    // Rune circle at base
+                    for (double a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+                        double x = Math.cos(a + angle[0]) * 1.5;
+                        double z = Math.sin(a + angle[0]) * 1.5;
+                        Location runeLoc = effectLoc.clone().add(x, 0, z);
+                        world.spawnParticle(Particle.ENCHANTED_HIT, runeLoc, 1, 0, 0, 0, 0);
+                    }
+
+                    angle[0] += Math.PI / 16;
+                    ticks[0]++;
+                }, 1L, 1L);
             }
 
             case ACTIVATED -> {
-                // Activation sequence
-                new BukkitRunnable() {
-                    int stage = 0;
-
-                    @Override
-                    public void run() {
-                        if (stage >= 20) {
-                            this.cancel();
-                            return;
-                        }
-
-                        // Expanding ring
-                        double radius = stage * 0.2;
-                        for (double angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
-                            double x = Math.cos(angle) * radius;
-                            double z = Math.sin(angle) * radius;
-                            Location ringLoc = effectLoc.clone().add(x, 0, z);
-                            world.spawnParticle(Particle.SMALL_GUST, ringLoc, 1, 0, 0, 0, 0);
-                        }
-
-                        // Rising particles
-                        if (stage % 2 == 0) {
-                            for (int i = 0; i < 4; i++) {
-                                double angle = (i * Math.PI / 2) + (stage * 0.2);
-                                double x = Math.cos(angle) * 0.5;
-                                double z = Math.sin(angle) * 0.5;
-                                Location particleLoc = effectLoc.clone().add(x, stage * 0.1, z);
-                                world.spawnParticle(Particle.CRIT, particleLoc, 1, 0, 0, 0, 0);
-                            }
-                        }
-
-                        stage++;
+                // Activation sequence (location-bound for Folia)
+                final int[] stage = {0};
+                Bukkit.getRegionScheduler().runAtFixedRate(plugin, effectLoc, task -> {
+                    if (stage[0] >= 20) {
+                        task.cancel();
+                        return;
                     }
-                }.runTaskTimer(plugin, 0L, 1L);
+
+                    // Expanding ring
+                    double radius = stage[0] * 0.2;
+                    for (double angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
+                        double x = Math.cos(angle) * radius;
+                        double z = Math.sin(angle) * radius;
+                        Location ringLoc = effectLoc.clone().add(x, 0, z);
+                        world.spawnParticle(Particle.SMALL_GUST, ringLoc, 1, 0, 0, 0, 0);
+                    }
+
+                    // Rising particles
+                    if (stage[0] % 2 == 0) {
+                        for (int i = 0; i < 4; i++) {
+                            double angle = (i * Math.PI / 2) + (stage[0] * 0.2);
+                            double x = Math.cos(angle) * 0.5;
+                            double z = Math.sin(angle) * 0.5;
+                            Location particleLoc = effectLoc.clone().add(x, stage[0] * 0.1, z);
+                            world.spawnParticle(Particle.CRIT, particleLoc, 1, 0, 0, 0, 0);
+                        }
+                    }
+
+                    stage[0]++;
+                }, 1L, 1L);
             }
 
             case TRIGGERED -> {
-                // Explosion sequence
-                new BukkitRunnable() {
-                    int stage = 0;
-                    double baseRadius = 0.5;
-
-                    @Override
-                    public void run() {
-                        if (stage >= 15) {
-                            this.cancel();
-                            return;
-                        }
-
-                        // Imploding particles
-                        for (int i = 0; i < 8; i++) {
-                            double angle = (i * Math.PI / 4) + (stage * 0.2);
-                            double radius = baseRadius + (stage * 0.3);
-                            double x = Math.cos(angle) * radius;
-                            double y = Math.sin(stage * 0.5) * 1.5;
-                            double z = Math.sin(angle) * radius;
-
-                            Location particleLoc = effectLoc.clone().add(x, y, z);
-                            world.spawnParticle(Particle.SPLASH, particleLoc, 0, 1, 0, 0, 1);
-                            world.spawnParticle(Particle.CRIT, particleLoc, 1, 0, 0, 0, 0.1);
-                        }
-
-                        if (stage == 14) {
-                            // Final explosion
-                            world.spawnParticle(Particle.EXPLOSION, effectLoc, 1, 0, 0, 0, 0);
-                            world.spawnParticle(Particle.FLASH, effectLoc, 2, 0.3, 0.3, 0.3, 0);
-                            for (int i = 0; i < 50; i++) {
-                                Vector direction = new Vector(
-                                        random.nextDouble() - 0.5,ok
-                                        random.nextDouble() - 0.5,
-                                        random.nextDouble() - 0.5
-                                ).normalize().multiply(0.2);
-                                Location particleLoc = effectLoc.clone();
-                                world.spawnParticle(Particle.WITCH, particleLoc, 0,
-                                        direction.getX(), direction.getY(), direction.getZ(), 1);
-                            }
-                        }
-
-                        stage++;
+                // Explosion sequence (location-bound for Folia)
+                final int[] stage = {0};
+                final double baseRadius = 0.5;
+                Bukkit.getRegionScheduler().runAtFixedRate(plugin, effectLoc, task -> {
+                    if (stage[0] >= 15) {
+                        task.cancel();
+                        return;
                     }
-                }.runTaskTimer(plugin, 0L, 1L);
+
+                    // Imploding particles
+                    for (int i = 0; i < 8; i++) {
+                        double angle = (i * Math.PI / 4) + (stage[0] * 0.2);
+                        double radius = baseRadius + (stage[0] * 0.3);
+                        double x = Math.cos(angle) * radius;
+                        double y = Math.sin(stage[0] * 0.5) * 1.5;
+                        double z = Math.sin(angle) * radius;
+
+                        Location particleLoc = effectLoc.clone().add(x, y, z);
+                        world.spawnParticle(Particle.SPLASH, particleLoc, 0, 1, 0, 0, 1);
+                        world.spawnParticle(Particle.CRIT, particleLoc, 1, 0, 0, 0, 0.1);
+                    }
+
+                    if (stage[0] == 14) {
+                        // Final explosion
+                        world.spawnParticle(Particle.EXPLOSION, effectLoc, 1, 0, 0, 0, 0);
+                        world.spawnParticle(Particle.FLASH, effectLoc, 2, 0.3, 0.3, 0.3, 0);
+                        for (int i = 0; i < 50; i++) {
+                            Vector direction = new Vector(
+                                    random.nextDouble() - 0.5,
+                                    random.nextDouble() - 0.5,
+                                    random.nextDouble() - 0.5
+                            ).normalize().multiply(0.2);
+                            Location particleLoc = effectLoc.clone();
+                            world.spawnParticle(Particle.WITCH, particleLoc, 0,
+                                    direction.getX(), direction.getY(), direction.getZ(), 1);
+                        }
+                    }
+
+                    stage[0]++;
+                }, 1L, 1L);
             }
         }
     }

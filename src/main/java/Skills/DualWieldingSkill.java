@@ -19,15 +19,15 @@ public class DualWieldingSkill extends CombatSkill {
         // Check if the player is dual-wielding
         if (isDualWielding(player.getBukkitPlayer())) {
             // Increase off-hand damage by a percentage based on skill level
-            CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+            CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.ATTACK_DAMAGE);
             if (attributeWrapper != null) {
                 double baseValue = attributeWrapper.getBaseValue();
                 attributeWrapper.setBaseValue(baseValue * 1.2); // Increase off-hand attack damage by 20%
             }
 
             // Increase attack speed by a percentage based on skill level
-            double currentAttackSpeed = player.getBukkitPlayer().getAttribute(Attribute.GENERIC_ATTACK_SPEED).getBaseValue();
-            player.getBukkitPlayer().getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
+            double currentAttackSpeed = player.getBukkitPlayer().getAttribute(Attribute.ATTACK_SPEED).getBaseValue();
+            player.getBukkitPlayer().getAttribute(Attribute.ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
 
             // Chance for additional strike (e.g., 5% chance per skill level)
             if (Math.random() < getAdditionalStrikeChance()) {
@@ -44,14 +44,14 @@ public class DualWieldingSkill extends CombatSkill {
         // Check if the player is dual-wielding
         if (isDualWielding(player)) {
             // Increase off-hand damage by a percentage based on skill level
-            if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-                double currentAttackDamage = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-                player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(currentAttackDamage * 1.2); // Increase off-hand attack damage by 20%
+            if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+                double currentAttackDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
+                player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(currentAttackDamage * 1.2); // Increase off-hand attack damage by 20%
             }
 
             // Increase attack speed by a percentage based on skill level
-            double currentAttackSpeed = player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).getBaseValue();
-            player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
+            double currentAttackSpeed = player.getAttribute(Attribute.ATTACK_SPEED).getBaseValue();
+            player.getAttribute(Attribute.ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
 
             // Chance for additional strike (e.g., 5% chance per skill level)
             if (Math.random() < getAdditionalStrikeChance()) {

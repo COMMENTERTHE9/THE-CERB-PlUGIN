@@ -2,12 +2,12 @@ package DefensiveMagic;
 
 import org.bukkit.entity.Player;
 import org.bukkit.Particle;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 public class Shield extends DefensiveStructure {
     private double strength;
-    private BukkitRunnable particleTask;
+    private ScheduledTask particleTask;
 
     public Shield(Player player, double strength) {
         super(player);
@@ -49,31 +49,28 @@ public class Shield extends DefensiveStructure {
     }
 
     private void playParticleEffect() {
-        particleTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!isActive || !player.isOnline()) {
-                    deactivate();
-                    return;
-                }
+        // Player-bound for Folia
+        particleTask = player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (!isActive || !player.isOnline()) {
+                deactivate();
+                return;
+            }
 
-                for (double phi = 0; phi <= Math.PI; phi += Math.PI / 10) {
-                    double y = Math.cos(phi);
-                    for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
-                        double x = Math.sin(phi) * Math.cos(theta);
-                        double z = Math.sin(phi) * Math.sin(theta);
-                        player.getWorld().spawnParticle(
-                                Particle.WITCH,
-                                player.getLocation().add(x, y + 1, z),
-                                1,
-                                0, 0, 0,
-                                0
-                        );
-                    }
+            for (double phi = 0; phi <= Math.PI; phi += Math.PI / 10) {
+                double y = Math.cos(phi);
+                for (double theta = 0; theta <= 2 * Math.PI; theta += Math.PI / 10) {
+                    double x = Math.sin(phi) * Math.cos(theta);
+                    double z = Math.sin(phi) * Math.sin(theta);
+                    player.getWorld().spawnParticle(
+                            Particle.WITCH,
+                            player.getLocation().add(x, y + 1, z),
+                            1,
+                            0, 0, 0,
+                            0
+                    );
                 }
             }
-        };
-        particleTask.runTaskTimer(plugin, 0L, 20L);
+        }, null, 1L, 20L);
     }
 
     @Override

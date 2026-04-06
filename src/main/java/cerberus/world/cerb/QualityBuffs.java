@@ -56,15 +56,15 @@ public class QualityBuffs {
     public void removeQualityBuffs(Player player) {
         // Reset player stats to default values when removing buffs
         virtualHealthManager.setPlayerMaxVirtualHealth(player, 100.0); // Reset virtual health
-        defenseManager.setDefense(player, 10.0); // Reset defense
+        defenseManager.updateDefense(player); // Recalculate defense from current gear
 
         // Reset vanilla Minecraft stats
-        player.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0);  // Default health
-        if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(1.0);  // Default attack damage
+        player.getAttribute(Attribute.MAX_HEALTH).setBaseValue(20.0);  // Default health
+        if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+            player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(1.0);  // Default attack damage
         }
-        if (player.getAttribute(Attribute.GENERIC_ARMOR) != null) {
-            player.getAttribute(Attribute.GENERIC_ARMOR).setBaseValue(0.0);  // Default armor
+        if (player.getAttribute(Attribute.ARMOR) != null) {
+            player.getAttribute(Attribute.ARMOR).setBaseValue(0.0);  // Default armor
         }
     }
 
@@ -74,22 +74,14 @@ public class QualityBuffs {
 
         // Increase weapon damage based on quality
         item.addUnsafeEnchantment(Enchantment.SHARPNESS, (int) (multiplier * 3));
-
-        // Apply knockback reduction for the player using the weapon
-        virtualHealthManager.setKnockbackReductionFactor(player, 1 - (multiplier * 0.1));
     }
 
     // Method to apply armor-specific buffs
     private void applyArmorBuffs(Quality quality, ItemStack item) {
         double multiplier = quality.getMultiplier();
 
-        // Buff defense and knockback reduction based on quality
-        double defenseBuff = multiplier * 5;
-        player.getAttribute(Attribute.GENERIC_ARMOR).setBaseValue(defenseBuff);
-
-        // Reduce knockback for higher-quality armor
-        double knockbackReduction = 1 - (multiplier * 0.2);
-        virtualHealthManager.setKnockbackReductionFactor(player, knockbackReduction);
+        // Recalculate defense from current gear (armor quality is factored in by the defense system)
+        defenseManager.updateDefense(player);
     }
 
     // Method to apply tool-specific buffs (farming, woodcutting, fishing, etc.)
@@ -109,9 +101,9 @@ public class QualityBuffs {
         double multiplier = quality.getMultiplier();
 
         // Apply bonus to ranged attack damage
-        if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            double baseDamage = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-            player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(baseDamage * multiplier);
+        if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+            double baseDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
+            player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(baseDamage * multiplier);
         }
 
         // Apply bonus to arrow or projectile velocity

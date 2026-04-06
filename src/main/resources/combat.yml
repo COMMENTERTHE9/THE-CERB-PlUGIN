@@ -1,0 +1,150 @@
+# Cerberus Combat Configuration
+# All combat tuning values live here, separate from infrastructure config.
+config-version: 3
+
+knockback:
+  base-strength: 0.4
+  damage-scale: 0.06
+  sprint-bonus: 0.3
+  vertical-lift: 0.35
+  max-horizontal: 1.5
+  max-vertical: 0.5
+  momentum-blend: 0.3
+  projectile-base: 0.3
+  projectile-damage-scale: 0.02
+  cooldown: 0.5
+
+# ── 3-Layer Defense System ──────────────────────────────────
+# Pipeline: raw → elemental resist → armor reduction → defense bar → health
+
+armor:
+  reduction-per-piece:
+    leather: 0.02
+    gold: 0.02
+    chainmail: 0.03
+    iron: 0.04
+    diamond: 0.05
+    netherite: 0.06
+  max-reduction: 0.40
+
+defense-bar:
+  base-max-points: 300
+  max-absorption: 0.70
+  regen-rate: 15.0
+  regen-delay-ms: 7000
+
+health-regen:
+  base-rate: 2.0           # HP per second when out of combat
+  combat-rate: 0.0         # HP per second while in combat (0 = no regen)
+  combat-timeout-ms: 8000  # ms after last hit before "out of combat"
+
+# ── Unified Tier System ─────────────────────────────────────
+# Used for mobs, items, regions, loot — everything.
+tiers:
+  WEAK:       { armor-penetration: 0.00, xp-multiplier: 0.5,  craft-stat-multiplier: 0.5  }
+  COMMON:     { armor-penetration: 0.00, xp-multiplier: 1.0,  craft-stat-multiplier: 1.0  }
+  UNCOMMON:   { armor-penetration: 0.10, xp-multiplier: 1.5,  craft-stat-multiplier: 1.25 }
+  RARE:       { armor-penetration: 0.20, xp-multiplier: 2.0,  craft-stat-multiplier: 1.5  }
+  EPIC:       { armor-penetration: 0.30, xp-multiplier: 3.0,  craft-stat-multiplier: 1.75 }
+  LEGENDARY:  { armor-penetration: 0.40, xp-multiplier: 4.0,  craft-stat-multiplier: 2.0  }
+  PERFECT:    { armor-penetration: 0.50, xp-multiplier: 5.0,  craft-stat-multiplier: 2.5  }
+  MYTHIC:     { armor-penetration: 0.60, xp-multiplier: 7.0,  craft-stat-multiplier: 3.0  }
+  GODLY:      { armor-penetration: 0.70, xp-multiplier: 10.0, craft-stat-multiplier: 3.5  }
+  PRIMORDIAL: { armor-penetration: 0.80, xp-multiplier: 15.0, craft-stat-multiplier: 4.0  }
+
+display:
+  combo-timeout-ms: 5000
+  damage-number-ticks: 20
+  crit-damage-number-ticks: 30
+  combo-threshold: 2
+
+sound:
+  hit-cooldown-ms:
+    melee: 200
+    projectile: 200
+    contact: 500
+    environmental: 500
+    status-effect: 800
+    default: 400
+
+# ── Skill Scaling ────────────────────────────────────────────
+# Each stat uses the Log-Sigmoid formula:
+#   value = base + logScale * log1p(level) + lateBonus * sigmoid(level)
+#   sigmoid = 1 / (1 + exp(-steepness * (level - inflection)))
+#   output clamped to [0, hardCap]
+#
+# Available presets: STEADY, LATE_SURGE, HARD_CAPPED, FLAT_DEFENSIVE
+# Any field not explicitly set inherits from the preset.
+# scaling-defaults provides fallback values when neither preset nor explicit value is set.
+
+skills:
+  scaling-defaults:
+    log-scale: 0.04
+    late-game-steepness: 0.08
+    late-game-start: 60
+
+  critical-strike:
+    crit-chance:
+      preset: HARD_CAPPED
+      base: 0.10
+      hard-cap: 0.75
+      late-game-bonus: 0.50
+    crit-multiplier:
+      preset: LATE_SURGE
+      base: 1.5
+      hard-cap: 3.5
+      late-game-bonus: 1.5
+
+  weapon-mastery:
+    damage-multiplier:
+      preset: LATE_SURGE
+      base: 1.15
+      hard-cap: 2.5
+      late-game-bonus: 1.0
+    lifesteal:
+      preset: HARD_CAPPED
+      base: 0.0
+      hard-cap: 0.40
+      late-game-bonus: 0.30
+      late-game-start: 50
+
+  blade-mastery:
+    damage-bonus:
+      preset: STEADY
+      base: 0.0
+      hard-cap: 1.5
+      late-game-bonus: 0.80
+    speed-bonus:
+      preset: FLAT_DEFENSIVE
+      base: 0.0
+      hard-cap: 0.50
+
+  martial-expertise:
+    kb-resist:
+      preset: FLAT_DEFENSIVE
+      base: 0.0
+      hard-cap: 0.50
+      late-game-bonus: 0.20
+    disarm-chance:
+      preset: FLAT_DEFENSIVE
+      base: 0.0
+      hard-cap: 0.30
+      late-game-bonus: 0.15
+    disarm-duration-ticks: 100
+
+  heavy-armor-training:
+    kb-reduction:
+      preset: FLAT_DEFENSIVE
+      base: 0.0
+      hard-cap: 0.50
+      late-game-bonus: 0.25
+    armor-bonus:
+      preset: FLAT_DEFENSIVE
+      base: 0.0
+      hard-cap: 0.15
+      late-game-bonus: 0.10
+    defense-bar-bonus:
+      preset: STEADY
+      base: 0.0
+      hard-cap: 200.0
+      late-game-bonus: 100.0

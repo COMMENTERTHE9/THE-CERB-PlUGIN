@@ -7,8 +7,9 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ProtectionToggleCommand implements CommandExecutor {
 
@@ -18,7 +19,7 @@ public class ProtectionToggleCommand implements CommandExecutor {
             "Usage: /toggleprotection [on|off]";
 
     // Stores each player's toggle state (true = enabled checking)
-    private final HashMap<UUID, Boolean> protectionToggles = new HashMap<>();
+    private final Map<UUID, Boolean> protectionToggles = new ConcurrentHashMap<>();
 
     @Override
     public boolean onCommand(CommandSender sender,

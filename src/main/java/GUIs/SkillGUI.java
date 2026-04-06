@@ -1,669 +1,170 @@
 package GUIs;
 
+import GUIs.SkillDefinitions.SkillCategory;
+import GUIs.SkillDefinitions.SkillDef;
 import Skills.SkillManager;
-import cerberus.world.cerb.CerberusPlugin;
-import cerberus.world.cerb.CustomPlayer;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Data-driven skill category menu. Uses {@link SkillDefinitions} for all
+ * skill metadata -- no more hardcoded skill lists repeated six times.
+ * <p>
+ * The old {@link #update} and {@link #show} methods are kept for backward
+ * compatibility with legacy callers (MobKillListener, MenuListener, etc.).
+ */
 public class SkillGUI {
-    private final CerberusPlugin plugin;
+
+    private final JavaPlugin plugin;
     private final SkillManager skillManager;
 
-    public SkillGUI(CerberusPlugin plugin, SkillManager skillManager) {
+    public SkillGUI(JavaPlugin plugin, SkillManager skillManager) {
         this.plugin = plugin;
         this.skillManager = skillManager;
     }
 
-    // Show the appropriate skill menu
+    // ── Primary entry point ─────────────────────────────────────────
+
+    /**
+     * Open a category skill menu for the given player.
+     *
+     * @param player   target player
+     * @param category which category to display
+     */
+    public void openCategoryMenu(Player player, SkillCategory category) {
+        List<SkillDef> skills = SkillDefinitions.byCategory(category);
+
+        GuiIdentity identity = switch (category) {
+            case COMBAT  -> GuiIdentity.SKILL_COMBAT;
+            case MAGIC   -> GuiIdentity.SKILL_MAGIC;
+            case UTILITY -> GuiIdentity.SKILL_UTILITY;
+        };
+
+        // Enough rows to fit all skills inside the border
+        int innerSlotCount = skills.size();
+        int innerRows = Math.max(1, (int) Math.ceil(innerSlotCount / 7.0));
+        int totalRows = innerRows + 2; // top + bottom borders
+        if (totalRows < 3) totalRows = 3;
+        if (totalRows > 6) totalRows = 6;
+
+        Inventory inv = GuiBuilder.createGui(identity, totalRows,
+                "" + category.color + ChatColor.BOLD + category.displayTitle);
+
+        // Borders: black glass, corners with category accent
+        GuiBuilder.fillBorders(inv, Material.BLACK_STAINED_GLASS_PANE);
+        setCornerAccents(inv, totalRows, category.accentGlass);
+
+        // Player skill data
+        Map<String, Integer> levels = skillManager.getPlayerSkillLevels(player);
+        Map<String, Integer> xpMap  = skillManager.getPlayerSkillXP(player);
+
+        // Interior slots (skip borders)
+        int[] interior = getInteriorSlots(totalRows);
+        for (int i = 0; i < skills.size() && i < interior.length; i++) {
+            SkillDef def = skills.get(i);
+            int level = levels.getOrDefault(def.name(), 1);
+            int xp    = xpMap.getOrDefault(def.name(), 0);
+            int reqXp = skillManager.calculateRequiredXpForNextLevel(level);
+
+            List<String> lore = new ArrayList<>();
+            lore.add(ChatColor.GRAY + def.description());
+            lore.add("");
+            lore.add(ChatColor.GRAY + "XP: " + GuiBuilder.progressBar(xp, reqXp, 20));
+            lore.add(ChatColor.YELLOW + "Click for details");
+
+            inv.setItem(interior[i], GuiBuilder.createActionItem(
+                    def.icon(),
+                    "" + category.color + ChatColor.BOLD + def.name()
+                            + ChatColor.GRAY + " (Lv " + level + ")",
+                    lore,
+                    "open_skill_detail", def.name()));
+        }
+
+        // Back arrow at bottom-left
+        inv.setItem((totalRows - 1) * 9, GuiBuilder.createBackArrow("skill_management"));
+
+        GuiBuilder.fillEmpty(inv, Material.BLACK_STAINED_GLASS_PANE);
+
+        // Back arrow slot must be skipped by the animator
+        int backSlot = (totalRows - 1) * 9;
+
+        // Folia-safe open + start border animation
+        player.getScheduler().run(plugin, (ScheduledTask t) -> {
+            player.openInventory(inv);
+            BorderAnimator.start(plugin, player, inv, category.accentGlass,
+                    Set.of(backSlot), 3);
+        }, null);
+    }
+
+    // ── Legacy compatibility ────────────────────────────────────────
+
+    /**
+     * Show a skill category by type string.
+     * Called by MenuListener and other old code paths.
+     */
     public void show(Player player, String skillType) {
         switch (skillType.toLowerCase()) {
-            case "combat":
-                showCombatSkillsMenu(player);
-                break;
-            case "magic":
-                showMagicSkillsMenu(player);
-                break;
-            case "utility":
-                showUtilitySkillsMenu(player);
-                break;
-            default:
-                player.sendMessage(ChatColor.RED + "Invalid skill type.");
-                break;
+            case "combat"  -> openCategoryMenu(player, SkillCategory.COMBAT);
+            case "magic"   -> openCategoryMenu(player, SkillCategory.MAGIC);
+            case "utility" -> openCategoryMenu(player, SkillCategory.UTILITY);
+            default -> player.sendMessage(ChatColor.RED + "Invalid skill type.");
         }
     }
 
-    // Show Combat Skills Menu
-    public void showCombatSkillsMenu(Player player) {
-        Inventory combatSkillsMenu = createCombatSkillsMenu(player);
-        player.openInventory(combatSkillsMenu);
-    }
-
-    // Show Magic Skills Menu
-    public void showMagicSkillsMenu(Player player) {
-        Inventory magicSkillsMenu = createMagicSkillsMenu(player);
-        player.openInventory(magicSkillsMenu);
-    }
-
-    // Show Utility Skills Menu
-    public void showUtilitySkillsMenu(Player player) {
-        Inventory utilitySkillsMenu = createUtilitySkillsMenu(player);
-        player.openInventory(utilitySkillsMenu);
-    }
-
-    // Create Combat Skills Menu
-    private Inventory createCombatSkillsMenu(Player player) {
-        Inventory combatSkillsMenu = plugin.getServer().createInventory(null, 27, ChatColor.RED + "Combat Skills");
-
-        CustomPlayer customPlayer = getCustomPlayer(player);
-        if (customPlayer == null) return combatSkillsMenu;
-
-        Map<String, Integer> skillLevels = customPlayer.getSkillLevels();
-        Map<String, Integer> skillXP = customPlayer.getSkillXP();
-
-        int[] combatCenteredSlots = {10, 11, 12, 13, 14, 15, 16};
-        int slotIndex = 0;
-
-        addSkillItem(combatSkillsMenu, Material.IRON_SWORD, "Blade Mastery", "Increases proficiency and damage with bladed weapons.",
-                skillLevels.getOrDefault("Blade Mastery", 0),
-                skillXP.getOrDefault("Blade Mastery", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Blade Mastery", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.LEATHER_CHESTPLATE, "Martial Expertise", "Boosts skill in hand-to-hand combat.",
-                skillLevels.getOrDefault("Martial Expertise", 0),
-                skillXP.getOrDefault("Martial Expertise", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Martial Expertise", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.DIAMOND_AXE, "Weapon Mastery", "Enhances damage with hammers, axes, and polearms.",
-                skillLevels.getOrDefault("Weapon Mastery", 0),
-                skillXP.getOrDefault("Weapon Mastery", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Weapon Mastery", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.BOW, "Ranged Precision", "Increases accuracy and damage with ranged weapons.",
-                skillLevels.getOrDefault("Ranged Precision", 0),
-                skillXP.getOrDefault("Ranged Precision", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Ranged Precision", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.IRON_CHESTPLATE, "Heavy Armor Training", "Increases defense with heavy armor.",
-                skillLevels.getOrDefault("Heavy Armor Training", 0),
-                skillXP.getOrDefault("Heavy Armor Training", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Heavy Armor Training", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.GOLDEN_SWORD, "Dual Wielding", "Enhances attack speed when dual wielding weapons.",
-                skillLevels.getOrDefault("Dual Wielding", 0),
-                skillXP.getOrDefault("Dual Wielding", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Dual Wielding", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        addSkillItem(combatSkillsMenu, Material.NETHERITE_SWORD, "Critical Strike", "Increases the chance of landing critical hits.",
-                skillLevels.getOrDefault("Critical Strike", 0),
-                skillXP.getOrDefault("Critical Strike", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Critical Strike", 0)),
-                combatCenteredSlots[slotIndex++]);
-
-        combatSkillsMenu.setItem(18, createBackButton());
-        return combatSkillsMenu;
-    }
-
-    // Create Magic Skills Menu
-    private Inventory createMagicSkillsMenu(Player player) {
-        Inventory magicSkillsMenu = plugin.getServer().createInventory(null, 27, ChatColor.BLUE + "Magic Skills");
-
-        CustomPlayer customPlayer = getCustomPlayer(player);
-        if (customPlayer == null) return magicSkillsMenu;
-
-        Map<String, Integer> skillLevels = customPlayer.getSkillLevels();
-        Map<String, Integer> skillXP = customPlayer.getSkillXP();
-
-        int[] magicCenteredSlots = {10, 11, 12, 13, 14, 15, 16};
-        int slotIndex = 0;
-
-        addSkillItem(magicSkillsMenu, Material.BOOK, "Intelligence", "Increases mana pool and spellcasting speed.",
-                skillLevels.getOrDefault("Intelligence", 0),
-                skillXP.getOrDefault("Intelligence", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Intelligence", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.ENCHANTED_BOOK, "Arcane Knowledge", "Boosts spell potency and range.",
-                skillLevels.getOrDefault("Arcane Knowledge", 0),
-                skillXP.getOrDefault("Arcane Knowledge", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Arcane Knowledge", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.BLAZE_POWDER, "Elemental Mastery", "Increases control over elemental magic.",
-                skillLevels.getOrDefault("Elemental Mastery", 0),
-                skillXP.getOrDefault("Elemental Mastery", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Elemental Mastery", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.SPAWNER, "Summoning", "Enhances the strength and duration of summoned creatures.",
-                skillLevels.getOrDefault("Summoning", 0),
-                skillXP.getOrDefault("Summoning", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Summoning", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.PAPER, "Spell Weaving", "Increases effectiveness when combining spells.",
-                skillLevels.getOrDefault("Spell Weaving", 0),
-                skillXP.getOrDefault("Spell Weaving", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Spell Weaving", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.POTION, "Mana Regeneration", "Increases the rate of mana regeneration.",
-                skillLevels.getOrDefault("Mana Regeneration", 0),
-                skillXP.getOrDefault("Mana Regeneration", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Mana Regeneration", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        addSkillItem(magicSkillsMenu, Material.SHIELD, "Defensive Magic", "Increases the strength of magical shields.",
-                skillLevels.getOrDefault("Defensive Magic", 0),
-                skillXP.getOrDefault("Defensive Magic", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Defensive Magic", 0)),
-                magicCenteredSlots[slotIndex++]);
-
-        magicSkillsMenu.setItem(18, createBackButton());
-        return magicSkillsMenu;
-    }
-
-    // Create Utility Skills Menu
-    private Inventory createUtilitySkillsMenu(Player player) {
-        Inventory utilitySkillsMenu = plugin.getServer().createInventory(null, 54, ChatColor.GREEN + "Utility Skills");
-
-        CustomPlayer customPlayer = getCustomPlayer(player);
-        if (customPlayer == null) return utilitySkillsMenu;
-
-        Map<String, Integer> skillLevels = customPlayer.getSkillLevels();
-        Map<String, Integer> skillXP = customPlayer.getSkillXP();
-
-        int[] utilityCenteredSlots = {
-                10, 11, 12, 13, 14, 15, 16,
-                19, 20, 21, 22, 23, 24, 25,
-                28, 29, 30, 31, 32, 33, 34,
-                37, 38, 39, 40, 41, 42
-        };
-        int slotIndex = 0;
-
-        addSkillItem(utilitySkillsMenu, Material.IRON_PICKAXE, "Mining", "Increases mining efficiency.",
-                skillLevels.getOrDefault("Mining", 0),
-                skillXP.getOrDefault("Mining", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Mining", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.WHEAT, "Farming", "Enhances crop yield.",
-                skillLevels.getOrDefault("Farming", 0),
-                skillXP.getOrDefault("Farming", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Farming", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.IRON_AXE, "Woodcutting", "Increases woodcutting efficiency.",
-                skillLevels.getOrDefault("Woodcutting", 0),
-                skillXP.getOrDefault("Woodcutting", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Woodcutting", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.FISHING_ROD, "Fishing", "Increases chances of catching rare fish.",
-                skillLevels.getOrDefault("Fishing", 0),
-                skillXP.getOrDefault("Fishing", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Fishing", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.CRAFTING_TABLE, "Crafting", "Improves crafting efficiency.",
-                skillLevels.getOrDefault("Crafting", 0),
-                skillXP.getOrDefault("Crafting", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Crafting", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.ANVIL, "Smithing", "Enhances forging abilities.",
-                skillLevels.getOrDefault("Smithing", 0),
-                skillXP.getOrDefault("Smithing", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Smithing", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.BREWING_STAND, "Alchemy", "Increases potion-making speed and potency.",
-                skillLevels.getOrDefault("Alchemy", 0),
-                skillXP.getOrDefault("Alchemy", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Alchemy", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.ENCHANTING_TABLE, "Enchanting", "Enhances enchantment abilities.",
-                skillLevels.getOrDefault("Enchanting", 0),
-                skillXP.getOrDefault("Enchanting", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Enchanting", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.FLOWER_POT, "Herbalism", "Increases yield when gathering herbs.",
-                skillLevels.getOrDefault("Herbalism", 0),
-                skillXP.getOrDefault("Herbalism", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Herbalism", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.COOKED_BEEF, "Cooking", "Improves cooking efficiency.",
-                skillLevels.getOrDefault("Cooking", 0),
-                skillXP.getOrDefault("Cooking", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Cooking", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.GOLDEN_APPLE, "First Aid", "Increases healing effectiveness.",
-                skillLevels.getOrDefault("First Aid", 0),
-                skillXP.getOrDefault("First Aid", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("First Aid", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.ENDER_PEARL, "Stealth", "Enhances sneaking abilities.",
-                skillLevels.getOrDefault("Stealth", 0),
-                skillXP.getOrDefault("Stealth", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Stealth", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.TRIPWIRE_HOOK, "Trap Mastery", "Improves trap placement and detection.",
-                skillLevels.getOrDefault("Trap Mastery", 0),
-                skillXP.getOrDefault("Trap Mastery", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Trap Mastery", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.CHEST, "Scavenging", "Increases the chance of finding rare items.",
-                skillLevels.getOrDefault("Scavenging", 0),
-                skillXP.getOrDefault("Scavenging", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Scavenging", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.ANVIL, "Repairing", "Improves weapon and armor repair abilities.",
-                skillLevels.getOrDefault("Repairing", 0),
-                skillXP.getOrDefault("Repairing", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Repairing", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.EMERALD, "Trading", "Improves trading skills.",
-                skillLevels.getOrDefault("Trading", 0),
-                skillXP.getOrDefault("Trading", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Trading", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.MAP, "Navigation", "Enhances travel efficiency.",
-                skillLevels.getOrDefault("Navigation", 0),
-                skillXP.getOrDefault("Navigation", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Navigation", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.LEAD, "Animal Taming", "Increases animal taming success rate.",
-                skillLevels.getOrDefault("Animal Taming", 0),
-                skillXP.getOrDefault("Animal Taming", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Animal Taming", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.SADDLE, "Riding", "Improves mount control and endurance.",
-                skillLevels.getOrDefault("Riding", 0),
-                skillXP.getOrDefault("Riding", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Riding", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.TRIPWIRE_HOOK, "Lockpicking", "Improves lockpicking success.",
-                skillLevels.getOrDefault("Lockpicking", 0),
-                skillXP.getOrDefault("Lockpicking", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Lockpicking", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        addSkillItem(utilitySkillsMenu, Material.CAMPFIRE, "Survival", "Increases survival in harsh conditions.",
-                skillLevels.getOrDefault("Survival", 0),
-                skillXP.getOrDefault("Survival", 0),
-                skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Survival", 0)),
-                utilityCenteredSlots[slotIndex++]);
-
-        // After adding all utility skill items
-        utilitySkillsMenu.setItem(49, createBackButton());
-
-        return utilitySkillsMenu;
-    }
-    // Add skill item with progress
-    private void addSkillItem(Inventory menu, Material material, String skillName, String description, int level, int currentXP, int xpForNextLevel, int slot) {
-        if (slot < 0 || slot >= menu.getSize()) return;
-
-        double progress = (xpForNextLevel > 0) ? (double) currentXP / xpForNextLevel : 1.0;
-        int progressBars = (int) (progress * 20);
-
-        StringBuilder progressBar = new StringBuilder();
-        progressBar.append(ChatColor.DARK_GREEN);
-        for (int i = 0; i < progressBars; i++) {
-            progressBar.append("|");
-        }
-        progressBar.append(ChatColor.DARK_GRAY);
-        for (int i = progressBars; i < 20; i++) {
-            progressBar.append("|");
-        }
-
-        String name = ChatColor.RED + skillName + " (Level " + level + ")";
-        String[] lore = {
-                description,
-                "Current Level: " + level,
-                "XP: " + currentXP + " / " + xpForNextLevel,
-                progressBar.toString(),
-                "Next Level: " + xpForNextLevel + " XP"
-        };
-
-        ItemStack item = createGuiItem(material, name, lore);
-        menu.setItem(slot, item);
-    }
-
-    // Utility to create a GUI item
-    private ItemStack createGuiItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material, 1);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    // Start real-time XP updates
-    public void startRealTimeXPUpdate(Player player, String skillType) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!player.isOnline()) {
-                    this.cancel();
-                    return;
-                }
-                updatePlayerSkills(player, skillType);
-            }
-        }.runTaskTimer(plugin, 0, 20);
-    }
-
-    public void updatePlayerSkills(Player player, String skillType) {
-        if (!player.isOnline()) return;
-        Inventory openInv = player.getOpenInventory().getTopInventory();
-        if (openInv == null) return;
-
-        String expectedTitle;
-        switch (skillType.toLowerCase()) {
-            case "combat":
-                expectedTitle = ChatColor.RED + "Combat Skills";
-                break;
-            case "magic":
-                expectedTitle = ChatColor.BLUE + "Magic Skills";
-                break;
-            case "utility":
-                expectedTitle = ChatColor.GREEN + "Utility Skills";
-                break;
-            default:
-                return; // Invalid skill type
-        }
-
-        // Check if the player is still looking at the correct menu
-        if (!player.getOpenInventory().getTitle().equals(expectedTitle)) {
-            return;
-        }
-
-        // Get updated skill data
-        CustomPlayer customPlayer = getCustomPlayer(player);
-        if (customPlayer == null) return;
-
-        Map<String, Integer> skillLevels = customPlayer.getSkillLevels();
-        Map<String, Integer> skillXP = customPlayer.getSkillXP();
-
-        if (skillType.equalsIgnoreCase("combat")) {
-            int[] combatCenteredSlots = {10, 11, 12, 13, 14, 15, 16};
-            int slotIndex = 0;
-
-            addSkillItem(openInv, Material.IRON_SWORD, "Blade Mastery", "Increases proficiency and damage with bladed weapons.",
-                    skillLevels.getOrDefault("Blade Mastery", 0),
-                    skillXP.getOrDefault("Blade Mastery", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Blade Mastery", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.LEATHER_CHESTPLATE, "Martial Expertise", "Boosts skill in hand-to-hand combat.",
-                    skillLevels.getOrDefault("Martial Expertise", 0),
-                    skillXP.getOrDefault("Martial Expertise", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Martial Expertise", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.DIAMOND_AXE, "Weapon Mastery", "Enhances damage with hammers, axes, and polearms.",
-                    skillLevels.getOrDefault("Weapon Mastery", 0),
-                    skillXP.getOrDefault("Weapon Mastery", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Weapon Mastery", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.BOW, "Ranged Precision", "Increases accuracy and damage with ranged weapons.",
-                    skillLevels.getOrDefault("Ranged Precision", 0),
-                    skillXP.getOrDefault("Ranged Precision", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Ranged Precision", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.IRON_CHESTPLATE, "Heavy Armor Training", "Increases defense with heavy armor.",
-                    skillLevels.getOrDefault("Heavy Armor Training", 0),
-                    skillXP.getOrDefault("Heavy Armor Training", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Heavy Armor Training", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.GOLDEN_SWORD, "Dual Wielding", "Enhances attack speed when dual wielding weapons.",
-                    skillLevels.getOrDefault("Dual Wielding", 0),
-                    skillXP.getOrDefault("Dual Wielding", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Dual Wielding", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.NETHERITE_SWORD, "Critical Strike", "Increases the chance of landing critical hits.",
-                    skillLevels.getOrDefault("Critical Strike", 0),
-                    skillXP.getOrDefault("Critical Strike", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Critical Strike", 0)),
-                    combatCenteredSlots[slotIndex++]);
-
-        } else if (skillType.equalsIgnoreCase("magic")) {
-            int[] magicCenteredSlots = {10, 11, 12, 13, 14, 15, 16};
-            int slotIndex = 0;
-
-            addSkillItem(openInv, Material.BOOK, "Intelligence", "Increases mana pool and spellcasting speed.",
-                    skillLevels.getOrDefault("Intelligence", 0),
-                    skillXP.getOrDefault("Intelligence", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Intelligence", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.ENCHANTED_BOOK, "Arcane Knowledge", "Boosts spell potency and range.",
-                    skillLevels.getOrDefault("Arcane Knowledge", 0),
-                    skillXP.getOrDefault("Arcane Knowledge", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Arcane Knowledge", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.BLAZE_POWDER, "Elemental Mastery", "Increases control over elemental magic.",
-                    skillLevels.getOrDefault("Elemental Mastery", 0),
-                    skillXP.getOrDefault("Elemental Mastery", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Elemental Mastery", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.SPAWNER, "Summoning", "Enhances the strength and duration of summoned creatures.",
-                    skillLevels.getOrDefault("Summoning", 0),
-                    skillXP.getOrDefault("Summoning", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Summoning", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.PAPER, "Spell Weaving", "Increases effectiveness when combining spells.",
-                    skillLevels.getOrDefault("Spell Weaving", 0),
-                    skillXP.getOrDefault("Spell Weaving", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Spell Weaving", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.POTION, "Mana Regeneration", "Increases the rate of mana regeneration.",
-                    skillLevels.getOrDefault("Mana Regeneration", 0),
-                    skillXP.getOrDefault("Mana Regeneration", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Mana Regeneration", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.SHIELD, "Defensive Magic", "Increases the strength of magical shields.",
-                    skillLevels.getOrDefault("Defensive Magic", 0),
-                    skillXP.getOrDefault("Defensive Magic", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Defensive Magic", 0)),
-                    magicCenteredSlots[slotIndex++]);
-
-        } else if (skillType.equalsIgnoreCase("utility")) {
-            int[] utilityCenteredSlots = {
-                    10, 11, 12, 13, 14, 15, 16,
-                    19, 20, 21, 22, 23, 24, 25,
-                    28, 29, 30, 31, 32, 33, 34,
-                    37, 38, 39, 40, 41, 42
-            };
-            int slotIndex = 0;
-
-            // Update all utility skills items just like in createUtilitySkillsMenu
-            addSkillItem(openInv, Material.IRON_PICKAXE, "Mining", "Increases mining efficiency.",
-                    skillLevels.getOrDefault("Mining", 0),
-                    skillXP.getOrDefault("Mining", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Mining", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.WHEAT, "Farming", "Enhances crop yield.",
-                    skillLevels.getOrDefault("Farming", 0),
-                    skillXP.getOrDefault("Farming", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Farming", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.IRON_AXE, "Woodcutting", "Increases woodcutting efficiency.",
-                    skillLevels.getOrDefault("Woodcutting", 0),
-                    skillXP.getOrDefault("Woodcutting", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Woodcutting", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.FISHING_ROD, "Fishing", "Increases chances of catching rare fish.",
-                    skillLevels.getOrDefault("Fishing", 0),
-                    skillXP.getOrDefault("Fishing", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Fishing", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.CRAFTING_TABLE, "Crafting", "Improves crafting efficiency.",
-                    skillLevels.getOrDefault("Crafting", 0),
-                    skillXP.getOrDefault("Crafting", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Crafting", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.ANVIL, "Smithing", "Enhances forging abilities.",
-                    skillLevels.getOrDefault("Smithing", 0),
-                    skillXP.getOrDefault("Smithing", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Smithing", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.BREWING_STAND, "Alchemy", "Increases potion-making speed and potency.",
-                    skillLevels.getOrDefault("Alchemy", 0),
-                    skillXP.getOrDefault("Alchemy", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Alchemy", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.ENCHANTING_TABLE, "Enchanting", "Enhances enchantment abilities.",
-                    skillLevels.getOrDefault("Enchanting", 0),
-                    skillXP.getOrDefault("Enchanting", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Enchanting", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.FLOWER_POT, "Herbalism", "Increases yield when gathering herbs.",
-                    skillLevels.getOrDefault("Herbalism", 0),
-                    skillXP.getOrDefault("Herbalism", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Herbalism", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.COOKED_BEEF, "Cooking", "Improves cooking efficiency.",
-                    skillLevels.getOrDefault("Cooking", 0),
-                    skillXP.getOrDefault("Cooking", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Cooking", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.GOLDEN_APPLE, "First Aid", "Increases healing effectiveness.",
-                    skillLevels.getOrDefault("First Aid", 0),
-                    skillXP.getOrDefault("First Aid", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("First Aid", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.ENDER_PEARL, "Stealth", "Enhances sneaking abilities.",
-                    skillLevels.getOrDefault("Stealth", 0),
-                    skillXP.getOrDefault("Stealth", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Stealth", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.TRIPWIRE_HOOK, "Trap Mastery", "Improves trap placement and detection.",
-                    skillLevels.getOrDefault("Trap Mastery", 0),
-                    skillXP.getOrDefault("Trap Mastery", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Trap Mastery", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.CHEST, "Scavenging", "Increases the chance of finding rare items.",
-                    skillLevels.getOrDefault("Scavenging", 0),
-                    skillXP.getOrDefault("Scavenging", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Scavenging", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.ANVIL, "Repairing", "Improves weapon and armor repair abilities.",
-                    skillLevels.getOrDefault("Repairing", 0),
-                    skillXP.getOrDefault("Repairing", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Repairing", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.EMERALD, "Trading", "Improves trading skills.",
-                    skillLevels.getOrDefault("Trading", 0),
-                    skillXP.getOrDefault("Trading", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Trading", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.MAP, "Navigation", "Enhances travel efficiency.",
-                    skillLevels.getOrDefault("Navigation", 0),
-                    skillXP.getOrDefault("Navigation", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Navigation", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.LEAD, "Animal Taming", "Increases animal taming success rate.",
-                    skillLevels.getOrDefault("Animal Taming", 0),
-                    skillXP.getOrDefault("Animal Taming", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Animal Taming", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.SADDLE, "Riding", "Improves mount control and endurance.",
-                    skillLevels.getOrDefault("Riding", 0),
-                    skillXP.getOrDefault("Riding", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Riding", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.TRIPWIRE_HOOK, "Lockpicking", "Improves lockpicking success.",
-                    skillLevels.getOrDefault("Lockpicking", 0),
-                    skillXP.getOrDefault("Lockpicking", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Lockpicking", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-
-            addSkillItem(openInv, Material.CAMPFIRE, "Survival", "Increases survival in harsh conditions.",
-                    skillLevels.getOrDefault("Survival", 0),
-                    skillXP.getOrDefault("Survival", 0),
-                    skillManager.calculateRequiredXpForNextLevel(skillLevels.getOrDefault("Survival", 0)),
-                    utilityCenteredSlots[slotIndex++]);
-        }
-    }
-
-    // Go back button
-    private ItemStack createBackButton() {
-        ItemStack backButton = new ItemStack(Material.ARROW);
-        ItemMeta meta = backButton.getItemMeta();
-        meta.setDisplayName(ChatColor.YELLOW + "Back");
-        meta.setLore(Arrays.asList(ChatColor.RED + "Click to return to the main menu"));
-        backButton.setItemMeta(meta);
-        return backButton;
-    }
-
+    /**
+     * No-op kept for backward compatibility with MobKillListener and
+     * PlayerJoinListener. Live GUI updates are no longer pushed; the
+     * menu refreshes when the player reopens it.
+     */
     public void update(Player player, String skillType) {
-        // Update the current menu without recreating it
-        updatePlayerSkills(player, skillType);
+        // intentional no-op
     }
 
-    private CustomPlayer getCustomPlayer(Player player) {
-        String customId = skillManager.getCustomId(player);
-        CustomPlayer customPlayer = skillManager.getCustomPlayerByCustomId(customId);
-        if (customPlayer == null) {
-            player.sendMessage(ChatColor.RED + "Error: Could not retrieve your skill data.");
-            System.out.println("[ERROR] Failed to retrieve CustomPlayer for customId: " + customId);
+    /**
+     * Legacy alias kept so old callers that passed both args still compile.
+     */
+    public void updatePlayerSkills(Player player, String skillType) {
+        // intentional no-op
+    }
+
+    /**
+     * No-op kept for backward compatibility with MobKillListener.
+     * Real-time XP updates in the GUI are no longer pushed.
+     */
+    public void startRealTimeXPUpdate(Player player, String skillType) {
+        // intentional no-op
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────
+
+    /** Place category accent glass in the four corners of the inventory. */
+    private void setCornerAccents(Inventory inv, int rows, Material accent) {
+        int size = rows * 9;
+        int lastRow = (rows - 1) * 9;
+        for (int slot : new int[]{0, 8, lastRow, lastRow + 8}) {
+            if (slot < size) {
+                inv.setItem(slot, GuiBuilder.createGlassPane(accent));
+            }
         }
-        return customPlayer;
+    }
+
+    /** Interior (non-border) slot indices for a given number of rows. */
+    private int[] getInteriorSlots(int rows) {
+        List<Integer> slots = new ArrayList<>();
+        for (int row = 1; row < rows - 1; row++) {
+            for (int col = 1; col <= 7; col++) {
+                slots.add(row * 9 + col);
+            }
+        }
+        return slots.stream().mapToInt(Integer::intValue).toArray();
     }
 }

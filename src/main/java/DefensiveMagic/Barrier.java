@@ -3,11 +3,11 @@ package DefensiveMagic;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.Particle;
-import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 public class Barrier extends DefensiveStructure {
     private final double strength;
-    private BukkitRunnable particleTask;
+    private ScheduledTask particleTask;
 
     public Barrier(Player player, double strength) {
         super(player);
@@ -45,29 +45,26 @@ public class Barrier extends DefensiveStructure {
     }
 
     private void playParticleEffect() {
-        particleTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!isActive || !player.isOnline()) {
-                    cancel();
-                    deactivate();
-                    return;
-                }
+        // Player-bound for Folia
+        particleTask = player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (!isActive || !player.isOnline()) {
+                task.cancel();
+                deactivate();
+                return;
+            }
 
-                for (double x = -1; x <= 1; x += 0.2) {
-                    for (double y = 0; y <= 2; y += 0.2) {
-                        player.getWorld().spawnParticle(
-                                Particle.SMOKE,
-                                player.getLocation().add(x, y, -1),
-                                1,
-                                0, 0, 0,
-                                0
-                        );
-                    }
+            for (double x = -1; x <= 1; x += 0.2) {
+                for (double y = 0; y <= 2; y += 0.2) {
+                    player.getWorld().spawnParticle(
+                            Particle.SMOKE,
+                            player.getLocation().add(x, y, -1),
+                            1,
+                            0, 0, 0,
+                            0
+                    );
                 }
             }
-        };
-        particleTask.runTaskTimer(plugin, 0L, 20L);
+        }, null, 1L, 20L);
     }
 
     @Override

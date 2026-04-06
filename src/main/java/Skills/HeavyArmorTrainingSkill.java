@@ -3,7 +3,6 @@ package Skills;
 import Manager.PlayerVirtualHealthManager;
 import Manager.PlayerDefenseManager;
 import cerberus.world.cerb.CustomPlayer;
-import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
@@ -24,67 +23,19 @@ public class HeavyArmorTrainingSkill extends CombatSkill {
         if (customPlayer == null) return;
 
         Player player = customPlayer.getBukkitPlayer();
-        int level = this.getLevel(); // Get the current skill level
 
-        // Calculate the percentage of armor worn
-        double armorMultiplier = calculateArmorMultiplier(player);
-
-        // Apply a more significant percentage of the full damage reduction effect
-        CustomPlayer.AttributeWrapper attributeWrapper = customPlayer.getCustomAttribute(Attribute.GENERIC_ARMOR);
-        if (attributeWrapper != null) {
-            double baseValue = attributeWrapper.getBaseValue();
-            attributeWrapper.setBaseValue(baseValue * (0.75 + 0.25 * armorMultiplier) * (1 + 0.01 * level)); // Scales with skill level
-        }
-
-        // Apply knockback resistance proportional to the armor worn and skill level
-        double knockbackReduction = 1 - (0.05 * level * armorMultiplier);
-        virtualHealthManager.setKnockbackReductionFactor(player, knockbackReduction);
-
-        // Apply increased health proportional to the armor worn and skill level using the PlayerVirtualHealthManager
-        double currentMaxHealth = virtualHealthManager.getPlayerMaxVirtualHealth(player);
-        double additionalHealth = 2.0 * armorMultiplier * (1 + 0.01 * level);
-        virtualHealthManager.setPlayerMaxVirtualHealth(player, currentMaxHealth + additionalHealth);
-
-        // Reduce the Virtual Health damage taken based on the skill level
-        virtualHealthManager.reduceVirtualHealthDamage(player, level * 0.05); // 5% damage reduction per level
-
-        // Apply increased defense based on skill level using the PlayerDefenseManager
-        double currentDefense = defenseManager.getDefense(player);
-        double additionalDefense = currentDefense * (0.1 * level); // 10% per level increase
-        defenseManager.setDefense(player, currentDefense + additionalDefense);
+        // Defense bonuses are now computed automatically from gear + skill level
+        // via PlayerDefenseManager.applySkillBonuses(). Trigger a recalc.
+        defenseManager.updateDefense(player);
     }
 
     @Override
     public void applyEffect(Player player) {
         if (player == null) return;
 
-        int level = this.getLevel(); // Get the current skill level
-
-        // Calculate the percentage of armor worn
-        double armorMultiplier = calculateArmorMultiplier(player);
-
-        // Apply a more significant percentage of the full damage reduction effect
-        if (player.getAttribute(Attribute.GENERIC_ARMOR) != null) {
-            double currentArmor = player.getAttribute(Attribute.GENERIC_ARMOR).getBaseValue();
-            player.getAttribute(Attribute.GENERIC_ARMOR).setBaseValue(currentArmor * (0.75 + 0.25 * armorMultiplier) * (1 + 0.01 * level)); // Scales with skill level
-        }
-
-        // Apply knockback resistance proportional to the armor worn and skill level
-        double knockbackReduction = 1 - (0.05 * level * armorMultiplier);
-        virtualHealthManager.setKnockbackReductionFactor(player, knockbackReduction);
-
-        // Apply increased health proportional to the armor worn and skill level using the PlayerVirtualHealthManager
-        double currentMaxHealth = virtualHealthManager.getPlayerMaxVirtualHealth(player);
-        double additionalHealth = 2.0 * armorMultiplier * (1 + 0.5 * level);
-        virtualHealthManager.setPlayerMaxVirtualHealth(player, currentMaxHealth + additionalHealth);
-
-        // Reduce the Virtual Health damage taken based on the skill level
-        virtualHealthManager.reduceVirtualHealthDamage(player, level * 0.05); // 5% damage reduction per level
-
-        // Apply increased defense based on skill level using the PlayerDefenseManager
-        double currentDefense = defenseManager.getDefense(player);
-        double additionalDefense = currentDefense * (0.1 * level); // 10% per level increase
-        defenseManager.setDefense(player, currentDefense + additionalDefense);
+        // Defense bonuses are now computed automatically from gear + skill level
+        // via PlayerDefenseManager.applySkillBonuses(). Trigger a recalc.
+        defenseManager.updateDefense(player);
     }
 
     private double calculateArmorMultiplier(Player player) {

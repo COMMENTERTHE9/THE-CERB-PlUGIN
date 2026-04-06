@@ -5,250 +5,152 @@ import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 
+import javax.annotation.Nullable;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
+
+/**
+ * Manages per-player armor reduction — Layer 2 of the 3-layer defense system.
+ * <p>
+ * Armor is a flat percent damage reduction based on equipped armor pieces + skill bonuses,
+ * hard-capped at {@code armorMaxReduction} (default 40%).
+ * <p>
+ * Elemental resistances (fire/cold/drowning) from the Survival skill are also managed here
+ * and pushed to {@link PlayerVirtualHealthManager}.
+ */
 public class PlayerDefenseManager {
     private final SkillManager skillManager;
     private final PlayerVirtualHealthManager virtualHealthManager;
-    private double baseDefense;
-    private double totalDefense;
-    private double armorToughness;
-    private double damageResistance;
-    private double currentEffectiveness = 1.0; // Defense effectiveness starts at 100%
-    private final double baseDefenseAmount = 10.0; // Base defense amount for all players
+    private @Nullable CombatConfig combatConfig;
+    private @Nullable DefenseBarManager defenseBarManager;
+
+    private static final Logger log = Logger.getLogger("Cerberus");
+
+    /** Per-player armor reduction (0.0–armorMaxReduction). The ONLY per-player state. */
+    private final Map<UUID, Double> playerArmorReduction = new ConcurrentHashMap<>();
 
     public PlayerDefenseManager(SkillManager skillManager, PlayerVirtualHealthManager virtualHealthManager) {
         this.skillManager = skillManager;
         this.virtualHealthManager = virtualHealthManager;
-        this.baseDefense = baseDefenseAmount; // Start with a base defense amount
-        this.totalDefense = 10;
-        this.armorToughness = 0;
-        this.damageResistance = 0;
     }
 
-    // Calculate base defense based on armor equipped
-    private double calculateBaseDefense(Player player) {
-        double defense = baseDefenseAmount; // Start with the base defense amount
-        ItemStack[] armorContents = player.getInventory().getArmorContents();
+    public void setDefenseBarManager(DefenseBarManager defenseBarManager) {
+        this.defenseBarManager = defenseBarManager;
+    }
 
+    /** Inject CombatConfig for reading armor values and caps. */
+    public void setCombatConfig(CombatConfig config) {
+        this.combatConfig = config;
+    }
+
+    /**
+     * Recalculate armor reduction from equipped gear + skill bonuses.
+     * Call on join, armor change, skill level up.
+     */
+    public void updateDefense(Player player) {
+        double armorSum = calculateArmorFromGear(player);
+        double skillBonus = calculateSkillArmorBonus(player);
+        double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
+
+        double totalReduction = Math.min(cap, armorSum + skillBonus);
+        playerArmorReduction.put(player.getUniqueId(), totalReduction);
+
+        // Push to virtual health manager
+        virtualHealthManager.setArmorReduction(player, totalReduction);
+
+        // Set vanilla armor attribute for display (cosmetic only)
+        if (player.getAttribute(Attribute.ARMOR) != null) {
+            // Scale 0.0–0.40 to 0–20 for the vanilla armor display
+            player.getAttribute(Attribute.ARMOR).setBaseValue(totalReduction * 50.0);
+        }
+
+        // Push elemental resistances from Survival skill
+        applyElementalResistances(player);
+
+        // Push defense bar bonus from Heavy Armor Training
+        applyDefenseBarBonus(player);
+    }
+
+    /** Sum per-piece armor reduction from equipped gear using CombatConfig values. */
+    private double calculateArmorFromGear(Player player) {
+        if (combatConfig == null) return 0.0;
+
+        double total = 0.0;
+        ItemStack[] armorContents = player.getInventory().getArmorContents();
         for (ItemStack item : armorContents) {
             if (item != null) {
-                switch (item.getType()) {
-                    case LEATHER_HELMET:
-                    case LEATHER_CHESTPLATE:
-                    case LEATHER_LEGGINGS:
-                    case LEATHER_BOOTS:
-                        defense += 1;
-                        break;
-                    case CHAINMAIL_HELMET:
-                    case CHAINMAIL_CHESTPLATE:
-                    case CHAINMAIL_LEGGINGS:
-                    case CHAINMAIL_BOOTS:
-                        defense += 2;
-                        break;
-                    case GOLDEN_HELMET:
-                    case GOLDEN_CHESTPLATE:
-                    case GOLDEN_LEGGINGS:
-                    case GOLDEN_BOOTS:
-                        defense += 2;
-                        break;
-                    case IRON_HELMET:
-                    case IRON_CHESTPLATE:
-                    case IRON_LEGGINGS:
-                    case IRON_BOOTS:
-                        defense += 3;
-                        break;
-                    case DIAMOND_HELMET:
-                    case DIAMOND_CHESTPLATE:
-                    case DIAMOND_LEGGINGS:
-                    case DIAMOND_BOOTS:
-                        defense += 4;
-                        break;
-                    case NETHERITE_HELMET:
-                    case NETHERITE_CHESTPLATE:
-                    case NETHERITE_LEGGINGS:
-                    case NETHERITE_BOOTS:
-                        defense += 5;
-                        break;
-                    default:
-                        break;
-                }
+                total += combatConfig.getArmorReductionForPiece(item.getType());
             }
         }
-        return defense;
+        return total;
     }
 
-    // Apply skill effects that might increase defense
-    private double applySkillBonuses(Player player) {
-        double skillBonus = 1.0;
+    /** Calculate armor bonus from Heavy Armor Training skill. */
+    private double calculateSkillArmorBonus(Player player) {
+        if (skillManager == null) return 0.0;
 
-        // Add null check for skillManager
-        if (skillManager != null) {
-            // Example: Apply Heavy Armor Training skill bonus
-            if (skillManager.getSkillLevel("Heavy Armor Training") > 0) {
-                skillBonus += skillManager.getTotalEffectMultiplier("Heavy Armor Training") - 1.0; // Assuming it returns a multiplier
-            }
-
-            // Apply SurvivalSkill bonuses (Armor Toughness and Damage Resistance)
-            if (skillManager.getSkillLevel("Survival") > 0) {
-                armorToughness += skillManager.getSkillLevel("Survival") * 1000.0; // Example: +1000 armor toughness per level
-                damageResistance += skillManager.getSkillLevel("Survival") * 0.05; // Example: +5% damage resistance per level
-            }
-        } else {
-            // Log a warning in case skillManager is not initialized
-            Bukkit.getLogger().warning("SkillManager is null in PlayerDefenseManager. Cannot apply skill bonuses.");
+        double bonus = 0.0;
+        int hatLevel = skillManager.getSkillLevel("Heavy Armor Training");
+        if (hatLevel > 0 && combatConfig != null) {
+            bonus += ScalingFormula.compute(hatLevel, combatConfig.hatArmorBonusScaling);
         }
-
-        return skillBonus;
+        return bonus;
     }
 
-    // Calculate total defense based on armor, base defense, and skills
-    public void updateDefense(Player player) {
-        this.baseDefense = calculateBaseDefense(player);
-        double skillBonus = applySkillBonuses(player);
-        this.totalDefense = baseDefense * skillBonus;
+    /**
+     * Survival skill grants elemental resistances (fire, cold, drowning).
+     * These are pushed to PlayerVirtualHealthManager's per-type resistance maps.
+     */
+    private void applyElementalResistances(Player player) {
+        if (skillManager == null) return;
 
-        // Calculate effectiveness based on total defense and player health
-        double healthFactor = player.getHealth() / player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue();
-        this.currentEffectiveness = healthFactor * (armorToughness / totalDefense);
+        int survivalLevel = skillManager.getSkillLevel("Survival");
+        if (survivalLevel <= 0) return;
 
-        // Normalize effectiveness to a reasonable value
-        if (currentEffectiveness > 1.0) {
-            currentEffectiveness = 1.0;
-        } else if (currentEffectiveness < 0.0) {
-            currentEffectiveness = 0.0;
-        }
+        // Fire: 1% per level, cap 30%
+        double fireResist = Math.min(0.30, survivalLevel * 0.01);
+        virtualHealthManager.setFireResistance(player, fireResist);
 
-        // Apply defense stats for both normal and virtual health systems
-        applyDefenseStats(player);
+        // Cold: 1% per level, cap 20%
+        double coldResist = Math.min(0.20, survivalLevel * 0.01);
+        virtualHealthManager.setColdResistance(player, coldResist);
 
-        // Start the defense recovery task if not already at full effectiveness
-        if (currentEffectiveness < 1.0) {
-            startDefenseRecoveryTask(player);
-        }
-
-        // Fire the custom event after updating defense
-        Bukkit.getPluginManager().callEvent(new PlayerDefenseUpdateEvent(player, totalDefense * currentEffectiveness));
+        // Drowning: 1% per level, cap 20%
+        double drowningResist = Math.min(0.20, survivalLevel * 0.01);
+        virtualHealthManager.setDrowningResistance(player, drowningResist);
     }
 
-    // Apply defense stats, including toughness and resistance for normal and virtual health
-    private void applyDefenseStats(Player player) {
-        // Apply toughness and resistance to virtual health (PvE and PvP)
-        virtualHealthManager.setPlayerToughness(player, armorToughness);
-        virtualHealthManager.setPlayerResistance(player, damageResistance);
+    /** Heavy Armor Training grants bonus defense bar max points. */
+    private void applyDefenseBarBonus(Player player) {
+        if (skillManager == null || combatConfig == null) return;
 
-        // Apply defense attributes for normal Minecraft health (PvE and PvP)
-        if (player.getAttribute(Attribute.GENERIC_ARMOR) != null) {
-            player.getAttribute(Attribute.GENERIC_ARMOR).setBaseValue(totalDefense * currentEffectiveness);
-        }
-        if (player.getAttribute(Attribute.GENERIC_ARMOR_TOUGHNESS) != null) {
-            player.getAttribute(Attribute.GENERIC_ARMOR_TOUGHNESS).setBaseValue(armorToughness);
-        }
-        if (player.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE) != null) {
-            player.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE).setBaseValue(damageResistance);
+        int hatLevel = skillManager.getSkillLevel("Heavy Armor Training");
+        if (hatLevel <= 0) return;
+
+        double barBonus = ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling);
+        if (defenseBarManager != null) {
+            defenseBarManager.setBonusMaxPoints(player, barBonus);
         }
     }
 
-    // Method to recover defense effectiveness over time
-    public void recoverDefense(Player player) {
-        // Check if the current effectiveness is already at 100%
-        if (currentEffectiveness >= 1.0) {
-            return; // No need to recover if already at full effectiveness
-        }
-
-        // Determine recovery rate based on the quality of the armor (Placeholder for now)
-        double recoveryRate = 0.05; // 5% recovery per tick (this is just an example)
-
-        // Gradually recover the defense effectiveness
-        currentEffectiveness += recoveryRate;
-
-        // Cap the effectiveness at 100%
-        if (currentEffectiveness > 1.0) {
-            currentEffectiveness = 1.0;
-        }
-
-        // Update player's defense attributes
-        applyDefenseStats(player);
-
-        // Fire the custom event after recovering defense
-        Bukkit.getPluginManager().callEvent(new PlayerDefenseUpdateEvent(player, totalDefense * currentEffectiveness));
+    /** Get the current armor reduction for a player (0.0–cap). */
+    public double getArmorReduction(Player player) {
+        return playerArmorReduction.getOrDefault(player.getUniqueId(), 0.0);
     }
 
-    // Method to start a task that recovers defense effectiveness over time
-    public void startDefenseRecoveryTask(Player player) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                // Make sure the player is still online before processing
-                if (!player.isOnline()) {
-                    this.cancel();
-                    return;
-                }
-
-                // Run on main thread since we're modifying bukkit API elements
-                Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), () -> {
-                    // Call the recoverDefense method
-                    recoverDefense(player);
-
-                    // If defense is fully recovered, stop the task
-                    if (currentEffectiveness >= 1.0) {
-                        this.cancel();
-                    }
-                });
-            }
-        }.runTaskTimer(Bukkit.getPluginManager().getPlugin("CerberusPlugin"), 0L, 20L); // Remove Asynchronously
+    /**
+     * Remove per-player state. Idempotent, safe if absent.
+     */
+    public void removePlayer(UUID uuid) {
+        playerArmorReduction.remove(uuid);
     }
 
-    // Get the current defense effectiveness
-    public double getCurrentEffectiveness() {
-        return currentEffectiveness;
-    }
-
-    // Get the current defense value
-    public double getDefense(Player player) {
-        return totalDefense;
-    }
-
-    // Set a new defense value
-    public void setDefense(Player player, double defense) {
-        this.totalDefense = defense;
-        applyDefenseStats(player);
-
-        // Fire the custom event after setting defense
-        Bukkit.getPluginManager().callEvent(new PlayerDefenseUpdateEvent(player, defense * currentEffectiveness));
-    }
-
-    // Get the base defense value (without skill bonuses)
-    public double getBaseDefense(Player player) {
-        return baseDefense;
-    }
-
-    // Increase the player's defense by a specified amount
-    public void increaseDefense(Player player, double amount) {
-        this.totalDefense += amount;
-        applyDefenseStats(player);
-
-        // Fire the custom event after increasing defense
-        Bukkit.getPluginManager().callEvent(new PlayerDefenseUpdateEvent(player, totalDefense * currentEffectiveness));
-    }
-
-    // Increase the player's armor toughness
-    public void increaseArmorToughness(Player player, double amount) {
-        this.armorToughness += amount;
-        virtualHealthManager.setPlayerToughness(player, armorToughness); // Sync with virtual health system
-        applyDefenseStats(player);
-    }
-
-    // Increase the player's damage resistance
-    public void increaseDamageResistance(Player player, double amount) {
-        this.damageResistance += amount;
-        virtualHealthManager.setPlayerResistance(player, damageResistance); // Sync with virtual health system
-        applyDefenseStats(player);
-    }
-
-    // Display defense on the player's HUD (this method would be called from your HUD Manager)
-    public String getDefenseDisplay() {
-        return String.format("Defense: %.2f | Toughness: %.2f | Resistance: %.2f | Effectiveness: %.2f%%",
-                totalDefense, armorToughness, damageResistance, currentEffectiveness * 100);
+    /** Armor % display string for HUD. */
+    public String getDefenseDisplay(Player player) {
+        double reduction = getArmorReduction(player);
+        return String.format("Armor: %.0f%%", reduction * 100);
     }
 }

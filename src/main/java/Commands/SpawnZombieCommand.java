@@ -1,17 +1,17 @@
 package Commands;
 
 import CustomEntities.CustomHighHealthZombie;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
 public class SpawnZombieCommand implements CommandExecutor {
 
-    private final JavaPlugin plugin;
+    private final CerberusPlugin plugin;
 
-    public SpawnZombieCommand(JavaPlugin plugin) {
+    public SpawnZombieCommand(CerberusPlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -37,7 +37,7 @@ public class SpawnZombieCommand implements CommandExecutor {
             return false;
         }
 
-        CustomHighHealthZombie.spawn(player.getLocation(), extraHealth);
+        CustomHighHealthZombie.spawn(player.getLocation(), extraHealth, plugin);
         player.sendMessage("Spawned a custom high-health zombie!");
 
         return true;

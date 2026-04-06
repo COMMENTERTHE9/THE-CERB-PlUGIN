@@ -109,12 +109,13 @@ public class RepairingSkill extends UtilitySkill {
 
     // Automatically tag the item as over-repaired
     private void tagItemAsOverRepaired(ItemStack item, Player player) {
-        if (item == null) return;
+        if (item == null || !item.hasItemMeta()) return;
 
         NamespacedKey key = new NamespacedKey(craftingManager.getPlugin(), "OverRepaired");
-        item.getItemMeta().getPersistentDataContainer().set(key, PersistentDataType.STRING, "OverRepaired");
+        var meta = item.getItemMeta();
+        meta.getPersistentDataContainer().set(key, PersistentDataType.STRING, "OverRepaired");
+        item.setItemMeta(meta); // PDC changes require setItemMeta to persist
 
-        // Apply any additional logic for over-repaired items
         player.sendMessage("The item is now tagged as over-repaired with special bonuses.");
     }
 }

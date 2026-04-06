@@ -20,15 +20,11 @@ import java.util.UUID;
 public class CraftingManager {
     private final SkillManager skillManager;
     private final JavaPlugin plugin; // For plugin-related operations like NamespacedKeys
-    private final MaterialCostManager materialCostManager; // Manager for modifying material costs
-    private final BrokenItemManager brokenItemManager; // Manager for handling broken items
     private final Random random = new Random();  // Random instance for generating random values
 
     public CraftingManager(SkillManager skillManager, JavaPlugin plugin) {
         this.skillManager = skillManager;
         this.plugin = plugin;
-        this.materialCostManager = new MaterialCostManager(plugin);
-        this.brokenItemManager = new BrokenItemManager(plugin);
     }
 
     // New getPlugin method
@@ -205,8 +201,12 @@ public class CraftingManager {
 
         if (newDurability <= 0) {
             item.setDurability(maxDurability); // Set to max durability to make it useless
-            // Use BrokenItemManager to mark the item as broken
-            brokenItemManager.markItemAsBroken(item);
+            // Mark the item as broken via display name
+            ItemMeta brokenMeta = item.getItemMeta();
+            if (brokenMeta != null) {
+                brokenMeta.setDisplayName(brokenMeta.getDisplayName() + ChatColor.RED + " [Broken]");
+                item.setItemMeta(brokenMeta);
+            }
         } else {
             item.setDurability(newDurability);
         }
@@ -273,8 +273,8 @@ public class CraftingManager {
     private void addAttackSpeedBonus(ItemStack item, double attackSpeed) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.addAttributeModifier(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED,
-                    new org.bukkit.attribute.AttributeModifier(java.util.UUID.randomUUID(), "attack_speed", attackSpeed, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER));
+            meta.addAttributeModifier(org.bukkit.attribute.Attribute.ATTACK_SPEED,
+                    new org.bukkit.attribute.AttributeModifier(new org.bukkit.NamespacedKey(plugin, "attack_speed"), attackSpeed, org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER));
             item.setItemMeta(meta);
         }
     }

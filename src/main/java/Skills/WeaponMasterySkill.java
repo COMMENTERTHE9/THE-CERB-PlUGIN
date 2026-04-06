@@ -20,7 +20,7 @@ public class WeaponMasterySkill extends CombatSkill {
         Player bukkitPlayer = player.getBukkitPlayer();
 
         // Example: Increase weapon attack damage by 15% for this skill level
-        CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.ATTACK_DAMAGE);
         if (attributeWrapper != null) {
             double baseValue = attributeWrapper.getBaseValue();
             attributeWrapper.setBaseValue(baseValue * 1.15); // Increase attack damage by 15%
@@ -28,7 +28,7 @@ public class WeaponMasterySkill extends CombatSkill {
 
         // Convert a portion of the damage dealt into Virtual Health
         double damageDealt = attributeWrapper != null ? attributeWrapper.getBaseValue() : 0;
-        double virtualHealthGain = damageDealt * (0.09 * getLevel()); // 5% of damage dealt per level is converted to Virtual Health
+        double virtualHealthGain = damageDealt * (0.05 * getLevel()); // 5% of damage dealt per level is converted to Virtual Health
 
         virtualHealthManager.increasePlayerVirtualHealth(bukkitPlayer, virtualHealthGain);
 
@@ -40,15 +40,25 @@ public class WeaponMasterySkill extends CombatSkill {
         if (player == null) return;
 
         // Example: Increase weapon attack damage by 15% for this skill level
-        if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            double currentAttackDamage = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-            player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(currentAttackDamage * 1.15);
+        if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+            double currentAttackDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
+            player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(currentAttackDamage * 1.15);
         }
 
         // Convert a portion of the damage dealt into Virtual Health
-        double damageDealt = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue() : 0;
+        double damageDealt = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue() : 0;
         double virtualHealthGain = damageDealt * (0.05 * getLevel()); // 5% of damage dealt per level is converted to Virtual Health
 
         virtualHealthManager.increasePlayerVirtualHealth(player, virtualHealthGain);
+    }
+
+    /** Public getter for CombatSkillProcessor — lifesteal percent per level. */
+    public double getLifestealPercent() {
+        return getLevel() * 0.05;
+    }
+
+    /** Public getter for CombatSkillProcessor — flat damage multiplier (1.15x). */
+    public double getDamageMultiplier() {
+        return 1.15;
     }
 }

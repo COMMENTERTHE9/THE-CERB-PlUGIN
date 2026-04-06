@@ -118,18 +118,18 @@ public class RegionManagementCommands implements CommandExecutor {
         }
         Region last = regions.get(regions.size() - 1);
         namedRegions.put(name, last);
-        player.sendMessage(ChatColor.GREEN + "Last selected region named “" + name + "”.");
+        player.sendMessage(ChatColor.GREEN + "Last selected region named \"" + name + "\".");
     }
 
     private void teleportToRegion(Player player, String name) {
         Region region = namedRegions.get(name);
         if (region == null) {
-            player.sendMessage(ChatColor.RED + "No region found named “" + name + "”.");
+            player.sendMessage(ChatColor.RED + "No region found named \"" + name + "\".");
             return;
         }
         Location loc = region.getMin().clone().add(0, 1, 0);
-        player.teleport(loc);
-        player.sendMessage(ChatColor.GREEN + "Teleported to region “" + name + "”.");
+        player.teleportAsync(loc);
+        player.sendMessage(ChatColor.GREEN + "Teleported to region \"" + name + "\".");
     }
 
     private String getRegionName(Region region) {

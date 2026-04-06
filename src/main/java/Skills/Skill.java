@@ -45,6 +45,10 @@ public abstract class Skill {
         return level;
     }
 
+    public void setLevel(int level) {
+        this.level = level;
+    }
+
     public double getExperience() {
         return experience;
     }

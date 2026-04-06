@@ -1,110 +1,146 @@
 package Spells;
 
+import Listener.VirtualHealthListener;
+import Manager.CustomDamageType;
 import Manager.ManaType;
 import Manager.PlayerManaManager;
-import Manager.EffectManager;  // Import the EffectManager
-import cerberus.world.cerb.CerberusPlugin;
+import Manager.EffectManager;
+import Manager.SpellDamageContext;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Bukkit;
 import org.bukkit.util.Vector;
 import org.bukkit.Location;
 
 import java.util.List;
 
+/**
+ * Fireball spell — launches a projectile that explodes on contact.
+ * <p>
+ * Now integrates with the custom damage pipeline via {@link SpellDamageContext}.
+ * Before dealing damage, registers context so the {@link VirtualHealthListener}
+ * routes it through CombatContext with the correct damage type, knockback, and
+ * elemental tag.
+ */
 public class FireballSpell extends Spell {
 
     private final PlayerManaManager manaManager;
-    private final EffectManager effectManager;  // Declare the EffectManager
-    private final double baseManaCost = 20; // Base mana cost for casting the Fireball spell
-    private final double baseDamage = 10; // Base damage of the Fireball spell
-    private final double explosionRadius = 3.0; // Radius for AoE damage
+    private final EffectManager effectManager;
+    private final org.bukkit.plugin.java.JavaPlugin plugin;
+    private VirtualHealthListener virtualHealthListener;
+    private final double baseManaCost = 20;
+    private final double baseDamage = 10;
+    private final double explosionRadius = 3.0;
 
-    public FireballSpell(PlayerManaManager manaManager, EffectManager effectManager) {  // Add EffectManager to the constructor
+    /** Spell damage context — PYROMANCY type, 1.5x knockback, fire element, no armor bypass. */
+    private static final SpellDamageContext FIREBALL_CONTEXT = new SpellDamageContext(
+            CustomDamageType.PYROMANCY,
+            1.5,    // extra knockback for explosive feel
+            "FIRE",
+            false   // does not bypass armor
+    );
+
+    public FireballSpell(PlayerManaManager manaManager, EffectManager effectManager,
+                         org.bukkit.plugin.java.JavaPlugin plugin, VirtualHealthListener virtualHealthListener) {
         super("Fireball");
         this.manaManager = manaManager;
-        this.effectManager = effectManager;  // Initialize the EffectManager
+        this.effectManager = effectManager;
+        this.plugin = plugin;
+        this.virtualHealthListener = virtualHealthListener;
+    }
+
+    public void setVirtualHealthListener(VirtualHealthListener listener) {
+        this.virtualHealthListener = listener;
     }
 
     @Override
     public void cast(Player player) {
-        // Check if the player has enough mana to cast the spell
         double manaCost = baseManaCost;
         double damage = baseDamage;
 
         // Apply any skill-based mana cost reductions or damage bonuses
-        effectManager.applyMagicSkillEffect(player, "Elemental Mastery");  // Use the EffectManager to apply effects
+        effectManager.applyMagicSkillEffect(player, "Elemental Mastery");
 
-        // Updated spendMana call without passing Player object
-        if (!manaManager.spendMana(player,ManaType.BASIC, manaCost)) {
+        if (!manaManager.spendMana(player, ManaType.BASIC, manaCost)) {
             player.sendMessage("Not enough mana to cast Fireball!");
             return;
         }
 
-        // Define the initial location and direction of the fireball
         Location startLocation = player.getEyeLocation();
-        Vector direction = player.getLocation().getDirection().normalize().multiply(0.5); // Adjust the multiplier for speed
+        Vector direction = player.getLocation().getDirection().normalize().multiply(0.5);
 
-        // Play sound effect when casting the fireball
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.0f);
 
-        // Create the particle fireball as a moving effect
-        new BukkitRunnable() {
-            Location location = startLocation.clone();
-            int distanceTraveled = 0;
-            final int maxDistance = 50; // Maximum distance the fireball can travel
+        // Self-rescheduling fireball — each tick runs on the region owning the current position
+        tickFireball(startLocation.clone(), direction, player, damage, 0, 50);
 
-            @Override
-            public void run() {
-                if (distanceTraveled >= maxDistance) {
-                    cancel();
-                    return;
-                }
-
-                // Move the particle forward by updating its location
-                location.add(direction);
-
-                // Check for collision with a block
-                if (location.getBlock().getType().isSolid()) {
-                    createExplosionEffect(location, player, damage);
-                    cancel();
-                    return;
-                }
-
-                // Check for collisions with entities
-                List<Entity> nearbyEntities = (List<Entity>) location.getWorld().getNearbyEntities(location, 1, 1, 1);
-                for (Entity entity : nearbyEntities) {
-                    if (entity instanceof LivingEntity && !entity.equals(player)) {
-                        // Apply AoE damage on impact
-                        createExplosionEffect(location, player, damage);
-                        cancel();
-                        return;
-                    }
-                }
-
-                // Spawn the fireball particles at the updated location
-                player.getWorld().spawnParticle(Particle.FLAME, location, 15, 1, 1, 1, 0.1); // Small speed value for visual effect
-
-                distanceTraveled++;
-            }
-        }.runTaskTimer(CerberusPlugin.getInstance(), 0, 1); // Runs every tick
-
-        player.sendMessage("You have cast a Fireball spell!");
+        player.sendMessage(net.kyori.adventure.text.Component.text("You cast Fireball!")
+                .color(net.kyori.adventure.text.format.NamedTextColor.RED));
     }
 
+    /**
+     * One tick of fireball travel. Runs on the region thread owning {@code loc}.
+     * After processing, schedules the next tick on the (potentially different) region
+     * that owns the new position. This lets the fireball cross region boundaries safely.
+     */
+    private void tickFireball(Location loc, Vector direction, Player caster,
+                              double damage, int distance, int maxDistance) {
+        // Schedule this tick on the region owning the fireball's current location
+        Bukkit.getRegionScheduler().run(plugin, loc, task -> {
+            if (distance >= maxDistance) return; // fizzle out
+
+            loc.add(direction);
+
+            // Block collision
+            if (loc.getBlock().getType().isSolid()) {
+                createExplosionEffect(loc, caster, damage);
+                return;
+            }
+
+            // Entity collision
+            for (Entity entity : loc.getWorld().getNearbyEntities(loc, 1, 1, 1)) {
+                if (entity instanceof LivingEntity && !entity.equals(caster)) {
+                    createExplosionEffect(loc, caster, damage);
+                    return;
+                }
+            }
+
+            // Trail particles — tight cluster for a visible fireball
+            loc.getWorld().spawnParticle(Particle.FLAME, loc, 6, 0.1, 0.1, 0.1, 0.02);
+            loc.getWorld().spawnParticle(Particle.SMOKE, loc, 2, 0.05, 0.05, 0.05, 0.01);
+
+            // Schedule next tick (1 tick later) on whatever region owns the new position
+            Bukkit.getRegionScheduler().runDelayed(plugin, loc, nextTask ->
+                    tickFireball(loc.clone(), direction, caster, damage, distance + 1, maxDistance), 1L);
+        });
+    }
+
+    /**
+     * AoE explosion: particles + sound + damage to all nearby entities.
+     * Registers {@link SpellDamageContext} for each target BEFORE dealing damage,
+     * so the damage event routes through the full custom pipeline.
+     */
     private void createExplosionEffect(Location location, Player caster, double damage) {
-        // Play explosion sound and particle effect
         location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
         location.getWorld().spawnParticle(Particle.EXPLOSION, location, 10, 0.2, 0.2, 0.2, 0.2);
 
-        // Apply AoE damage to all entities within the explosion radius
-        List<Entity> nearbyEntities = (List<Entity>) location.getWorld().getNearbyEntities(location, explosionRadius, explosionRadius, explosionRadius);
+        VirtualHealthListener listener = this.virtualHealthListener;
+
+        List<Entity> nearbyEntities = (List<Entity>) location.getWorld()
+                .getNearbyEntities(location, explosionRadius, explosionRadius, explosionRadius);
         for (Entity entity : nearbyEntities) {
-            if (entity instanceof LivingEntity && !entity.equals(caster)) {
-                ((LivingEntity) entity).damage(damage, caster);
+            if (entity instanceof LivingEntity target && !entity.equals(caster)) {
+                // Register spell context BEFORE dealing damage — the listener picks it up
+                if (listener != null) {
+                    listener.registerSpellDamage(target.getEntityId(), FIREBALL_CONTEXT);
+                }
+                target.damage(damage, caster);
+
+                // Set fire ticks for burn DOT flavor (3 seconds)
+                target.setFireTicks(60);
             }
         }
     }

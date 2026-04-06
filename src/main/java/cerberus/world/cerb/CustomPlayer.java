@@ -2,6 +2,8 @@ package cerberus.world.cerb;
 
 import Manager.*;
 import Skills.SkillManager;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -55,9 +57,71 @@ public class CustomPlayer {
     public PlayerDefenseManager       getDefense() { return def; }
     public PlayerStrengthManager      getStrength(){ return str; }
 
+    /* ── aliases used by 24+ skill classes ──── */
+    public Player                     getPlayer()             { return bukkit; }
+    public Player                     getBukkitPlayer()       { return bukkit; }
+    public PlayerVirtualHealthManager getHealthManager()      { return vh; }
+    public PlayerDefenseManager       getDefenseManager()     { return def; }
+    public PlayerStrengthManager      getStrengthManager()    { return str; }
+    public ItemStack                  getCurrentCraftedItem() { return currentCraftItem; }
+
     public double    getMagicMultiplier()          { return magicMultiplier; }
     public void      setMagicMultiplier(double d)  { this.magicMultiplier = d; }
 
     public ItemStack getCurrentCraftItem()         { return currentCraftItem; }
     public void      setCurrentCraftItem(ItemStack i){ this.currentCraftItem = i; }
+
+    /* ── static lookup alias (used by TrapManager, etc.) ── */
+    public static CustomPlayer getCustomPlayer(Player p) {
+        return REGISTRY.get(p.getUniqueId());
+    }
+
+    /* ── skill delegation aliases (used by SkillGUI, CraftingManager, ElementalInfusionManager, etc.) ── */
+
+    /** Returns the skill-levels map for this player from the SkillManager. */
+    public Map<String, Integer> getSkillLevels() {
+        return skills.getPlayerSkillLevels(bukkit);
+    }
+
+    /** Returns the skill-XP map for this player from the SkillManager. */
+    public Map<String, Integer> getSkillXP() {
+        return skills.getPlayerSkillXP(bukkit);
+    }
+
+    /** Delegates to SkillManager.getSkillLevel(skillName). */
+    public int getSkillLevel(String skillName) {
+        return skills.getSkillLevel(skillName);
+    }
+
+    /** Delegates to SkillManager.getSkill(skillName). */
+    public Skills.Skill getSkill(String skillName) {
+        return skills.getSkill(skillName);
+    }
+
+    /* ── AttributeWrapper for combat skill classes ──── */
+
+    /**
+     * Thin wrapper around Bukkit's AttributeInstance.
+     * Used by 7+ CombatSkill classes (BladeMastery, CriticalStrike, etc.).
+     */
+    public static class AttributeWrapper {
+        private final AttributeInstance instance;
+
+        public AttributeWrapper(AttributeInstance instance) {
+            this.instance = instance;
+        }
+
+        public double getBaseValue()               { return instance.getBaseValue(); }
+        public void   setBaseValue(double value)    { instance.setBaseValue(value); }
+        public double getValue()                    { return instance.getValue(); }
+    }
+
+    /**
+     * Get a wrapped Bukkit attribute for the underlying player.
+     * Returns null if the attribute doesn't exist on this player.
+     */
+    public AttributeWrapper getCustomAttribute(Attribute attribute) {
+        AttributeInstance inst = bukkit.getAttribute(attribute);
+        return inst != null ? new AttributeWrapper(inst) : null;
+    }
 }

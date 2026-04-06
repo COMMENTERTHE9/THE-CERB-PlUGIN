@@ -9,15 +9,17 @@ import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NavigationSkill extends UtilitySkill {
     private final CraftingManager craftingManager;
-    private final Map<UUID, Long> lastXpGainTime = new HashMap<>();
-    private final SkillManager skillManager;  // Assuming you have access to SkillManager
-    private static final float MAX_WALK_SPEED = 0.3f; // Maximum allowed walk speed
+    private final Map<UUID, Long> lastXpGainTime = new ConcurrentHashMap<>();
+    private final SkillManager skillManager;
+    private static final float MAX_WALK_SPEED = 0.3f;
+    /** Fixed UUID so there's only ever ONE speed modifier per player. */
+    private static final UUID SPEED_MODIFIER_UUID = UUID.fromString("a7e3c2d1-5f00-4b8a-9c11-0a1b2c3d4e5f");
 
     public NavigationSkill(String name, CraftingManager craftingManager, SkillManager skillManager) {
         super(name);
@@ -56,39 +58,37 @@ public class NavigationSkill extends UtilitySkill {
     }
 
     private void applySpeedBonus(Player player, int level) {
-        double baseSpeedBonus = level * 0.01; // Example: +1% speed per level
-        double environmentSpeedBonus = calculateEnvironmentSpeedBonus(player); // Custom environmental modifiers
-
-        // Total speed bonus with environmental factors
+        double baseSpeedBonus = level * 0.01; // +1% speed per level
+        double environmentSpeedBonus = calculateEnvironmentSpeedBonus(player);
         double totalSpeedBonus = baseSpeedBonus + environmentSpeedBonus;
 
-        AttributeInstance movementSpeedAttribute = player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
-        if (movementSpeedAttribute == null) return; // Safety check
+        AttributeInstance movementSpeedAttribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        if (movementSpeedAttribute == null) return;
 
-        // Remove existing modifiers specific to NavigationSkill
+        // Remove the old modifier by fixed UUID (safe, no-op if absent)
         movementSpeedAttribute.getModifiers().stream()
-                .filter(modifier -> modifier.getName().equals("NavigationSkillSpeedBonus"))
-                .forEach(movementSpeedAttribute::removeModifier);
+                .filter(m -> m.getUniqueId().equals(SPEED_MODIFIER_UUID))
+                .findFirst()
+                .ifPresent(movementSpeedAttribute::removeModifier);
 
-        // Calculate the new movement speed with bonuses
-        double baseMovementSpeed = movementSpeedAttribute.getBaseValue(); // Should be around 0.1
-        double newMovementSpeed = baseMovementSpeed * (1 + totalSpeedBonus);
+        // Calculate the new speed bonus
+        double baseMovementSpeed = movementSpeedAttribute.getBaseValue(); // ~0.1
+        double bonusAmount = baseMovementSpeed * totalSpeedBonus;
 
         // Enforce the maximum speed limit
-        double maxMovementSpeed = baseMovementSpeed * (MAX_WALK_SPEED / 0.2f);
-        if (newMovementSpeed > maxMovementSpeed) {
-            newMovementSpeed = maxMovementSpeed;
-        }
+        double maxBonus = baseMovementSpeed * (MAX_WALK_SPEED / 0.2f) - baseMovementSpeed;
+        bonusAmount = Math.min(bonusAmount, maxBonus);
 
-        // Apply the new movement speed modifier
+        if (bonusAmount <= 0) return; // no bonus to apply
+
+        // Apply single modifier with fixed UUID — can never stack
         AttributeModifier speedModifier = new AttributeModifier(
-                UUID.randomUUID(),
+                SPEED_MODIFIER_UUID,
                 "NavigationSkillSpeedBonus",
-                newMovementSpeed - baseMovementSpeed,
+                bonusAmount,
                 AttributeModifier.Operation.ADD_NUMBER
         );
         movementSpeedAttribute.addModifier(speedModifier);
-
     }
 
     // Calculate environmental speed bonus based on selected vanilla Minecraft environments
@@ -96,73 +96,50 @@ public class NavigationSkill extends UtilitySkill {
         double environmentBonus = 0.0;
         Biome biome = player.getLocation().getBlock().getBiome();
 
-        // Grouped and selected relevant environments
-        switch (biome) {
-            // Cold biomes (slow movement)
-            case SNOWY_TAIGA:
-            case SNOWY_PLAINS:
-            case ICE_SPIKES:
-            case FROZEN_PEAKS:
-            case SNOWY_SLOPES:
-                environmentBonus -= 0.02; // Slower movement in cold, snowy biomes
-                break;
-
-            // Desert and warm biomes (faster movement)
-            case DESERT:
-            case SAVANNA:
-            case BADLANDS:
-            case ERODED_BADLANDS:
-                environmentBonus += 0.02; // Faster movement in hot, dry biomes
-                break;
-
-            // Swamp and mangrove (slower movement)
-            case SWAMP:
-            case MANGROVE_SWAMP:
-                environmentBonus -= 0.01; // Slower movement in swampy areas
-                break;
-
-            // Forests and plains (neutral movement)
-            case FOREST:
-            case PLAINS:
-            case MEADOW:
-            case CHERRY_GROVE:
-                environmentBonus += 0.01; // Slight speed boost in neutral biomes
-                break;
-
-            // Ocean and rivers (slow swimming)
-            case OCEAN:
-            case RIVER:
-            case FROZEN_RIVER:
-            case WARM_OCEAN:
-            case COLD_OCEAN:
-                if (player.isInWater()) {
-                    environmentBonus -= 0.03; // Slower movement while swimming
-                }
-                break;
-
-            // Nether and the End (unique environments)
-            case NETHER_WASTES:
-            case CRIMSON_FOREST:
-            case WARPED_FOREST:
-            case BASALT_DELTAS:
-            case SOUL_SAND_VALLEY:
-                environmentBonus -= 0.05; // Slower movement in nether environments
-                break;
-            case THE_END:
-            case END_HIGHLANDS:
-            case END_MIDLANDS:
-                environmentBonus += 0.02; // Slightly faster movement in The End
-                break;
-
-            // Mountainous regions (slow movement)
-            case WINDSWEPT_HILLS:
-            case JAGGED_PEAKS:
-            case STONY_PEAKS:
-                environmentBonus -= 0.02; // Slower movement in mountainous terrain
-                break;
-
-            default:
-                break;
+        // Biome is now a registry type (not an enum) — use identity comparison with static fields
+        // Cold biomes (slow movement)
+        if (biome == Biome.SNOWY_TAIGA || biome == Biome.SNOWY_PLAINS
+                || biome == Biome.ICE_SPIKES || biome == Biome.FROZEN_PEAKS
+                || biome == Biome.SNOWY_SLOPES) {
+            environmentBonus -= 0.02;
+        }
+        // Desert and warm biomes (faster movement)
+        else if (biome == Biome.DESERT || biome == Biome.SAVANNA
+                || biome == Biome.BADLANDS || biome == Biome.ERODED_BADLANDS) {
+            environmentBonus += 0.02;
+        }
+        // Swamp and mangrove (slower movement)
+        else if (biome == Biome.SWAMP || biome == Biome.MANGROVE_SWAMP) {
+            environmentBonus -= 0.01;
+        }
+        // Forests and plains (neutral movement)
+        else if (biome == Biome.FOREST || biome == Biome.PLAINS
+                || biome == Biome.MEADOW || biome == Biome.CHERRY_GROVE) {
+            environmentBonus += 0.01;
+        }
+        // Ocean and rivers (slow swimming)
+        else if (biome == Biome.OCEAN || biome == Biome.RIVER
+                || biome == Biome.FROZEN_RIVER || biome == Biome.WARM_OCEAN
+                || biome == Biome.COLD_OCEAN) {
+            if (player.isInWater()) {
+                environmentBonus -= 0.03;
+            }
+        }
+        // Nether (unique environments)
+        else if (biome == Biome.NETHER_WASTES || biome == Biome.CRIMSON_FOREST
+                || biome == Biome.WARPED_FOREST || biome == Biome.BASALT_DELTAS
+                || biome == Biome.SOUL_SAND_VALLEY) {
+            environmentBonus -= 0.05;
+        }
+        // The End
+        else if (biome == Biome.THE_END || biome == Biome.END_HIGHLANDS
+                || biome == Biome.END_MIDLANDS) {
+            environmentBonus += 0.02;
+        }
+        // Mountainous regions (slow movement)
+        else if (biome == Biome.WINDSWEPT_HILLS || biome == Biome.JAGGED_PEAKS
+                || biome == Biome.STONY_PEAKS) {
+            environmentBonus -= 0.02;
         }
 
         return environmentBonus;

@@ -31,7 +31,7 @@ public class RangedPrecisionSkill extends CombatSkill {
             }
 
             // Increase ranged attack damage
-            CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.GENERIC_ATTACK_DAMAGE); // Adjust to the correct attribute if needed
+            CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.ATTACK_DAMAGE); // Adjust to the correct attribute if needed
             if (attributeWrapper != null) {
                 double baseValue = attributeWrapper.getBaseValue();
                 attributeWrapper.setBaseValue(baseValue * (1.0 + 0.01 * level)); // Increase ranged damage by 1% per skill level
@@ -70,16 +70,16 @@ public class RangedPrecisionSkill extends CombatSkill {
             }
 
             // Increase ranged attack damage
-            if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) { // Adjust to the correct attribute if needed
-                double currentAttackDamage = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-                player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(currentAttackDamage * (1.0 + 0.01 * level)); // Increase ranged damage by 1% per skill level
+            if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) { // Adjust to the correct attribute if needed
+                double currentAttackDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
+                player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(currentAttackDamage * (1.0 + 0.01 * level)); // Increase ranged damage by 1% per skill level
             }
 
             // Increase critical hit chance
             if (random.nextDouble() < level * 0.01) { // 1% critical hit chance per skill level
                 double criticalMultiplier = 1.5; // Example critical hit multiplier
                 player.sendMessage("Critical Hit!"); // Notify the player of a critical hit
-                player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue() * criticalMultiplier);
+                player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue() * criticalMultiplier);
             }
 
             // Increase draw speed (reduce time to full draw)

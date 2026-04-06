@@ -3,12 +3,12 @@ package DefensiveMagic;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.Particle;
-import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 public class Ward extends DefensiveStructure {
     private final double duration;
-    private BukkitRunnable particleTask;
-    private BukkitRunnable durationTask;
+    private ScheduledTask particleTask;
+    private ScheduledTask durationTask;
 
     public Ward(Player player, double duration) {
         super(player);
@@ -54,51 +54,45 @@ public class Ward extends DefensiveStructure {
     }
 
     private void playParticleEffect() {
-        particleTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (!isActive || !player.isOnline()) {
-                    deactivate();
-                    return;
-                }
-
-                for (double y = 0; y <= 2; y += 0.2) {
-                    player.getWorld().spawnParticle(
-                            Particle.ELECTRIC_SPARK,
-                            player.getLocation().add(0.5, y, 0.5),
-                            1, 0, 0, 0, 0
-                    );
-                    player.getWorld().spawnParticle(
-                            Particle.ELECTRIC_SPARK,
-                            player.getLocation().add(-0.5, y, 0.5),
-                            1, 0, 0, 0, 0
-                    );
-                    player.getWorld().spawnParticle(
-                            Particle.ELECTRIC_SPARK,
-                            player.getLocation().add(0.5, y, -0.5),
-                            1, 0, 0, 0, 0
-                    );
-                    player.getWorld().spawnParticle(
-                            Particle.ELECTRIC_SPARK,
-                            player.getLocation().add(-0.5, y, -0.5),
-                            1, 0, 0, 0, 0
-                    );
-                }
+        // Player-bound for Folia
+        particleTask = player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (!isActive || !player.isOnline()) {
+                deactivate();
+                return;
             }
-        };
-        particleTask.runTaskTimer(plugin, 0L, 20L);
+
+            for (double y = 0; y <= 2; y += 0.2) {
+                player.getWorld().spawnParticle(
+                        Particle.ELECTRIC_SPARK,
+                        player.getLocation().add(0.5, y, 0.5),
+                        1, 0, 0, 0, 0
+                );
+                player.getWorld().spawnParticle(
+                        Particle.ELECTRIC_SPARK,
+                        player.getLocation().add(-0.5, y, 0.5),
+                        1, 0, 0, 0, 0
+                );
+                player.getWorld().spawnParticle(
+                        Particle.ELECTRIC_SPARK,
+                        player.getLocation().add(0.5, y, -0.5),
+                        1, 0, 0, 0, 0
+                );
+                player.getWorld().spawnParticle(
+                        Particle.ELECTRIC_SPARK,
+                        player.getLocation().add(-0.5, y, -0.5),
+                        1, 0, 0, 0, 0
+                );
+            }
+        }, null, 1L, 20L);
     }
 
     private void startDurationTimer() {
-        durationTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (isActive) {
-                    deactivate();
-                }
+        // Player-bound for Folia
+        durationTask = player.getScheduler().runDelayed(plugin, task -> {
+            if (isActive) {
+                deactivate();
             }
-        };
-        durationTask.runTaskLater(plugin, (long)(duration * 20)); // Convert seconds to ticks
+        }, null, (long)(duration * 20)); // Convert seconds to ticks
     }
 
     @Override

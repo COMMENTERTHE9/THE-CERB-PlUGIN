@@ -115,9 +115,9 @@ public class LuckManager {
         temporaryLuckMap.put(playerUUID, getTemporaryLuckPoints(player) + luckPoints);
 
         // Set a delayed task to remove the luck points after the duration
-        plugin.getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> {
+        player.getScheduler().runDelayed(plugin, task -> {
             removeTemporaryLuckPoints(player, luckPoints);
-        }, durationSec * 20L); // Convert seconds to ticks
+        }, null, durationSec * 20L); // Convert seconds to ticks
     }
 
     /**
@@ -165,16 +165,9 @@ public class LuckManager {
      * Integrates luck into finding rare loot, chest generation, fishing results, etc.
      */
     public boolean isRareLootObtained(Player player, double baseChance) {
-        // Get customId from skillManager - this is the safer approach
-        String customId = skillManager.getCustomId(player);
-        CustomPlayer customPlayer = new CustomPlayer(
-                player,
-                skillManager,
-                virtualHealthManager,
-                defenseManager,
-                strengthManager,
-                customId  // Add the required customId parameter
-        );
+        // Look up existing CustomPlayer from registry instead of creating a new one
+        CustomPlayer customPlayer = CustomPlayer.get(player.getUniqueId());
+        if (customPlayer == null) return random.nextDouble() <= baseChance;
         double luckFactor = calculateLuckFactor(customPlayer);
         double adjustedChance = baseChance * luckFactor;
         return random.nextDouble() <= adjustedChance;

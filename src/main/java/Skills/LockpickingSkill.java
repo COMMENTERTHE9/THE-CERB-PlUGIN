@@ -4,13 +4,13 @@ import Manager.LuckManager;
 import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LockpickingSkill extends UtilitySkill {
 
     private final LuckManager luckManager;
-    private final Map<String, Double> lockComplexityMap = new HashMap<>(); // Custom lock complexity system
+    private final Map<String, Double> lockComplexityMap = new ConcurrentHashMap<>(); // Custom lock complexity system
 
     public LockpickingSkill(String name, LuckManager luckManager) {
         super(name);

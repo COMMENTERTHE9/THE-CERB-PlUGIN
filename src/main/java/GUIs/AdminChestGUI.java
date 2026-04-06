@@ -1,6 +1,7 @@
 package GUIs;
 
 import cerberus.world.cerb.CerberusPlugin;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -34,26 +35,45 @@ public class AdminChestGUI {
         return meta != null && meta.getDisplayName().equals(ChatColor.DARK_PURPLE + "Admin Control Panel");
     }
 
-    public void openAdminGUI(Player player) {
-        Inventory adminGUI = plugin.getServer().createInventory(null, 27, ChatColor.DARK_PURPLE + "Admin Control Panel");
+    /**
+     * Open the admin control panel using GuiBuilder/GuiIdentity. Folia-safe.
+     */
+    public void open(Player player) {
+        Inventory inv = GuiBuilder.createGui(GuiIdentity.ADMIN_PANEL, 3,
+                ChatColor.DARK_PURPLE + "Admin Control Panel");
 
-        // Add items to the admin GUI
-        adminGUI.setItem(10, createGuiItem(Material.BOOK, ChatColor.GOLD + "Manage Regions", "View and manage regions"));
-        adminGUI.setItem(12, createGuiItem(Material.COMMAND_BLOCK, ChatColor.RED + "Server Commands", "Execute server commands"));
-        adminGUI.setItem(14, createGuiItem(Material.PLAYER_HEAD, ChatColor.BLUE + "Manage Players", "Manage player settings"));
-        adminGUI.setItem(16, createGuiItem(Material.BARRIER, ChatColor.RED + "Back", "Close the Admin Control Panel"));
+        inv.setItem(10, GuiBuilder.createActionItem(Material.BOOK,
+                ChatColor.GOLD + "Manage Regions",
+                "open_regions", null,
+                ChatColor.GRAY + "View and manage regions"));
 
-        player.openInventory(adminGUI);
+        inv.setItem(12, GuiBuilder.createActionItem(Material.COMMAND_BLOCK,
+                ChatColor.RED + "Server Commands",
+                "open_commands", null,
+                ChatColor.GRAY + "Execute server commands"));
+
+        inv.setItem(14, GuiBuilder.createActionItem(Material.PLAYER_HEAD,
+                ChatColor.BLUE + "Manage Players",
+                "open_players", null,
+                ChatColor.GRAY + "Manage player settings"));
+
+        inv.setItem(16, GuiBuilder.createActionItem(Material.BARRIER,
+                ChatColor.RED + "Close",
+                "back", null,
+                ChatColor.GRAY + "Close the Admin Control Panel"));
+
+        GuiBuilder.fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
+
+        // Folia-safe open
+        player.getScheduler().run(plugin, (ScheduledTask t) -> player.openInventory(inv), null);
     }
 
-    public void openServerCommandsGUI(Player player) {
-        Inventory serverCommandsGUI = plugin.getServer().createInventory(null, 27, ChatColor.RED + "Server Commands");
-
-        // Add item to give the player the Player Menu item in the rightmost slot of their hotbar
-        serverCommandsGUI.setItem(10, createGuiItem(Material.PLAYER_HEAD, ChatColor.DARK_PURPLE + "Give Player Menu", "Gives the player the Player Menu item in the rightmost slot of their hotbar"));
-        serverCommandsGUI.setItem(16, createGuiItem(Material.BARRIER, ChatColor.RED + "Back", "Return to Admin Control Panel"));
-
-        player.openInventory(serverCommandsGUI);
+    /**
+     * @deprecated Use {@link #open(Player)} instead. Kept for backward compatibility.
+     */
+    @Deprecated
+    public void openAdminGUI(Player player) {
+        open(player);
     }
 
     public void givePlayerMenu(Player player) {
@@ -62,16 +82,7 @@ public class AdminChestGUI {
         meta.setDisplayName(ChatColor.DARK_PURPLE + "Player Menu");
         playerMenu.setItemMeta(meta);
 
-        player.getInventory().setItem(8, playerMenu); // Set the item in the rightmost slot of the hotbar
+        player.getInventory().setItem(8, playerMenu);
         player.sendMessage(ChatColor.GREEN + "You have been given the Player Menu item in the rightmost slot of your hotbar.");
-    }
-
-    private ItemStack createGuiItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material, 1);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
-        return item;
     }
 }

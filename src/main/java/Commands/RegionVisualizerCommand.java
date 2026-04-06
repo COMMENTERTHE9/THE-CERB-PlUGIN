@@ -10,7 +10,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.util.List;
 
@@ -41,47 +41,45 @@ public class RegionVisualizerCommand implements CommandExecutor {
     }
 
     private void visualizeRegions(Player player) {
-        new BukkitRunnable() {
-            int ticks = 0;
-            @Override
-            public void run() {
-                if (ticks >= 600) { // 30 seconds (20 ticks per second)
-                    this.cancel();
-                    return;
-                }
-                List<Region> regions = CerberusWorldProtection.getProtectedRegions();
-                if (regions.isEmpty()) {
-                    if (ticks == 0) {
-                        player.sendMessage(ChatColor.YELLOW + "There are no protected regions to visualize.");
-                    }
-                    this.cancel(); // Stop the task if there are no regions to visualize.
-                    return;
-                }
-                for (Region region : regions) {
-                    Location min = region.getMin();
-                    Location max = region.getMax();
-                    for (double x = min.getX(); x <= max.getX(); x += 0.5) {
-                        spawnParticle(player, new Location(min.getWorld(), x, min.getY(), min.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), x, min.getY(), max.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), x, max.getY(), min.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), x, max.getY(), max.getZ()));
-                    }
-                    for (double y = min.getY(); y <= max.getY(); y += 0.5) {
-                        spawnParticle(player, new Location(min.getWorld(), min.getX(), y, min.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), min.getX(), y, max.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), max.getX(), y, min.getZ()));
-                        spawnParticle(player, new Location(min.getWorld(), max.getX(), y, max.getZ()));
-                    }
-                    for (double z = min.getZ(); z <= max.getZ(); z += 0.5) {
-                        spawnParticle(player, new Location(min.getWorld(), min.getX(), min.getY(), z));
-                        spawnParticle(player, new Location(min.getWorld(), min.getX(), max.getY(), z));
-                        spawnParticle(player, new Location(min.getWorld(), max.getX(), min.getY(), z));
-                        spawnParticle(player, new Location(min.getWorld(), max.getX(), max.getY(), z));
-                    }
-                }
-                ticks += 2;
+        // Player-bound for Folia (particles are sent to this player)
+        final int[] ticks = {0};
+        player.getScheduler().runAtFixedRate(plugin, task -> {
+            if (ticks[0] >= 600) { // 30 seconds (20 ticks per second)
+                task.cancel();
+                return;
             }
-        }.runTaskTimer(plugin, 0, 2);
+            List<Region> regions = CerberusWorldProtection.getProtectedRegions();
+            if (regions.isEmpty()) {
+                if (ticks[0] == 0) {
+                    player.sendMessage(ChatColor.YELLOW + "There are no protected regions to visualize.");
+                }
+                task.cancel(); // Stop the task if there are no regions to visualize.
+                return;
+            }
+            for (Region region : regions) {
+                Location min = region.getMin();
+                Location max = region.getMax();
+                for (double x = min.getX(); x <= max.getX(); x += 0.5) {
+                    spawnParticle(player, new Location(min.getWorld(), x, min.getY(), min.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), x, min.getY(), max.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), x, max.getY(), min.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), x, max.getY(), max.getZ()));
+                }
+                for (double y = min.getY(); y <= max.getY(); y += 0.5) {
+                    spawnParticle(player, new Location(min.getWorld(), min.getX(), y, min.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), min.getX(), y, max.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), max.getX(), y, min.getZ()));
+                    spawnParticle(player, new Location(min.getWorld(), max.getX(), y, max.getZ()));
+                }
+                for (double z = min.getZ(); z <= max.getZ(); z += 0.5) {
+                    spawnParticle(player, new Location(min.getWorld(), min.getX(), min.getY(), z));
+                    spawnParticle(player, new Location(min.getWorld(), min.getX(), max.getY(), z));
+                    spawnParticle(player, new Location(min.getWorld(), max.getX(), min.getY(), z));
+                    spawnParticle(player, new Location(min.getWorld(), max.getX(), max.getY(), z));
+                }
+            }
+            ticks[0] += 2;
+        }, null, 1L, 2L);
     }
 
     private void spawnParticle(Player player, Location location) {

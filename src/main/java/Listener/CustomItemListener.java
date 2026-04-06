@@ -2,44 +2,66 @@ package Listener;
 
 import Spells.SpellManager;
 import org.bukkit.ChatColor;
-import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;                // <<< NEW
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;                // <<< NEW
+import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Handles right-click casting for custom spell items (wands, rods, etc.).
+ * Identifies spell items by PDC tag {@code cerb_spell} instead of display name.
+ */
 public class CustomItemListener implements Listener {
-    private static final String TEST_ROD_NAME = "Test Fireball Rod";   // <<< NEW
 
     private final SpellManager spellManager;
+    private final NamespacedKey spellKey;
+    private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
+    private static final long COOLDOWN_MS = 1000; // 1 second between casts
 
-    public CustomItemListener(SpellManager spellManager) {
+    public CustomItemListener(SpellManager spellManager, JavaPlugin plugin) {
         this.spellManager = spellManager;
+        this.spellKey = new NamespacedKey(plugin, "cerb_spell");
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< NEW flags
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent event) {
-
-        // EARLY‑EXIT: only care about right‑clicks
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
 
-        Player     player = event.getPlayer();
-        ItemStack  item   = event.getItem();
-        if (item == null || item.getType() != Material.BLAZE_ROD) return;
+        Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+        if (item == null) return;
 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return;
 
-        String name = ChatColor.stripColor(meta.getDisplayName());
-        if (!TEST_ROD_NAME.equalsIgnoreCase(name)) return;  // <<< use constant
+        // Check for cerb_spell PDC tag
+        String spellName = meta.getPersistentDataContainer().get(spellKey, PersistentDataType.STRING);
+        if (spellName == null) return;
 
-        // ---- At this point we know it's our Test Fireball Rod ----
-        spellManager.castSpell("Fireball", player);
-        player.sendMessage(ChatColor.RED + "You cast Fireball!");
+        event.setCancelled(true); // prevent placing blaze rods etc.
+
+        // Cooldown check
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        Long lastCast = cooldowns.get(uuid);
+        if (lastCast != null && (now - lastCast) < COOLDOWN_MS) {
+            return; // silently ignore — no spam message
+        }
+        cooldowns.put(uuid, now);
+
+        // Cast the spell
+        spellManager.castSpell(spellName, player);
     }
 }

@@ -8,7 +8,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.type.RedstoneWire;
 import org.bukkit.block.data.type.TripwireHook;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.Bukkit;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -258,23 +258,19 @@ public class TrapPattern {
         // Get rotated pattern based on facing direction
         TrapBlock[][][] rotatedPattern = getRotatedPattern(facing);
 
-        // Create restoration effect sequence
-        new BukkitRunnable() {
-            int y = pattern.length - 1;  // Start from top
-
-            @Override
-            public void run() {
-                if (y < 0) {
-                    this.cancel();
-                    playCompletionEffect(baseLocation);
-                    return;
-                }
-
-                // Restore layer with effects
-                restoreLayer(baseLocation, y);
-                y--;
+        // Create restoration effect sequence (location-bound for Folia)
+        final int[] y = { pattern.length - 1 };  // Start from top
+        Bukkit.getRegionScheduler().runAtFixedRate(plugin, baseLocation, task -> {
+            if (y[0] < 0) {
+                task.cancel();
+                playCompletionEffect(baseLocation);
+                return;
             }
-        }.runTaskTimer(plugin, 0L, 5L);  // Run every 5 ticks (0.25 seconds)
+
+            // Restore layer with effects
+            restoreLayer(baseLocation, y[0]);
+            y[0]--;
+        }, 1L, 5L);  // Run every 5 ticks (0.25 seconds)
     }
 
     private void restoreLayer(Location baseLocation, int y) {

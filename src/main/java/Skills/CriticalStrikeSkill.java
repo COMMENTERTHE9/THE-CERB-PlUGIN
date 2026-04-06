@@ -22,7 +22,7 @@ public class CriticalStrikeSkill extends CombatSkill {
         // This could be tied into your custom combat system or use Bukkit events for critical hits
 
         // Example: Applying a multiplier to attack damage for critical strikes
-        CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.ATTACK_DAMAGE);
         if (attributeWrapper != null) {
             double baseValue = attributeWrapper.getBaseValue();
             attributeWrapper.setBaseValue(baseValue * criticalHitDamageMultiplier);
@@ -41,33 +41,35 @@ public class CriticalStrikeSkill extends CombatSkill {
         // This could be tied into your custom combat system or use Bukkit events for critical hits
 
         // Example: Applying a multiplier to attack damage for critical strikes
-        if (player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            double currentAttackDamage = player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue();
-            player.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(currentAttackDamage * criticalHitDamageMultiplier);
+        if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
+            double currentAttackDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
+            player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(currentAttackDamage * criticalHitDamageMultiplier);
         }
     }
 
+    /** Public getter for CombatSkillProcessor — crit chance based on skill level. */
+    public double getCriticalHitChance() {
+        return 0.1 + (getLevel() * 0.01);
+    }
+
+    /** Public getter for CombatSkillProcessor — crit damage multiplier based on skill level. */
+    public double getCriticalHitDamageMultiplier() {
+        return 1.5 + (getLevel() * 0.05);
+    }
+
     private double getCriticalHitChance(CustomPlayer player) {
-        // Calculate the critical hit chance based on the player's level in this skill
-        int level = getLevel();
-        return 0.1 + (level * 0.01); // Example: 10% base chance + 1% per skill level
+        return getCriticalHitChance();
     }
 
     private double getCriticalHitChance(Player player) {
-        // Calculate the critical hit chance based on the player's level in this skill
-        int level = getLevel();
-        return 0.1 + (level * 0.01); // Example: 10% base chance + 1% per skill level
+        return getCriticalHitChance();
     }
 
     private double getCriticalHitDamageMultiplier(CustomPlayer player) {
-        // Calculate the critical hit damage multiplier based on the player's level in this skill
-        int level = getLevel();
-        return 1.5 + (level * 0.05); // Example: 50% extra damage + 5% per skill level
+        return getCriticalHitDamageMultiplier();
     }
 
     private double getCriticalHitDamageMultiplier(Player player) {
-        // Calculate the critical hit damage multiplier based on the player's level in this skill
-        int level = getLevel();
-        return 1.5 + (level * 0.05); // Example: 50% extra damage + 5% per skill level
+        return getCriticalHitDamageMultiplier();
     }
 }

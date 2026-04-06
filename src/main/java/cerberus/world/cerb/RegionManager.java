@@ -80,15 +80,20 @@ public class RegionManager {
 
         regionsConfig.set("regions", regionStrings);
 
-        // <<< NEW: throttle & async via AsyncSaveManager >>>
-        CerberusPlugin
-                .getInstance()
-                .getAsyncSaver()
-                .scheduleYamlSave(
-                        "regions",       // a unique key for throttling
-                        regionsConfig,   // the FileConfiguration to save
-                        regionsFile      // the File to write to
-                );
+        // During shutdown the Bukkit scheduler is already dead,
+        // so save synchronously. For runtime saves, use AsyncSaveManager.
+        if (!plugin.isEnabled()) {
+            try {
+                regionsConfig.save(regionsFile);
+            } catch (IOException e) {
+                plugin.getLogger().severe("Failed to save regions.yml: " + e.getMessage());
+            }
+        } else {
+            CerberusPlugin
+                    .getInstance()
+                    .getAsyncSaver()
+                    .scheduleYamlSave("regions", regionsConfig, regionsFile);
+        }
     }
 
 

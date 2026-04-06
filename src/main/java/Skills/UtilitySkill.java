@@ -13,13 +13,22 @@ public abstract class UtilitySkill extends Skill {
         this.skillManager = skillManager;
     }
 
-
-    /** If you ever need to call it with a Bukkit Player object */
-    public void applyEffect(Player player) {
-        applyEffect(player.getUniqueId());
+    /** Convenience constructor for subclasses that don't need SkillManager. */
+    public UtilitySkill(String name) {
+        super(name);
+        this.skillManager = null;
     }
 
-    /** New: lookup by UUID and delegate to your CustomPlayer logic */
+
+    /**
+     * Default no-op for UtilitySkill — subclasses override to provide behavior.
+     * Most utility skills are passive and don't need per-tick effects.
+     */
+    public void applyEffect(Player player) {
+        // No-op by default; subclasses override as needed
+    }
+
+    /** Convenience: lookup by UUID and delegate */
     public void applyEffect(UUID playerId) {
         Player player = Bukkit.getPlayer(playerId);
         if (player != null) applyEffect(player);

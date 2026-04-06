@@ -1,5 +1,6 @@
 package Manager;
 
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -38,7 +39,7 @@ public class AsyncSaveManager {
         if (now - last < cooldownMs) return;
 
         lastRunTimestamps.put(key, now);
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
             try {
                 cfg.save(file);
             } catch (Exception ex) {
@@ -60,7 +61,7 @@ public class AsyncSaveManager {
         if (now - last < cooldownMs) return;
 
         lastRunTimestamps.put(key, now);
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, dbTask);
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> dbTask.run());
     }
 }
 

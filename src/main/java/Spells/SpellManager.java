@@ -1,28 +1,46 @@
 package Spells;
 
+import Listener.VirtualHealthListener;
 import Manager.EffectManager;
 import Manager.PlayerManaManager;
+import Skills.SkillManager;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SpellManager {
     private final Map<String, Spell> spells;
     private final PlayerManaManager playerManaManager;
     private final EffectManager effectManager;
+    private final JavaPlugin plugin;
+    private SkillManager skillManager;
 
-    public SpellManager(EffectManager effectManager, PlayerManaManager playerManaManager) {
-        this.spells = new HashMap<>();
+    public SpellManager(EffectManager effectManager, PlayerManaManager playerManaManager, JavaPlugin plugin) {
+        this.spells = new ConcurrentHashMap<>();
         this.playerManaManager = playerManaManager;
         this.effectManager = effectManager;
+        this.plugin = plugin;
         initializeSpells();
     }
 
+    public void setSkillManager(SkillManager skillManager) {
+        this.skillManager = skillManager;
+    }
+
+    /** Call after VirtualHealthListener is created to wire spell damage context. */
+    public void setVirtualHealthListener(VirtualHealthListener listener) {
+        Spell fireball = spells.get("Fireball");
+        if (fireball instanceof FireballSpell fb) {
+            fb.setVirtualHealthListener(listener);
+        }
+    }
+
     private void initializeSpells() {
-        // Register your spells here, passing in the required managers
-        spells.put("Fireball", new FireballSpell(playerManaManager, effectManager));
-        // Add more spells as you create them
+        spells.put("Fireball", new FireballSpell(playerManaManager, effectManager, plugin, null));
+        // VirtualHealthListener injected later via setVirtualHealthListener()
     }
 
     public Spell getSpell(String name) {
@@ -33,6 +51,20 @@ public class SpellManager {
         Spell spell = getSpell(name);
         if (spell != null) {
             spell.cast(player);
+
+            // Award magic XP on successful cast
+            if (skillManager != null) {
+                // Spell Weaving: XP for casting any spell
+                skillManager.addXpAndCheckLevelUp("Spell Weaving", 15, player);
+
+                // Elemental Mastery: bonus XP for elemental spells
+                if (name.equals("Fireball")) {
+                    skillManager.addXpAndCheckLevelUp("Elemental Mastery", 10, player);
+                }
+
+                // Intelligence: small XP for any mana usage
+                skillManager.addXpAndCheckLevelUp("Intelligence", 5, player);
+            }
         } else {
             player.sendMessage("Spell not found!");
         }

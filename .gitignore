@@ -58,3 +58,9 @@ Thumbs.db
 # Build artifacts
 build/
 dist/
+
+# Test server
+test-server/
+
+# Claude Code
+.claude/

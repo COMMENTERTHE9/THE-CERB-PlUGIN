@@ -41,9 +41,11 @@ public class PlayerHUDManager {
         double maxMana = getMaxMana(player);
         double effectiveness = getDefenseEffectiveness(player);
 
-        // Determine color based on health thresholds
-        ChatColor healthColor = getHealthColor(health);
-        ChatColor manaColor = getManaColor(mana);
+        // Determine color based on percentage thresholds
+        double healthPct = (maxHealth > 0) ? health / maxHealth : 0;
+        double manaPct = (maxMana > 0) ? mana / maxMana : 0;
+        ChatColor healthColor = getHealthColor(healthPct);
+        ChatColor manaColor = getManaColor(manaPct);
         ChatColor effectivenessColor = getEffectivenessColor(effectiveness);
 
         // Build HUD string
@@ -68,24 +70,22 @@ public class PlayerHUDManager {
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hudBuilder.toString()));
     }
 
-    private ChatColor getHealthColor(double health) {
-        if (health > 260000) return ChatColor.WHITE; // Platinum
-        if (health > 230000) return ChatColor.GOLD;  // Gold
-        if (health > 200000) return ChatColor.GRAY;  // Silver
-        if (health > 150000) return ChatColor.BLACK; // Bronze
-        if (health > 100000) return ChatColor.YELLOW; // Yellow
-        if (health > 50000) return ChatColor.BLUE;   // Blue
-        return ChatColor.RED;                        // Red
+    private ChatColor getHealthColor(double healthPct) {
+        if (healthPct > 0.90) return ChatColor.GREEN;
+        if (healthPct > 0.75) return ChatColor.DARK_GREEN;
+        if (healthPct > 0.50) return ChatColor.YELLOW;
+        if (healthPct > 0.25) return ChatColor.GOLD;
+        if (healthPct > 0.10) return ChatColor.RED;
+        return ChatColor.DARK_RED;
     }
 
-    private ChatColor getManaColor(double mana) {
-        if (mana > 260000) return ChatColor.DARK_BLUE; // Platinum
-        if (mana > 230000) return ChatColor.GOLD;      // Gold
-        if (mana > 200000) return ChatColor.GRAY;      // Silver
-        if (mana > 150000) return ChatColor.DARK_AQUA; // Teal
-        if (mana > 100000) return ChatColor.GREEN;     // Light Green
-        if (mana > 50000) return ChatColor.AQUA;       // Cyan
-        return ChatColor.BLUE;                         // Light Blue
+    private ChatColor getManaColor(double manaPct) {
+        if (manaPct > 0.90) return ChatColor.AQUA;
+        if (manaPct > 0.75) return ChatColor.DARK_AQUA;
+        if (manaPct > 0.50) return ChatColor.BLUE;
+        if (manaPct > 0.25) return ChatColor.DARK_BLUE;
+        if (manaPct > 0.10) return ChatColor.DARK_PURPLE;
+        return ChatColor.GRAY;
     }
 
     private ChatColor getEffectivenessColor(double effectiveness) {
@@ -97,8 +97,8 @@ public class PlayerHUDManager {
     }
 
     private double getDefenseEffectiveness(Player player) {
-        // Retrieve the defense effectiveness from PlayerDefenseManager
-        return defenseManager.getCurrentEffectiveness();
+        // Armor reduction (0.0–0.40) scaled to 0.0–1.0 for HUD color display
+        return defenseManager.getArmorReduction(player) / 0.40;
     }
 
     private double getMana(Player player) {

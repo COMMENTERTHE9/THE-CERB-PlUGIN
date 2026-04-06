@@ -4,7 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.Bukkit;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.UUID;
 
 public abstract class DefensiveStructure {
@@ -12,7 +12,7 @@ public abstract class DefensiveStructure {
     protected final UUID structureId;
     protected boolean isActive;
     protected Location location;
-    protected BukkitTask activeTask;
+    protected ScheduledTask activeTask;
     protected final Plugin plugin;
 
     public DefensiveStructure(Player player) {

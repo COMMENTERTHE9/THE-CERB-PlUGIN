@@ -17,6 +17,7 @@
     </properties>
 
     <build>
+        <finalName>Cerberus</finalName>
         <defaultGoal>clean package</defaultGoal>
         <plugins>
             <plugin>
@@ -86,7 +87,7 @@
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.21.1-R0.1-SNAPSHOT</version>
+            <version>1.21.11-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
 
@@ -108,21 +109,13 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.41.2.2</version>
         </dependency>
-        <dependency>
-            <groupId>com.github.DecentSoftware-eu</groupId>
-            <artifactId>DecentHolograms</artifactId>
-            <version>2.8.11</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.comphenix.protocol</groupId>
-            <artifactId>ProtocolLib</artifactId>
-            <version>4.8.0</version>
-        </dependency>
+        <!-- DecentHolograms removed — using Paper native TextDisplay API -->
+        <!-- ProtocolLib removed — incompatible with Folia. DefensiveMagicSkill disabled. -->
         <dependency>
             <groupId>net.kyori</groupId>
             <artifactId>adventure-api</artifactId>
-            <version>4.17.0</version>
+            <version>4.26.1</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 </project>

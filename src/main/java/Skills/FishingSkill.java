@@ -8,8 +8,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.Plugin;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FishingSkill extends UtilitySkill {
 
@@ -18,7 +18,7 @@ public class FishingSkill extends UtilitySkill {
     private final Plugin plugin; // Reference to the main plugin instance
 
     // Map to store sea monster tags with associated conditions
-    private final Map<String, SeaMonsterTag> seaMonsterTags = new HashMap<>();
+    private final Map<String, SeaMonsterTag> seaMonsterTags = new ConcurrentHashMap<>();
 
     public FishingSkill(String name, ResourceYieldManager yieldManager, SeaMonsterManager seaMonsterManager, Plugin plugin) {
         super(name);
@@ -38,13 +38,11 @@ public class FishingSkill extends UtilitySkill {
         // Enhance resource yield from fishing based on skill level
         yieldManager.applyYieldBonus(player, "Fishing");
 
-        // Apply bonuses to player (health, defense, strength, etc.)
+        // Apply bonuses to player (defense is now gear-based, no longer granted by gathering skills)
         double healthBonus = level * 1.0;
-        double defenseBonus = level * 0.5;
         double strengthBonus = level * 0.3;
 
         customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getDefenseManager().increaseDefense(player, defenseBonus);
         customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
 
         // Custom Enhancements including Sea Monsters

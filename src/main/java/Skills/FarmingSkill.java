@@ -27,12 +27,10 @@ public class FarmingSkill extends UtilitySkill {
         // Enhance resource yield from farming based on skill level
         yieldManager.applyYieldBonus(player, "Farming");
 
-        // Apply health and defense bonuses
+        // Apply health bonus (defense is now gear-based, no longer granted by gathering skills)
         double healthBonus = level * 1.5; // Example: +1.5 health per level
-        double defenseBonus = level * 1.0; // Example: +1.0 defense per level
 
         customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getDefenseManager().increaseDefense(player, defenseBonus);
 
         // Optionally, you could also add a strength bonus
         double strengthBonus = level * 1.2; // Example: +1.2 strength per level
@@ -104,15 +102,16 @@ public class FarmingSkill extends UtilitySkill {
         // Check if the tool is tagged for the specific crop type
         if (isToolEffectiveForCrop(tool, targetBlock.getType())) {
             double toolEffectivenessMultiplier = 1.0 + (level * 0.15); // Example: 15% bonus for effective tools
-            player.sendMessage("Your " + tool.getItemMeta().getDisplayName() + " grants you an extra " + (toolEffectivenessMultiplier * 100) + "% yield.");
+            String toolDisplayName = (tool.hasItemMeta() && tool.getItemMeta().hasDisplayName())
+                    ? tool.getItemMeta().getDisplayName() : tool.getType().name();
+            player.sendMessage("Your " + toolDisplayName + " grants you an extra " + (toolEffectivenessMultiplier * 100) + "% yield.");
             yieldManager.applyYieldBonus(player, "Farming");
         }
     }
 
     // Check if the tool the player is using is effective for the specific crop type
     private boolean isToolEffectiveForCrop(ItemStack tool, Material cropType) {
-        // Logic to check if the tool is effective for the given crop type
-        // For simplicity, let's assume we use tool names or lore to determine effectiveness
+        if (!tool.hasItemMeta() || !tool.getItemMeta().hasDisplayName()) return false;
         String toolName = tool.getItemMeta().getDisplayName().toLowerCase();
 
         switch (cropType) {

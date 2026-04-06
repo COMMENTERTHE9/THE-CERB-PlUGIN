@@ -7,15 +7,15 @@ import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.*;
 import org.bukkit.block.Biome;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RidingSkill extends UtilitySkill {
 
     private final CraftingManager craftingManager;
-    private final Map<UUID, Double> mountFatigueMap = new HashMap<>();
-    private final Map<UUID, Integer> mountLoyaltyMap = new HashMap<>();
+    private final Map<UUID, Double> mountFatigueMap = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> mountLoyaltyMap = new ConcurrentHashMap<>();
 
     public RidingSkill(String name, CraftingManager craftingManager) {
         super(name);
@@ -58,7 +58,7 @@ public class RidingSkill extends UtilitySkill {
     private void applyMountSpeedBonus(Player player, double speedBonus) {
         if (player.getVehicle() instanceof LivingEntity) {
             LivingEntity mount = (LivingEntity) player.getVehicle();
-            AttributeInstance speedAttribute = mount.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+            AttributeInstance speedAttribute = mount.getAttribute(Attribute.MOVEMENT_SPEED);
             if (speedAttribute != null) {
                 speedAttribute.setBaseValue(speedAttribute.getBaseValue() * (1.0 + speedBonus));
             }
@@ -73,37 +73,23 @@ public class RidingSkill extends UtilitySkill {
         double terrainBonus = 0.0;
         Biome biome = player.getLocation().getBlock().getBiome();
 
-        switch (biome) {
-            case PLAINS:
-            case SUNFLOWER_PLAINS:
-                terrainBonus += 0.05;
-                break;
-            case FOREST:
-            case BIRCH_FOREST:
-            case DARK_FOREST:
-                terrainBonus -= 0.03;
-                break;
-            case DESERT:
-                terrainBonus += 0.02;
-                break;
-            case SWAMP:
-                terrainBonus -= 0.04;
-                break;
-            case SNOWY_SLOPES:
-            case SNOWY_TAIGA:
-                terrainBonus -= 0.02;
-                break;
-            case JUNGLE:
-                terrainBonus -= 0.05;
-                break;
-            case OCEAN:
-            case RIVER:
-                if (player.isInWater()) {
-                    terrainBonus += 0.10;
-                }
-                break;
-            default:
-                break;
+        // Biome is now a registry type (not an enum) — use identity comparison
+        if (biome == Biome.PLAINS || biome == Biome.SUNFLOWER_PLAINS) {
+            terrainBonus += 0.05;
+        } else if (biome == Biome.FOREST || biome == Biome.BIRCH_FOREST || biome == Biome.DARK_FOREST) {
+            terrainBonus -= 0.03;
+        } else if (biome == Biome.DESERT) {
+            terrainBonus += 0.02;
+        } else if (biome == Biome.SWAMP) {
+            terrainBonus -= 0.04;
+        } else if (biome == Biome.SNOWY_SLOPES || biome == Biome.SNOWY_TAIGA) {
+            terrainBonus -= 0.02;
+        } else if (biome == Biome.JUNGLE) {
+            terrainBonus -= 0.05;
+        } else if (biome == Biome.OCEAN || biome == Biome.RIVER) {
+            if (player.isInWater()) {
+                terrainBonus += 0.10;
+            }
         }
 
         return terrainBonus;
@@ -145,7 +131,7 @@ public class RidingSkill extends UtilitySkill {
 
     private void applyDolphinBonuses(Dolphin dolphin, int level) {
         double swimmingSpeedBonus = level * 0.10;
-        AttributeInstance speedAttribute = dolphin.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+        AttributeInstance speedAttribute = dolphin.getAttribute(Attribute.MOVEMENT_SPEED);
         if (speedAttribute != null) {
             speedAttribute.setBaseValue(speedAttribute.getBaseValue() * (1.0 + swimmingSpeedBonus));
         }
@@ -190,7 +176,7 @@ public class RidingSkill extends UtilitySkill {
             mountFatigueMap.put(mountUUID, fatigue);
 
             if (fatigue > 0.5) {
-                AttributeInstance speedAttribute = mount.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED);
+                AttributeInstance speedAttribute = mount.getAttribute(Attribute.MOVEMENT_SPEED);
                 if (speedAttribute != null) {
                     speedAttribute.setBaseValue(speedAttribute.getBaseValue() * (1.0 - fatigue));
                 }
@@ -203,7 +189,7 @@ public class RidingSkill extends UtilitySkill {
         if (player.getVehicle() instanceof LivingEntity) {
             LivingEntity mount = (LivingEntity) player.getVehicle();
             double armorBonus = level * 0.02; // Example: +2% armor bonus per level
-            mount.getAttribute(Attribute.GENERIC_ARMOR).setBaseValue(mount.getAttribute(Attribute.GENERIC_ARMOR).getBaseValue() * (1.0 + armorBonus));
+            mount.getAttribute(Attribute.ARMOR).setBaseValue(mount.getAttribute(Attribute.ARMOR).getBaseValue() * (1.0 + armorBonus));
             System.out.println("Mount's armor increased by " + armorBonus * 100 + "%.");
         }
     }
@@ -212,7 +198,7 @@ public class RidingSkill extends UtilitySkill {
     public void summonMount(Player player) {
         if (player.getVehicle() instanceof LivingEntity) {
             LivingEntity mount = (LivingEntity) player.getVehicle();
-            mount.teleport(player.getLocation());
+            mount.teleportAsync(player.getLocation());
             System.out.println("Mount has been summoned to the player.");
         }
     }

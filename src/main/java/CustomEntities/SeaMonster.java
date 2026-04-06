@@ -24,9 +24,9 @@ public class SeaMonster {
             entity = (Mob) world.spawnEntity(location, EntityType.GUARDIAN); // Ensure it's a Mob or subclass
             entity.setCustomName("Sea Monster");
             entity.setCustomNameVisible(true);
-            entity.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(100.0); // Example: Set max health
+            entity.getAttribute(Attribute.MAX_HEALTH).setBaseValue(100.0); // Example: Set max health
             entity.setHealth(100.0); // Set health
-            entity.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(15.0); // Example: Set attack damage
+            entity.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(15.0); // Example: Set attack damage
         }
     }
 

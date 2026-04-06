@@ -1,94 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════
+# Cerberus Skill Trigger Routing
+# ═══════════════════════════════════════════════════════════════════
+#
+# Determines which skill gets XP when a mob is killed, based on the
+# weapon the player was holding.
+#
+# RULES:
+#   - Lower priority number = matched first
+#   - At same priority: exact 'materials' checked before 'material-regex'
+#   - First match wins — no further entries checked
+#   - If no config match: elemental tag → armor fallback → no XP
+#
+# MATCH TYPES:
+#   materials:       Exact material name list (fast O(1) lookup)
+#   material-regex:  Regex patterns against Material.name() (checked in order)
+#
+# Only combat/magic skills belong here. Utility skills (Mining, Farming,
+# Woodcutting, etc.) get XP from block-break events, not mob kills.
+# ═══════════════════════════════════════════════════════════════════
+
 skill-triggers:
-  # Combat skills
-  Martial Expertise:
-    patterns: ["AIR"]
+
+  # ── Combat Skills ────────────────────────────────────────────────
+
   Blade Mastery:
-    patterns: [".*_SWORD"]
-  Weapon Mastery:
-    patterns: [".*_(AXE|HAMMER)"]
-  Ranged Precision:
-    patterns: ["BOW","CROSSBOW"]
-  Heavy Armor Training:
-    patterns: []     # no item→skill mapping; you may leave empty
-  Dual Wielding:
-    patterns: []     # handled in code via off‑hand check
-  Critical Strike:
-    patterns: []     # permission or special proc
+    priority: 10
+    match:
+      material-regex:
+        - ".*_SWORD"
 
-  # Magic skills
-  Intelligence:
-    patterns: []     # stat only
-  Arcane Knowledge:
-    patterns: ["ENCHANTED_BOOK"]
-  Elemental Mastery:
-    patterns: []     # elemental‑tagged “<TYPE>”
-  Summoning:
-    patterns: []     # permission‑based
   Spell Weaving:
-    patterns: [".*WAND.*","STICK"]
-  Mana Regeneration:
-    patterns: []     # permission‑based
-  Defensive Magic:
-    patterns: []     # stat only
+    # Spell focus items — wands, rods, staves. Matched before axes/weapons
+    # so holding a BLAZE_ROD routes to magic, not the armor fallback.
+    priority: 15
+    match:
+      materials:
+        - "BLAZE_ROD"
+        - "BREEZE_ROD"
+        - "END_ROD"
+        - "STICK"
+      material-regex:
+        - ".*WAND.*"
+        - ".*STAFF.*"
 
-  # Utility skills
-  Mining:
-    patterns: ["WOODEN_PICKAXE","STONE_PICKAXE","IRON_PICKAXE","GOLDEN_PICKAXE","DIAMOND_PICKAXE","NETHERITE_PICKAXE"]
-  Farming:
-    patterns: ["WOODEN_HOE","STONE_HOE","IRON_HOE","GOLDEN_HOE","DIAMOND_HOE","NETHERITE_HOE"]
-  Woodcutting:
-    patterns: ["WOODEN_AXE","STONE_AXE","IRON_AXE","GOLDEN_AXE","DIAMOND_AXE","NETHERITE_AXE"]
-  Fishing:
-    patterns: ["FISHING_ROD"]
-  Crafting:
-    patterns: ["CRAFTING_TABLE"]
-  Smithing:
-    patterns: ["ANVIL","GRINDSTONE"]
-  Alchemy:
-    patterns: ["BREWING_STAND"]
-  Enchanting:
-    patterns: ["ENCHANTING_TABLE"]
-  Herbalism:
-    patterns: ["SHEARS"]
-  Cooking:
-    patterns: ["CAULDRON"]
-  First Aid:
-    patterns: ["POTION","SPLASH_POTION"]  # adjust to your healing‑item identifiers
-  Stealth:
-    patterns: ["LEATHER_BOOTS","LEATHER_HELMET"]  # example triggers
+  Weapon Mastery:
+    priority: 20
+    match:
+      materials:
+        - "MACE"
+        - "TRIDENT"
+      material-regex:
+        - ".*_AXE"
 
-  # Other skills
-  Trap Mastery:
-    patterns: ["TRIPWIRE_HOOK","LEVER"]
-  Scavenging:
-    patterns: []     # depends on loot tables or luckManager
-  Repairing:
-    patterns: []     # use anvils? leave empty if code‑only
-  Trading:
-    patterns: ["GOLD_NUGGET","EMERALD","DIAMOND"]
-  Navigation:
-    patterns: ["ELYTRA"]      # triggers any movement; you may leave empty
-  Animal Taming:
-    patterns: ["LEAD","SADDLE"]
-  Riding:
-    patterns: ["SADDLE"]
-  Lockpicking:
-    patterns: ["TRIPWIRE_HOOK"]  # or leave empty if code only
-  Survival:
-    patterns: ["FLINT_AND_STEEL"]  # example
+  Ranged Precision:
+    priority: 30
+    match:
+      materials:
+        - "BOW"
+        - "CROSSBOW"
 
-  # Elemental‑tagged skills (triggered by NBT, not material name)
-  Pyromancy:
-    patterns: []     # maps FIRE
-  Cryomancy:
-    patterns: []     # maps ICE
-  Electromancy:
-    patterns: []     # maps LIGHTNING
-  Dark Arts:
-    patterns: []     # maps DARK
-  Geomancy:
-    patterns: []     # maps EARTH
-  Aeromancy:
-    patterns: []     # maps WIND
-  Binding Mastery:
-    patterns: []     # maps BINDING
+  Arcane Knowledge:
+    priority: 40
+    match:
+      materials:
+        - "ENCHANTED_BOOK"
+
+  Martial Expertise:
+    # AIR = empty main hand (fist fighting).
+    # Also matches when a stack runs out or the slot is empty for any
+    # reason — acceptable edge case for unarmed combat.
+    priority: 100
+    match:
+      materials:
+        - "AIR"
+
+# ── Magic Settings ─────────────────────────────────────────────────
+
+magic:
+  # Spell focus users get kill XP (from MobKillListener) AND cast XP
+  # (from SpellManager). Set to false if spell users level too fast.
+  award-kill-xp-for-spell-focus: true
+
+  # Skills considered "magic" for the toggle above.
+  # If the matched skill name is in this list and the toggle is false,
+  # kill XP is suppressed (cast XP from SpellManager still fires).
+  magic-skills:
+    - "Spell Weaving"
+    - "Arcane Knowledge"
+    - "Elemental Mastery"
+    - "Intelligence"
+    - "Summoning"
+    - "Mana Regeneration"
+    - "Defensive Magic"

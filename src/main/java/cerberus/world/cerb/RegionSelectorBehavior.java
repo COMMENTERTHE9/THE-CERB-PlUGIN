@@ -5,14 +5,15 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RegionSelectorBehavior {
 
     private final CerberusPlugin plugin;
     private final ItemUtils itemUtils;
-    private final HashMap<UUID, Location[]> playerSelections = new HashMap<>();
+    private final Map<UUID, Location[]> playerSelections = new ConcurrentHashMap<>();
 
     public RegionSelectorBehavior(CerberusPlugin plugin) {
         this.plugin = plugin;

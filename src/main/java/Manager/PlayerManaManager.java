@@ -5,14 +5,14 @@ import Manager.ManaType;
 import Manager.PlayerManaUpdateEvent;
 import Skills.SkillManager;
 import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.Plugin;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerManaManager {
     private final SkillManager skillManager;
@@ -24,15 +24,18 @@ public class PlayerManaManager {
     private long lastRegenTime;
 
     // Maps to track mana drain, boost effects, and boost limits
-    private final Map<UUID, Double> playerManaDrains = new HashMap<>();
-    private final Map<UUID, Long> drainEndTimes = new HashMap<>();
-    private final Map<UUID, Double> activeManaBoosts = new HashMap<>();
-    private final Map<UUID, Long> boostEndTimes = new HashMap<>();
-    private final Map<UUID, Integer> boostCountMap = new HashMap<>();
-    private final Map<UUID, Long> lastBoostTimeMap = new HashMap<>();
+    private final Map<UUID, Double> playerManaDrains = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> drainEndTimes = new ConcurrentHashMap<>();
+    private final Map<UUID, Double> activeManaBoosts = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> boostEndTimes = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> boostCountMap = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastBoostTimeMap = new ConcurrentHashMap<>();
 
     // Map to track active shields
-    private final Map<UUID, Shield> activeShields = new HashMap<>();
+    private final Map<UUID, Shield> activeShields = new ConcurrentHashMap<>();
+
+    // Map to track active mana regen tasks per player (prevents stacking and enables cleanup)
+    private final Map<UUID, ScheduledTask> regenTasks = new ConcurrentHashMap<>();
 
     private static final int MAX_BOOSTS_PER_MINUTE = 3;
     private final Plugin plugin;
@@ -126,7 +129,8 @@ public class PlayerManaManager {
     // Method to check if a player has an active shield
     public boolean hasActiveShield(Player player) {
         UUID playerId = player.getUniqueId();
-        return activeShields.containsKey(playerId) && activeShields.get(playerId).isActive();
+        Shield shield = activeShields.get(playerId);
+        return shield != null && shield.isActive();
     }
 
     // Method to absorb damage using the shield
@@ -143,17 +147,49 @@ public class PlayerManaManager {
 
     // Method to start the mana regeneration task
     public void startManaRegenTask(Player player) {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (player.isOnline()) {
-                    regenerateMana(manaRegenRate / 20); // Regenerate mana every tick (1/20th of a second)
-                    setPlayerCurrentMana(player, currentMana);
-                } else {
-                    this.cancel(); // Stop the task if the player is offline
-                }
+        // Cancel any existing regen task to prevent stacking
+        stopManaRegenTask(player);
+
+        ScheduledTask task = player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
+            if (player.isOnline()) {
+                regenerateMana(manaRegenRate / 20); // Regenerate mana every tick (1/20th of a second)
+                setPlayerCurrentMana(player, currentMana);
+            } else {
+                scheduledTask.cancel();
+                regenTasks.remove(player.getUniqueId());
             }
-        }.runTaskTimer(plugin, 0L, 1L); // Run every tick (1 tick = 1/20th of a second)
+        }, null, 1L, 1L);
+        regenTasks.put(player.getUniqueId(), task);
+    }
+
+    // Method to stop the mana regeneration task for a player
+    public void stopManaRegenTask(Player player) {
+        ScheduledTask task = regenTasks.remove(player.getUniqueId());
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+
+    /**
+     * Remove all per-player state for the given UUID.
+     * Idempotent, safe if UUID not present, cancels tasks first.
+     */
+    public void removePlayer(UUID uuid) {
+        // Stop regen task
+        ScheduledTask task = regenTasks.remove(uuid);
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+
+        // Clear all per-player maps
+        playerManaDrains.remove(uuid);
+        drainEndTimes.remove(uuid);
+        activeManaBoosts.remove(uuid);
+        boostEndTimes.remove(uuid);
+        boostCountMap.remove(uuid);
+        lastBoostTimeMap.remove(uuid);
+        activeShields.remove(uuid);
+        playerManaShields.remove(uuid);
     }
 
     /** Spend BASIC mana */
@@ -187,28 +223,25 @@ public class PlayerManaManager {
         long endTime = System.currentTimeMillis() + (durationInSeconds * 1000);
         drainEndTimes.put(playerId, endTime);
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                long currentTime = System.currentTimeMillis();
+        player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
+            long currentTime = System.currentTimeMillis();
 
-                if (currentTime > drainEndTimes.getOrDefault(playerId, 0L)) {
-                    playerManaDrains.remove(playerId);
-                    drainEndTimes.remove(playerId);
-                    this.cancel();
-                    return;
-                }
-
-                double currentMana = getCurrentMana(player);
-                double newMana = currentMana - (drainAmountPerSecond / 20);
-
-                if (newMana < 0) {
-                    newMana = 0;
-                }
-
-                setPlayerCurrentMana(player, newMana);
+            if (currentTime > drainEndTimes.getOrDefault(playerId, 0L)) {
+                playerManaDrains.remove(playerId);
+                drainEndTimes.remove(playerId);
+                scheduledTask.cancel();
+                return;
             }
-        }.runTaskTimerAsynchronously(Bukkit.getPluginManager().getPlugin("cerb"), 0L, 1L);
+
+            double currentMana = getCurrentMana(player);
+            double newMana = currentMana - (drainAmountPerSecond / 20);
+
+            if (newMana < 0) {
+                newMana = 0;
+            }
+
+            setPlayerCurrentMana(player, newMana);
+        }, null, 1L, 1L);
     }
 
     public void applyTemporaryManaBoost(Player player, double boostAmount, long durationInSeconds) {
@@ -227,21 +260,18 @@ public class PlayerManaManager {
 
         incrementBoostCount(playerId);
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                long currentTime = System.currentTimeMillis();
+        player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
+            long currentTime = System.currentTimeMillis();
 
-                if (currentTime > boostEndTimes.getOrDefault(playerId, 0L)) {
-                    totalMana -= boostAmount;
-                    if (currentMana > totalMana) {
-                        currentMana = totalMana;
-                    }
-                    boostEndTimes.remove(playerId);
-                    this.cancel();
+            if (currentTime > boostEndTimes.getOrDefault(playerId, 0L)) {
+                totalMana -= boostAmount;
+                if (currentMana > totalMana) {
+                    currentMana = totalMana;
                 }
+                boostEndTimes.remove(playerId);
+                scheduledTask.cancel();
             }
-        }.runTaskTimerAsynchronously(Bukkit.getPluginManager().getPlugin("cerb"), 0L, 20L);
+        }, null, 1L, 20L);
     }
 
     private boolean canApplyBoost(Player player) {
@@ -277,13 +307,10 @@ public class PlayerManaManager {
         this.magicDamageMultiplier = multiplier;
 
         if (isSurge) {
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    applyMagicDamageMultiplier(player, 1.0, false);
-                    player.sendMessage("Your Magic Surge has ended.");
-                }
-            }.runTaskLater(Bukkit.getPluginManager().getPlugin("cerb"), 200L);
+            player.getScheduler().runDelayed(plugin, task -> {
+                applyMagicDamageMultiplier(player, 1.0, false);
+                player.sendMessage("Your Magic Surge has ended.");
+            }, null, 200L);
         }
     }
 
@@ -293,18 +320,18 @@ public class PlayerManaManager {
         setCurrentSpellManaCost(player, manaCost);
     }
 
-    public void applyTemporaryRegenBoost(double boost, long duration) {
+    public void applyTemporaryRegenBoost(Player player, double boost, long duration) {
         this.manaRegenRate += boost;
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                manaRegenRate -= boost;
-            }
-        }.runTaskLater(Bukkit.getPluginManager().getPlugin("cerb"), duration / 50);
+        player.getScheduler().runDelayed(plugin, task -> {
+            manaRegenRate -= boost;
+        }, null, Math.max(1L, duration / 50));
     }
 
     private double getCurrentSpellManaCost(Player player) {
+        if (!player.hasMetadata("currentSpellManaCost")) {
+            return 0.0;
+        }
         return player.getMetadata("currentSpellManaCost").get(0).asDouble();
     }
 
@@ -313,6 +340,9 @@ public class PlayerManaManager {
     }
 
     private double getCurrentSpellDamage(Player player) {
+        if (!player.hasMetadata("currentSpellDamage")) {
+            return 0.0;
+        }
         return player.getMetadata("currentSpellDamage").get(0).asDouble();
     }
 
@@ -361,7 +391,7 @@ public class PlayerManaManager {
 
     private void activateMagicSurge(Player player) {
         applyMagicDamageMultiplier(player, 1.5, true);
-        applyTemporaryRegenBoost(2.0, 200L);
+        applyTemporaryRegenBoost(player, 2.0, 200L);
 
         player.sendMessage("You enter a Magic Surge! Spells are more powerful and your mana regenerates faster.");
     }
@@ -377,7 +407,11 @@ public class PlayerManaManager {
     }
 
     private int getRecentSpellCasts(Player player, String element) {
-        return player.getMetadata("recent" + element + "Casts").get(0).asInt();
+        String key = "recent" + element + "Casts";
+        if (!player.hasMetadata(key)) {
+            return 0;
+        }
+        return player.getMetadata(key).get(0).asInt();
     }
 
     private void activateElementalSynergy(Player player) {
@@ -394,7 +428,7 @@ public class PlayerManaManager {
     }
 
     // Map to track the active mana shield type per player
-    private final Map<UUID, ManaShieldType> playerManaShields = new HashMap<>();
+    private final Map<UUID, ManaShieldType> playerManaShields = new ConcurrentHashMap<>();
 
     // Method for players to select their preferred mana shield type
     public void selectManaShield(Player player, ManaShieldType shieldType) {

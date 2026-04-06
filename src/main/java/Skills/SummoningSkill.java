@@ -62,23 +62,21 @@ public class SummoningSkill extends MagicSkill {
         summonedCreature.setCustomName(player.getName() + "'s Summoned Creature");
 
         // Apply strength enhancement
-        summonedCreature.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(
-                summonedCreature.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).getBaseValue() * strengthMultiplier
+        summonedCreature.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(
+                summonedCreature.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue() * strengthMultiplier
         );
 
         // Tag the entity as a summoned creature
         tagSummonedCreature(summonedCreature);
 
-        // Schedule a task to remove the creature after the duration expires
-        new org.bukkit.scheduler.BukkitRunnable() {
-            @Override
-            public void run() {
-                if (summonedCreature.isValid()) {
-                    summonedCreature.remove();
-                    player.sendMessage("Your summoned creature has returned to the void.");
-                }
-            }
-        }.runTaskLater(plugin, (long) (duration * 20)); // Convert seconds to ticks (20 ticks = 1 second)
+        // Schedule a task to remove the creature after the duration expires (region-bound for Folia)
+        org.bukkit.Bukkit.getRegionScheduler().runDelayed(plugin, summonedCreature.getLocation(),
+                task -> {
+                    if (summonedCreature.isValid()) {
+                        summonedCreature.remove();
+                        player.sendMessage("Your summoned creature has returned to the void.");
+                    }
+                }, (long) (duration * 20)); // Convert seconds to ticks (20 ticks = 1 second)
 
         player.sendMessage("You have summoned a creature for " + (int) duration + " seconds with enhanced strength!");
     }

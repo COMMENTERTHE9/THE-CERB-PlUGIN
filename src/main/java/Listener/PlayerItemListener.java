@@ -76,7 +76,7 @@ public class PlayerItemListener implements Listener {
     // ----------------------------------------------------------------
     // Any right‑click interaction with held items
     // ----------------------------------------------------------------
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent e) {
         Player p = e.getPlayer();
 

@@ -22,28 +22,12 @@ public class SurvivalSkill extends UtilitySkill {
         Player player = customPlayer.getPlayer();
         int level = this.getLevel();
 
-        // Apply toughness bonus based on skill level
-        double toughnessBonus = level * 1000.0; // Example: +1000 toughness per level
-        defenseManager.increaseArmorToughness(player, toughnessBonus);
-
-        // Apply damage resistance bonus based on skill level
-        double resistanceBonus = level * 0.05; // Example: +5% resistance per level
-        defenseManager.increaseDamageResistance(player, resistanceBonus);
-
-        // Additional bonuses for levels above 100
-        if (level > 100) {
-            double highLevelToughnessBonus = (level - 100) * 2000.0;
-            defenseManager.increaseArmorToughness(player, highLevelToughnessBonus);
-
-            double highLevelResistanceBonus = (level - 100) * 0.1;
-            defenseManager.increaseDamageResistance(player, highLevelResistanceBonus);
-        }
+        // Toughness and resistance bonuses are now handled automatically in
+        // PlayerDefenseManager.applyElementalResistances(). Trigger a recalc.
+        defenseManager.updateDefense(player);
 
         // Apply environmental resistances based on skill level
         applyEnvironmentalResistances(player, level);
-
-        // Update both normal and virtual health systems
-        defenseManager.updateDefense(player);
     }
 
     @Override

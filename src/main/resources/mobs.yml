@@ -1,0 +1,61 @@
+# ============================================================
+# Cerberus Mob Registry — mobs.yml
+# ============================================================
+# Each entry under 'mobs:' has a stable internal ID (the key),
+# a classification, an optional XP multiplier override, and
+# match rules that determine how to identify the mob in-game.
+# ============================================================
+
+# Default XP multipliers per classification.
+# Individual entries inherit these unless they specify xp-multiplier.
+classification-defaults:
+  BOSS: 5.0
+  RARE: 2.0
+  NORMAL: 1.0
+
+# Print match reasons to console on every resolve() call.
+debug: false
+
+mobs:
+  ender_dragon:
+    classification: BOSS
+    match:
+      entity-type: ENDER_DRAGON
+
+  wither:
+    classification: BOSS
+    match:
+      entity-type: WITHER
+
+  wither_skeleton:
+    classification: RARE
+    match:
+      entity-type: WITHER_SKELETON
+
+  high_health_zombie:
+    classification: BOSS
+    xp-multiplier: 3.0
+    match:
+      custom-name-exact: "High Health Zombie"
+
+  sea_monster:
+    classification: RARE
+    xp-multiplier: 2.5
+    match:
+      custom-name-exact: "Sea Monster"
+
+  # Example: AND match — entity must be a ZOMBIE *and* have a name matching the pattern
+  elite_zombie:
+    classification: RARE
+    xp-multiplier: 1.8
+    match-mode: ALL
+    match:
+      entity-type: ZOMBIE
+      custom-name-pattern: "^Elite .*"
+
+  # Example: pattern-only match — any mob whose custom name starts with "Legendary"
+  legendary_mob:
+    classification: BOSS
+    xp-multiplier: 4.0
+    match:
+      custom-name-pattern: "^Legendary .*"

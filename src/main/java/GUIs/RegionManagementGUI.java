@@ -1,16 +1,11 @@
 package GUIs;
 
 import cerberus.world.cerb.CerberusPlugin;
-import cerberus.world.cerb.CerberusPlugin;
-import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-
-import java.util.List;
 
 public class RegionManagementGUI {
 
@@ -20,54 +15,33 @@ public class RegionManagementGUI {
         this.plugin = plugin;
     }
 
+    /**
+     * Open the region management menu using GuiBuilder/GuiIdentity. Folia-safe.
+     */
     public void openRegionManagementMenu(Player player) {
-        Inventory regionManagementMenu = Bukkit.createInventory(null, 54, ChatColor.GOLD + "Region Management");
+        Inventory inv = GuiBuilder.createGui(GuiIdentity.REGION_MANAGEMENT, 3,
+                ChatColor.GOLD + "Region Management");
 
-        // Add items for managing regions
-        regionManagementMenu.setItem(10, createGuiItem(Material.MAP, ChatColor.YELLOW + "View Regions", "View and manage all regions"));
-        regionManagementMenu.setItem(12, createGuiItem(Material.IRON_DOOR, ChatColor.RED + "Create Region", "Create a new region"));
-        regionManagementMenu.setItem(14, createGuiItem(Material.BARRIER, ChatColor.RED + "Delete Region", "Delete an existing region"));
+        inv.setItem(10, GuiBuilder.createActionItem(Material.MAP,
+                ChatColor.YELLOW + "View Regions",
+                "view_regions", null,
+                ChatColor.GRAY + "View and manage all regions"));
 
-        fillEmptySlotsWithPane(regionManagementMenu);
+        inv.setItem(12, GuiBuilder.createActionItem(Material.IRON_DOOR,
+                ChatColor.RED + "Create Region",
+                "create_region", null,
+                ChatColor.GRAY + "Create a new region"));
 
-        player.openInventory(regionManagementMenu);
-    }
+        inv.setItem(14, GuiBuilder.createActionItem(Material.BARRIER,
+                ChatColor.RED + "Delete Region",
+                "delete_region", null,
+                ChatColor.GRAY + "Delete an existing region"));
 
-    public void openMainMenu(Player player) {
-        Inventory mainMenu = Bukkit.createInventory(null, 36, ChatColor.DARK_PURPLE + "Main Menu");
+        inv.setItem(22, GuiBuilder.createBackArrow("admin_panel"));
 
-        mainMenu.setItem(10, createGuiItem(Material.DIAMOND_SWORD, ChatColor.RED + "Skills", "Manage your skills"));
-        mainMenu.setItem(12, createGuiItem(Material.CRAFTING_TABLE, ChatColor.GREEN + "Recipes", "View crafting recipes"));
-        mainMenu.setItem(14, createGuiItem(Material.CHEST, ChatColor.GOLD + "Collections", "View your collections"));
-        mainMenu.setItem(16, createGuiItem(Material.DRAGON_EGG, ChatColor.LIGHT_PURPLE + "Mobs", "View mobs information"));
+        GuiBuilder.fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
 
-        fillEmptySlotsWithPane(mainMenu);
-
-        player.openInventory(mainMenu);
-    }
-
-    private void fillEmptySlotsWithPane(Inventory inventory) {
-        ItemStack pane = new ItemStack(Material.WHITE_STAINED_GLASS_PANE);
-        ItemMeta meta = pane.getItemMeta();
-        meta.setDisplayName(" ");
-        pane.setItemMeta(meta);
-
-        for (int i = 0; i < inventory.getSize(); i++) {
-            if (inventory.getItem(i) == null || inventory.getItem(i).getType() == Material.AIR) {
-                inventory.setItem(i, pane);
-            }
-        }
-    }
-
-    private ItemStack createGuiItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material, 1);
-        ItemMeta meta = item.getItemMeta();
-
-        meta.setDisplayName(name);
-        meta.setLore(List.of(lore));
-
-        item.setItemMeta(meta);
-
-        return item;
+        // Folia-safe open
+        player.getScheduler().run(plugin, (ScheduledTask t) -> player.openInventory(inv), null);
     }
 }
