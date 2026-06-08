@@ -62,7 +62,7 @@ Weapons are **not** a flat list — every weapon has an **archetype** (its ident
 | 5 | **Staff / Gun (cudgel)** | Martial Expertise | 2H | Fast | 1.10 | defense-bar-shred | Flurry: 3-hit micro-combo, knockback finisher |
 | 6 | **Hammer / Maul (blunt)** | Heavy Armor Training\* | 2H | V.Slow | 2.60 | defense-bar-breaker | Ignores 25% of defense-bar absorption; stun on crit |
 | 7 | **Axe / Battleaxe** | Weapon Mastery | 1H/2H | Slow | 1.80 | armor-shred | Applies "Sundered" (−10% target armor, 4s) |
-| 8 | **Bow** | Ranged Precision | 2H | Med | 1.15 | falloff/crit | Draw-charge; Ranged Precision falloff & crit |
+| 8 | **Recurve Bow** (medium) | Ranged Precision | 2H | Med | 1.15 | falloff/crit | Draw-charge all-rounder; sits between Shortbow and Longbow |
 | 9 | **Crossbow** | Ranged Precision | 2H | Slow | 1.60 | armor-pierce | High flat pierce, slow reload, no falloff |
 | 10 | **Thrown (chakram/dart/javelin)** | Ranged Precision | 1H | Fast | 0.90 | balanced | Returns/recovers; cheap to spam, low per-hit |
 | 11 | **War-Fan** | Martial Expertise | 1H | Fast | 0.95 | elemental-favoring | On-hit elemental gust; deflect (parry window) |
@@ -73,14 +73,19 @@ Weapons are **not** a flat list — every weapon has an **archetype** (its ident
 | 16 | **Spirit Whip / Soul Lash** ✦exotic | Martial Expertise + Magic | 1H | Fast | 1.10 | defense-bar-bypass | Hits Virtual Health directly on charged lash |
 | 17 | **Talisman-Blade / Sabre-of-Cinders** ✦exotic | Blade Mastery + Magic | 1H | Med | 1.20 | elemental-burst | Stores 3 elemental "talisman charges," releases on combo |
 | 18 | **Cauldron-Hammer / Dao-Furnace** ✦exotic | Heavy Armor Training\* | 2H | V.Slow | 2.80 | defense-bar-breaker | Builds "Heat"; overheated swing = AoE detonation |
+| 19 | **Shortbow** (Gale / Windwhisper) | Ranged Precision | 2H | V.Fast | 0.80 | falloff/mobility | Fire-on-the-move — no draw/move penalty; rapid 3-shot rhythm; low per-shot, rewards uptime + crit |
+| 20 | **Longbow / War-Bow** (Skypiercer) | Ranged Precision | 2H | Slow | 1.75 | armor-pierce / long-range | Full-draw charge; extreme range; **line-pierce** through up to 3 foes; biggest per-shot in the bow family |
+| 21 | **Spirit-Gun / Qi-Repeater** ✦exotic | Ranged Precision + Magic | 1H/2H | Med | 1.45 | armor-bypass / **hitscan** | Instant qi-bolt (no projectile travel); spends **Spirit Rounds** (ammo) or mana; high crit + pierce; pistol / rifle / hand-cannon form-factors |
 
 > \* **Heavy Armor Training** currently has no weapon class. Blunt weapons (Hammer/Cauldron) are the natural home: a bruiser identity where defensive mastery doubles as the weapon-class skill. (Alternative: introduce a thin **"Blunt Mastery"** sub-key — a config decision, not a rewrite.)
 
-> ✦ **Exotic cultivation weapons** (15–18) gate behind realm + a Magic skill and are the bridge into spirit weapons (§5). A Flying Sword's auto-strike damage = `WP × 1.40 × (1 + manaScaling)`, so it rewards hybrid Combat/Magic builds without breaking the melee budget.
+> ✦ **Exotic cultivation weapons** (15–18, 21) gate behind realm + a Magic skill and are the bridge into spirit weapons (§5). A Flying Sword's auto-strike damage = `WP × 1.40 × (1 + manaScaling)`, so it rewards hybrid Combat/Magic builds without breaking the melee budget.
+
+> 🔫 **The Spirit-Gun (#21) — a "gun" without gunpowder.** Vanilla Minecraft has no firearms, so the Qi-Repeater is a *cultivation* gun, not a ballistic one: it fires condensed qi, implemented as a **Folia-safe hitscan** via Paper's ray-trace API (`World.rayTraceEntities` on the firing region thread) — an instant hit with a particle tracer beam + a crack SFX, so it *feels* like point-and-click shooting with no projectile lag and **no ProtocolLib**. It runs on **Spirit Rounds** (craftable ammo via Smithing/Alchemy) or raw **mana** per shot for mage-leaning builds. Three form-factors share the archetype through the variant axis (§3): **Pistol** (1H, fast, low WP), **Rifle** (2H, medium, the 1.45 baseline), **Hand-Cannon** (2H, slow, high WP + small AoE). Flavor names: *Thunderlock Repeater, Dao Revolver, Spirit Cannon.* It's the precision-burst counterpart to the bow family's sustained fire.
 
 ---
 
-### 3. The Generative Model (how 18 archetypes become 250+)
+### 3. The Generative Model (how 21 archetypes become 250+)
 
 The catalog is **archetype × realm × variant**, resolved at item-generation time from data tables — never hand-stamped. Three orthogonal variant axes generate breadth:
 
@@ -99,16 +104,16 @@ The trick: **most archetypes are not authored at every realm** — they appear a
 | Source | Math | Count |
 |---|---|---|
 | **Core melee archetypes** (Jian, Dao, Greatsword, Qiang, Staff, Hammer, Axe, Fists, Whip, War-Fan = 10) × **9 realms** each (WEAK→GODLY; PRIMORDIAL handled by divine tier) | 10 × 9 | **90** |
-| **Ranged archetypes** (Bow, Crossbow, Thrown = 3) × **8 realms** (UNCOMMON→PRIMORDIAL) | 3 × 8 | **24** |
+| **Ranged archetypes** (Shortbow, Recurve Bow, Longbow, Crossbow, Thrown = 5) × **8 realms** (UNCOMMON→PRIMORDIAL) | 5 × 8 | **40** |
 | **Dual-Wield paired sets** (claw, twin-jian, twin-dao, hook-swords, butterfly) × **5 realms** (RARE→GODLY) | 5 × 5 | **25** |
-| **Exotic cultivation weapons** (Flying Sword, Spirit Whip, Talisman-Blade, Cauldron-Hammer = 4) × **6 realms** (EPIC→PRIMORDIAL) | 4 × 6 | **24** |
+| **Exotic cultivation weapons** (Flying Sword, Spirit Whip, Talisman-Blade, Cauldron-Hammer, Spirit-Gun = 5) × **6 realms** (EPIC→PRIMORDIAL) | 5 × 6 | **30** |
 | **Elemental signature pre-builds** (one curated element-locked showcase per element × a spread of archetypes — e.g. "Voidfang Dao," "Tempest Qiang") | 6 elements × ~7 | **42** |
 | **Curated hand-named Spirit Weapons** (growable, soulbound-on-awaken; §5) | authored | **18** |
 | **Curated Divine Artifacts** (PRIMORDIAL+ apex, soulbound; §6) | authored | **12** |
 | **Boss-keyed family signature weapons** (one per Echo Family, MYTHIC/GODLY drop-only) | SAND/TIDE/ASH/FROST/MIRE +1 | **6** |
-| **— TOTAL catalog entries —** | | **≈ 245** |
+| **— TOTAL catalog entries —** | | **≈ 263** |
 
-A handful of seasonal/event slots (+5–10) trivially crosses **250+**. Crucially, only **36 entries are hand-authored** (18 spirit + 12 divine + 6 family signatures); the other **~210 are generated** from the 18 archetypes × realm × variant tables. **A solo dev authors 36 weapons and a half-dozen data tables, and the engine produces 250+.**
+The expanded ranged family pushes the catalog to **~263**, comfortably past the ~250 target — the world now has a full **Shortbow → Recurve → Longbow → Crossbow → Thrown → Spirit-Gun** spread. Crucially, only **36 entries are hand-authored** (18 spirit + 12 divine + 6 family signatures); the other **~227 are generated** from the 21 archetypes × realm × variant tables. **A solo dev authors 36 weapons and a half-dozen data tables, and the engine produces 250+.**
 
 > **Differentiation guarantee:** the generated 210 are not "the same sword with a bigger number." Each carries (a) an **archetype moveset trait** (§2), (b) one of **6 elemental on-hit grammars**, (c) a **material flavor**, and (d) **1–4 affixes** drawn from a ~40-entry pool (§4). Two RARE Jians can play completely differently — one a `Keen/Vampiric Flame` combo-extender, the other a `Heavy/Sundering Earth` armor-cracker.
 
