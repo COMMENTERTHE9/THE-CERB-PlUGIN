@@ -14,9 +14,9 @@ public class WoodcuttingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
 
         // Handle experience gain and level up logic here
         int level = this.getLevel();
@@ -28,12 +28,7 @@ public class WoodcuttingSkill extends UtilitySkill {
         double healthBonus = level * 1.5; // Example: +1.5 health per level
         double strengthBonus = level * 0.5; // Example: +0.5 strength per level
 
-        customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
+        cp.getHealthManager().increaseMaxHealth(player, healthBonus);
+        cp.getStrengthManager().increaseStrength(player, strengthBonus);
     }
 }

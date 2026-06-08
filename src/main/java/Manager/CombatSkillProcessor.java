@@ -97,7 +97,7 @@ public class CombatSkillProcessor {
         // Apply lifesteal healing
         double lifesteal = ctx.postDamage().getLifestealAmount();
         if (lifesteal > 0 && ctx.defense().getFinalDamage() > 0) {
-            virtualHealthManager.increasePlayerVirtualHealth(attacker, lifesteal);
+            virtualHealthManager.heal(attacker, lifesteal);
             ctx.appendTrace("LifestealApplied", 0, lifesteal, "healed");
         }
 
@@ -116,32 +116,36 @@ public class CombatSkillProcessor {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return 0;
 
-        Skill skill = skillManager.getSkill("Blade Mastery");
-        if (skill == null || skill.getLevel() <= 0) return 0;
+        int level = skillManager.getSkillLevel(attacker, "Blade Mastery");
+        if (level <= 0) return 0;
 
         // Only applies when holding a sword
         ItemStack mainHand = attacker.getInventory().getItemInMainHand();
         if (!isSword(mainHand.getType())) return 0;
 
-        return ScalingFormula.compute(skill.getLevel(), config.bmDamageScaling);
+        return ScalingFormula.compute(level, config.bmDamageScaling);
     }
 
     /** Weapon Mastery: scaled damage multiplier bonus. */
     private double getWeaponMasteryDamageBonus(CombatContext ctx) {
-        Skill skill = skillManager.getSkill("Weapon Mastery");
-        if (skill == null || skill.getLevel() <= 0) return 0;
+        Player attacker = ctx.getAttacker();
+        if (attacker == null) return 0;
+        int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
+        if (level <= 0) return 0;
         // The scaling params include the base (e.g., 1.15), so subtract 1.0 for the bonus portion
-        return ScalingFormula.compute(skill.getLevel(), config.wmDamageScaling) - 1.0;
+        return ScalingFormula.compute(level, config.wmDamageScaling) - 1.0;
     }
 
     /** Critical Strike: roll chance, multiply if hit. Both use ScalingFormula. */
     private void applyCriticalStrike(CombatContext ctx) {
-        Skill skill = skillManager.getSkill("Critical Strike");
-        if (skill == null || skill.getLevel() <= 0) return;
+        Player attacker = ctx.getAttacker();
+        if (attacker == null) return;
+        int level = skillManager.getSkillLevel(attacker, "Critical Strike");
+        if (level <= 0) return;
 
-        double chance = ScalingFormula.compute(skill.getLevel(), config.critChanceScaling);
+        double chance = ScalingFormula.compute(level, config.critChanceScaling);
         if (random.nextDouble() < chance) {
-            double multiplier = ScalingFormula.compute(skill.getLevel(), config.critMultiplierScaling);
+            double multiplier = ScalingFormula.compute(level, config.critMultiplierScaling);
             double before = ctx.attack().getModifiedDamage();
             double after = before * multiplier;
             ctx.attack().setModifiedDamage(after);
@@ -172,24 +176,26 @@ public class CombatSkillProcessor {
 
     /** Weapon Mastery: lifesteal percent, scaled. */
     private double getLifestealPercent(CombatContext ctx) {
-        Skill skill = skillManager.getSkill("Weapon Mastery");
-        if (skill == null || skill.getLevel() <= 0) return 0;
-        return ScalingFormula.compute(skill.getLevel(), config.wmLifestealScaling);
+        Player attacker = ctx.getAttacker();
+        if (attacker == null) return 0;
+        int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
+        if (level <= 0) return 0;
+        return ScalingFormula.compute(level, config.wmLifestealScaling);
     }
 
     /** Martial Expertise: knockback resistance bonus, scaled. */
     private double getMartialExpertiseKBResist(Player player) {
-        Skill skill = skillManager.getSkill("Martial Expertise");
-        if (skill == null || skill.getLevel() <= 0) return 0;
-        return ScalingFormula.compute(skill.getLevel(), config.meKbResistScaling);
+        int level = skillManager.getSkillLevel(player, "Martial Expertise");
+        if (level <= 0) return 0;
+        return ScalingFormula.compute(level, config.meKbResistScaling);
     }
 
     /** Martial Expertise: disarm check against target, scaled chance. */
     private void applyDisarmCheck(CombatContext ctx, Player attacker, Player target) {
-        Skill skill = skillManager.getSkill("Martial Expertise");
-        if (skill == null || skill.getLevel() <= 0) return;
+        int level = skillManager.getSkillLevel(attacker, "Martial Expertise");
+        if (level <= 0) return;
 
-        double chance = ScalingFormula.compute(skill.getLevel(), config.meDisarmScaling);
+        double chance = ScalingFormula.compute(level, config.meDisarmScaling);
         if (random.nextDouble() < chance) {
             ctx.postDamage().setDisarmTriggered(true);
             ctx.appendTrace("Disarm", 0, 1, "triggered");

@@ -1,7 +1,6 @@
 package Skills;
 
-import cerberus.world.cerb.CustomPlayer;
-import org.bukkit.Bukkit;          // <<< NEW
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import java.util.UUID;
 

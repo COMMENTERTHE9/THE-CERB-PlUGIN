@@ -1,47 +1,35 @@
 package Manager;
 
+import Listener.PlayerSession;
 import cerberus.world.cerb.CerberusPlugin;
-import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Virtual health system — replaces vanilla health with a custom HP pool.
- * <p>
- * The damage pipeline (3-layer defense system):
- * <ol>
- *   <li>Invincibility frames (250ms)</li>
- *   <li>Elemental resistance (type-specific % reduction)</li>
- *   <li>Armor reduction (flat % from gear + skills, pre-computed with penetration)</li>
- *   <li>Defense bar partial absorption (scales with bar fullness, 0%–70%)</li>
- *   <li>Subtract remainder from virtual health + play gated sound</li>
- * </ol>
+ * Authoritative health lifecycle service for Cerberus custom HP.
+ * Owns per-player health state, regen, invariant repair, and lifecycle logging.
  */
 public class PlayerVirtualHealthManager {
-    private final Map<UUID, Double> playerVirtualHealth = new ConcurrentHashMap<>();
-    private final Map<UUID, Double> playerMaxVirtualHealth = new ConcurrentHashMap<>();
+    private static final long DEFAULT_INVINCIBILITY_TIME_MILLIS = 250L;
+    private static final long DEFAULT_RESPAWN_INVINCIBILITY_TIME_MILLIS = 3000L;
+
+    private final Map<UUID, HealthLifecycleEngine.MutableState> healthStates = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerArmorReduction = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerFireResistance = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerColdResistance = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerDrowningResistance = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> playerLastDamageTime = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastHitSoundTime = new ConcurrentHashMap<>();
-
-    private final long invincibilityTimeMillis = 250;
-    private final long respawnInvincibilityTimeMillis = 3000;
-
     private final Map<UUID, ScheduledTask> healthUpdateTasks = new ConcurrentHashMap<>();
     private final Map<UUID, ScheduledTask> healthRegenTasks = new ConcurrentHashMap<>();
 
-    private boolean isHandlingEvent = false;
+    private final HealthLifecycleEngine lifecycleEngine = new HealthLifecycleEngine();
     private final CerberusPlugin plugin;
     private DefenseBarManager defenseBarManager;
     private CombatConfig combatConfig;
@@ -63,48 +51,157 @@ public class PlayerVirtualHealthManager {
         this.sessionLogger = sessionLogger;
     }
 
-    // ── Virtual Health CRUD ──────────────────────────────────────
+    public void initializeForJoin(Player player) {
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        lifecycleEngine.initializeForJoin(state);
+        clearRecentDamageState(player);
+        if (defenseBarManager != null) {
+            defenseBarManager.resetDefenseBar(player);
+        }
+        syncVanillaHealthToMax(player);
+        enforceHealthInvariant(player, "JOIN_INIT");
+        logLifecycle("JOIN_INIT", player, null);
+    }
+
+    public void markRespawnSeen(Player player) {
+        lifecycleEngine.markRespawning(getOrCreateState(player));
+        logLifecycle("RESPAWN_EVENT_SEEN", player, null);
+    }
+
+    public void restoreAfterRespawn(Player player, PlayerHUDManager hudManager) {
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        lifecycleEngine.restoreAfterRespawn(state, System.currentTimeMillis(), getRespawnInvincibilityMillis());
+        lastHitSoundTime.remove(player.getUniqueId());
+
+        if (defenseBarManager != null) {
+            defenseBarManager.resetDefenseBar(player);
+        }
+
+        syncVanillaHealthToMax(player);
+        startHealthRegenTask(player);
+        if (hudManager != null) {
+            startHealthUpdateTask(player, hudManager);
+            hudManager.updateHUD(player);
+        }
+
+        enforceHealthInvariant(player, "RESPAWN_RESTORED");
+        logLifecycle("RESPAWN_RESTORED", player, null);
+    }
+
+    public void confirmVanillaDeath(Player player) {
+        lifecycleEngine.confirmDeath(getOrCreateState(player));
+        stopHealthUpdateTask(player);
+        stopHealthRegenTask(player);
+        logLifecycle("DEATH_EVENT_CONFIRMED", player, null);
+    }
+
+    public void markPendingDeath(Player player) {
+        lifecycleEngine.markPendingDeath(getOrCreateState(player), System.currentTimeMillis());
+        logLifecycle("CUSTOM_LETHAL", player, null);
+    }
+
+    public boolean hasPendingCustomDeath(Player player) {
+        return getOrCreateState(player).pendingCustomDeath();
+    }
+
+    public boolean isRespawning(Player player) {
+        return getOrCreateState(player).lifecycleState() == HealthLifecycleState.RESPAWNING;
+    }
+
+    public double getGuaranteedVanillaDeathDamage(Player player) {
+        double vanillaHealth = safeVanillaHealth(player);
+        double absorption = Math.max(0.0, player.getAbsorptionAmount());
+        return Math.max(1_000_000.0, vanillaHealth + absorption + 1.0);
+    }
+
+    public void schedulePendingDeathFinalizer(Player player) {
+        player.getScheduler().runDelayed(plugin, task -> {
+            if (!player.isOnline() || player.isDead()) {
+                return;
+            }
+            if (!hasPendingCustomDeath(player)) {
+                return;
+            }
+            // Skip if death is already confirmed — a direct restore is scheduled
+            // and will handle the transition. Firing the fallback here would just
+            // be noise in the logs.
+            HealthLifecycleState state = getOrCreateState(player).lifecycleState();
+            if (state == HealthLifecycleState.DEAD || state == HealthLifecycleState.RESPAWNING) {
+                return;
+            }
+
+            logLifecycle("CUSTOM_LETHAL_FALLBACK", player, "forcing_vanilla_death");
+            player.setHealth(0.0);
+        }, null, 1L);
+    }
+
+    public HealthStateSnapshot snapshot(Player player) {
+        return getOrCreateState(player).snapshot();
+    }
+
+    public boolean enforceHealthInvariant(Player player, String detail) {
+        if (player == null || !player.isOnline()) {
+            return false;
+        }
+
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        boolean repaired = lifecycleEngine.restoreIfInvariantBroken(state, safeVanillaHealth(player));
+        if (repaired) {
+            syncVanillaHealthToMax(player);
+            if (defenseBarManager != null) {
+                defenseBarManager.resetDefenseBar(player);
+            }
+            logLifecycle("HEALTH_INVARIANT_BROKEN", player, detail);
+        }
+        return repaired;
+    }
 
     public void setPlayerVirtualHealth(Player player, double health) {
-        UUID playerId = player.getUniqueId();
-        double maxHealth = getPlayerMaxVirtualHealth(player);
-        health = Math.max(0, Math.min(health, maxHealth));
-        playerVirtualHealth.put(playerId, health);
-        checkPlayerDeath(player, health);
+        lifecycleEngine.setCurrentHp(getOrCreateState(player), health);
     }
 
     public void resetHealth(Player player) {
-        double maxVH = getPlayerMaxVirtualHealth(player);
-        setPlayerVirtualHealth(player, maxVH);
-        double maxReal = player.getAttribute(Attribute.MAX_HEALTH).getValue();
-        player.setHealth(maxReal);
+        resetForAdminHeal(player);
+    }
+
+    public void resetForAdminHeal(Player player) {
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        lifecycleEngine.restoreAfterRespawn(state, System.currentTimeMillis(), 0L);
+        clearRecentDamageState(player);
+        if (defenseBarManager != null) {
+            defenseBarManager.resetDefenseBar(player);
+        }
+        syncVanillaHealthToMax(player);
     }
 
     public double getPlayerVirtualHealth(Player player) {
-        return playerVirtualHealth.getOrDefault(player.getUniqueId(), 100.0);
+        return getOrCreateState(player).currentHp();
     }
 
     public boolean isVirtualHealthDepleted(Player player) {
         return getPlayerVirtualHealth(player) <= 0.0;
     }
 
+    public void clearRecentDamageState(Player player) {
+        lifecycleEngine.clearRecentDamageState(getOrCreateState(player));
+        lastHitSoundTime.remove(player.getUniqueId());
+    }
+
     public void setPlayerMaxVirtualHealth(Player player, double maxHealth) {
-        playerMaxVirtualHealth.put(player.getUniqueId(), maxHealth);
-        if (getPlayerVirtualHealth(player) > maxHealth) {
-            setPlayerVirtualHealth(player, maxHealth);
-        }
+        lifecycleEngine.setMaxHp(getOrCreateState(player), maxHealth);
     }
 
     public double getPlayerMaxVirtualHealth(Player player) {
-        return playerMaxVirtualHealth.getOrDefault(player.getUniqueId(), 100.0);
+        return getOrCreateState(player).maxHp();
     }
 
     public void increasePlayerVirtualHealth(Player player, double amount) {
-        setPlayerVirtualHealth(player, getPlayerVirtualHealth(player) + amount);
+        heal(player, amount);
     }
 
     public void decreasePlayerVirtualHealth(Player player, double amount) {
-        setPlayerVirtualHealth(player, getPlayerVirtualHealth(player) - amount);
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        lifecycleEngine.setCurrentHp(state, state.currentHp() - amount);
     }
 
     public void increaseMaxHealth(Player player, double amount) {
@@ -119,15 +216,9 @@ public class PlayerVirtualHealthManager {
         return getPlayerMaxVirtualHealth(player);
     }
 
-    private void checkPlayerDeath(Player player, double health) {
-        if (health <= 0 && !player.isDead()) {
-            // Set vanilla health to 0 — triggers PlayerDeathEvent.
-            // PlayerSessionManager handles the respawn; do NOT call spigot().respawn() here.
-            player.setHealth(0);
-        }
+    public void heal(Player player, double amount) {
+        lifecycleEngine.heal(getOrCreateState(player), amount);
     }
-
-    // ── Stat Setters/Getters ─────────────────────────────────────
 
     public void setArmorReduction(Player player, double reduction) {
         playerArmorReduction.put(player.getUniqueId(), reduction);
@@ -162,125 +253,118 @@ public class PlayerVirtualHealthManager {
     }
 
     public void applyRespawnInvincibility(Player player) {
-        playerLastDamageTime.put(player.getUniqueId(),
-                System.currentTimeMillis() - invincibilityTimeMillis + respawnInvincibilityTimeMillis);
-        player.sendMessage("You are invincible for a few seconds after respawning!");
+        lifecycleEngine.applyRespawnInvincibility(
+                getOrCreateState(player),
+                System.currentTimeMillis(),
+                getRespawnInvincibilityMillis()
+        );
     }
 
-    // ── Damage Pipeline ──────────────────────────────────────────
+    public DamageResolution applyDamage(Entity entity, double damage, CustomDamageType damageType, Entity damager) {
+        if (!(entity instanceof Player player)) {
+            return DamageResolution.noDamage(0.0);
+        }
 
-    /**
-     * Legacy overload for callers that don't use the full pipeline yet.
-     */
-    public void applyDamage(Entity entity, double damage, CustomDamageType damageType, Entity damager) {
-        if (!(entity instanceof Player player)) return;
         double effectiveArmor = getArmorReduction(player);
-        Player attackerPlayer = (damager instanceof Player p) ? p : null;
+        Player attackerPlayer = (damager instanceof Player damagerPlayer) ? damagerPlayer : null;
         CombatContext ctx = new CombatContext(attackerPlayer, player, damageType, damage);
-        applyDamage(player, damage, effectiveArmor, damageType, damager, ctx);
+        return applyResolvedDamage(player, damage, effectiveArmor, damageType, damager, ctx);
     }
 
-    /**
-     * Canonical 3-layer damage pipeline.
-     * <p>
-     * Steps:
-     * <ol>
-     *   <li>Invincibility frame check</li>
-     *   <li>Elemental resistance (type-specific)</li>
-     *   <li>Armor reduction (pre-computed with penetration by caller)</li>
-     *   <li>Defense bar partial absorption</li>
-     *   <li>Subtract from virtual health + gated hit sound</li>
-     * </ol>
-     *
-     * @param effectiveArmorReduction armor % with penetration already applied by caller
-     */
-    public void applyDamage(Player player, double damage, double effectiveArmorReduction,
-                            CustomDamageType damageType, Entity damager, CombatContext ctx) {
-        if (isHandlingEvent) return;
-        if (player.isDead() || player.getHealth() <= 0) return;
+    public DamageResolution applyResolvedDamage(Player player, double damage, double effectiveArmorReduction,
+                                                CustomDamageType damageType, Entity damager, CombatContext ctx) {
+        HealthLifecycleEngine.MutableState state = getOrCreateState(player);
+        if (player.isDead() || player.getHealth() <= 0.0) {
+            return DamageResolution.noDamage(state.currentHp());
+        }
+        if (state.pendingCustomDeath()
+                || state.lifecycleState() == HealthLifecycleState.DEAD
+                || state.lifecycleState() == HealthLifecycleState.RESPAWNING) {
+            return DamageResolution.noDamage(state.currentHp());
+        }
 
         long currentTime = System.currentTimeMillis();
-
-        // Step 1: Invincibility frames
-        Long lastDamageTime = playerLastDamageTime.get(player.getUniqueId());
-        if (lastDamageTime != null && currentTime - lastDamageTime < invincibilityTimeMillis) {
-            return;
+        if (currentTime < state.invulnerableUntil()) {
+            return DamageResolution.noDamage(state.currentHp());
         }
-        playerLastDamageTime.put(player.getUniqueId(), currentTime);
 
         double current = damage;
         ctx.appendTrace("Incoming", 0, current, null);
 
-        // Capture pre-pipeline state for logging
-        double healthBefore = getPlayerVirtualHealth(player);
-        double healthMax = getPlayerMaxVirtualHealth(player);
-        double defBarBefore = 0;
-        double defBarMax = 0;
+        double healthBefore = state.currentHp();
+        double healthMax = state.maxHp();
+        double defBarBefore = 0.0;
+        double defBarMax = 0.0;
         if (defenseBarManager != null) {
             DefenseBarManager.DefenseBar bar = defenseBarManager.getDefenseBar(player);
             defBarBefore = bar.getCurrent();
             defBarMax = bar.getMaximum();
         }
 
-        // Step 2: Elemental resistance
         double typeResist = getTypeSpecificResistance(player, damageType);
-        if (typeResist > 0) {
+        if (typeResist > 0.0) {
             double before = current;
             current *= (1.0 - typeResist);
             ctx.appendTrace("ElemResist", before, current,
-                    damageType.name() + " " + String.format("%.0f%%", typeResist * 100));
+                    damageType.name() + " " + String.format("%.0f%%", typeResist * 100.0));
         }
         ctx.defense().setAfterElementalResist(current);
 
-        // Step 3: Armor reduction (penetration already applied by caller)
-        if (effectiveArmorReduction > 0) {
+        if (effectiveArmorReduction > 0.0) {
             double before = current;
             current *= (1.0 - effectiveArmorReduction);
             ctx.appendTrace("Armor", before, current,
-                    String.format("%.0f%% reduction", effectiveArmorReduction * 100));
+                    String.format("%.0f%% reduction", effectiveArmorReduction * 100.0));
         }
         ctx.defense().setAfterArmor(current);
 
-        // Step 4: Defense bar partial absorption
-        double absorbed = 0;
-        double absorptionRate = 0;
-        if (defenseBarManager != null && current > 0) {
+        double absorbed = 0.0;
+        double absorptionRate = 0.0;
+        if (defenseBarManager != null && current > 0.0) {
             double beforeBar = current;
             current = defenseBarManager.applyDamageToBar(player, current);
             absorbed = beforeBar - current;
             DefenseBarManager.DefenseBar bar = defenseBarManager.getDefenseBar(player);
             absorptionRate = bar.getLastAbsorptionRate();
             ctx.appendTrace("DefenseBar", beforeBar, current,
-                    String.format("%.0f%% absorb, -%.1f", absorptionRate * 100, absorbed));
+                    String.format("%.0f%% absorb, -%.1f", absorptionRate * 100.0, absorbed));
         }
         ctx.defense().setAfterDefenseAbsorption(current);
         ctx.defense().setDefenseAbsorptionRate(absorptionRate);
 
-        // Clamp to minimum 0
-        current = Math.max(0, current);
-
-        // Step 5: Assign final damage
+        current = Math.max(0.0, current);
         ctx.defense().setFinalDamage(current);
         ctx.appendTrace("Final", damage, current, null);
 
-        // Step 6: Subtract from virtual health + gated hit sound
-        if (current > 0) {
-            decreasePlayerVirtualHealth(player, current);
+        DamageResolution lifecycleResolution =
+                lifecycleEngine.applyResolvedDamage(state, current, currentTime, getDamageInvincibilityMillis());
+        DamageResolution resolution = new DamageResolution(
+                lifecycleResolution.finalDamage(),
+                lifecycleResolution.lethal(),
+                absorbed,
+                lifecycleResolution.remainingHp()
+        );
+
+        if (resolution.finalDamage() > 0.0) {
             playGatedHitSound(player, damageType);
         }
 
-        // Session logging
-        double healthAfter = getPlayerVirtualHealth(player);
         if (sessionLogger != null) {
-            sessionLogger.logCombat(player.getUniqueId(), ctx, healthBefore, healthAfter,
+            sessionLogger.logCombat(player.getUniqueId(), ctx, healthBefore, resolution.remainingHp(),
                     healthMax, defBarBefore, defBarMax, effectiveArmorReduction,
                     typeResist, absorptionRate, absorbed);
         }
 
-        // Knockback: handled by vanilla (event.setDamage(0) in listener)
+        logLifecycle("DAMAGE_APPLIED", player,
+                "type=" + damageType.name() + " final=" + String.format("%.2f", resolution.finalDamage()));
+
+        if (resolution.lethal()) {
+            markPendingDeath(player);
+        }
+
+        return resolution;
     }
 
-    /** Get type-specific resistance for the given damage type. */
     private double getTypeSpecificResistance(Player player, CustomDamageType damageType) {
         return switch (damageType) {
             case FIRE, BURN_DOT, PYROMANCY -> getPlayerFireResistance(player);
@@ -290,14 +374,18 @@ public class PlayerVirtualHealthManager {
         };
     }
 
-    /**
-     * Play a hit sound, gated by per-player per-category cooldown.
-     */
+    private long getDamageInvincibilityMillis() {
+        return combatConfig != null ? combatConfig.damageInvincibilityMs : DEFAULT_INVINCIBILITY_TIME_MILLIS;
+    }
+
+    private long getRespawnInvincibilityMillis() {
+        return combatConfig != null ? combatConfig.respawnInvincibilityMs : DEFAULT_RESPAWN_INVINCIBILITY_TIME_MILLIS;
+    }
+
     private void playGatedHitSound(Player player, CustomDamageType damageType) {
         long now = System.currentTimeMillis();
         UUID uuid = player.getUniqueId();
-        int cooldownMs = combatConfig != null
-                ? combatConfig.getSoundCooldownMs(damageType) : 400;
+        int cooldownMs = combatConfig != null ? combatConfig.getSoundCooldownMs(damageType) : 400;
 
         Long lastSound = lastHitSoundTime.get(uuid);
         if (lastSound != null && (now - lastSound) < cooldownMs) {
@@ -315,51 +403,33 @@ public class PlayerVirtualHealthManager {
         player.getWorld().playSound(player.getLocation(), sound, 1.0f, 1.0f);
     }
 
-    // ── Projectile handler ───────────────────────────────────────
-
-    public void handleProjectileHit(Projectile projectile, Entity target) {
-        if (target instanceof Player || target instanceof Entity) {
-            double damage = projectile.getVelocity().length();
-            Entity shooter = projectile.getShooter() instanceof Entity ? (Entity) projectile.getShooter() : null;
-            applyDamage(target, damage, CustomDamageType.PROJECTILE, shooter);
-        }
-    }
-
-    // ── Health Regen ─────────────────────────────────────────────
-
     public void applyHealthRegen(Player player, double normalRegenRate, double reducedRegenRate,
                                  long duration, long damageTimeout) {
-        final long[] timeElapsed = {0};
-        final long[] lastDmgTime = {System.currentTimeMillis()};
+        final long[] ticksElapsed = {0L};
 
         player.getScheduler().runAtFixedRate(plugin, task -> {
-            if (timeElapsed[0] >= duration || player.isDead()) {
+            if (ticksElapsed[0] >= duration || !player.isOnline() || player.isDead()) {
                 task.cancel();
                 return;
             }
-            double currentHealth = getPlayerVirtualHealth(player);
-            double maxHealth = getPlayerMaxVirtualHealth(player);
-            long timeSinceLastDamage = System.currentTimeMillis() - lastDmgTime[0];
+
+            HealthStateSnapshot snapshot = snapshot(player);
+            long timeSinceLastDamage = snapshot.lastDamageAt() == 0L
+                    ? Long.MAX_VALUE
+                    : System.currentTimeMillis() - snapshot.lastDamageAt();
             double regenRate = timeSinceLastDamage > damageTimeout ? normalRegenRate : reducedRegenRate;
-            if (currentHealth < maxHealth) {
-                increasePlayerVirtualHealth(player, regenRate);
+            if (snapshot.currentHp() < snapshot.maxHp()) {
+                heal(player, regenRate);
             }
-            timeElapsed[0] += 20;
+
+            ticksElapsed[0] += 20L;
         }, null, 1L, 20L);
     }
 
     public void applyHealthRegen(Player player, double regenRate, long duration) {
-        applyHealthRegen(player, regenRate, regenRate / 2, duration, 5000L);
+        applyHealthRegen(player, regenRate, regenRate / 2.0, duration, 5000L);
     }
 
-    // ── Persistent Health Regen ──────────────────────────────────
-
-    /**
-     * Start a persistent health regen task (like mana regen).
-     * Runs every tick. Uses combat timeout from CombatConfig to switch
-     * between out-of-combat and in-combat regen rates.
-     * Idempotent — cancels any existing task first.
-     */
     public void startHealthRegenTask(Player player) {
         stopHealthRegenTask(player);
 
@@ -371,33 +441,30 @@ public class PlayerVirtualHealthManager {
                 return;
             }
 
-            double current = getPlayerVirtualHealth(player);
-            double max = getPlayerMaxVirtualHealth(player);
-            if (current >= max) return; // already full
+            HealthStateSnapshot snapshot = snapshot(player);
+            if (snapshot.pendingCustomDeath()
+                    || snapshot.lifecycleState() == HealthLifecycleState.DEAD
+                    || snapshot.currentHp() >= snapshot.maxHp()) {
+                return;
+            }
 
-            // Determine regen rate based on combat state
             double baseRate = 2.0;
             double combatRate = 0.0;
-            long combatTimeout = 8000;
+            long combatTimeout = 8000L;
             if (combatConfig != null) {
                 baseRate = combatConfig.healthRegenBaseRate;
                 combatRate = combatConfig.healthRegenCombatRate;
                 combatTimeout = combatConfig.healthRegenCombatTimeoutMs;
             }
 
-            boolean inCombat = false;
-            Long lastDmg = playerLastDamageTime.get(uuid);
-            if (lastDmg != null) {
-                inCombat = (System.currentTimeMillis() - lastDmg) < combatTimeout;
-            }
+            boolean inCombat = snapshot.lastDamageAt() != 0L
+                    && (System.currentTimeMillis() - snapshot.lastDamageAt()) < combatTimeout;
 
             double regenPerTick = (inCombat ? combatRate : baseRate) / 20.0;
-            if (regenPerTick > 0) {
-                double newHealth = Math.min(max, current + regenPerTick);
-                playerVirtualHealth.put(uuid, newHealth);
+            if (regenPerTick > 0.0) {
+                heal(player, regenPerTick);
             }
 
-            // Fallback: tick defense bar regen if its own task died
             if (!inCombat && defenseBarManager != null) {
                 DefenseBarManager.DefenseBar bar = defenseBarManager.getDefenseBar(player);
                 if (bar.getCurrent() < bar.getMaximum()) {
@@ -406,6 +473,7 @@ public class PlayerVirtualHealthManager {
                 }
             }
         }, null, 20L, 1L);
+
         healthRegenTasks.put(uuid, task);
     }
 
@@ -416,14 +484,9 @@ public class PlayerVirtualHealthManager {
         }
     }
 
-    // ── HUD Update Task ──────────────────────────────────────────
-
     public void startHealthUpdateTask(Player player, PlayerHUDManager hudManager) {
         UUID uuid = player.getUniqueId();
-        ScheduledTask existing = healthUpdateTasks.remove(uuid);
-        if (existing != null && !existing.isCancelled()) {
-            existing.cancel();
-        }
+        stopHealthUpdateTask(player);
 
         ScheduledTask task = player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
             if (!player.isOnline()) {
@@ -431,29 +494,99 @@ public class PlayerVirtualHealthManager {
                 healthUpdateTasks.remove(uuid);
                 return;
             }
-            hudManager.updateHUD(player);
+
+            enforceHealthInvariant(player, "HUD_TICK");
+            if (!player.isDead()) {
+                hudManager.updateHUD(player);
+            }
         }, null, 1L, 20L);
+
         healthUpdateTasks.put(uuid, task);
     }
 
-    // ── Cleanup ──────────────────────────────────────────────────
+    public void stopHealthUpdateTask(Player player) {
+        ScheduledTask existing = healthUpdateTasks.remove(player.getUniqueId());
+        if (existing != null && !existing.isCancelled()) {
+            existing.cancel();
+        }
+    }
 
     public void removePlayer(UUID uuid) {
-        ScheduledTask task = healthUpdateTasks.remove(uuid);
-        if (task != null && !task.isCancelled()) {
-            task.cancel();
-        }
-        ScheduledTask regenTask = healthRegenTasks.remove(uuid);
-        if (regenTask != null && !regenTask.isCancelled()) {
-            regenTask.cancel();
-        }
-        playerVirtualHealth.remove(uuid);
-        playerMaxVirtualHealth.remove(uuid);
+        stopTask(healthUpdateTasks.remove(uuid));
+        stopTask(healthRegenTasks.remove(uuid));
+        healthStates.remove(uuid);
         playerArmorReduction.remove(uuid);
         playerFireResistance.remove(uuid);
         playerColdResistance.remove(uuid);
         playerDrowningResistance.remove(uuid);
-        playerLastDamageTime.remove(uuid);
         lastHitSoundTime.remove(uuid);
+    }
+
+    private void stopTask(ScheduledTask task) {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+
+    private HealthLifecycleEngine.MutableState getOrCreateState(Player player) {
+        return healthStates.computeIfAbsent(player.getUniqueId(), lifecycleEngine::newState);
+    }
+
+    private double safeVanillaHealth(Player player) {
+        if (player == null || player.isDead()) {
+            return 0.0;
+        }
+        try {
+            return Math.max(0.0, player.getHealth());
+        } catch (Exception ignored) {
+            return 0.0;
+        }
+    }
+
+    private void syncVanillaHealthToMax(Player player) {
+        if (player == null || !player.isOnline() || player.isDead()) {
+            return;
+        }
+
+        double vanillaMax = 20.0;
+        if (player.getAttribute(Attribute.MAX_HEALTH) != null) {
+            vanillaMax = player.getAttribute(Attribute.MAX_HEALTH).getValue();
+        }
+
+        if (vanillaMax > 0.0) {
+            player.setHealth(vanillaMax);
+        }
+    }
+
+    private void logLifecycle(String transition, Player player, String detail) {
+        if (plugin == null || player == null) {
+            return;
+        }
+
+        HealthStateSnapshot snapshot = snapshot(player);
+        String sessionState = "NONE";
+        if (plugin.getPlayerSessionManager() != null) {
+            PlayerSession session = plugin.getPlayerSessionManager().getSession(player.getUniqueId());
+            if (session != null) {
+                sessionState = session.getState().name();
+            }
+        }
+
+        String detailFragment = detail == null || detail.isBlank() ? "" : " detail=" + detail;
+        plugin.getLogger().info(String.format(
+                "[HealthLifecycle] transition=%s player=%s uuid=%s hp=%.2f/%.2f vanilla=%.2f pending=%s lifecycle=%s session=%s invulnUntil=%d lastDamageAt=%d%s",
+                transition,
+                player.getName(),
+                player.getUniqueId(),
+                snapshot.currentHp(),
+                snapshot.maxHp(),
+                safeVanillaHealth(player),
+                snapshot.pendingCustomDeath(),
+                snapshot.lifecycleState(),
+                sessionState,
+                snapshot.invulnerableUntil(),
+                snapshot.lastDamageAt(),
+                detailFragment
+        ));
     }
 }

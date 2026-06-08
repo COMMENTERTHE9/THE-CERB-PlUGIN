@@ -107,7 +107,7 @@ public class CombatContext {
         public double getCritMultiplier() { return critMultiplier; }
 
         // Setters (package-private for pipeline phases)
-        void setModifiedDamage(double v) { this.modifiedDamage = v; }
+        public void setModifiedDamage(double v) { this.modifiedDamage = v; }
         void setCritical(boolean v) { this.isCritical = v; }
         void setCritMultiplier(double v) { this.critMultiplier = v; }
     }

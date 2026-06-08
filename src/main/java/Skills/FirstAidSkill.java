@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.CraftingManager;
 import Manager.PlayerVirtualHealthManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -18,9 +17,8 @@ public class FirstAidSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Handle experience gain and level up logic here
         int level = this.getLevel();
@@ -45,11 +43,6 @@ public class FirstAidSkill extends UtilitySkill {
             double healingBonus = level * 0.10; // Example: +10% healing effectiveness per level
             craftingManager.enhanceHealingItems(player, healingItem, healingBonus); // Apply the enhancement to the healing item
         }
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     // Example method to retrieve the healing item from the player's inventory

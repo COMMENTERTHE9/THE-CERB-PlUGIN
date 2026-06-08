@@ -38,22 +38,19 @@ public class UnifiedGUIListener implements Listener {
     private final SkillDetailGUI skillDetailGUI;
     private final PlayerMenuGUI playerMenuGUI;
     private final AdminChestGUI adminChestGUI;
-    private final RegionManagementGUI regionManagementGUI;
 
     public UnifiedGUIListener(CerberusPlugin plugin,
                               SkillManager skillManager,
                               SkillGUI skillGUI,
                               SkillDetailGUI skillDetailGUI,
                               PlayerMenuGUI playerMenuGUI,
-                              AdminChestGUI adminChestGUI,
-                              RegionManagementGUI regionManagementGUI) {
+                              AdminChestGUI adminChestGUI) {
         this.plugin = plugin;
         this.skillManager = skillManager;
         this.skillGUI = skillGUI;
         this.skillDetailGUI = skillDetailGUI;
         this.playerMenuGUI = playerMenuGUI;
         this.adminChestGUI = adminChestGUI;
-        this.regionManagementGUI = regionManagementGUI;
     }
 
     // ── Click handler ───────────────────────────────────────────────
@@ -87,7 +84,6 @@ public class UnifiedGUIListener implements Listener {
             case SKILL_DETAIL        -> handleSkillDetail(player, action, data);
             case ADMIN_PANEL         -> handleAdminPanel(player, action, data);
             case ADMIN_COMMANDS      -> handleAdminCommands(player, action, data);
-            case REGION_MANAGEMENT   -> handleRegionManagement(player, action, data);
             case COMING_SOON         -> handleComingSoon(player, action, data);
         }
     }
@@ -196,7 +192,8 @@ public class UnifiedGUIListener implements Listener {
     private void handleAdminPanel(Player player, String action, String data) {
         switch (action) {
             case "open_regions" -> openFolia(player, () ->
-                    regionManagementGUI.openRegionManagementMenu(player));
+                    new ComingSoonGUI(plugin).open(player, "Region Management",
+                            "Region management has been removed."));
             case "open_commands" -> openFolia(player, () ->
                     openAdminCommandsMenu(player));
             case "open_players" -> openFolia(player, () ->
@@ -213,25 +210,6 @@ public class UnifiedGUIListener implements Listener {
         switch (action) {
             case "give_player_menu" -> {
                 adminChestGUI.givePlayerMenu(player);
-            }
-            case "back" -> openFolia(player, () ->
-                    openAdminPanelMenu(player));
-            default -> {}
-        }
-    }
-
-    // ── Route: Region Management ────────────────────────────────────
-
-    private void handleRegionManagement(Player player, String action, String data) {
-        switch (action) {
-            case "view_regions" -> {
-                player.sendMessage(ChatColor.YELLOW + "Region viewer not yet implemented.");
-            }
-            case "create_region" -> {
-                player.sendMessage(ChatColor.YELLOW + "Region creation not yet implemented.");
-            }
-            case "delete_region" -> {
-                player.sendMessage(ChatColor.YELLOW + "Region deletion not yet implemented.");
             }
             case "back" -> openFolia(player, () ->
                     openAdminPanelMenu(player));

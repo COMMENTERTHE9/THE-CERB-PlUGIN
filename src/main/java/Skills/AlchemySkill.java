@@ -18,13 +18,13 @@ public class AlchemySkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
         int skillLevel = this.getLevel();
 
         // Retrieve the potion item currently being brewed or crafted
-        ItemStack potionItem = customPlayer.getCurrentCraftedItem();  // Assuming this method tracks the potion being brewed
+        ItemStack potionItem = cp.getCurrentCraftedItem();  // Assuming this method tracks the potion being brewed
 
         if (potionItem == null) {
             player.sendMessage("No potion is currently being brewed.");
@@ -38,7 +38,7 @@ public class AlchemySkill extends UtilitySkill {
         craftingManager.applyCraftingBonuses(player, potionItem, "Alchemy");
 
         // Dynamically unlock advanced alchemy recipes
-        dynamicallyUnlockAlchemyRecipes(player, customPlayer, potionItem, skillLevel);
+        dynamicallyUnlockAlchemyRecipes(player, cp, potionItem, skillLevel);
 
         // Apply mana regeneration bonus based on skill level
         double manaRegenBonus = skillLevel * 1.5;  // Example: +1.5% mana regeneration per skill level
@@ -50,11 +50,6 @@ public class AlchemySkill extends UtilitySkill {
 
         // Notify the player about the bonuses applied
         player.sendMessage("Alchemy bonuses applied: + " + manaRegenBonus + "% Mana Regeneration, + " + maxManaBonus + " Max Mana.");
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     /**

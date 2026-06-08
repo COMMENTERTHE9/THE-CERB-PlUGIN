@@ -18,9 +18,9 @@ public class CraftingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
 
         // Handle experience gain and level up logic here
         int level = this.getLevel();
@@ -36,17 +36,15 @@ public class CraftingSkill extends UtilitySkill {
 
         // Unlock special crafting recipes or perks at higher levels
         if (level >= 50) {
-            craftingManager.unlockAdvancedRecipe(customPlayer, null);  // Adjusted to match method signature
+            craftingManager.unlockAdvancedRecipe(cp, null);  // Adjusted to match method signature
         }
 
         // Increase player's max health slightly as they level up crafting
-        double healthBonus = level * 5.0; // Example: +5 health per level
-        customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // Apply crafting effect directly to the player if needed, but currently unused
+        double healthBonus = level * 5.0;
+        var healthManager = cp.getHealthManager();
+        if (healthManager != null) {
+            healthManager.increaseMaxHealth(player, healthBonus);
+        }
     }
 
     /**

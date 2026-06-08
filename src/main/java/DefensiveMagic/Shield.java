@@ -5,6 +5,11 @@ import org.bukkit.Particle;
 import org.bukkit.Bukkit;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
+/**
+ * RESERVED FOR FUTURE DEFENSIVE MAGIC SYSTEM.
+ * See Barrier.java for full documentation on the planned architecture.
+ * DO NOT delete. DO NOT reconnect to old input system.
+ */
 public class Shield extends DefensiveStructure {
     private double strength;
     private ScheduledTask particleTask;

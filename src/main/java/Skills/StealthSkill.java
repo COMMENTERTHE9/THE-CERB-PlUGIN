@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -20,9 +19,8 @@ public class StealthSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Handle experience gain and level up logic here
         int level = this.getLevel();
@@ -42,11 +40,6 @@ public class StealthSkill extends UtilitySkill {
         }
 
         // Additional effects for the StealthSkill can be added here (e.g., sneak speed, invisibility bonuses, etc.)
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     // Method to retrieve the tagged stealth item from the player's inventory

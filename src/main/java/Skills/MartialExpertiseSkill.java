@@ -1,7 +1,7 @@
 package Skills;
 
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
@@ -17,30 +17,14 @@ public class MartialExpertiseSkill extends CombatSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer player) {
-        if (player == null) return;
-
-        // Knockback resistance
-        CustomPlayer.AttributeWrapper knockbackResistance = player.getCustomAttribute(Attribute.KNOCKBACK_RESISTANCE);
-        if (knockbackResistance != null) {
-            double baseValue = knockbackResistance.getBaseValue();
-            knockbackResistance.setBaseValue(baseValue + (getLevel() * 0.01)); // 1% knockback resistance per level
-        }
-
-        // Disarm chance (placeholder)
-        if (Math.random() < getLevel() * 0.01) { // 1% chance to disarm per level
-            disarmOpponent(player.getBukkitPlayer());
-        }
-    }
-
-    @Override
     public void applyEffect(Player player) {
         if (player == null) return;
 
         // Knockback resistance
-        if (player.getAttribute(Attribute.KNOCKBACK_RESISTANCE) != null) {
-            double currentKnockbackResistance = player.getAttribute(Attribute.KNOCKBACK_RESISTANCE).getBaseValue();
-            player.getAttribute(Attribute.KNOCKBACK_RESISTANCE).setBaseValue(currentKnockbackResistance + (getLevel() * 0.01)); // 1% knockback resistance per level
+        AttributeInstance knockbackAttr = player.getAttribute(Attribute.KNOCKBACK_RESISTANCE);
+        if (knockbackAttr != null) {
+            double baseValue = knockbackAttr.getBaseValue();
+            knockbackAttr.setBaseValue(baseValue + (getLevel() * 0.01)); // 1% knockback resistance per level
         }
 
         // Disarm chance (placeholder)

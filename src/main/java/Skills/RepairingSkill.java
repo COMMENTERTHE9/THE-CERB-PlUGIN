@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -24,9 +23,8 @@ public class RepairingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
         ItemStack item = player.getInventory().getItemInMainHand(); // Assuming the item being repaired is in the main hand
 
@@ -46,11 +44,6 @@ public class RepairingSkill extends UtilitySkill {
                 applyOverRepair(player, item, overRepairBonus);
             }
         }
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // Direct player effects can be added here if needed
     }
 
     // Handle repair through a machine

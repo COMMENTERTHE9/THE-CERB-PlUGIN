@@ -96,8 +96,10 @@ public class ElementalInfusionManager {
 
                 if (elementalTag != null) {
                     // Get the player's elemental mastery level using the skill name
-                    ElementalMasterySkill masterySkill = (ElementalMasterySkill) customPlayer.getSkill("Elemental Mastery");
-                    double skillLevelMultiplier = masterySkill != null ? 1.0 + 0.07 * masterySkill.getLevel() : 1.0;
+                    double skillLevelMultiplier = 1.0;
+                    if (customPlayer.getSkill("Elemental Mastery") instanceof ElementalMasterySkill masterySkill) {
+                        skillLevelMultiplier = 1.0 + 0.07 * masterySkill.getLevel();
+                    }
 
                     // Apply enhanced infusion effect
                     applyInfusionEffect(event, elementalTag, skillLevelMultiplier);

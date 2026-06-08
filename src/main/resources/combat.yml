@@ -38,6 +38,30 @@ health-regen:
   combat-rate: 0.0         # HP per second while in combat (0 = no regen)
   combat-timeout-ms: 8000  # ms after last hit before "out of combat"
 
+damage-timing:
+  invincibility-ms: 250
+  respawn-invincibility-ms: 3000
+
+# ── Mob Damage Scaling ──────────────────────────────────────
+# Multiplier applied to melee mob-to-player damage based on mob tier and level.
+# Formula: tierBase * (1 + levelScale * log1p(level / levelPivot)), capped at max.
+mob-damage-scaling:
+  enabled: true
+  level-scale: 0.55
+  level-pivot: 25.0
+  max-damage-multiplier: 10.0
+  tier-base:
+    WEAK: 0.85
+    COMMON: 1.0
+    UNCOMMON: 1.15
+    RARE: 1.35
+    EPIC: 1.75
+    LEGENDARY: 2.25
+    PERFECT: 2.5
+    MYTHIC: 3.0
+    GODLY: 3.75
+    PRIMORDIAL: 4.5
+
 # ── Unified Tier System ─────────────────────────────────────
 # Used for mobs, items, regions, loot — everything.
 tiers:

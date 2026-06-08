@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.LuckManager;
 import Manager.MagicFindManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -53,9 +52,8 @@ public class ScavengingSkill extends UtilitySkill implements Listener {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Handle experience gain and level-up logic here
         int level = this.getLevel();
@@ -67,11 +65,6 @@ public class ScavengingSkill extends UtilitySkill implements Listener {
         // Increase Magic Find based on skill level
         double magicFindBonus = level * 0.2; // Example: +0.2% magic find per level
         magicFindManager.increaseMagicFind(player, magicFindBonus);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     // Method to check if the player is holding a scavenging-related item
@@ -138,7 +131,16 @@ public class ScavengingSkill extends UtilitySkill implements Listener {
         }
     }
 
-    // Helper method to check if the chest is of a specific tier
+    /**
+     * DEFERRED IMPLEMENTATION.
+     *
+     * This method currently only checks slot 0 of an inventory, which is not a real
+     * tier detection system. The full implementation requires a loot table system
+     * with PDC-tagged tier markers on chest blocks or inventory holders, which does
+     * not exist yet.
+     *
+     * Do not "fix" this in isolation. The fix requires the loot system to exist first.
+     */
     private boolean isTieredChest(Inventory inventory, NamespacedKey tierKey) {
         ItemStack chestItem = inventory.getItem(0);  // Example: Check the first slot for a chest item
         if (chestItem != null && chestItem.hasItemMeta()) {

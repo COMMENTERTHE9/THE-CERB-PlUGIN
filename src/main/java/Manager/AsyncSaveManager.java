@@ -5,8 +5,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages throttled, asynchronous saves for both YAML configs and DB tasks,
@@ -15,7 +15,7 @@ import java.util.Map;
 public class AsyncSaveManager {
     private final JavaPlugin plugin;
     private final long cooldownMs;
-    private final Map<String, Long> lastRunTimestamps = new HashMap<>();
+    private final Map<String, Long> lastRunTimestamps = new ConcurrentHashMap<>();
 
     /**
      * @param plugin     your main plugin instance
@@ -34,11 +34,8 @@ public class AsyncSaveManager {
      * @param file the destination File
      */
     public void scheduleYamlSave(String key, FileConfiguration cfg, File file) {
-        long now = System.currentTimeMillis();
-        long last = lastRunTimestamps.getOrDefault(key, 0L);
-        if (now - last < cooldownMs) return;
+        if (!markSaveQueued(key)) return;
 
-        lastRunTimestamps.put(key, now);
         Bukkit.getAsyncScheduler().runNow(plugin, task -> {
             try {
                 cfg.save(file);
@@ -56,12 +53,31 @@ public class AsyncSaveManager {
      * @param dbTask the Runnable that performs the DB work
      */
     public void scheduleDbSave(String key, Runnable dbTask) {
-        long now = System.currentTimeMillis();
-        long last = lastRunTimestamps.getOrDefault(key, 0L);
-        if (now - last < cooldownMs) return;
+        if (!markSaveQueued(key)) return;
 
-        lastRunTimestamps.put(key, now);
-        Bukkit.getAsyncScheduler().runNow(plugin, task -> dbTask.run());
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+            try {
+                dbTask.run();
+            } catch (Exception ex) {
+                plugin.getLogger().severe("Failed to run DB save '" + key + "': " + ex.getMessage());
+                ex.printStackTrace();
+            }
+        });
+    }
+
+    private boolean markSaveQueued(String key) {
+        long now = System.currentTimeMillis();
+        boolean[] queued = {false};
+
+        lastRunTimestamps.compute(key, (ignored, last) -> {
+            if (last != null && now - last < cooldownMs) {
+                return last;
+            }
+            queued[0] = true;
+            return now;
+        });
+
+        return queued[0];
     }
 }
 

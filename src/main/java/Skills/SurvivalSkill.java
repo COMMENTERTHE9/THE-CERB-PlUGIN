@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.CraftingManager;
 import Manager.PlayerDefenseManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 
 public class SurvivalSkill extends UtilitySkill {
@@ -17,9 +16,8 @@ public class SurvivalSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
 
         // Toughness and resistance bonuses are now handled automatically in
@@ -28,11 +26,6 @@ public class SurvivalSkill extends UtilitySkill {
 
         // Apply environmental resistances based on skill level
         applyEnvironmentalResistances(player, level);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // Optional direct player effects
     }
 
     // Add logic for environmental resistances based on survival skill level
@@ -47,9 +40,6 @@ public class SurvivalSkill extends UtilitySkill {
         double drowningResistanceBonus = level * 0.01; // Example: +1% longer breath holding per level
 
         // Placeholder logic for applying these resistances
-        System.out.println("Fire resistance increased by " + fireResistanceBonus * 100 + "%.");
-        System.out.println("Cold resistance increased by " + coldResistanceBonus * 100 + "%.");
-        System.out.println("Drowning resistance increased by " + drowningResistanceBonus * 100 + "%.");
     }
 
     // Optionally connect the skill with crafting-related food bonuses

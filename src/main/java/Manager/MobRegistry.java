@@ -68,6 +68,8 @@ public class MobRegistry {
         public String getMobId() { return mobId; }
         public Tier getTier() { return classification; }
         public double getXpMultiplier() { return xpMultiplier; }
+        public EntityType getEntityType() { return entityType; }
+        public String getCustomNameExact() { return customNameExact; }
 
         /** Build the MobContext for this entry with the given match reason. */
         MobContext toContext(MatchReason reason) {
@@ -211,6 +213,16 @@ public class MobRegistry {
     // ----------------------------------------------------------------
     public MobEntry getEntry(String mobId) {
         return entriesById.get(mobId);
+    }
+
+    /** Returns all registered mob IDs (for tab completion). */
+    public Set<String> getEntryIds() {
+        return entriesById.keySet();
+    }
+
+    /** Returns the NamespacedKey used for PDC mob ID tagging. */
+    public NamespacedKey getMobIdKey() {
+        return mobIdKey;
     }
 
     // ----------------------------------------------------------------

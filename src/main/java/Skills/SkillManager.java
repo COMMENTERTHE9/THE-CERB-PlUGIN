@@ -5,7 +5,6 @@ import GUIs.PlayerMenuGUI;
 import Manager.*;
 import Listener.CraftingListener;
 import Manager.PlayerVirtualHealthManager;
-import java.util.UUID;
 import Manager.PlayerStrengthManager;
 import org.bukkit.NamespacedKey;
 import Traps.TrapManager;
@@ -32,7 +31,7 @@ public class SkillManager {
     private final Inventory skillMenu;
     private final DatabaseManager databaseManager;
     private final Map<UUID, CustomPlayer> customPlayers;
-    private final SeaMonsterManager seaMonsterManager;
+    private SeaMonsterManager seaMonsterManager;
     private final Map<UUID, Map<String,Integer>> playerSkillLevels = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String,Integer>> playerSkillXP     = new ConcurrentHashMap<>();
 
@@ -44,7 +43,7 @@ public class SkillManager {
     private TrapManager trapManager;
     private LuckManager luckManager;
     private MagicFindManager magicFindManager;
-    private final CraftingManager craftingManager;
+    private CraftingManager craftingManager;
     private final CraftingListener craftingListener;
     private final PlayerStrengthManager strengthManager;
     private PlayerMenuGUI playerMenuGUI;
@@ -71,9 +70,6 @@ public class SkillManager {
         this.skillLevels = databaseManager.loadPlayerSkillLevels(uuid);
         this.skillXP = databaseManager.loadPlayerSkillXP(uuid);
 
-        System.out.println("[DEBUG] Loaded skill levels for player " + uuid + ": " + this.skillLevels);
-        System.out.println("[DEBUG] Loaded skill XP     for player " + uuid + ": " + this.skillXP);
-
 
         this.skillMenu = skillMenu;
         this.customPlayers = new HashMap<>();
@@ -87,7 +83,7 @@ public class SkillManager {
         // Initialize the PlayerMenuGUI here (if needed)
         this.playerMenuGUI = new PlayerMenuGUI(plugin, this);
 
-        initializeSkills();
+        rebuildSkillRegistry();
     }
 
     public String getCustomId(Player player) {
@@ -127,6 +123,14 @@ public class SkillManager {
         this.playerManaManager = playerManaManager;
     }
 
+    public void setCraftingManager(CraftingManager craftingManager) {
+        this.craftingManager = craftingManager;
+    }
+
+    public void setSeaMonsterManager(SeaMonsterManager seaMonsterManager) {
+        this.seaMonsterManager = seaMonsterManager;
+    }
+
     public void setResourceYieldManager(ResourceYieldManager resourceYieldManager) {
         this.resourceYieldManager = resourceYieldManager;
     }
@@ -141,6 +145,12 @@ public class SkillManager {
 
     public void setMagicFindManager(MagicFindManager magicFindManager) {
         this.magicFindManager = magicFindManager;
+    }
+
+    public void rebuildSkillRegistry() {
+        skills.clear();
+        initializeSkills();
+        plugin.getLogger().info("[SkillManager] Registered " + skills.size() + " skills.");
     }
 
     private void initializeSkills() {
@@ -238,23 +248,21 @@ public class SkillManager {
             xp.put(skillName, newXP);
         }
 
-        // Also sync into the Skill object for legacy code that reads skill.getLevel()
-        Skill skill = skills.get(skillName);
-        if (skill != null) {
-            skill.setLevel(levels.getOrDefault(skillName, 1));
-        }
-
         saveSkills(player);
     }
 
     private void saveSkills(Player player) {
         UUID uid = player.getUniqueId();
-        databaseManager.savePlayerSkills(
+        String playerName = player.getName();
+        Map<String, Integer> levels = new HashMap<>(playerSkillLevels.getOrDefault(uid, Map.of()));
+        Map<String, Integer> xp = new HashMap<>(playerSkillXP.getOrDefault(uid, Map.of()));
+
+        asyncSaver.scheduleDbSave("skills:" + uid, () -> databaseManager.savePlayerSkills(
                 uid,
-                player.getName(),
-                playerSkillLevels.getOrDefault(uid, Map.of()),
-                playerSkillXP.getOrDefault(uid, Map.of())
-        );
+                playerName,
+                levels,
+                xp
+        ));
     }
 
 
@@ -342,10 +350,6 @@ public class SkillManager {
             int newLevel = currentLevel + 1;
             levels.put(skillName, newLevel);
             xp.put(skillName, isMaxLevel(skillName, newLevel) ? 0 : excessXP);
-
-            // Sync into Skill object for legacy code
-            Skill skill = skills.get(skillName);
-            if (skill != null) skill.setLevel(newLevel);
 
             leveledUp = true;
             player.sendMessage(createLevelUpMessage(skillName, newLevel));
@@ -440,16 +444,9 @@ public class SkillManager {
 
     public void setPlayerSkills(Player player, Map<String,Integer> skillLevels, Map<String,Integer> skillXP) {
         UUID uid = player.getUniqueId();
-        playerSkillLevels.put(uid, skillLevels);
-        playerSkillXP    .put(uid, skillXP);
+        playerSkillLevels.put(uid, new ConcurrentHashMap<>(skillLevels));
+        playerSkillXP    .put(uid, new ConcurrentHashMap<>(skillXP));
 
-        // Sync Skill objects so CombatSkillProcessor reads correct levels
-        for (Map.Entry<String, Integer> entry : skillLevels.entrySet()) {
-            Skill skill = skills.get(entry.getKey());
-            if (skill != null) {
-                skill.setLevel(entry.getValue());
-            }
-        }
     }
 
     public int getPlayerLevel(Player player) {

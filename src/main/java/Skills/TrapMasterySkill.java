@@ -1,7 +1,6 @@
 package Skills;
 
 import Traps.TrapManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -16,9 +15,8 @@ public class TrapMasterySkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Handle experience gain and level up logic
         int level = this.getLevel();
@@ -34,10 +32,5 @@ public class TrapMasterySkill extends UtilitySkill {
         // Enhance trap duration based on skill level
         double durationBonus = level * 0.05; // Example: +5% trap duration per level
         trapManager.enhanceTrapDuration(player, durationBonus);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // Direct player effects can be applied here if necessary
     }
 }

@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.*;
@@ -23,9 +22,8 @@ public class RidingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
 
         // Increase mount speed based on skill level
@@ -66,7 +64,6 @@ public class RidingSkill extends UtilitySkill {
     }
 
     private void reduceFallDamageWhileRiding(Player player, double reduction) {
-        System.out.println("Fall damage reduced by " + reduction * 100 + "% while riding.");
     }
 
     private double calculateTerrainSpeedBonus(Player player) {
@@ -114,19 +111,16 @@ public class RidingSkill extends UtilitySkill {
     private void applyHorseBonuses(Horse horse, int level) {
         double jumpBonus = level * 0.05;
         horse.setJumpStrength(horse.getJumpStrength() * (1.0 + jumpBonus));
-        System.out.println("Horse's jump strength enhanced by " + jumpBonus * 100 + "%.");
     }
 
     private void applyLlamaBonuses(Llama llama, int level) {
         double spitResistanceBonus = level * 0.03;
         llama.setMaxHealth(llama.getMaxHealth() * (1.0 + spitResistanceBonus));
-        System.out.println("Llama's health increased by " + spitResistanceBonus * 100 + "%.");
     }
 
     private void applyCamelBonuses(Camel camel, int level) {
         double healthBonus = level * 0.04;
         camel.setMaxHealth(camel.getMaxHealth() * (1.0 + healthBonus));
-        System.out.println("Camel's health increased by " + healthBonus * 100 + "%.");
     }
 
     private void applyDolphinBonuses(Dolphin dolphin, int level) {
@@ -135,7 +129,6 @@ public class RidingSkill extends UtilitySkill {
         if (speedAttribute != null) {
             speedAttribute.setBaseValue(speedAttribute.getBaseValue() * (1.0 + swimmingSpeedBonus));
         }
-        System.out.println("Dolphin's swimming speed enhanced by " + swimmingSpeedBonus * 100 + "%.");
     }
 
     private void applyMountLoyaltyBonuses(Player player, int level) {
@@ -147,7 +140,6 @@ public class RidingSkill extends UtilitySkill {
             mountLoyaltyMap.put(mountUUID, loyaltyLevel);
             double loyaltyBonus = loyaltyLevel * 0.01; // Example: 1% loyalty bonus per level
             mount.setMaxHealth(mount.getMaxHealth() * (1.0 + loyaltyBonus));
-            System.out.println("Mount loyalty increased, providing a bonus of " + loyaltyBonus * 100 + "%.");
         }
     }
 
@@ -159,7 +151,6 @@ public class RidingSkill extends UtilitySkill {
             double maxHealth = mount.getMaxHealth();
             if (currentHealth < maxHealth) {
                 mount.setHealth(Math.min(maxHealth, currentHealth + (regenBonus * maxHealth)));
-                System.out.println("Mount's health is regenerating faster with a bonus of " + regenBonus * 100 + "%.");
             }
         }
     }
@@ -180,7 +171,6 @@ public class RidingSkill extends UtilitySkill {
                 if (speedAttribute != null) {
                     speedAttribute.setBaseValue(speedAttribute.getBaseValue() * (1.0 - fatigue));
                 }
-                System.out.println("Mount is fatigued, reducing speed by " + (fatigue * 100) + "%.");
             }
         }
     }
@@ -190,7 +180,6 @@ public class RidingSkill extends UtilitySkill {
             LivingEntity mount = (LivingEntity) player.getVehicle();
             double armorBonus = level * 0.02; // Example: +2% armor bonus per level
             mount.getAttribute(Attribute.ARMOR).setBaseValue(mount.getAttribute(Attribute.ARMOR).getBaseValue() * (1.0 + armorBonus));
-            System.out.println("Mount's armor increased by " + armorBonus * 100 + "%.");
         }
     }
 
@@ -199,7 +188,6 @@ public class RidingSkill extends UtilitySkill {
         if (player.getVehicle() instanceof LivingEntity) {
             LivingEntity mount = (LivingEntity) player.getVehicle();
             mount.teleportAsync(player.getLocation());
-            System.out.println("Mount has been summoned to the player.");
         }
     }
 }

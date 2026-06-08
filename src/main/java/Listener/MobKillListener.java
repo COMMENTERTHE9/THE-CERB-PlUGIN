@@ -6,7 +6,6 @@ import Skills.UtilitySkill;
 import CustomTags.ElementalTag;
 import Manager.MobContext;
 import Manager.MobRegistry;
-import cerberus.world.cerb.CustomPlayer;
 import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.ConfigSkillMapper;
 import org.bukkit.ChatColor;
@@ -88,11 +87,16 @@ public class MobKillListener implements Listener {
         if (event.getFrom().distanceSquared(event.getTo()) < 0.01) return;
 
         Player player = event.getPlayer();
-        CustomPlayer custom = skillManager.getCustomPlayer(player.getUniqueId());
-        if (custom == null) return;
 
-        UtilitySkill nav = (UtilitySkill) skillManager.getSkill("Navigation");
-        if (nav != null) nav.applyEffect(custom);
+        // Apply Navigation speed bonus on every qualifying move (passive effect)
+        if (skillManager.getSkill("Navigation") instanceof UtilitySkill nav) {
+            nav.applyEffect(player);
+        }
+
+        // Award Navigation XP on chunk discovery (not on every move)
+        if (!event.getFrom().getChunk().equals(event.getTo().getChunk())) {
+            plugin.getChunkDiscoveryManager().checkAndRecord(player, event.getTo().getChunk());
+        }
     }
 
 

@@ -264,7 +264,9 @@ public class TrapTool {
     private boolean isTrapTool(ItemStack item) {
         if (item == null || !item.hasItemMeta()) return false;
 
-        return item.getItemMeta().getPersistentDataContainer().has(
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return false;
+        return meta.getPersistentDataContainer().has(
                 new NamespacedKey(plugin, "trap_tool_type"),
                 PersistentDataType.STRING
         );

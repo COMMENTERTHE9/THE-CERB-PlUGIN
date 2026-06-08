@@ -1,6 +1,5 @@
 package Skills;
 
-import cerberus.world.cerb.CustomPlayer;
 import Manager.CraftingManager;
 import Manager.PlayerManaManager;
 import org.bukkit.Material;
@@ -25,9 +24,8 @@ public class HerbalismSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
 
         // Apply potion duration and effectiveness bonuses
@@ -138,8 +136,4 @@ public class HerbalismSkill extends UtilitySkill {
         player.sendMessage("You received a temporary buff: " + effectType.getName());
     }
 
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
-    }
 }

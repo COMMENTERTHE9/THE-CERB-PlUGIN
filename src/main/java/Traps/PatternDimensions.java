@@ -5,7 +5,6 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.util.Vector;
-import cerberus.world.cerb.CerberusWorldProtection;
 
 public class PatternDimensions {
     private final int width;
@@ -47,7 +46,7 @@ public class PatternDimensions {
             for (int y = 0; y < rotatedDims.getY(); y++) {
                 for (int z = 0; z < rotatedDims.getZ(); z++) {
                     Location checkLoc = location.clone().add(x, y, z);
-                    if (CerberusWorldProtection.isInProtectedRegion(checkLoc)) {
+                    if (false) {
                         return false;
                     }
                 }

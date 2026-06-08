@@ -13,6 +13,11 @@ import org.bukkit.util.Vector;
 import Manager.PlayerVirtualHealthManager;
 import Manager.PlayerManaManager;
 
+/**
+ * RESERVED FOR FUTURE DEFENSIVE MAGIC SYSTEM.
+ * See Barrier.java for full documentation on the planned architecture.
+ * DO NOT delete. DO NOT reconnect to old input system.
+ */
 public class ManaDrain extends DefensiveStructure {
     private final double effectiveness;
     private final Entity target;

@@ -1,7 +1,6 @@
 package Manager;
 
 import Skills.SkillManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -19,7 +18,6 @@ public class ResourceYieldManager {
     private final Map<Material, String> customMaterialSkillMap;
     private final Random random;
     private final CustomTagManager customTagManager;
-    private final AdvancedDropManager advancedDropManager;
 
     public ResourceYieldManager(SkillManager skillManager, Plugin plugin) {
         this.skillManager = skillManager;
@@ -27,7 +25,6 @@ public class ResourceYieldManager {
         this.customMaterialSkillMap = new HashMap<>();
         this.random = new Random();
         this.customTagManager = new CustomTagManager(plugin);
-        this.advancedDropManager = new AdvancedDropManager();
         initializeRareDropChances();
         initializeCustomMaterialSkillMap();
     }
@@ -67,10 +64,7 @@ public class ResourceYieldManager {
         if (skillName == null || skillName.isEmpty()) return;
 
         // Calculate the yield multiplier based on the player's skill level
-        double yieldMultiplier = calculateYieldMultiplier((CustomPlayer) player, skillName);
-
-        // Handle advanced drops
-        advancedDropManager.handleDrops(player, block, skillManager.getSkillLevel(skillName));
+        double yieldMultiplier = calculateYieldMultiplier(player, skillName);
 
         // Adjust drops based on yield multiplier
         block.getDrops().forEach(drop -> {
@@ -118,10 +112,10 @@ public class ResourceYieldManager {
         }
     }
 
-    private double calculateYieldMultiplier(CustomPlayer player, String skillName) {
+    private double calculateYieldMultiplier(Player player, String skillName) {
         if (skillName == null || skillName.isEmpty()) return 1.0;
 
-        int skillLevel = skillManager.getSkillLevel(skillName);
+        int skillLevel = skillManager.getSkillLevel(player, skillName);
         return 1.0 + (skillLevel * 0.1); // 10% yield increase per skill level
     }
 
@@ -148,7 +142,7 @@ public class ResourceYieldManager {
         }
 
         // Calculate the yield multiplier based on the player's skill level
-        double yieldMultiplier = calculateYieldMultiplier((CustomPlayer) player, skillName);
+        double yieldMultiplier = calculateYieldMultiplier(player, skillName);
 
         // Adjust drops based on yield multiplier
         block.getDrops().forEach(drop -> {

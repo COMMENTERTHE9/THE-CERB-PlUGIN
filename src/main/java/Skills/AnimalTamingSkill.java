@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.*;
 import org.bukkit.entity.Tameable;
 
@@ -24,9 +23,8 @@ public class AnimalTamingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
 
         // Increase taming success rate based on skill level
@@ -41,13 +39,7 @@ public class AnimalTamingSkill extends UtilitySkill {
         gainTamingExperience(player, 10); // Example experience gain per tame
     }
 
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
-    }
-
     private void applyTamingSuccessBonus(Player player, double bonus) {
-        System.out.println("Taming success rate increased by " + bonus * 100 + "%.");
     }
 
     private void enhanceTamedAnimalAttributes(Player player, double bonus) {
@@ -110,18 +102,15 @@ public class AnimalTamingSkill extends UtilitySkill {
 
     // Custom logic to enhance Allay abilities
     private void enhanceAllayAttributes(Allay allay, double bonus) {
-        System.out.println("Allay item-fetching speed enhanced by " + bonus * 100 + "%.");
     }
 
     // Custom logic to enhance Axolotl abilities
     private void enhanceAxolotlAttributes(Axolotl axolotl, double bonus) {
         axolotl.setHealth(axolotl.getHealth() * (1 + bonus));
-        System.out.println("Axolotl health increased by " + bonus * 100 + "%.");
     }
 
     // Custom logic to enhance Dolphin abilities
     private void enhanceDolphinAttributes(Dolphin dolphin, double bonus) {
-        System.out.println("Dolphin swimming speed enhanced by " + bonus * 100 + "%.");
     }
 
     // Animal Affinity System: Increase affinity over time
@@ -166,6 +155,5 @@ public class AnimalTamingSkill extends UtilitySkill {
     private void gainTamingExperience(Player player, int experience) {
         // Logic to add experience points to the taming skill
         // Example: CustomPlayer.addExperience("AnimalTaming", experience);
-        System.out.println("You gained " + experience + " taming experience.");
     }
 }

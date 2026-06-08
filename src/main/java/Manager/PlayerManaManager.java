@@ -8,20 +8,30 @@ import org.bukkit.Bukkit;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.Plugin;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerManaManager {
     private final SkillManager skillManager;
-    private double baseMana;
-    private double totalMana;
-    private double currentMana;
-    private double manaRegenRate;
-    private double magicDamageMultiplier;
-    private long lastRegenTime;
+    private static final double DEFAULT_BASE_MANA = 1000.0;
+    private static final double DEFAULT_MANA_REGEN_RATE = 50.0;
+    private static final double DEFAULT_MAGIC_DAMAGE_MULTIPLIER = 1.0;
+
+    private static final class ManaState {
+        private double baseMana = DEFAULT_BASE_MANA;
+        private double totalMana = DEFAULT_BASE_MANA;
+        private double currentMana = DEFAULT_BASE_MANA;
+        private double manaRegenRate = DEFAULT_MANA_REGEN_RATE;
+        private double magicDamageMultiplier = DEFAULT_MAGIC_DAMAGE_MULTIPLIER;
+        private long lastRegenTime = System.currentTimeMillis();
+    }
+
+    private final Map<UUID, ManaState> manaStates = new ConcurrentHashMap<>();
 
     // Maps to track mana drain, boost effects, and boost limits
     private final Map<UUID, Double> playerManaDrains = new ConcurrentHashMap<>();
@@ -43,65 +53,69 @@ public class PlayerManaManager {
     public PlayerManaManager(SkillManager skillManager, Plugin plugin) {
         this.skillManager = skillManager;
         this.plugin = plugin;
-        this.baseMana = 1000;
-        this.manaRegenRate = 50; // Default mana regeneration rate per second
-        this.magicDamageMultiplier = 1.0; // Default magic damage multiplier
-        this.totalMana = baseMana;
-        this.currentMana = totalMana;
-        this.lastRegenTime = System.currentTimeMillis();
+    }
+
+    public int getSkillLevel(Player player, String skillName) {
+        return skillManager.getSkillLevel(player, skillName);
+    }
+
+    private ManaState state(Player player) {
+        return manaStates.computeIfAbsent(player.getUniqueId(), ignored -> new ManaState());
     }
 
     // Getter for the maximum mana
     public double getMaxMana(Player player) {
-        return this.totalMana;
+        return state(player).totalMana;
     }
 
     // Setter for the maximum mana
-    public void setMaxMana(double maxMana) {
-        this.totalMana = maxMana;
-        if (this.currentMana > this.totalMana) {
-            this.currentMana = this.totalMana; // Cap current mana to max mana
+    public void setMaxMana(Player player, double maxMana) {
+        ManaState state = state(player);
+        state.totalMana = Math.max(0.0, maxMana);
+        if (state.currentMana > state.totalMana) {
+            state.currentMana = state.totalMana; // Cap current mana to max mana
         }
     }
 
     // Getter for the current mana
     public double getCurrentMana(Player player) {
-        return this.currentMana;
+        return state(player).currentMana;
     }
 
     // Method to set the current mana of the player
     public void setPlayerCurrentMana(Player player, double mana) {
-        UUID playerId = player.getUniqueId();
+        ManaState state = state(player);
         double maxMana = getMaxMana(player);
         if (mana > maxMana) {
             mana = maxMana;
         } else if (mana < 0) {
             mana = 0;
         }
-        currentMana = mana;
+        state.currentMana = mana;
         Bukkit.getPluginManager().callEvent(new PlayerManaUpdateEvent(player, mana));
     }
 
     // Getter for mana regeneration rate
     public double getManaRegenRate(Player player) {
-        return this.manaRegenRate;
+        return state(player).manaRegenRate;
     }
 
     // Setter for mana regeneration rate
-    public void setManaRegenRate(double manaRegenRate) {
-        this.manaRegenRate = manaRegenRate;
+    public void setManaRegenRate(Player player, double manaRegenRate) {
+        state(player).manaRegenRate = Math.max(0.0, manaRegenRate);
     }
 
     // Method to get the base mana regeneration rate (default 50 per second)
     public double getBaseManaRegenRate() {
-        return 50.0;
+        return DEFAULT_MANA_REGEN_RATE;
     }
 
     // Method to spend mana
     public boolean spendMana(Player player, ManaType manaType, double amount) {
-        if (this.currentMana >= amount) {
-            this.currentMana -= amount;
-            setPlayerCurrentMana(player, this.currentMana); // Update player's mana
+        ManaState state = state(player);
+        if (state.currentMana >= amount) {
+            state.currentMana -= amount;
+            setPlayerCurrentMana(player, state.currentMana); // Update player's mana
             return true;
         }
         return false;
@@ -109,13 +123,14 @@ public class PlayerManaManager {
 
     // Method to increase mana regeneration rate
     public void increaseManaRegenRate(Player player, double increase) {
-        this.manaRegenRate += increase;
+        ManaState state = state(player);
+        state.manaRegenRate = Math.max(0.0, state.manaRegenRate + increase);
     }
 
     // Method to increase maximum mana
     public void increaseMaxMana(Player player, double increase) {
-        this.totalMana += increase;
-        setMaxMana(this.totalMana); // Update player's max mana
+        ManaState state = state(player);
+        setMaxMana(player, state.totalMana + increase); // Update player's max mana
     }
 
     // Apply a shield to the player
@@ -152,8 +167,7 @@ public class PlayerManaManager {
 
         ScheduledTask task = player.getScheduler().runAtFixedRate(plugin, scheduledTask -> {
             if (player.isOnline()) {
-                regenerateMana(manaRegenRate / 20); // Regenerate mana every tick (1/20th of a second)
-                setPlayerCurrentMana(player, currentMana);
+                regenerateMana(player, getManaRegenRate(player) / 20); // Regenerate mana every tick (1/20th of a second)
             } else {
                 scheduledTask.cancel();
                 regenTasks.remove(player.getUniqueId());
@@ -190,6 +204,7 @@ public class PlayerManaManager {
         lastBoostTimeMap.remove(uuid);
         activeShields.remove(uuid);
         playerManaShields.remove(uuid);
+        manaStates.remove(uuid);
     }
 
     /** Spend BASIC mana */
@@ -209,11 +224,8 @@ public class PlayerManaManager {
     }
 
     // Method to regenerate mana
-    public void regenerateMana(double amount) {
-        this.currentMana += amount;
-        if (this.currentMana > this.totalMana) {
-            this.currentMana = this.totalMana;
-        }
+    public void regenerateMana(Player player, double amount) {
+        setPlayerCurrentMana(player, getCurrentMana(player) + amount);
     }
 
     public void applyManaDrain(Player player, double drainAmountPerSecond, long durationInSeconds) {
@@ -252,8 +264,10 @@ public class PlayerManaManager {
             return;
         }
 
-        this.totalMana += boostAmount;
-        this.currentMana += boostAmount;
+        ManaState state = state(player);
+        state.totalMana += boostAmount;
+        state.currentMana = Math.min(state.totalMana, state.currentMana + boostAmount);
+        Bukkit.getPluginManager().callEvent(new PlayerManaUpdateEvent(player, state.currentMana));
 
         long endTime = System.currentTimeMillis() + (durationInSeconds * 1000);
         boostEndTimes.put(playerId, endTime);
@@ -264,10 +278,12 @@ public class PlayerManaManager {
             long currentTime = System.currentTimeMillis();
 
             if (currentTime > boostEndTimes.getOrDefault(playerId, 0L)) {
-                totalMana -= boostAmount;
-                if (currentMana > totalMana) {
-                    currentMana = totalMana;
+                ManaState current = state(player);
+                current.totalMana = Math.max(0.0, current.totalMana - boostAmount);
+                if (current.currentMana > current.totalMana) {
+                    current.currentMana = current.totalMana;
                 }
+                Bukkit.getPluginManager().callEvent(new PlayerManaUpdateEvent(player, current.currentMana));
                 boostEndTimes.remove(playerId);
                 scheduledTask.cancel();
             }
@@ -296,15 +312,12 @@ public class PlayerManaManager {
         lastBoostTimeMap.put(playerId, System.currentTimeMillis());
     }
 
-    public void resetMana(double amount) {
-        this.currentMana = amount;
-        if (this.currentMana > this.totalMana) {
-            this.currentMana = this.totalMana;
-        }
+    public void resetMana(Player player, double amount) {
+        setPlayerCurrentMana(player, amount);
     }
 
     public void applyMagicDamageMultiplier(Player player, double multiplier, boolean isSurge) {
-        this.magicDamageMultiplier = multiplier;
+        state(player).magicDamageMultiplier = multiplier;
 
         if (isSurge) {
             player.getScheduler().runDelayed(plugin, task -> {
@@ -321,38 +334,34 @@ public class PlayerManaManager {
     }
 
     public void applyTemporaryRegenBoost(Player player, double boost, long duration) {
-        this.manaRegenRate += boost;
+        ManaState state = state(player);
+        state.manaRegenRate = Math.max(0.0, state.manaRegenRate + boost);
 
         player.getScheduler().runDelayed(plugin, task -> {
-            manaRegenRate -= boost;
+            ManaState current = state(player);
+            current.manaRegenRate = Math.max(0.0, current.manaRegenRate - boost);
         }, null, Math.max(1L, duration / 50));
     }
 
     private double getCurrentSpellManaCost(Player player) {
-        if (!player.hasMetadata("currentSpellManaCost")) {
-            return 0.0;
-        }
-        return player.getMetadata("currentSpellManaCost").get(0).asDouble();
+        return getMetadataDouble(player, "currentSpellManaCost", 0.0);
     }
 
     private void setCurrentSpellManaCost(Player player, double newCost) {
-        player.setMetadata("currentSpellManaCost", new FixedMetadataValue(Bukkit.getPluginManager().getPlugin("cerb"), newCost));
+        player.setMetadata("currentSpellManaCost", new FixedMetadataValue(plugin, newCost));
     }
 
     private double getCurrentSpellDamage(Player player) {
-        if (!player.hasMetadata("currentSpellDamage")) {
-            return 0.0;
-        }
-        return player.getMetadata("currentSpellDamage").get(0).asDouble();
+        return getMetadataDouble(player, "currentSpellDamage", 0.0);
     }
 
     private void setCurrentSpellDamage(Player player, double newDamage) {
-        player.setMetadata("currentSpellDamage", new FixedMetadataValue(Bukkit.getPluginManager().getPlugin("cerb"), newDamage));
+        player.setMetadata("currentSpellDamage", new FixedMetadataValue(plugin, newDamage));
     }
 
     public void applyDynamicSkillInteraction(Player player) {
-        int elementalMasteryLevel = skillManager.getSkillLevel("Elemental Mastery");
-        int spellWeavingLevel = skillManager.getSkillLevel("Spell Weaving");
+        int elementalMasteryLevel = skillManager.getSkillLevel(player, "Elemental Mastery");
+        int spellWeavingLevel = skillManager.getSkillLevel(player, "Spell Weaving");
 
         if (elementalMasteryLevel > 0 && spellWeavingLevel > 0) {
             double dynamicBonus = (elementalMasteryLevel + spellWeavingLevel) * 0.01;
@@ -365,8 +374,8 @@ public class PlayerManaManager {
     }
 
     public void applyCrossSkillBenefits(Player player) {
-        int heavyArmorTrainingLevel = skillManager.getSkillLevel("Heavy Armor Training");
-        int defensiveMagicSkillLevel = skillManager.getSkillLevel("Defensive Magic Skill");
+        int heavyArmorTrainingLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
+        int defensiveMagicSkillLevel = skillManager.getSkillLevel(player, "Defensive Magic");
 
         if (heavyArmorTrainingLevel > 0 && defensiveMagicSkillLevel > 0) {
             double manaCostReduction = 0.02 * heavyArmorTrainingLevel;
@@ -378,7 +387,7 @@ public class PlayerManaManager {
 
     public void checkForMagicSurge(Player player) {
         boolean hasManaRegenBuff = checkForBuff(player, "ManaRegenBuff");
-        int intelligenceLevel = skillManager.getSkillLevel("Intelligence");
+        int intelligenceLevel = skillManager.getSkillLevel(player, "Intelligence");
 
         if (hasManaRegenBuff && intelligenceLevel >= 5) {
             activateMagicSurge(player);
@@ -408,10 +417,17 @@ public class PlayerManaManager {
 
     private int getRecentSpellCasts(Player player, String element) {
         String key = "recent" + element + "Casts";
-        if (!player.hasMetadata(key)) {
-            return 0;
-        }
-        return player.getMetadata(key).get(0).asInt();
+        return getMetadataInt(player, key, 0);
+    }
+
+    private double getMetadataDouble(Player player, String key, double fallback) {
+        List<MetadataValue> values = player.getMetadata(key);
+        return values.isEmpty() ? fallback : values.get(0).asDouble();
+    }
+
+    private int getMetadataInt(Player player, String key, int fallback) {
+        List<MetadataValue> values = player.getMetadata(key);
+        return values.isEmpty() ? fallback : values.get(0).asInt();
     }
 
     private void activateElementalSynergy(Player player) {

@@ -59,6 +59,9 @@ Thumbs.db
 build/
 dist/
 
+# Accidental nested duplicate of the project (its own git repo) — not a real submodule
+/Creb/
+
 # Test server
 test-server/
 

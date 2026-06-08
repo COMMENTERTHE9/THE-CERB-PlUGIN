@@ -22,7 +22,6 @@ public enum GuiIdentity {
     SKILL_DETAIL,
     ADMIN_PANEL,
     ADMIN_COMMANDS,
-    REGION_MANAGEMENT,
     COMING_SOON;
 
     // ── Shared PDC keys — used by ALL GUIs for action routing ────────

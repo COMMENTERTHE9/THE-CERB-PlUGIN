@@ -45,6 +45,10 @@ public abstract class Skill {
         return level;
     }
 
+    public String getName() {
+        return name;
+    }
+
     public void setLevel(int level) {
         this.level = level;
     }
@@ -53,11 +57,7 @@ public abstract class Skill {
         return experience;
     }
 
-    // Apply effect for Bukkit player
     public abstract void applyEffect(Player player);
-
-    // Apply effect for CustomPlayer
-    public abstract void applyEffect(CustomPlayer player);
 
     @Override
     public String toString() {

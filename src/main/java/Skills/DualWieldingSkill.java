@@ -1,7 +1,7 @@
 package Skills;
 
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
@@ -13,45 +13,24 @@ public class DualWieldingSkill extends CombatSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer player) {
-        if (player == null) return;
-
-        // Check if the player is dual-wielding
-        if (isDualWielding(player.getBukkitPlayer())) {
-            // Increase off-hand damage by a percentage based on skill level
-            CustomPlayer.AttributeWrapper attributeWrapper = player.getCustomAttribute(Attribute.ATTACK_DAMAGE);
-            if (attributeWrapper != null) {
-                double baseValue = attributeWrapper.getBaseValue();
-                attributeWrapper.setBaseValue(baseValue * 1.2); // Increase off-hand attack damage by 20%
-            }
-
-            // Increase attack speed by a percentage based on skill level
-            double currentAttackSpeed = player.getBukkitPlayer().getAttribute(Attribute.ATTACK_SPEED).getBaseValue();
-            player.getBukkitPlayer().getAttribute(Attribute.ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
-
-            // Chance for additional strike (e.g., 5% chance per skill level)
-            if (Math.random() < getAdditionalStrikeChance()) {
-                // Trigger additional strike logic here
-                triggerAdditionalStrike(player.getBukkitPlayer());
-            }
-        }
-    }
-
-    @Override
     public void applyEffect(Player player) {
         if (player == null) return;
 
         // Check if the player is dual-wielding
         if (isDualWielding(player)) {
             // Increase off-hand damage by a percentage based on skill level
-            if (player.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
-                double currentAttackDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
-                player.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(currentAttackDamage * 1.2); // Increase off-hand attack damage by 20%
+            AttributeInstance attackDamageAttr = player.getAttribute(Attribute.ATTACK_DAMAGE);
+            if (attackDamageAttr != null) {
+                double baseValue = attackDamageAttr.getBaseValue();
+                attackDamageAttr.setBaseValue(baseValue * 1.2); // Increase off-hand attack damage by 20%
             }
 
             // Increase attack speed by a percentage based on skill level
-            double currentAttackSpeed = player.getAttribute(Attribute.ATTACK_SPEED).getBaseValue();
-            player.getAttribute(Attribute.ATTACK_SPEED).setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
+            AttributeInstance attackSpeedAttr = player.getAttribute(Attribute.ATTACK_SPEED);
+            if (attackSpeedAttr != null) {
+                double currentAttackSpeed = attackSpeedAttr.getBaseValue();
+                attackSpeedAttr.setBaseValue(currentAttackSpeed * 1.1); // Increase attack speed by 10%
+            }
 
             // Chance for additional strike (e.g., 5% chance per skill level)
             if (Math.random() < getAdditionalStrikeChance()) {
@@ -77,7 +56,7 @@ public class DualWieldingSkill extends CombatSkill {
     private void triggerAdditionalStrike(Player player) {
         // Logic for triggering an additional strike
         // This is placeholder logic, and you'll need to implement the actual mechanics for an additional strike
-        player.sendMessage("double double You triggered an additional strike!");
+        player.sendMessage(org.bukkit.ChatColor.YELLOW + "You triggered an additional strike!");
     }
 }
 

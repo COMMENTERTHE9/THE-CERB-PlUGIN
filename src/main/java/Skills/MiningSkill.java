@@ -14,9 +14,9 @@ public class MiningSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
 
         // Handle experience gain and level up logic
         int level = this.getLevel();
@@ -29,16 +29,11 @@ public class MiningSkill extends UtilitySkill {
         double healthBonus = level * 2.0; // Example: +2 health per level
         double strengthBonus = level * 1.0; // Example: +1 strength per level
 
-        customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
+        cp.getHealthManager().increaseMaxHealth(player, healthBonus);
+        cp.getStrengthManager().increaseStrength(player, strengthBonus);
 
         // Trigger special effects for mining specific materials (placeholder logic)
         triggerSpecialEffects(player, level);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     private void triggerSpecialEffects(Player player, int level) {

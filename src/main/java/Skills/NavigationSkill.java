@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
@@ -9,14 +8,11 @@ import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class NavigationSkill extends UtilitySkill {
     private final CraftingManager craftingManager;
-    private final Map<UUID, Long> lastXpGainTime = new ConcurrentHashMap<>();
-    private final SkillManager skillManager;
+    private final SkillManager skillManager; // kept for constructor compatibility
     private static final float MAX_WALK_SPEED = 0.3f;
     /** Fixed UUID so there's only ever ONE speed modifier per player. */
     private static final UUID SPEED_MODIFIER_UUID = UUID.fromString("a7e3c2d1-5f00-4b8a-9c11-0a1b2c3d4e5f");
@@ -28,11 +24,9 @@ public class NavigationSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
-        Player player = customPlayer.getPlayer();
-        UUID playerId = player.getUniqueId();
         int level = this.getLevel();
 
         // Apply speed bonuses to the player based on skill level and environment
@@ -41,20 +35,7 @@ public class NavigationSkill extends UtilitySkill {
         // Apply navigation tool enhancements
         applyNavigationToolEnhancements(player, level);
 
-        // Implement cooldown for XP gain
-        long currentTime = System.currentTimeMillis();
-        long lastGainTime = lastXpGainTime.getOrDefault(playerId, 0L);
-        long cooldown = 10000; // 10 seconds in milliseconds
-
-        if (currentTime - lastGainTime >= cooldown) {
-            // Award XP
-            int xpAmount = 10; // Adjust as needed
-            skillManager.addXpAndCheckLevelUp("Navigation", xpAmount, player);
-
-            // Update last gain time
-            lastXpGainTime.put(playerId, currentTime);
-
-        }
+        // XP is now awarded by ChunkDiscoveryManager on chunk transitions.
     }
 
     private void applySpeedBonus(Player player, int level) {
@@ -165,13 +146,11 @@ public class NavigationSkill extends UtilitySkill {
     // Placeholder logic for enhancing map accuracy
     private void enhanceMapAccuracy(ItemStack map, int level) {
         // Example: Increase map detail or coverage radius based on skill level
-        System.out.println("Map accuracy enhanced by " + level * 5 + "%.");
     }
 
     // Placeholder logic for enhancing compass effectiveness
     private void enhanceCompassEffectiveness(ItemStack compass, int level) {
         // Example: Improve compass precision or add custom tracking features based on skill level
-        System.out.println("Compass effectiveness enhanced by " + level * 5 + "%.");
     }
 
     // Retrieve the navigation tool the player is using

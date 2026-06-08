@@ -69,7 +69,7 @@ public class LuckManager {
         double luckFactor = 1.0;
 
         // Incorporate skill-based luck
-        luckFactor *= calculateSkillBasedLuck(customPlayer);
+        luckFactor *= calculateSkillBasedLuck(player);
 
         // Add temporary and permanent luck points if any
         luckFactor *= (1.0 + getTemporaryLuckPoints(player) / 100);
@@ -88,12 +88,12 @@ public class LuckManager {
      * @param customPlayer The player whose luck is being calculated.
      * @return A multiplier based on the player's skill levels.
      */
-    private double calculateSkillBasedLuck(CustomPlayer customPlayer) {
+    private double calculateSkillBasedLuck(Player player) {
         double luckMultiplier = 1.0;
-        int magicFindLevel = skillManager.getSkillLevel("Magic Find");
-        int scavengingLevel = skillManager.getSkillLevel("Scavenging");
-        int explorationLevel = skillManager.getSkillLevel("Exploration");
-        int lockpickingLevel = skillManager.getSkillLevel("Lockpicking");
+        int magicFindLevel = skillManager.getSkillLevel(player, "Magic Find");
+        int scavengingLevel = skillManager.getSkillLevel(player, "Scavenging");
+        int explorationLevel = skillManager.getSkillLevel(player, "Exploration");
+        int lockpickingLevel = skillManager.getSkillLevel(player, "Lockpicking");
 
         luckMultiplier *= (1.0 + (magicFindLevel * 0.05)); // 5% luck increase per Magic Find level
         luckMultiplier *= (1.0 + (scavengingLevel * 0.03)); // 3% luck increase per Scavenging level

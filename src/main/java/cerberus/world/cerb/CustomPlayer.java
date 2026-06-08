@@ -2,8 +2,6 @@ package cerberus.world.cerb;
 
 import Manager.*;
 import Skills.SkillManager;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -88,9 +86,9 @@ public class CustomPlayer {
         return skills.getPlayerSkillXP(bukkit);
     }
 
-    /** Delegates to SkillManager.getSkillLevel(skillName). */
+    /** Delegates to this player's skill-level map. */
     public int getSkillLevel(String skillName) {
-        return skills.getSkillLevel(skillName);
+        return skills.getSkillLevel(bukkit, skillName);
     }
 
     /** Delegates to SkillManager.getSkill(skillName). */
@@ -98,30 +96,4 @@ public class CustomPlayer {
         return skills.getSkill(skillName);
     }
 
-    /* ── AttributeWrapper for combat skill classes ──── */
-
-    /**
-     * Thin wrapper around Bukkit's AttributeInstance.
-     * Used by 7+ CombatSkill classes (BladeMastery, CriticalStrike, etc.).
-     */
-    public static class AttributeWrapper {
-        private final AttributeInstance instance;
-
-        public AttributeWrapper(AttributeInstance instance) {
-            this.instance = instance;
-        }
-
-        public double getBaseValue()               { return instance.getBaseValue(); }
-        public void   setBaseValue(double value)    { instance.setBaseValue(value); }
-        public double getValue()                    { return instance.getValue(); }
-    }
-
-    /**
-     * Get a wrapped Bukkit attribute for the underlying player.
-     * Returns null if the attribute doesn't exist on this player.
-     */
-    public AttributeWrapper getCustomAttribute(Attribute attribute) {
-        AttributeInstance inst = bukkit.getAttribute(attribute);
-        return inst != null ? new AttributeWrapper(inst) : null;
-    }
 }

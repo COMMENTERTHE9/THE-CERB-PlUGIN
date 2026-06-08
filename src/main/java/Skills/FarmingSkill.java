@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 public class FarmingSkill extends UtilitySkill {
 
@@ -17,9 +18,9 @@ public class FarmingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
 
         // Handle experience gain and level up logic here
         int level = this.getLevel();
@@ -30,22 +31,17 @@ public class FarmingSkill extends UtilitySkill {
         // Apply health bonus (defense is now gear-based, no longer granted by gathering skills)
         double healthBonus = level * 1.5; // Example: +1.5 health per level
 
-        customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
+        cp.getHealthManager().increaseMaxHealth(player, healthBonus);
 
         // Optionally, you could also add a strength bonus
         double strengthBonus = level * 1.2; // Example: +1.2 strength per level
-        customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
+        cp.getStrengthManager().increaseStrength(player, strengthBonus);
 
         // Apply crop-specific bonuses if applicable
         applyCropSpecificBonuses(player, level);
 
         // Apply farming tool effects if the player is using a specialized farming tool
         applyFarmingToolEffects(player, level);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     // Apply bonuses for specific crops based on the player's farming skill level
@@ -102,8 +98,9 @@ public class FarmingSkill extends UtilitySkill {
         // Check if the tool is tagged for the specific crop type
         if (isToolEffectiveForCrop(tool, targetBlock.getType())) {
             double toolEffectivenessMultiplier = 1.0 + (level * 0.15); // Example: 15% bonus for effective tools
-            String toolDisplayName = (tool.hasItemMeta() && tool.getItemMeta().hasDisplayName())
-                    ? tool.getItemMeta().getDisplayName() : tool.getType().name();
+            ItemMeta toolMeta = tool.getItemMeta();
+            String toolDisplayName = (toolMeta != null && toolMeta.hasDisplayName())
+                    ? toolMeta.getDisplayName() : tool.getType().name();
             player.sendMessage("Your " + toolDisplayName + " grants you an extra " + (toolEffectivenessMultiplier * 100) + "% yield.");
             yieldManager.applyYieldBonus(player, "Farming");
         }
@@ -111,8 +108,10 @@ public class FarmingSkill extends UtilitySkill {
 
     // Check if the tool the player is using is effective for the specific crop type
     private boolean isToolEffectiveForCrop(ItemStack tool, Material cropType) {
-        if (!tool.hasItemMeta() || !tool.getItemMeta().hasDisplayName()) return false;
-        String toolName = tool.getItemMeta().getDisplayName().toLowerCase();
+        if (!tool.hasItemMeta()) return false;
+        ItemMeta meta = tool.getItemMeta();
+        if (meta == null || !meta.hasDisplayName()) return false;
+        String toolName = meta.getDisplayName().toLowerCase();
 
         switch (cropType) {
             case WHEAT:

@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.PlayerManaManager;
 import cerberus.world.cerb.CerberusPlugin;
-import cerberus.world.cerb.CustomPlayer;
 import cerberus.world.cerb.DatabaseManager;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
@@ -22,11 +21,10 @@ public class ArcaneKnowledgeSkill extends MagicSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         int level = this.getLevel(); // Get the current skill level
-        Player player = customPlayer.getBukkitPlayer();
         UUID playerUUID = player.getUniqueId();
 
         // Reduce mana cost based on skill level
@@ -78,7 +76,8 @@ public class ArcaneKnowledgeSkill extends MagicSkill {
 
     // Placeholder methods to get and set spell attributes
     private double getPlayerSpellDamage(Player player) {
-        return player.getMetadata("spellDamage").get(0).asDouble();
+        java.util.List<org.bukkit.metadata.MetadataValue> values = player.getMetadata("spellDamage");
+        return values.isEmpty() ? 0.0 : values.get(0).asDouble();
     }
 
     private void setPlayerSpellDamage(Player player, double newDamage) {
@@ -86,7 +85,8 @@ public class ArcaneKnowledgeSkill extends MagicSkill {
     }
 
     private double getPlayerSpellRange(Player player) {
-        return player.getMetadata("spellRange").get(0).asDouble();
+        java.util.List<org.bukkit.metadata.MetadataValue> values = player.getMetadata("spellRange");
+        return values.isEmpty() ? 0.0 : values.get(0).asDouble();
     }
 
     private void setPlayerSpellRange(Player player, double newRange) {

@@ -34,12 +34,18 @@ public class PlayerHUDManager {
     }
 
     public void updateHUD(Player player) {
-        // Get player's current stats
-        double health = healthManager.getPlayerVirtualHealth(player); // Get virtual health
-        double maxHealth = healthManager.getPlayerMaxVirtualHealth(player);  // Get max virtual health
+        if (player == null || !player.isOnline() || player.isDead()) return;
+        if (healthManager == null || manaManager == null || defenseManager == null) return;
+
+        HealthStateSnapshot healthState = healthManager.snapshot(player);
+        double health = healthState.currentHp();
+        double maxHealth = healthState.maxHp();
         double mana = getMana(player);
         double maxMana = getMaxMana(player);
         double effectiveness = getDefenseEffectiveness(player);
+
+        health = Math.max(0, Math.min(health, Math.max(maxHealth, 0)));
+        mana = Math.max(0, Math.min(mana, Math.max(maxMana, 0)));
 
         // Determine color based on percentage thresholds
         double healthPct = (maxHealth > 0) ? health / maxHealth : 0;

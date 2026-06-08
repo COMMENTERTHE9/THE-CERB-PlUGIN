@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.LuckManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
@@ -23,34 +22,31 @@ public class LockpickingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
+        cerberus.world.cerb.CustomPlayer cp = cerberus.world.cerb.CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
+
         int level = this.getLevel();
 
         // Calculate base success chance and luck factor
         double baseSuccessChance = 0.1 + (level * 0.01); // Base: 10% + 1% per level
-        double luckFactor = luckManager.calculateLuckFactor(customPlayer);
+        double luckFactor = luckManager.calculateLuckFactor(cp);
 
         // Get the complexity of the lock being picked (example: "reinforced_lock")
-        double lockComplexity = getLockComplexity("reinforced_lock"); // You can replace this with the actual lock being picked
+        double lockComplexity = getLockComplexity("reinforced_lock");
 
         // Final success chance is influenced by luck and lock complexity
         double finalSuccessChance = (baseSuccessChance - lockComplexity) * luckFactor;
 
         // Check for success or failure
-        if (luckManager.determineSuccess(customPlayer, finalSuccessChance)) {
+        if (luckManager.determineSuccess(cp, finalSuccessChance)) {
             // Successful lockpicking
             handleSuccessfulLockpick(player);
         } else {
             // Failed lockpicking attempt, could trigger traps or penalties
             handleFailedLockpick(player);
         }
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     // Custom method to calculate lock complexity based on the lock type
@@ -82,6 +78,5 @@ public class LockpickingSkill extends UtilitySkill {
     private void applyToolDurabilityEffect(Player player, boolean success) {
         // Placeholder logic for reducing tool durability after lockpicking
         // You can implement a durability system here if needed
-        System.out.println(success ? "Tool durability reduced slightly." : "Tool durability reduced significantly due to failure.");
     }
 }

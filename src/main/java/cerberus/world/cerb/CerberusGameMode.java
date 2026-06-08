@@ -24,7 +24,6 @@ public class CerberusGameMode {
     /** Set up a brand-new player with default virtual health. */
     public void setupPlayerForFirstTime(Player player, FileConfiguration playerDataConfig, String playerUUID) {
         virtualHealthManager.setMaxHealth(player, 100.0);
-        virtualHealthManager.setPlayerVirtualHealth(player, 100.0);
         player.setFoodLevel(20);
 
         playerDataConfig.set(playerUUID + ".joinedBefore", true);

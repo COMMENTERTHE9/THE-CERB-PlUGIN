@@ -3,8 +3,10 @@ package Listener;
 import cerberus.world.cerb.CerberusPlugin;
 import cerberus.world.cerb.CustomPlayer;
 import Manager.PlayerVirtualHealthManager;
+import Manager.DamageResolution;
 import Manager.DamageTypeMapper;
 import Manager.CustomDamageType;
+import Manager.CombatConfig;
 import Manager.CombatContext;
 import Manager.CombatSkillProcessor;
 import Manager.CerbDamageResultEvent;
@@ -74,6 +76,16 @@ public class VirtualHealthListener implements Listener {
         Bukkit.getGlobalRegionScheduler().runDelayed(plugin, task -> pendingSpellDamage.remove(entityId), 2L);
     }
 
+    private boolean hasActiveSession(Player player) {
+        PlayerSessionManager manager = plugin.getPlayerSessionManager();
+        if (manager == null) {
+            return false;
+        }
+
+        PlayerSession session = manager.getSession(player.getUniqueId());
+        return session != null && session.isActive();
+    }
+
     // ------------------------------------------------------------
     // Main damage handler
     // ------------------------------------------------------------
@@ -81,9 +93,25 @@ public class VirtualHealthListener implements Listener {
     public void onEntityDamage(EntityDamageEvent event) {
         if (event.getDamage() <= 0) return;
         if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (event.getEntity() instanceof Player p && (p.isDead() || p.getHealth() <= 0)) {
-            event.setCancelled(true);
-            return;
+        if (event.getEntity() instanceof Player p) {
+            if (!hasActiveSession(p)) {
+                event.setCancelled(true);
+                return;
+            }
+            if (virtualHealthManager.isRespawning(p)) {
+                event.setCancelled(true);
+                return;
+            }
+            if (virtualHealthManager.hasPendingCustomDeath(p)) {
+                event.setDamage(virtualHealthManager.getGuaranteedVanillaDeathDamage(p));
+                virtualHealthManager.schedulePendingDeathFinalizer(p);
+                return;
+            }
+            virtualHealthManager.enforceHealthInvariant(p, "PRE_DAMAGE");
+            if (p.isDead() || p.getHealth() <= 0) {
+                event.setCancelled(true);
+                return;
+            }
         }
         if (isHandlingEvent) return;
 
@@ -123,18 +151,36 @@ public class VirtualHealthListener implements Listener {
 
                 double modifiedDmg = ctx.attack().getModifiedDamage();
 
-                // Resolve armor reduction with mob armor penetration
-                double armorReduction = virtualHealthManager.getArmorReduction(player);
+                // Resolve mob context once — used for both damage scaling and armor penetration
+                MobContext mobCtx = null;
                 if (damager instanceof LivingEntity livingDamager && !(damager instanceof Player)) {
                     MobRegistry mobRegistry = plugin.getMobRegistry();
                     if (mobRegistry != null) {
-                        MobContext mobCtx = mobRegistry.resolve(livingDamager);
-                        double penetration = mobCtx.tier().armorPenetration;
-                        armorReduction *= (1.0 - penetration);
+                        mobCtx = mobRegistry.resolve(livingDamager);
                     }
                 }
 
-                virtualHealthManager.applyDamage(player, modifiedDmg, armorReduction,
+                // Mob damage scaling — tier + level based multiplier
+                if (mobCtx != null) {
+                    CombatConfig cc = plugin.getCombatConfig();
+                    if (cc != null && cc.mobDamageScaling.isEnabled()) {
+                        int mobLevel = resolveMobLevel(damager instanceof LivingEntity le ? le : null);
+                        double scalingMultiplier = cc.mobDamageScaling.calculate(mobCtx.tier(), mobLevel);
+                        modifiedDmg *= scalingMultiplier;
+                        ctx.attack().setModifiedDamage(modifiedDmg);
+                        ctx.appendTrace("MobScaling", modifiedDmg / scalingMultiplier, modifiedDmg,
+                                mobCtx.tier().name() + " Lv" + mobLevel + " x" + String.format("%.2f", scalingMultiplier));
+                    }
+                }
+
+                // Resolve armor reduction with mob armor penetration
+                double armorReduction = virtualHealthManager.getArmorReduction(player);
+                if (mobCtx != null) {
+                    double penetration = mobCtx.tier().armorPenetration;
+                    armorReduction *= (1.0 - penetration);
+                }
+
+                DamageResolution resolution = virtualHealthManager.applyResolvedDamage(player, modifiedDmg, armorReduction,
                         damageType, damager, ctx);
 
                 if (combatSkillProcessor != null && attackerPlayer != null) {
@@ -151,8 +197,9 @@ public class VirtualHealthListener implements Listener {
                 Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
                 sendCombatDebugTrace(ctx);
 
-                if (virtualHealthManager.isVirtualHealthDepleted(player) || player.isDead()) {
-                    event.setCancelled(true);
+                if (resolution.lethal()) {
+                    event.setDamage(virtualHealthManager.getGuaranteedVanillaDeathDamage(player));
+                    virtualHealthManager.schedulePendingDeathFinalizer(player);
                 } else {
                     event.setDamage(0);
                     player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
@@ -172,6 +219,20 @@ public class VirtualHealthListener implements Listener {
         } finally {
             isHandlingEvent = false;
         }
+    }
+
+    /**
+     * Resolve the level of an attacking mob.
+     *
+     * TODO: Mob level system is not yet implemented. When it is, this method
+     * should read the level from the mob's PDC tag, MobContext, or MobRegistry.
+     * Only this method needs to change when mob levels are added.
+     *
+     * @param mob the attacking mob, or null
+     * @return the mob's level, currently always 1
+     */
+    private int resolveMobLevel(@javax.annotation.Nullable LivingEntity mob) {
+        return 1;
     }
 
     private double applyDamageMultiplierToEntity(Entity entity, double damage) {
@@ -206,7 +267,7 @@ public class VirtualHealthListener implements Listener {
                 }
             }
 
-            virtualHealthManager.applyDamage(player, modifiedDmg, armorReduction,
+            DamageResolution resolution = virtualHealthManager.applyResolvedDamage(player, modifiedDmg, armorReduction,
                     CustomDamageType.PROJECTILE, shooter, ctx);
 
             if (combatSkillProcessor != null && attackerPlayer != null) {
@@ -215,12 +276,13 @@ public class VirtualHealthListener implements Listener {
 
             Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
 
-            // Set damage to 0 (NOT cancelled) so vanilla projectile knockback fires
-            event.setDamage(0);
-            if (!virtualHealthManager.isVirtualHealthDepleted(player) && !player.isDead()) {
-                player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+            if (resolution.lethal()) {
+                event.setDamage(virtualHealthManager.getGuaranteedVanillaDeathDamage(player));
+                virtualHealthManager.schedulePendingDeathFinalizer(player);
             } else {
-                event.setCancelled(true);
+                // Set damage to 0 (NOT cancelled) so vanilla projectile knockback fires
+                event.setDamage(0);
+                player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
             }
         } else {
             // Non-player entities: let vanilla handle damage + knockback entirely

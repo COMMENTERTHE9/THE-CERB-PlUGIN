@@ -24,5 +24,6 @@ public record PlayerServices(
         SkillGUI skillGUI,
         PlayerMenuGUI playerMenuGUI,
         AdminChestGUI adminChestGUI,
-        MobRegistry mobRegistry
+        MobRegistry mobRegistry,
+        ChunkDiscoveryManager chunkDiscovery
 ) {}

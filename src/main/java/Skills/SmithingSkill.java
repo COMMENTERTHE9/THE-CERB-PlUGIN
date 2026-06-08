@@ -20,13 +20,13 @@ public class SmithingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
         int skillLevel = this.getLevel();
 
         // Retrieve the item that is currently being crafted or modified
-        ItemStack craftedItem = customPlayer.getCurrentCraftedItem(); // Assuming customPlayer holds the current item being crafted
+        ItemStack craftedItem = cp.getCurrentCraftedItem(); // Assuming customPlayer holds the current item being crafted
 
         if (craftedItem == null) {
             player.sendMessage("No item is currently being crafted.");
@@ -40,7 +40,7 @@ public class SmithingSkill extends UtilitySkill {
         craftingManager.applyCraftingBonuses(player, craftedItem, "Smithing");
 
         // Dynamically unlock recipes and perks based on milestones and chance
-        dynamicallyUnlockRecipes(player, customPlayer, craftedItem, skillLevel);
+        dynamicallyUnlockRecipes(player, cp, craftedItem, skillLevel);
 
         // Apply Virtual Health bonus based on the skill level
         double virtualHealthBonus = skillLevel * 1.5; // Example: +1.5 virtual health per level
@@ -52,11 +52,6 @@ public class SmithingSkill extends UtilitySkill {
 
         // Notify the player about the bonuses applied
         player.sendMessage("Smithing bonuses applied: + " + virtualHealthBonus + " Virtual Health, + " + strengthBonus + " Strength.");
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     /**

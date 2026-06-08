@@ -1,6 +1,7 @@
 package Commands;
 
 import Manager.CombatConfig;
+import Manager.HealthStateSnapshot;
 import Manager.ScalingFormula;
 import Manager.SessionLogger;
 import Skills.SkillManager;
@@ -20,8 +21,8 @@ import java.util.Map;
 public class CerbCommand implements CommandExecutor {
 
     private static final String USAGE =
-            ChatColor.YELLOW + "Usage: /cerb <reload|backup|debug|combatdebug|scalingpreview|log|status|heal|mana|skill|resetdata|"
-                    + "banregion|region|protection|worldgen|repairchunk|quest|event|teleportall|"
+            ChatColor.YELLOW + "Usage: /cerb <reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|resetdata|"
+                    + "worldgen|repairchunk|quest|event|"
                     + "timings|profiler|listentities|showqueues>";
     private final CerberusPlugin plugin;
 
@@ -91,6 +92,10 @@ public class CerbCommand implements CommandExecutor {
                 handleLogDump(sender, args);
                 break;
 
+            case "healthstate":
+                handleHealthState(sender, args);
+                break;
+
             case "status":
                 // <<< NEW: print runtime stats
                 plugin.printStatus(sender);
@@ -118,22 +123,7 @@ public class CerbCommand implements CommandExecutor {
                 plugin.resetPlayerData(sender, args);          // <<< FIXED
                 break;
 
-            case "banregion":
-                plugin.banRegionForPlayer(sender, args);       // <<< FIXED
-                break;
-
-
-            // 3. World & Region Control
-            case "region":
-                // <<< NEW: /cerb region sub‑commands (reload/clear)
-                plugin.handleRegionSubcommand(sender, args);
-                break;
-
-            case "protection":
-                // <<< NEW: list protection toggles
-                plugin.listProtections(sender);
-                break;
-
+            // 3. World Control
             case "worldgen":
                 // <<< NEW: toggle chunk‐populate hooks
                 plugin.toggleWorldGen(sender, args);
@@ -155,12 +145,6 @@ public class CerbCommand implements CommandExecutor {
                 // <<< NEW: start/stop dynamic event
                 plugin.controlEvent(sender, args);
                 break;
-
-            case "teleportall":
-                // <<< NEW: move everyone to region
-                plugin.teleportAllToRegion(sender, args);
-                break;
-
 
             // 5. Debug & Diagnostics
             case "timings":
@@ -187,11 +171,50 @@ public class CerbCommand implements CommandExecutor {
                 handleSpeedDiag((Player) sender, args);
                 break;
 
+            case "spawn":
+                handleSpawn((Player) sender, args);
+                break;
+
             default:
                 sender.sendMessage(ChatColor.RED + "Unknown sub‑command. " + USAGE);
         }
 
         return true;
+    }
+
+    /**
+     * Handle /cerb healthstate [player]
+     * Prints the authoritative custom-health snapshot plus session state.
+     */
+    private void handleHealthState(CommandSender sender, String[] args) {
+        Player target;
+        if (args.length >= 2) {
+            target = Bukkit.getPlayer(args[1]);
+        } else {
+            target = (Player) sender;
+        }
+
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Player not found.");
+            return;
+        }
+
+        HealthStateSnapshot snapshot = plugin.getPlayerVirtualHealthManager().snapshot(target);
+        String sessionState = "NONE";
+        if (plugin.getPlayerSessionManager() != null && plugin.getPlayerSessionManager().getSession(target.getUniqueId()) != null) {
+            sessionState = plugin.getPlayerSessionManager().getSession(target.getUniqueId()).getState().name();
+        }
+
+        sender.sendMessage(ChatColor.GOLD + "=== Health State: " + target.getName() + " ===");
+        sender.sendMessage(ChatColor.YELLOW + "Custom HP: " + ChatColor.WHITE
+                + String.format("%.2f/%.2f", snapshot.currentHp(), snapshot.maxHp()));
+        sender.sendMessage(ChatColor.YELLOW + "Pending death: " + ChatColor.WHITE + snapshot.pendingCustomDeath());
+        sender.sendMessage(ChatColor.YELLOW + "Lifecycle: " + ChatColor.WHITE + snapshot.lifecycleState());
+        sender.sendMessage(ChatColor.YELLOW + "Last damage at: " + ChatColor.WHITE + snapshot.lastDamageAt());
+        sender.sendMessage(ChatColor.YELLOW + "Invulnerable until: " + ChatColor.WHITE + snapshot.invulnerableUntil());
+        sender.sendMessage(ChatColor.YELLOW + "Vanilla HP: " + ChatColor.WHITE
+                + String.format("%.2f", Math.max(0.0, target.getHealth())));
+        sender.sendMessage(ChatColor.YELLOW + "Session: " + ChatColor.WHITE + sessionState);
     }
 
     /**
@@ -273,8 +296,8 @@ public class CerbCommand implements CommandExecutor {
         // Relevant skill levels
         SkillManager sm = plugin.getSkillManager();
         if (sm != null) {
-            int navLevel = sm.getSkillLevel("Navigation");
-            int bladeLevel = sm.getSkillLevel("Blade Mastery");
+            int navLevel = sm.getSkillLevel(target, "Navigation");
+            int bladeLevel = sm.getSkillLevel(target, "Blade Mastery");
             sender.sendMessage(ChatColor.YELLOW + "Skill levels: "
                     + ChatColor.WHITE + "Navigation=" + navLevel
                     + " BladeMastery=" + bladeLevel);
@@ -338,5 +361,66 @@ public class CerbCommand implements CommandExecutor {
             sender.sendMessage(ChatColor.RED + "No scaling stat found matching: " + searchKey);
             sender.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", allParams.keySet()));
         }
+    }
+
+    /**
+     * /cerb spawn <mobId> — spawn a Cerberus-registered mob at the player's location.
+     * The spawned mob is tagged with cerb_mob_id so MobRegistry.resolve() returns the correct tier.
+     */
+    private void handleSpawn(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mobId>");
+            Manager.MobRegistry registry = plugin.getMobRegistry();
+            if (registry != null) {
+                player.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", registry.getEntryIds()));
+            }
+            return;
+        }
+
+        Manager.MobRegistry registry = plugin.getMobRegistry();
+        if (registry == null) {
+            player.sendMessage(ChatColor.RED + "MobRegistry not initialized.");
+            return;
+        }
+
+        String mobId = args[1].toLowerCase();
+        Manager.MobRegistry.MobEntry entry = registry.getEntry(mobId);
+        if (entry == null) {
+            player.sendMessage(ChatColor.RED + "No mob registered with id: " + mobId);
+            player.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", registry.getEntryIds()));
+            return;
+        }
+
+        if (entry.getEntityType() == null) {
+            player.sendMessage(ChatColor.RED + "Mob '" + mobId + "' has no entity-type defined — cannot spawn.");
+            return;
+        }
+
+        org.bukkit.Location spawnLoc = player.getLocation();
+        org.bukkit.NamespacedKey mobIdKey = registry.getMobIdKey();
+        Manager.Tier tier = entry.getTier();
+        String customName = entry.getCustomNameExact();
+        org.bukkit.entity.EntityType entityType = entry.getEntityType();
+
+        // Spawn on the region thread owning the spawn location (Folia compatibility)
+        Bukkit.getRegionScheduler().run(plugin, spawnLoc, task -> {
+            org.bukkit.entity.LivingEntity mob = (org.bukkit.entity.LivingEntity)
+                    spawnLoc.getWorld().spawnEntity(spawnLoc, entityType);
+
+            // Tag with cerb_mob_id so MobRegistry.resolve() returns the correct entry
+            mob.getPersistentDataContainer().set(mobIdKey,
+                    org.bukkit.persistence.PersistentDataType.STRING, mobId);
+
+            // Apply custom name if defined in the registry entry
+            if (customName != null) {
+                mob.setCustomName(customName);
+                mob.setCustomNameVisible(true);
+            }
+
+            player.sendMessage(ChatColor.GREEN + "Spawned " + ChatColor.GOLD + mobId
+                    + ChatColor.GREEN + " (" + tier.displayColor + tier.displayName + ChatColor.GREEN + ")"
+                    + " at " + ChatColor.WHITE + String.format("%.0f, %.0f, %.0f",
+                    spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ()));
+        });
     }
 }

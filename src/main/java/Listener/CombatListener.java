@@ -25,12 +25,10 @@ import Skills.SkillManager;
 import Spells.SpellManager;
 import GUIs.PlayerMenuGUI;
 import GUIs.SkillGUI;
-import Manager.CombatScoreboardManager;
 import Manager.MobContext;
 import Manager.MobRegistry;
 
 public class CombatListener implements Listener {
-    private final CombatScoreboardManager scoreboardManager;
     private final CerberusPlugin      plugin;
     private final SkillManager         skillManager;
     private final SpellManager         spellManager;
@@ -45,14 +43,12 @@ public class CombatListener implements Listener {
     // The amount of time after the last hit for the player to be considered out of combat
     private static final long COMBAT_TIMEOUT = 20000L; // 20 seconds
 
-    public CombatListener(CombatScoreboardManager scoreboardManager,
-                          CerberusPlugin plugin,
+    public CombatListener(CerberusPlugin plugin,
                           SkillManager skillManager,
                           SpellManager spellManager,
                           PlayerMenuGUI playerMenuGUI,
                           SkillGUI skillGUI,
                           MobRegistry mobRegistry) {
-        this.scoreboardManager = scoreboardManager;
         this.plugin            = plugin;
         this.skillManager      = skillManager;
         this.spellManager      = spellManager;
@@ -126,7 +122,6 @@ public class CombatListener implements Listener {
         UUID playerUUID = player.getUniqueId();
         inCombat.put(playerUUID, true);
         lastCombatTime.put(playerUUID, System.currentTimeMillis());
-        scoreboardManager.switchToCombatMode(player);
 
         // Reset the combat timeout task
         player.getScheduler().runDelayed(plugin, task -> {
@@ -148,6 +143,5 @@ public class CombatListener implements Listener {
     private void exitCombat(Player player) {
         UUID playerUUID = player.getUniqueId();
         inCombat.put(playerUUID, false);
-        scoreboardManager.switchToNormalMode(player);
     }
 }

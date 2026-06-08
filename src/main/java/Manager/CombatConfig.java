@@ -56,6 +56,11 @@ public class CombatConfig {
     public double healthRegenBaseRate;
     public double healthRegenCombatRate;
     public long healthRegenCombatTimeoutMs;
+    public long damageInvincibilityMs;
+    public long respawnInvincibilityMs;
+
+    // ── Mob Damage Scaling ──────────────────────────────────────
+    public final MobDamageScaling mobDamageScaling = new MobDamageScaling();
 
     // ── Display ──────────────────────────────────────────────────
     public int displayComboTimeoutMs;
@@ -113,6 +118,10 @@ public class CombatConfig {
             plugin.saveResource("combat.yml", false);
         }
         config = YamlConfiguration.loadConfiguration(combatFile);
+
+        // ── Config migration: add missing sections from bundled defaults ──
+        migrateConfig();
+
         allScalingParams.clear();
 
         int version = config.getInt("config-version", 1);
@@ -149,6 +158,11 @@ public class CombatConfig {
         healthRegenBaseRate       = pos("health-regen.base-rate",          2.0);
         healthRegenCombatRate     = config.getDouble("health-regen.combat-rate", 0.0);
         healthRegenCombatTimeoutMs= config.getLong("health-regen.combat-timeout-ms", 8000);
+        damageInvincibilityMs     = nonNegativeLong("damage-timing.invincibility-ms", 250);
+        respawnInvincibilityMs    = nonNegativeLong("damage-timing.respawn-invincibility-ms", 3000);
+
+        // ── Mob damage scaling ───────────────────────────────────
+        mobDamageScaling.loadConfig(config);
 
         // ── Legacy config detection ──────────────────────────────
         if (config.contains("defense.base-amount") || config.contains("defense.recovery-rate")) {
@@ -275,6 +289,15 @@ public class CombatConfig {
         return value;
     }
 
+    private long nonNegativeLong(String path, long fallback) {
+        long value = config.getLong(path, fallback);
+        if (value < 0) {
+            log.warning("[CombatConfig] Invalid negative value for '" + path + "': " + value + " â€” using default " + fallback);
+            return fallback;
+        }
+        return value;
+    }
+
     /**
      * Get all registered scaling params (name -> params) for preview/debug.
      * Keys are "skill / stat" format (e.g. "critical-strike / crit-chance").
@@ -338,5 +361,45 @@ public class CombatConfig {
     /** Access the raw config if needed for custom reads. */
     public FileConfiguration getRawConfig() {
         return config;
+    }
+
+    // ── Config migration ─────────────────────────────────────────
+
+    /**
+     * Checks for top-level sections present in the bundled default combat.yml
+     * (from the JAR) but missing from the on-disk combat.yml. Missing sections
+     * are copied from defaults and the file is re-saved.
+     * <p>
+     * This ensures new config sections added in code updates reach existing
+     * server installations without requiring manual config edits.
+     * <p>
+     * Existing sections are NEVER overwritten — only missing ones are added.
+     */
+    private void migrateConfig() {
+        java.io.InputStream defaultStream = plugin.getResource("combat.yml");
+        if (defaultStream == null) {
+            return; // no bundled default — nothing to migrate from
+        }
+
+        YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
+                new java.io.InputStreamReader(defaultStream, java.nio.charset.StandardCharsets.UTF_8));
+
+        boolean changed = false;
+        for (String key : defaults.getKeys(false)) {
+            if (!config.contains(key)) {
+                config.set(key, defaults.get(key));
+                log.info("[CombatConfig] Added missing config section: " + key);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            try {
+                config.save(combatFile);
+                log.info("[CombatConfig] Saved migrated combat.yml to disk.");
+            } catch (java.io.IOException e) {
+                log.severe("[CombatConfig] Failed to save migrated combat.yml: " + e.getMessage());
+            }
+        }
     }
 }

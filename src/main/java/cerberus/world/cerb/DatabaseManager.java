@@ -91,14 +91,25 @@ public class DatabaseManager {
                     magic_find  REAL DEFAULT 0
                 )""");
 
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS visited_chunks (
+                    player_uuid TEXT NOT NULL,
+                    world_name  TEXT NOT NULL,
+                    chunk_x     INTEGER NOT NULL,
+                    chunk_z     INTEGER NOT NULL,
+                    PRIMARY KEY (player_uuid, world_name, chunk_x, chunk_z)
+                )""");
+            stmt.execute(
+                "CREATE INDEX IF NOT EXISTS idx_visited_chunks_player ON visited_chunks(player_uuid)");
+
             // Verify tables exist
             int tableCount = 0;
             try (ResultSet rs = stmt.executeQuery(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name IN " +
-                    "('player_custom_ids','player_skills','skill_effects','player_magic_find')")) {
+                    "('player_custom_ids','player_skills','skill_effects','player_magic_find','visited_chunks')")) {
                 while (rs.next()) tableCount++;
             }
-            plugin.getLogger().info("[Database] Initialized — " + tableCount + "/4 tables verified at " + url);
+            plugin.getLogger().info("[Database] Initialized — " + tableCount + "/5 tables verified at " + url);
 
         } catch (SQLException ex) {
             plugin.getLogger().severe("[Database] Failed to initialize tables! " + ex.getMessage());
@@ -223,7 +234,7 @@ public class DatabaseManager {
                 String skillName = rs.getString("skill_name");
                 int xp = rs.getInt("skill_xp");
                 skillXP.put(skillName, xp);
-                System.out.println("[DEBUG] Loaded skill XP by custom_id: " + skillName + " - XP: " + xp);
+                plugin.getLogger().fine("[DB] Loaded skill XP: " + skillName + " - XP: " + xp);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -269,7 +280,7 @@ public class DatabaseManager {
     public Map<String, Integer> loadPlayerSkillLevels(UUID playerUUID) {
        String customId = loadCustomId(playerUUID);
         if (customId == null) {
-            System.err.println("[ERROR] No customId found for playerUUID: " + playerUUID);
+            plugin.getLogger().warning("No customId found for playerUUID: " + playerUUID);
            return new HashMap<>();
        }
         return loadSkillLevelsByCustomId(customId);
@@ -278,7 +289,7 @@ public class DatabaseManager {
     public Map<String, Integer> loadPlayerSkillXP(UUID playerUUID) {
         String customId = loadCustomId(playerUUID);
         if (customId == null) {
-            System.err.println("[ERROR] No customId found for playerUUID: " + playerUUID);
+            plugin.getLogger().warning("No customId found for playerUUID: " + playerUUID);
             return new HashMap<>();
         }
         return loadSkillXPByCustomId(customId);
@@ -316,7 +327,7 @@ public class DatabaseManager {
                     // This requires that you have some way to map skill entries to player_uuid
                     // Since custom_id is null, this may not be possible without additional data
                     // You might need to handle this case based on your application logic
-                    System.err.println("[ERROR] Cannot fix null custom_id for rowid: " + rowId);
+                    plugin.getLogger().warning("Cannot fix null custom_id for rowid: " + rowId);
                     continue;
                 }
 
@@ -333,10 +344,10 @@ public class DatabaseManager {
                         pstmtUpdate.setInt(2, rowId);
                         pstmtUpdate.executeUpdate();
                     } else {
-                        System.err.println("[ERROR] No player_uuid found for custom_id: " + customId);
+                        plugin.getLogger().warning("No player_uuid found for custom_id: " + customId);
                     }
                 } else {
-                    System.err.println("[ERROR] No player_custom_ids entry found for custom_id: " + customId);
+                    plugin.getLogger().warning("No player_custom_ids entry found for custom_id: " + customId);
                 }
             }
         } catch (SQLException e) {
@@ -417,5 +428,48 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return 0.0; // Default to 0 if no record found
+    }
+
+    // ── Chunk Discovery ──────────────────────────────────────────
+
+    /**
+     * Load all visited chunks for a player. Called from background thread during join.
+     */
+    public java.util.Set<Manager.ChunkKey> loadVisitedChunks(UUID playerUUID) {
+        java.util.Set<Manager.ChunkKey> chunks = new java.util.HashSet<>();
+        String sql = "SELECT world_name, chunk_x, chunk_z FROM visited_chunks WHERE player_uuid = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, playerUUID.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    chunks.add(new Manager.ChunkKey(
+                            rs.getString("world_name"),
+                            rs.getInt("chunk_x"),
+                            rs.getInt("chunk_z")));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to load visited chunks for " + playerUUID + ": " + e.getMessage());
+        }
+        return chunks;
+    }
+
+    /**
+     * Record a single visited chunk. Uses INSERT OR IGNORE for idempotency.
+     * Called from async scheduler — never on a tick thread.
+     */
+    public void recordVisitedChunk(UUID playerUUID, String worldName, int chunkX, int chunkZ) {
+        String sql = "INSERT OR IGNORE INTO visited_chunks(player_uuid, world_name, chunk_x, chunk_z) VALUES(?,?,?,?)";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, playerUUID.toString());
+            ps.setString(2, worldName);
+            ps.setInt(3, chunkX);
+            ps.setInt(4, chunkZ);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to record visited chunk: " + e.getMessage());
+        }
     }
 }

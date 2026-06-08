@@ -3,7 +3,6 @@ package Skills;
 import Manager.ManaType;
 import Manager.PlayerManaManager;
 import cerberus.world.cerb.CerberusPlugin;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
 
@@ -30,12 +29,11 @@ public class SpellWeavingSkill extends MagicSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getBukkitPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         UUID playerUUID = player.getUniqueId();
 
-        int level = this.getLevel();
+        int level = manaManager.getSkillLevel(player, getName());
         double manaCost = baseManaCost * (1 - (level * 0.04));
         double effectivenessMultiplier = baseEffectivenessMultiplier * (1 + (level * 0.1));
 
@@ -52,11 +50,6 @@ public class SpellWeavingSkill extends MagicSkill {
 
         // Clean up old spell casts
         cleanupOldSpells(playerUUID);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     private void applyEnhancedEffectiveness(Player player, double multiplier) {
@@ -96,11 +89,8 @@ public class SpellWeavingSkill extends MagicSkill {
 
     // Placeholder methods to get and set spell attributes
     private double getPlayerSpellDamage(Player player) {
-        if (player.hasMetadata("spellDamage")) {
-            return player.getMetadata("spellDamage").get(0).asDouble();
-        } else {
-            return 10.0; // Default spell damage if not set
-        }
+        List<org.bukkit.metadata.MetadataValue> values = player.getMetadata("spellDamage");
+        return values.isEmpty() ? 10.0 : values.get(0).asDouble();
     }
 
     private void setPlayerSpellDamage(Player player, double newDamage) {
@@ -108,11 +98,8 @@ public class SpellWeavingSkill extends MagicSkill {
     }
 
     private double getPlayerSpellRange(Player player) {
-        if (player.hasMetadata("spellRange")) {
-            return player.getMetadata("spellRange").get(0).asDouble();
-        } else {
-            return 5.0; // Default spell range if not set
-        }
+        List<org.bukkit.metadata.MetadataValue> values = player.getMetadata("spellRange");
+        return values.isEmpty() ? 5.0 : values.get(0).asDouble();
     }
 
     private void setPlayerSpellRange(Player player, double newRange) {

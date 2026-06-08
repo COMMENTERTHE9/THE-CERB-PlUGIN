@@ -6,7 +6,6 @@ import DefensiveMagic.Shield;
 import DefensiveMagic.Ward;
 // ProtocolLib removed — Folia incompatible. Key-combo input detection disabled.
 // TODO: Reimplement using PlayerInteractEvent or custom keybind system.
-import cerberus.world.cerb.CustomPlayer;
 import Manager.PlayerManaManager;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -15,6 +14,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * INTENTIONALLY DISABLED pending the new Defensive Magic system.
+ *
+ * The ProtocolLib-based key-combo input detection was removed for Folia compatibility.
+ * This skill will be reimplemented when the Shield + Book architecture is built.
+ * See DefensiveMagic/Barrier.java for the planned system design.
+ *
+ * DO NOT attempt to reconnect this to the old input system.
+ * DO NOT delete — the skill registration stays in SkillManager as a placeholder.
+ */
 public class DefensiveMagicSkill extends MagicSkill {
 
     private final PlayerManaManager manaManager;

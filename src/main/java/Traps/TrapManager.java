@@ -28,7 +28,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import cerberus.world.cerb.CerberusWorldProtection;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventPriority;
 
@@ -81,7 +80,9 @@ public class TrapManager implements Listener {
     // Apply trap tag with type information
     public void applyTrapTagAutomatically(ItemStack item, TrapType trapType) {
         if (item != null && item.hasItemMeta()) {
-            PersistentDataContainer container = item.getItemMeta().getPersistentDataContainer();
+            ItemMeta meta = item.getItemMeta();
+            if (meta == null) return;
+            PersistentDataContainer container = meta.getPersistentDataContainer();
             container.set(
                     new NamespacedKey(plugin, "trap_type"),
                     PersistentDataType.STRING,
@@ -93,7 +94,9 @@ public class TrapManager implements Listener {
     // Enhanced trap item check
     public boolean isTrapItem(ItemStack item) {
         if (item != null && item.hasItemMeta()) {
-            PersistentDataContainer container = item.getItemMeta().getPersistentDataContainer();
+            ItemMeta meta = item.getItemMeta();
+            if (meta == null) return false;
+            PersistentDataContainer container = meta.getPersistentDataContainer();
             return container.has(new NamespacedKey(plugin, "trap_type"), PersistentDataType.STRING);
         }
         return false;
@@ -103,7 +106,9 @@ public class TrapManager implements Listener {
     public TrapType getTrapType(ItemStack item) {
         if (!isTrapItem(item)) return null;
 
-        String trapTypeName = item.getItemMeta().getPersistentDataContainer()
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return null;
+        String trapTypeName = meta.getPersistentDataContainer()
                 .get(new NamespacedKey(plugin, "trap_type"), PersistentDataType.STRING);
 
         return TrapType.valueOf(trapTypeName);
@@ -327,10 +332,6 @@ public class TrapManager implements Listener {
 
     private boolean canPlaceTrap(Location location, TrapType trapType, BlockFace facing) {
         // Check world protection
-        if (CerberusWorldProtection.isInProtectedRegion(location)) {
-            return false;
-        }
-
         // Check pattern dimensions
         return patternDimensions.validatePlacement(location, facing);
     }

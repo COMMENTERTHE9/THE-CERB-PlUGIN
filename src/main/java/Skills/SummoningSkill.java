@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.ManaType;
 import Manager.PlayerManaManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.persistence.PersistentDataType;
@@ -26,9 +25,8 @@ public class SummoningSkill extends MagicSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Apply the summoning skill effect based on the player's skill level
         int level = this.getLevel();
@@ -43,11 +41,6 @@ public class SummoningSkill extends MagicSkill {
 
         // Logic to summon a creature with enhanced strength and duration
         summonCreature(player, duration, strengthMultiplier);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method could be used for direct player effects if needed
     }
 
     private void summonCreature(Player player, double duration, double strengthMultiplier) {
@@ -82,9 +75,9 @@ public class SummoningSkill extends MagicSkill {
     }
 
     private LivingEntity getSummonableCreature(Player player) {
-        // Placeholder logic to get a summonable creature type
-        // Replace this with actual summoning logic once specific creature types are decided
-        return player.getWorld().spawn(player.getLocation(), LivingEntity.class); // Replace with actual entity class
+        // TODO: SummoningSkill is currently a placeholder. Replace Zombie.class with
+        // a config-driven entity type or skill-level-based selection.
+        return player.getWorld().spawn(player.getLocation(), org.bukkit.entity.Zombie.class);
     }
 
     private void tagSummonedCreature(LivingEntity entity) {

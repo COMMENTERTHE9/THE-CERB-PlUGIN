@@ -1,7 +1,6 @@
 package Skills;
 
 import Manager.PlayerManaManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 
 public class ManaRegenerationSkill extends MagicSkill {
@@ -15,22 +14,16 @@ public class ManaRegenerationSkill extends MagicSkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getBukkitPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
 
         // Calculate the increased mana regeneration rate based on skill level
-        int level = this.getLevel();
+        int level = manaManager.getSkillLevel(player, getName());
         double regenRateMultiplier = 5 + (baseRegenRateIncrease * level); // Example: 5% increase per level
 
         // Apply the increased mana regeneration rate
-        manaManager.setManaRegenRate(manaManager.getBaseManaRegenRate() * regenRateMultiplier);
+        manaManager.setManaRegenRate(player, manaManager.getBaseManaRegenRate() * regenRateMultiplier);
 
         player.sendMessage("Mana regeneration rate increased by " + (regenRateMultiplier - 1) * 100 + "%.");
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 }

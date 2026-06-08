@@ -62,7 +62,9 @@ public class CraftingManager {
 
     // Apply crafting bonuses including item quality
     public void applyCraftingBonuses(Player player, ItemStack craftedItem, String skillName) {
-        int skillLevel = skillManager.getSkillLevel(skillName);
+        int skillLevel = player != null
+                ? skillManager.getSkillLevel(player, skillName)
+                : skillManager.getSkillLevel(skillName);
 
         // Determine item quality based on skill level
         Quality quality = determineItemQuality(skillLevel);

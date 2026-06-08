@@ -5,6 +5,22 @@ import org.bukkit.entity.Player;
 import org.bukkit.Particle;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
+/**
+ * RESERVED FOR FUTURE DEFENSIVE MAGIC SYSTEM.
+ *
+ * This class is currently unreachable. It is preserved as a seed implementation
+ * for the future Defensive Magic spell system, which will use a Shield + Book
+ * combination architecture (manifestation x principle).
+ *
+ * Master types: Barrier, Ward, Shield, ManaDrain
+ * Sub-principles per master type: Absorption, Negation, Reflection, Conversion
+ *
+ * DO NOT delete this class.
+ * DO NOT attempt to "fix" it by reconnecting it to the old input detection system.
+ * DO NOT add new functionality without consulting the design doc.
+ *
+ * The full architecture will be planned and implemented as a dedicated phase.
+ */
 public class Barrier extends DefensiveStructure {
     private final double strength;
     private ScheduledTask particleTask;

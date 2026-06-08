@@ -1,6 +1,5 @@
 package Skills;
 
-import cerberus.world.cerb.CustomPlayer;
 import Manager.CraftingManager;
 import Manager.PlayerVirtualHealthManager;
 import org.bukkit.entity.Player;
@@ -17,10 +16,7 @@ public class CookingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
-
+    public void applyEffect(Player player) {
         // Handle experience gain and level up logic here
         int level = this.getLevel();
 
@@ -31,10 +27,5 @@ public class CookingSkill extends UtilitySkill {
         // Optionally, you could apply a health increase related to cooking skill
         double healthBonus = level * 1.0; // Example: +1 health per level
         healthManager.increaseMaxHealth(player, healthBonus);
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 }

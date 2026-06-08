@@ -88,6 +88,15 @@ public class DefenseBarManager {
         }
     }
 
+    /** Fully restore a player's defense bar and clear any regen timing. */
+    public void resetDefenseBar(Player player) {
+        DefenseBar bar = getDefenseBar(player);
+        bar.cancelRegeneration();
+        bar.current = bar.maximum;
+        bar.lastDamageTime = 0;
+        bar.lastAbsorptionRate = 0;
+    }
+
     /** Clean up when player leaves. */
     public void removePlayer(Player player) {
         DefenseBar bar = playerDefenseBars.remove(player.getUniqueId());

@@ -1,10 +1,22 @@
 package Skills;
 
 import Manager.CraftingManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+/**
+ * DEFERRED IMPLEMENTATION.
+ *
+ * Trading skill is intentionally a placeholder until the NPC, marketplace,
+ * and bazaar systems are implemented. Methods in this class do nothing
+ * by design.
+ *
+ * DO NOT delete this class.
+ * DO NOT attempt to add real logic until the prerequisite systems exist.
+ *
+ * When trading is built, this class will be the entry point for skill XP
+ * gained from trading actions.
+ */
 public class TradingSkill extends UtilitySkill {
 
     private final CraftingManager craftingManager;
@@ -15,9 +27,8 @@ public class TradingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        if (player == null) return;
         int level = this.getLevel();
 
         // Calculate the trade value bonus: 3% increase per skill level
@@ -64,8 +75,4 @@ public class TradingSkill extends UtilitySkill {
         // Placeholder: Logic to connect with future stock trading system
     }
 
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
-    }
 }

@@ -20,13 +20,13 @@ public class EnchantingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
         int skillLevel = this.getLevel();
 
         // Retrieve the item to be enchanted
-        ItemStack itemToEnchant = customPlayer.getCurrentCraftedItem();
+        ItemStack itemToEnchant = cp.getCurrentCraftedItem();
 
         if (itemToEnchant == null) {
             player.sendMessage("You don't have an item ready for enchanting.");
@@ -47,15 +47,10 @@ public class EnchantingSkill extends UtilitySkill {
         manaManager.increaseMaxMana(player, maxManaIncrease);
 
         // Unlock advanced enchanting techniques at higher levels
-        unlockAdvancedEnchantingRecipes(player, customPlayer, itemToEnchant, skillLevel);
+        unlockAdvancedEnchantingRecipes(player, cp, itemToEnchant, skillLevel);
 
         // Notify the player about the bonuses applied
         player.sendMessage("Your enchanting has improved: +" + manaRegenBoost + "% Mana Regen, +" + maxManaIncrease + " Max Mana.");
-    }
-
-    @Override
-    public void applyEffect(Player player) {
-        // This method can be used for direct player effects if needed
     }
 
     /**

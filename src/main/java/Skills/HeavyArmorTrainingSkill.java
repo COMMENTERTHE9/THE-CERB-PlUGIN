@@ -2,7 +2,6 @@ package Skills;
 
 import Manager.PlayerVirtualHealthManager;
 import Manager.PlayerDefenseManager;
-import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
@@ -16,17 +15,6 @@ public class HeavyArmorTrainingSkill extends CombatSkill {
         super(name);
         this.virtualHealthManager = virtualHealthManager;
         this.defenseManager = defenseManager;
-    }
-
-    @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-
-        Player player = customPlayer.getBukkitPlayer();
-
-        // Defense bonuses are now computed automatically from gear + skill level
-        // via PlayerDefenseManager.applySkillBonuses(). Trigger a recalc.
-        defenseManager.updateDefense(player);
     }
 
     @Override

@@ -5,7 +5,6 @@ import Manager.ResourceYieldManager;
 import cerberus.world.cerb.CustomPlayer;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.Plugin;
 
 import java.util.Map;
@@ -29,9 +28,9 @@ public class FishingSkill extends UtilitySkill {
     }
 
     @Override
-    public void applyEffect(CustomPlayer customPlayer) {
-        if (customPlayer == null) return;
-        Player player = customPlayer.getPlayer();
+    public void applyEffect(Player player) {
+        CustomPlayer cp = CustomPlayer.get(player.getUniqueId());
+        if (cp == null) return;
 
         int level = this.getLevel();
 
@@ -42,8 +41,8 @@ public class FishingSkill extends UtilitySkill {
         double healthBonus = level * 1.0;
         double strengthBonus = level * 0.3;
 
-        customPlayer.getHealthManager().increaseMaxHealth(player, healthBonus);
-        customPlayer.getStrengthManager().increaseStrength(player, strengthBonus);
+        cp.getHealthManager().increaseMaxHealth(player, healthBonus);
+        cp.getStrengthManager().increaseStrength(player, strengthBonus);
 
         // Custom Enhancements including Sea Monsters
         applyFishingEnhancements(player, level);

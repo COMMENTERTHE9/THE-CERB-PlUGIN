@@ -147,7 +147,7 @@ public class EffectManager {
 
         double baseMana = manaManager.getMaxMana(player);
         originals.put("maxMana", baseMana);
-        manaManager.setMaxMana(baseMana + 100.0);
+        manaManager.setMaxMana(player, baseMana + 100.0);
     }
 
     // Arcane Knowledge effect logic
@@ -166,27 +166,21 @@ public class EffectManager {
         // spellManager.setElementalDamage(player, elementalDamageBonus);
     }
 
-    // Spell Weaving effect logic
     private void applySpellWeavingEffect(Player player) {
-        SpellWeavingSkill skill = (SpellWeavingSkill) skillManager.getSkill("Spell Weaving");
-        if (skill != null) {
-            skill.applyEffect(skillManager.getCustomPlayer(player.getUniqueId()));
+        if (skillManager.getSkill("Spell Weaving") instanceof SpellWeavingSkill skill) {
+            skill.applyEffect(player);
         }
     }
 
-    // Summoning effect logic
     private void applySummoningEffect(Player player) {
-        SummoningSkill skill = (SummoningSkill) skillManager.getSkill("Summoning");
-        if (skill != null) {
-            skill.applyEffect(skillManager.getCustomPlayer(player.getUniqueId()));
+        if (skillManager.getSkill("Summoning") instanceof SummoningSkill skill) {
+            skill.applyEffect(player);
         }
     }
 
-    // Mana Regeneration effect logic
     private void applyManaRegenerationEffect(Player player) {
-        ManaRegenerationSkill skill = (ManaRegenerationSkill) skillManager.getSkill("Mana Regeneration");
-        if (skill != null) {
-            skill.applyEffect(skillManager.getCustomPlayer(player.getUniqueId()));
+        if (skillManager.getSkill("Mana Regeneration") instanceof ManaRegenerationSkill skill) {
+            skill.applyEffect(player);
         }
     }
 
@@ -228,7 +222,7 @@ public class EffectManager {
         if (hasEffect(player, key)) return;
         Map<String, Double> originals = beginEffect(player, key);
         originals.put("maxMana", manaManager.getMaxMana(player));
-        manaManager.setMaxMana(manaManager.getMaxMana(player) + manaBonus);
+        manaManager.setMaxMana(player, manaManager.getMaxMana(player) + manaBonus);
     }
 
     /**
@@ -255,7 +249,7 @@ public class EffectManager {
                 case "maxHealth" ->
                     healthManager.setMaxHealth(player, entry.getValue());
                 case "maxMana" ->
-                    manaManager.setMaxMana(entry.getValue());
+                    manaManager.setMaxMana(player, entry.getValue());
             }
         }
 

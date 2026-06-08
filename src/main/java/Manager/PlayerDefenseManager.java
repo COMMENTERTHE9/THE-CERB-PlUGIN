@@ -93,7 +93,7 @@ public class PlayerDefenseManager {
         if (skillManager == null) return 0.0;
 
         double bonus = 0.0;
-        int hatLevel = skillManager.getSkillLevel("Heavy Armor Training");
+        int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
         if (hatLevel > 0 && combatConfig != null) {
             bonus += ScalingFormula.compute(hatLevel, combatConfig.hatArmorBonusScaling);
         }
@@ -107,7 +107,7 @@ public class PlayerDefenseManager {
     private void applyElementalResistances(Player player) {
         if (skillManager == null) return;
 
-        int survivalLevel = skillManager.getSkillLevel("Survival");
+        int survivalLevel = skillManager.getSkillLevel(player, "Survival");
         if (survivalLevel <= 0) return;
 
         // Fire: 1% per level, cap 30%
@@ -127,7 +127,7 @@ public class PlayerDefenseManager {
     private void applyDefenseBarBonus(Player player) {
         if (skillManager == null || combatConfig == null) return;
 
-        int hatLevel = skillManager.getSkillLevel("Heavy Armor Training");
+        int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
         if (hatLevel <= 0) return;
 
         double barBonus = ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling);

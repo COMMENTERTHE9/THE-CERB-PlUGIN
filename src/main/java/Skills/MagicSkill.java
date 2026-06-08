@@ -8,12 +8,7 @@ public abstract class MagicSkill extends Skill {
     }
 
     @Override
-    public void applyEffect(cerberus.world.cerb.CustomPlayer player) {
-
-    }
-
-    @Override
     public void applyEffect(Player player) {
-        // Apply magic skill effect to player
+        // Default no-op — subclasses override
     }
 }
