@@ -334,6 +334,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // ── Combat & mobs ──
         pm.registerEvents(new CombatListener(this, skillManager, spellManager, playerMenuGUI, skillGUI, mobRegistry), this);
         pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper, mobRegistry), this);
+        pm.registerEvents(new MobScalingListener(this), this);
 
         // ── HUD & defense (reactive — damage/heal/consume only) ──
         pm.registerEvents(new PlayerHUDListener(playerHUDManager, playerDefenseManager), this);

@@ -62,6 +62,34 @@ mob-damage-scaling:
     GODLY: 3.75
     PRIMORDIAL: 4.5
 
+# ── Mob Health Scaling ──────────────────────────────────────
+# Scales a mob's MAX HEALTH on spawn from its tier and level.
+# Level comes from how far the mob spawned from world spawn:
+#   level = 1 + floor(distance / blocks-per-level), capped at max-level
+# Health:
+#   maxHealth = min( (base-health + level * hp-per-level) * tier-multiplier, health-cap )
+mob-health-scaling:
+  enabled: true
+  base-health: 20.0        # HP for a level-1 COMMON mob (before tier multiplier)
+  hp-per-level: 6.0        # added HP per mob level (before tier multiplier)
+  health-cap: 5000.0       # absolute ceiling so the health attribute never explodes
+  blocks-per-level: 150.0  # every N blocks from world spawn = +1 mob level
+  max-level: 100           # hard cap on mob level
+  apply-to: MONSTERS       # MONSTERS = hostile mobs only, ALL = every living mob
+  show-level-in-name: true # prefix generic mob names with "Lv<n>"
+  name-always-visible: false   # true = name floats above mob, false = on hover only
+  tier-multiplier:
+    WEAK: 0.5
+    COMMON: 1.0
+    UNCOMMON: 1.5
+    RARE: 3.0
+    EPIC: 6.0
+    LEGENDARY: 10.0
+    PERFECT: 16.0
+    MYTHIC: 25.0
+    GODLY: 40.0
+    PRIMORDIAL: 60.0
+
 # ── Unified Tier System ─────────────────────────────────────
 # Used for mobs, items, regions, loot — everything.
 tiers:

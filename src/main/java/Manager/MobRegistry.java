@@ -25,6 +25,7 @@ public class MobRegistry {
     private final CerberusPlugin plugin;
     private final Logger log;
     private final NamespacedKey mobIdKey;
+    private final NamespacedKey mobLevelKey;
 
     // Primary store: mobId → entry
     private volatile Map<String, MobEntry> entriesById = Map.of();
@@ -104,6 +105,7 @@ public class MobRegistry {
         this.plugin = plugin;
         this.log = plugin.getLogger();
         this.mobIdKey = new NamespacedKey(plugin, "cerb_mob_id");
+        this.mobLevelKey = new NamespacedKey(plugin, "cerb_mob_level");
         reload();
     }
 
@@ -206,6 +208,27 @@ public class MobRegistry {
     public void tagEntity(LivingEntity entity, String mobId) {
         entity.getPersistentDataContainer()
                 .set(mobIdKey, PersistentDataType.STRING, mobId);
+    }
+
+    // ----------------------------------------------------------------
+    // Mob level tagging (spawn scaling sets it, combat damage reads it)
+    // ----------------------------------------------------------------
+    public void tagLevel(LivingEntity entity, int level) {
+        entity.getPersistentDataContainer()
+                .set(mobLevelKey, PersistentDataType.INTEGER, level);
+    }
+
+    /** Read a mob's tagged level, or 1 if untagged. */
+    public int getLevel(LivingEntity entity) {
+        Integer level = entity.getPersistentDataContainer()
+                .get(mobLevelKey, PersistentDataType.INTEGER);
+        return level != null ? Math.max(1, level) : 1;
+    }
+
+    /** True if this mob has already been assigned a level by the spawn scaler. */
+    public boolean hasLevel(LivingEntity entity) {
+        return entity.getPersistentDataContainer()
+                .has(mobLevelKey, PersistentDataType.INTEGER);
     }
 
     // ----------------------------------------------------------------

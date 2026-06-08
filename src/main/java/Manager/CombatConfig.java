@@ -62,6 +62,9 @@ public class CombatConfig {
     // ── Mob Damage Scaling ──────────────────────────────────────
     public final MobDamageScaling mobDamageScaling = new MobDamageScaling();
 
+    // ── Mob Health Scaling ──────────────────────────────────────
+    public final MobHealthScaling mobHealthScaling = new MobHealthScaling();
+
     // ── Display ──────────────────────────────────────────────────
     public int displayComboTimeoutMs;
     public int displayDamageNumberTicks;
@@ -163,6 +166,9 @@ public class CombatConfig {
 
         // ── Mob damage scaling ───────────────────────────────────
         mobDamageScaling.loadConfig(config);
+
+        // ── Mob health scaling ───────────────────────────────────
+        mobHealthScaling.loadConfig(config);
 
         // ── Legacy config detection ──────────────────────────────
         if (config.contains("defense.base-amount") || config.contains("defense.recovery-rate")) {

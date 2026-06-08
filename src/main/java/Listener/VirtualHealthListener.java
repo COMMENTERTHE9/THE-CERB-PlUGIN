@@ -222,17 +222,16 @@ public class VirtualHealthListener implements Listener {
     }
 
     /**
-     * Resolve the level of an attacking mob.
-     *
-     * TODO: Mob level system is not yet implemented. When it is, this method
-     * should read the level from the mob's PDC tag, MobContext, or MobRegistry.
-     * Only this method needs to change when mob levels are added.
+     * Resolve the level of an attacking mob from its PDC tag, set by
+     * {@link MobScalingListener} on spawn. Untagged mobs are level 1.
      *
      * @param mob the attacking mob, or null
-     * @return the mob's level, currently always 1
+     * @return the mob's level (>= 1)
      */
     private int resolveMobLevel(@javax.annotation.Nullable LivingEntity mob) {
-        return 1;
+        if (mob == null) return 1;
+        MobRegistry registry = plugin.getMobRegistry();
+        return registry != null ? registry.getLevel(mob) : 1;
     }
 
     private double applyDamageMultiplierToEntity(Entity entity, double damage) {

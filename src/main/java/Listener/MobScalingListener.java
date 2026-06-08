@@ -1,0 +1,103 @@
+package Listener;
+
+import Manager.CombatConfig;
+import Manager.MobHealthScaling;
+import Manager.MobRegistry;
+import Manager.Tier;
+import cerberus.world.cerb.CerberusPlugin;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Monster;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.CreatureSpawnEvent;
+
+/**
+ * Assigns a level and tier-scaled max health to mobs as they spawn.
+ *
+ * <p>Level is derived from the mob's distance to world spawn (farther = higher
+ * level); health from the {@code mob-health-scaling} section of combat.yml. The
+ * level is stored on the mob via PDC so the combat damage pipeline
+ * ({@code VirtualHealthListener.resolveMobLevel}) can read it later.
+ *
+ * <p>Folia-safe: {@link CreatureSpawnEvent} fires on the region thread that owns
+ * the spawning chunk, so mutating the entity here needs no extra scheduling.
+ */
+public class MobScalingListener implements Listener {
+
+    private final CerberusPlugin plugin;
+
+    public MobScalingListener(CerberusPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onCreatureSpawn(CreatureSpawnEvent event) {
+        LivingEntity entity = event.getEntity();
+
+        CombatConfig cc = plugin.getCombatConfig();
+        if (cc == null) return;
+        MobHealthScaling scaling = cc.mobHealthScaling;
+        if (scaling == null || !scaling.isEnabled()) return;
+
+        // apply-to filter (MONSTERS = hostile only, ALL = every living mob)
+        if (scaling.getApplyTo().equals("MONSTERS") && !(entity instanceof Monster)) return;
+
+        MobRegistry registry = plugin.getMobRegistry();
+        if (registry == null) return;
+
+        // Already scaled (defensive — CreatureSpawnEvent normally fires once per mob)
+        if (registry.hasLevel(entity)) return;
+
+        AttributeInstance maxHealthAttr = entity.getAttribute(Attribute.MAX_HEALTH);
+        if (maxHealthAttr == null) return;
+
+        // 1. Level from horizontal distance to world spawn
+        Location loc = entity.getLocation();
+        World world = loc.getWorld();
+        double distance = 0.0;
+        if (world != null) {
+            Location spawn = world.getSpawnLocation();
+            double dx = loc.getX() - spawn.getX();
+            double dz = loc.getZ() - spawn.getZ();
+            distance = Math.sqrt(dx * dx + dz * dz);
+        }
+        int level = scaling.levelForDistance(distance);
+
+        // 2. Tier from the registry (named/tagged specials resolve higher than COMMON)
+        Tier tier = registry.resolve(entity).tier();
+
+        // 3. Apply scaled max health
+        double maxHealth = scaling.calculate(tier, level);
+        maxHealthAttr.setBaseValue(maxHealth);
+        entity.setHealth(maxHealth);
+
+        // 4. Persist the level so combat damage scaling can read it
+        registry.tagLevel(entity, level);
+
+        // 5. Show the level in the name — but only for generic (un-named) mobs, so
+        //    we never clobber a name the registry uses to identify a special mob.
+        if (scaling.isShowLevelInName()
+                && (entity.getCustomName() == null || entity.getCustomName().isBlank())) {
+            entity.setCustomName(ChatColor.GRAY + "Lv" + level + " "
+                    + tier.displayColor + prettify(entity.getType().name()));
+            entity.setCustomNameVisible(scaling.isNameAlwaysVisible());
+        }
+    }
+
+    /** ZOMBIE -> "Zombie", CAVE_SPIDER -> "Cave Spider". */
+    private String prettify(String typeName) {
+        String[] parts = typeName.toLowerCase().split("_");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p.isEmpty()) continue;
+            sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1)).append(' ');
+        }
+        return sb.toString().trim();
+    }
+}
