@@ -12,18 +12,18 @@
 
 Cerberus's cultivation ladder is named after the world's own myth: the **Echo** is the residue of a dead primordial sound, and a cultivator climbs by hearing more of it and eventually *becoming* it. The ladder has **ten Realms** so it maps 1:1 onto the existing ten-tier ladder (WEAK→PRIMORDIAL), the ten Bands (Hearth→Primordium), and the engine's 1–100 level range. This 1:1:1:1 alignment is the keystone: **Realm = Tier = Band theme = the slice of the level curve you can survive.**
 
-| # | Realm name | Classic analog | Maps to Tier | Maps to Band | Echo Family flavor of the realm | Power feel |
+| # | Realm name | Epithet (flavor) | Maps to Tier | Maps to Band | Echo Family flavor of the realm | Power feel |
 |---|---|---|---|---|---|---|
-| R1 | **Stirring** | Qi Condensation | WEAK | 0 The Hearth | neutral | "You can hear the Echo." Mortal-plus. |
-| R2 | **Vesselborn** | Body Tempering | COMMON | 1 The Verge | SAND | A real cultivator's body. |
-| R3 | **Wellspring** | Foundation Establishment | UNCOMMON | 2 Dunesea | SAND | A true qi reservoir forms (ties to Mana). |
-| R4 | **Tidecaller** | Core Formation | RARE | 3 The Tidewrack | TIDE | A golden core (your "Echo Core") condenses. |
-| R5 | **Embersoul** | Nascent Soul | EPIC | 4 Cinderreach | ASH | Your soul ignites; first taste of dominance. |
-| R6 | **Rimeheart** | Soul Transformation | LEGENDARY | 5 The Rimefells | FROST | Your dao freezes into permanence. |
-| R7 | **Mirebound** | Void/Dao Seeking | PERFECT | 6 The Sunkmire | MIRE | You touch the void between Echoes. |
-| R8 | **Ashen Lord** | Tribulation Transcendence | MYTHIC | 7 Ashen Wastes | ASH+FROST | You rule a domain; lesser beings cower. |
-| R9 | **Maw-Eater** | Immortal Ascension | GODLY | 8 The Maw | MIRE+TIDE | You devour realms. Godhood's threshold. |
-| R10 | **Primordial Echo** | True Immortal / Dao Ancestor | PRIMORDIAL | 9 The Primordium | all five (convergence) | You *are* the Echo. Walking apocalypse. |
+| R1 | **Mortal** | *Stirring* | WEAK | 0 The Hearth | neutral | "You can hear the Echo." Mortal-plus. |
+| R2 | **Awakened** | *Vesselborn* | COMMON | 1 The Verge | SAND | A real cultivator's body. |
+| R3 | **Adept** | *Wellspring* | UNCOMMON | 2 Dunesea | SAND | A true qi reservoir forms (ties to Mana). |
+| R4 | **Champion** | *Tidecaller* | RARE | 3 The Tidewrack | TIDE | A golden core (your "Echo Core") condenses. |
+| R5 | **Ascendant** | *Embersoul* | EPIC | 4 Cinderreach | ASH | Your soul ignites; first taste of dominance. |
+| R6 | **Paragon** | *Rimeheart* | LEGENDARY | 5 The Rimefells | FROST | Your dao freezes into permanence. |
+| R7 | **Transcendent** | *Mirebound* | PERFECT | 6 The Sunkmire | MIRE | You touch the void between Echoes. |
+| R8 | **Demigod** | *Ashen Lord* | MYTHIC | 7 Ashen Wastes | ASH+FROST | You rule a domain; lesser beings cower. |
+| R9 | **Empyrean** | *Maw-Eater* | GODLY | 8 The Maw | MIRE+TIDE | You devour realms. Godhood's threshold. |
+| R10 | **Primordial** | *Primordial Echo* | PRIMORDIAL | 9 The Primordium | all five (convergence) | You *are* the Echo. Walking apocalypse. |
 
 **Why ten and why aligned.** Every existing system already speaks "tier." By making Realm ≡ Tier we get realm gating, realm suppression, realm-colored UI, and realm-keyed loot **for free** off `Tier` — `Realm.forTier(Tier)` and `Realm.tier()` are a static bidirectional map, not new data. The Band table's "Tier theme" column becomes the realm a Band *belongs to*: walking into Cinderreach (Band 4, EPIC) is walking into **Embersoul country**, and a Stirring-realm mortal there is realm-suppressed into paste.
 

@@ -123,18 +123,18 @@ e.g. a 3,400,000-HP mob shows `3.4 Pillar` instead of `3.4M`. Mode B is cosmetic
 
 The 10-tier ladder (`WEAK → … → PRIMORDIAL`) is **kept exactly** — but each tier is now a **cultivation Realm**, and a Realm is a *step-change in magnitude*, not a 1.35× nudge. The old design's "fixed ~1.35× per tier step" (Rule 7) is **replaced** by a steep geometric per-realm multiplier so that crossing a realm boundary is the "everyone in the room is instantly outclassed" moment.
 
-**Realm flavor names** (display layer over the existing enum; the enum constants are unchanged so all code keeps working):
+**Realm names** (Western-forward, canonical per [NAMING.md](NAMING.md); display layer over the existing enum; the enum constants are unchanged so all code keeps working):
 
 | Tier enum (unchanged) | Realm name (display) | Echo-Band feel |
 |---|---|---|
 | WEAK | Mortal | the safe heart |
-| COMMON | Body Tempering | Hearth |
-| UNCOMMON | Qi Condensation | Frontier |
-| RARE | Foundation | Marches |
-| EPIC | Core Formation | Marches/Wastes |
-| LEGENDARY | Nascent Soul | Wastes |
-| PERFECT | Soul Transformation | Wastes/Echofields |
-| MYTHIC | Ascendant | Echofields |
+| COMMON | Awakened | Hearth |
+| UNCOMMON | Adept | Frontier |
+| RARE | Champion | Marches |
+| EPIC | Ascendant | Marches/Wastes |
+| LEGENDARY | Paragon | Wastes |
+| PERFECT | Transcendent | Wastes/Echofields |
+| MYTHIC | Demigod | Echofields |
 | GODLY | Empyrean | Echofields/Maw |
 | PRIMORDIAL | Primordial | The Maw |
 
@@ -166,13 +166,13 @@ Computed from §2.2 with `REALM_BASE=8, HP_ANCHOR=50, DMG_ANCHOR=5, LEVEL_SLOPE=
 | Realm (Tier) | realmMult | Rep. mob HP (HUD) | Rep. mob dmg/hit | Player HP (HUD) | Player dmg/hit | Felt magnitude |
 |---|---|---|---|---|---|---|
 | Mortal (WEAK) | 0.125 | ~6 | ~0.6 | ~25 | ~2 | tens |
-| Body Tempering (COMMON) | 1 | ~50–300 | ~5–30 | ~200–1.2K | ~20–100 | hundreds |
-| Qi Condensation (UNCOMMON) | 8 | ~2.4K (`2.4K`) | ~240 | ~10K (`10K`) | ~1.2K | thousands |
-| Foundation (RARE) | 64 | ~19K (`19K`) | ~1.9K | ~77K (`77K`) | ~12K | tens of thousands |
-| Core Formation (EPIC) | 512 | ~205K (`205K`) | ~20K | ~820K (`820K`) | ~120K | hundreds of thousands |
-| Nascent Soul (LEGENDARY) | 4,096 | ~1.6M (`1.6M`) | ~160K | ~6.5M (`6.5M`) | ~1.1M | millions |
-| Soul Transformation (PERFECT) | 32,768 | ~13M (`13M`) | ~1.3M | ~52M (`52M`) | ~9M | tens of millions |
-| Ascendant (MYTHIC) | 262,144 | ~105M (`105M`) | ~10M | ~420M (`420M`) | ~80M | hundreds of millions |
+| Awakened (COMMON) | 1 | ~50–300 | ~5–30 | ~200–1.2K | ~20–100 | hundreds |
+| Adept (UNCOMMON) | 8 | ~2.4K (`2.4K`) | ~240 | ~10K (`10K`) | ~1.2K | thousands |
+| Champion (RARE) | 64 | ~19K (`19K`) | ~1.9K | ~77K (`77K`) | ~12K | tens of thousands |
+| Ascendant (EPIC) | 512 | ~205K (`205K`) | ~20K | ~820K (`820K`) | ~120K | hundreds of thousands |
+| Paragon (LEGENDARY) | 4,096 | ~1.6M (`1.6M`) | ~160K | ~6.5M (`6.5M`) | ~1.1M | millions |
+| Transcendent (PERFECT) | 32,768 | ~13M (`13M`) | ~1.3M | ~52M (`52M`) | ~9M | tens of millions |
+| Demigod (MYTHIC) | 262,144 | ~105M (`105M`) | ~10M | ~420M (`420M`) | ~80M | hundreds of millions |
 | Empyrean (GODLY) | 2,097,152 | ~840M (`840M`) | ~84M | ~3.4B (`3.4B`) | ~700M | billions |
 | Primordial (PRIMORDIAL) | 16,777,216 | ~6.7B → 33B (boss) (`6.7B`/`33B`) | ~670M | ~27B (`27B`) | ~6B | billions → tens of billions |
 

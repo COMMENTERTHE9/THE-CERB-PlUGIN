@@ -14,18 +14,18 @@
 
 Cultivation power is not a flat curve — it is a **staircase of magnitudes**. The existing 10 tiers are re-cast as **Realms**, and each Realm is assigned an **order-of-magnitude Weapon Power (WP) anchor**. Every weapon's damage is expressed as `WP × per-hit-coefficient`, and WP is what explodes by realm. This keeps the *engine math* simple (multiply two doubles/longs) while the *displayed numbers* become absurd.
 
-| Realm (Tier) | Cultivation name | `craftStat` (live) | **Realm WP anchor** | Magnitude of a hit | Display band |
+| Realm (Tier) | Realm name | `craftStat` (live) | **Realm WP anchor** | Magnitude of a hit | Display band |
 |---|---|---|---|---|---|
 | WEAK | Mortal | 0.5 | **5** | single digits | 5 |
-| COMMON | Body Tempering | 1.0 | **10** | tens | 10 |
-| UNCOMMON | Qi Condensation | 1.25 | **45** | tens–hundreds | 45 |
-| RARE | Foundation Establishment | 1.5 | **200** | hundreds | 200 |
-| EPIC | Core Formation | 1.75 | **1,200** | thousands | 1.2K |
-| LEGENDARY | Nascent Soul | 2.0 | **9,000** | tens of thousands | 9K |
-| PERFECT | Soul Transformation | 2.5 | **80,000** | hundred-thousands | 80K |
-| MYTHIC | Spirit Severing | 3.0 | **1,200,000** | millions | 1.2M |
-| GODLY | Dao Seeking | 3.5 | **35,000,000** | tens of millions | 35M |
-| PRIMORDIAL | Immortal Ascension | 4.0 | **1,500,000,000** | billions | 1.5B |
+| COMMON | Awakened | 1.0 | **10** | tens | 10 |
+| UNCOMMON | Adept | 1.25 | **45** | tens–hundreds | 45 |
+| RARE | Champion | 1.5 | **200** | hundreds | 200 |
+| EPIC | Ascendant | 1.75 | **1,200** | thousands | 1.2K |
+| LEGENDARY | Paragon | 2.0 | **9,000** | tens of thousands | 9K |
+| PERFECT | Transcendent | 2.5 | **80,000** | hundred-thousands | 80K |
+| MYTHIC | Demigod | 3.0 | **1,200,000** | millions | 1.2M |
+| GODLY | Empyrean | 3.5 | **35,000,000** | tens of millions | 35M |
+| PRIMORDIAL | Primordial | 4.0 | **1,500,000,000** | billions | 1.5B |
 
 **Inter-realm ratio is intentionally non-uniform and *accelerating*** (≈2× → 4.5× → 6× early, ballooning to ~22×/43× at the top): this is the cultivation "realm gap." `WP(realm)` lives in **one** config block (`weapons.yml: realm-power`) so the entire economy is tunable from a single curve.
 

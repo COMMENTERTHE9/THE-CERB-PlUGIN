@@ -105,7 +105,7 @@ These are **net-new** decisions the four sections surface (beyond the existing O
 | N10 | **Gear count = ~250** = ~150 Wearables + ~100 Equipment & Tools, ~20 curated uniques. Ratify the branch split and the **12-slot** default equip layout. | Accept; slots are config (`gear-slots.yml`) so additions are free. |
 | N11 | **Gear is open-ended via a data-driven Gear-Type Registry** (`gear-slots.yml` / `gear-types.yml` / `gear-items.yml`), `GearBehavior` handlers keyed by `function.type`. Confirm the schema (branch / slot / activation / governing-skill / stat-schema / affix-slots) and that **adding a slot or type is config-only**, new *behavior* = one handler class. | Accept the registry schema; ratify the `function.type` behavior set (HARVEST, ITEM_MAGNET, EXPLOSIVE, BUFF_AURA, DEPLOYABLE…). |
 | N12 | **Heavy Armor Training as a weapon class** for blunt weapons, or introduce a thin "Blunt Mastery" sub-key? | Default: blunt weapons level HAT (config decision, not a rewrite). |
-| N13 | **Realm count = 10**, 1:1 with the tier ladder. Confirm flavor-name set (Mortal…Primordial vs Stirring…Primordial Echo — two competing name tables across the sections; pick one). | Accept 10 realms = 10 tiers; ratify one name table. |
+| N13 | **Realm count = 10**, 1:1 with the tier ladder. Confirm flavor-name set (Mortal…Primordial vs Stirring…Primordial Echo — two competing name tables across the sections; pick one). | **RESOLVED (2026-06-08): Western-forward names canonical — Mortal · Awakened · Adept · Champion · Ascendant · Paragon · Transcendent · Demigod · Empyrean · Primordial (see [NAMING.md](NAMING.md)). Cultivation jargon retired from player-facing names.** |
 
 #### 4.4 Cultivation growth & gates
 
