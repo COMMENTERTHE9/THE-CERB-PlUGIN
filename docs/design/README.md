@@ -18,7 +18,8 @@
 | [GEAR.md](GEAR.md) | on disk | ~265 items, 20 equip slots (10 rings) — two branches (Wearables + Equipment/Tools), `GearRegistry`, set bonuses, the reserved-unread `talisman-sockets` field. |
 | [MOUNTS_AND_VEHICLES.md](MOUNTS_AND_VEHICLES.md) | on disk | ~40–60 forms (12 archetypes, ~10–14 evolution lines) — bonded mounts + constructed vehicles, 5-rung flight ladder, `RideableRegistry`, `mount` summon slot. |
 | [TALISMANS.md](TALISMANS.md) | **NEW (not yet on disk)** | ~260 talismans, 10 effect-class archetypes — socketable/carried conditional effect-modules, separate Talisman Budget (inside global caps), `TalismanRegistry`, `player_talismans`. Owns Gear's reserved socket field. |
-| [ECHO_FAMILIES.md](ECHO_FAMILIES.md) | **NEW (not yet on disk)** | Consolidates SAND/TIDE/ASH/FROST/MIRE into one faction system — family≡sect, attunement track, rituals, keyed armor, Family Wars; `family.yml`, folds into `player_cultivation.sect_id`. |
+| [ECHO_FAMILIES.md](ECHO_FAMILIES.md) | on disk | Consolidates SAND/TIDE/ASH/FROST/MIRE into one faction system — family≡sect, attunement track, rituals, keyed armor, Family Wars; `family.yml`, folds into `player_cultivation.sect_id`. |
+| [SYSTEMS_BASE_LAYER.md](SYSTEMS_BASE_LAYER.md) | on disk | **Base-layer frames** (not full specs) for Enchanting, Artifacts (cross-cutting rarity class + `artifact` slot), Bags, and Attributes (the 6-attribute stat-aggregation layer where all sources sum and all caps apply). |
 | `_parts/bosses.md`, `_parts/loops.md` | on disk (fragments) | Source fragments feeding the master plan (boss roster, core loops) — not standalone deliverables. |
 
 ---
