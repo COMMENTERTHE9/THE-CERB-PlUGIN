@@ -67,34 +67,45 @@ public final class MobLabelManager implements Listener {
 
     /** Spawn + mount the floating label. Call on the mob's region thread (CreatureSpawnEvent). */
     public void attach(LivingEntity mob, int level, Tier tier, double maxHp) {
-        if (mob == null || !mob.isValid()) return;
+        if (mob == null) return;
         if (states.containsKey(mob.getUniqueId())) return; // idempotent — never double-label
 
-        World world = mob.getWorld();
-        final String typeName = mob.getType().name();
-        TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
-            td.text(buildText(level, tier, typeName, maxHp, 1.0));
-            td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
-            td.setSeeThrough(true);                             // no block-occlusion hide
-            td.setShadowed(false);
-            td.setDefaultBackground(false);
-            td.setBackgroundColor(Color.fromARGB(64, 0, 0, 0)); // subtle translucent backdrop
-            td.setTextOpacity((byte) 255);
-            td.setAlignment(TextDisplay.TextAlignment.CENTER);
-            td.setBrightness(new Display.Brightness(15, 15));   // full-bright at night/in caves
-            td.setViewRange(1.0f);
-            td.setTransformation(new Transformation(
-                    new Vector3f(0f, 0.7f, 0f),                 // float above the head
-                    new AxisAngle4f(0f, 0f, 0f, 1f),
-                    new Vector3f(1f, 1f, 1f),
-                    new AxisAngle4f(0f, 0f, 0f, 1f)));
-            td.setPersistent(false);                            // never saved → anti-orphan/anti-dup
-            td.setInvulnerable(true);
-            td.getPersistentDataContainer().set(ownerKey, PersistentDataType.BYTE, (byte) 1);
-        });
+        // DEFER one tick onto the mob's region thread. During CreatureSpawnEvent the mob is NOT
+        // yet committed to the world, so spawning the display + addPassenger there silently fail
+        // (the mount never registers). By next tick the mob is live and tracked. (Folia EntityScheduler.)
+        mob.getScheduler().run(plugin, task -> {
+            if (!mob.isValid()) return;                         // died/despawned before next tick
+            if (states.containsKey(mob.getUniqueId())) return;  // re-check after the tick gap
 
-        mob.addPassenger(label); // auto-follow, no per-tick task
-        states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp));
+            World world = mob.getWorld();
+            final String typeName = mob.getType().name();
+            TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
+                td.text(buildText(level, tier, typeName, maxHp, 1.0));
+                td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
+                td.setSeeThrough(true);                             // no block-occlusion hide
+                td.setShadowed(false);
+                td.setDefaultBackground(false);
+                td.setBackgroundColor(Color.fromARGB(64, 0, 0, 0)); // subtle translucent backdrop
+                td.setTextOpacity((byte) 255);
+                td.setAlignment(TextDisplay.TextAlignment.CENTER);
+                td.setBrightness(new Display.Brightness(15, 15));   // full-bright at night/in caves
+                td.setViewRange(1.0f);
+                td.setTransformation(new Transformation(
+                        new Vector3f(0f, 0.7f, 0f),                 // float above the head
+                        new AxisAngle4f(0f, 0f, 0f, 1f),
+                        new Vector3f(1f, 1f, 1f),
+                        new AxisAngle4f(0f, 0f, 0f, 1f)));
+                td.setPersistent(false);                            // never saved → anti-orphan/anti-dup
+                td.setInvulnerable(true);
+                td.getPersistentDataContainer().set(ownerKey, PersistentDataType.BYTE, (byte) 1);
+            });
+
+            if (!mob.addPassenger(label)) {  // mount failed (mob moved region / died this tick)
+                label.remove();
+                return;
+            }
+            states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp));
+        }, null); // retired=null: if the mob is gone before next tick, just skip (nothing spawned yet)
     }
 
     /** Update the HP shown on the label. {@code fraction} = remaining/max in [0,1]. */
