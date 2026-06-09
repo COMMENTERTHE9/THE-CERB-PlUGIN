@@ -27,7 +27,7 @@ set "ORIGINAL_JAVA_HOME=%JAVA_HOME%"
 set "ORIGINAL_PATH=%PATH%"
 set "JAVA_HOME=%BUILD_JAVA_HOME%"
 set "PATH=%JAVA_HOME%\bin;%PATH%"
-call mvnw.cmd package -q
+call mvnw.cmd clean package -q
 if errorlevel 1 (
     set "JAVA_HOME=%ORIGINAL_JAVA_HOME%"
     set "PATH=%ORIGINAL_PATH%"
