@@ -179,6 +179,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (damageDisplayListener != null) damageDisplayListener.shutdown();
         if (seaMonsterManager != null) seaMonsterManager.clearSeaMonsters();
         if (trapManager != null)       trapManager.cleanup();
+        if (mobLabelManager != null)   mobLabelManager.clear();
 
         getLogger().info("Cerberus Plugin has been disabled!");
     }
@@ -221,6 +222,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         adminChestGUI = new AdminChestGUI(this);
         mobRegistry = new MobRegistry(this);
         mobVirtualHealthManager = new Manager.MobVirtualHealthManager();
+        mobLabelManager = new Manager.MobLabelManager(this);
     }
 
     public AsyncSaveManager getAsyncSaver() {
@@ -235,6 +237,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     public Manager.MobVirtualHealthManager getMobVirtualHealthManager() {
         return mobVirtualHealthManager;
+    }
+
+    private Manager.MobLabelManager mobLabelManager;
+
+    public Manager.MobLabelManager getMobLabelManager() {
+        return mobLabelManager;
     }
 
     public Manager.ChunkDiscoveryManager getChunkDiscoveryManager() {
@@ -342,6 +350,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(new CombatListener(this, skillManager, spellManager, playerMenuGUI, skillGUI, mobRegistry), this);
         pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper, mobRegistry), this);
         pm.registerEvents(new MobScalingListener(this), this);
+        pm.registerEvents(mobLabelManager, this);
 
         // ── HUD & defense (reactive — damage/heal/consume only) ──
         pm.registerEvents(new PlayerHUDListener(playerHUDManager, playerDefenseManager), this);

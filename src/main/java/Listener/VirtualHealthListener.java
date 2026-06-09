@@ -247,6 +247,8 @@ public class VirtualHealthListener implements Listener {
         if (mvh == null || !mvh.has(mob)) return damage;
 
         boolean lethal = mvh.damage(mob, damage);
+        var labels = plugin.getMobLabelManager();
+        if (labels != null) labels.refresh(mob, mvh.fraction(mob)); // live HP on the floating label
         var attr = mob.getAttribute(Attribute.MAX_HEALTH);
         double cosmeticMax = attr != null ? attr.getValue() : 20.0;
         double target = lethal ? 0.0 : Math.max(1.0, cosmeticMax * mvh.fraction(mob));

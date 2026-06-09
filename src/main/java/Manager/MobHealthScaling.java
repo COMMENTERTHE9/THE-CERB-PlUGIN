@@ -80,7 +80,7 @@ public final class MobHealthScaling {
         this.maxLevel = DEFAULT_MAX_LEVEL;
         this.applyTo = DEFAULT_APPLY_TO;
         this.showLevelInName = true;
-        this.nameAlwaysVisible = false;
+        this.nameAlwaysVisible = true;
         this.tierMultipliers.clear();
         this.tierMultipliers.putAll(DEFAULT_TIER_MULT);
     }
@@ -140,7 +140,7 @@ public final class MobHealthScaling {
             this.applyTo = DEFAULT_APPLY_TO;
         }
         this.showLevelInName = section.getBoolean("show-level-in-name", true);
-        this.nameAlwaysVisible = section.getBoolean("name-always-visible", false);
+        this.nameAlwaysVisible = section.getBoolean("name-always-visible", true);
 
         // Tier multipliers (geometric realm staircase)
         tierMultipliers.clear();

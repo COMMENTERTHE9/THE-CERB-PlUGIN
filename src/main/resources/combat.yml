@@ -77,7 +77,7 @@ mob-health-scaling:
   max-level: 100           # hard cap on mob level
   apply-to: MONSTERS       # MONSTERS = hostile mobs only, ALL = every living mob
   show-level-in-name: true # prefix generic mob names with "Lv<n>"
-  name-always-visible: false   # true = name floats above mob, false = on hover only
+  name-always-visible: true    # floats above the mob (set false for hover-only)
   tier-multiplier:         # x8 per realm: 8^realmIndex (Mortal .. Primordial)
     WEAK: 0.125
     COMMON: 1.0

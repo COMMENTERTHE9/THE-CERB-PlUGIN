@@ -11,7 +11,7 @@ import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Monster;
+import org.bukkit.entity.Enemy;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -46,8 +46,10 @@ public class MobScalingListener implements Listener {
         MobHealthScaling scaling = cc.mobHealthScaling;
         if (scaling == null || !scaling.isEnabled()) return;
 
-        // apply-to filter (MONSTERS = hostile only, ALL = every living mob)
-        if (scaling.getApplyTo().equals("MONSTERS") && !(entity instanceof Monster)) return;
+        // apply-to filter (MONSTERS = any hostile mob incl. slimes/ghasts/phantoms via the
+        // Enemy marker; ALL = every living mob). Bukkit's Monster excludes Slime/Ghast/etc.,
+        // so we use Enemy to catch all hostiles.
+        if (scaling.getApplyTo().equals("MONSTERS") && !(entity instanceof Enemy)) return;
 
         MobRegistry registry = plugin.getMobRegistry();
         if (registry == null) return;
@@ -84,13 +86,12 @@ public class MobScalingListener implements Listener {
         // 4. Persist the level so combat damage scaling can read it
         registry.tagLevel(entity, level);
 
-        // 5. Show the level in the name — but only for generic (un-named) mobs, so
-        //    we never clobber a name the registry uses to identify a special mob.
+        // 5. Floating always-on label (TextDisplay passenger) — replaces the cull-prone
+        //    vanilla nameplate. Only generic (un-named) mobs, so we never clobber a name
+        //    the registry uses to identify a special mob.
         if (scaling.isShowLevelInName()
                 && (entity.getCustomName() == null || entity.getCustomName().isBlank())) {
-            entity.setCustomName(ChatColor.GRAY + "Lv" + level + " "
-                    + tier.displayColor + prettify(entity.getType().name()));
-            entity.setCustomNameVisible(scaling.isNameAlwaysVisible());
+            plugin.getMobLabelManager().attach(entity, level, tier, maxHealth);
         }
     }
 
@@ -99,6 +100,17 @@ public class MobScalingListener implements Listener {
     public void onDeath(EntityDeathEvent event) {
         Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
         if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
+        if (plugin.getMobLabelManager() != null) plugin.getMobLabelManager().remove(event.getEntity());
+    }
+
+    /** Compact number for the name tag: 50, 1.6K, 5.0B. */
+    private static String compact(double v) {
+        if (v < 1000) return String.valueOf((long) v);
+        String[] u = {"K", "M", "B", "T", "Qa"};
+        int i = -1;
+        double x = v;
+        while (x >= 1000 && i < u.length - 1) { x /= 1000; i++; }
+        return String.format("%.1f%s", x, u[i]);
     }
 
     /** ZOMBIE -> "Zombie", CAVE_SPIDER -> "Cave Spider". */
