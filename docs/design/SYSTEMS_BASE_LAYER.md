@@ -39,14 +39,14 @@
 | **Gear** | Keyed / named-treasure pieces (GEAR §4 uniques) |
 | **Mount** | Legendary mounts (MOUNTS §legendaries) |
 | **Talisman** | Named seals (TALISMANS curated) |
-| **Standalone trinket** | A held/pocket Artifact with an **active power** — needs a home → a dedicated **`artifact` slot** (1–2) |
+| **Standalone accessory** | Passive Artifacts buff you from inside the **Artifact Bag** (Bags §3, SkyBlock accessory-bag model — stats apply while stored). The rare **active**-power ones bind to a quick-use hotkey. |
 
 **Core shape (base):**
 - An Artifact = unique item + a **signature power (active or passive)** + **soulbound** (`cerb_bound`, EULA-safe earned) + an **acquisition gate** + usually a **growth/awaken track**.
-- Standalone trinket-Artifacts occupy a new **`artifact` equip slot** (added to the gear-slots registry — config, no code).
+- Standalone passive Artifacts/accessories live in the **Artifact Bag** (passive while stored, SkyBlock-style — Bags §3); the rare active ones bind to a quick-use hotkey. No per-artifact equip slot.
 - All other Artifacts ride their normal slot; "Artifact" just tags them as the apex tier with an active power + awaken track.
 
-**Key decisions:** Artifact = cross-cutting rarity class (recommended) vs its own system · how many dedicated `artifact`/trinket slots (recommend 1) · awaken/empower track shape · single-instance-per-server for the apex few.
+**Key decisions:** Artifact = cross-cutting rarity class (recommended) vs its own system · Artifact Bag start size + expansion curve + no-dup-supersede rule · passive-in-bag vs active-hotkey split · awaken/empower track shape · single-instance-per-server for the apex few.
 
 ---
 
@@ -64,13 +64,16 @@
 | **Material pouch** | Auto-collects one category (ore / herbs / loot / drops) on pickup |
 | **Ammo bag (Quiver)** | Holds **Spirit Rounds** (feeds the Spirit-Gun) + arrows |
 | **Realm-bound bag** | Ender-style, accessible anywhere |
+| **Artifact Bag** | Holds Artifacts/accessories — their passive effects apply ***while stored*** (Hypixel SkyBlock accessory-bag model); slots expand with progression |
 | **Mount cargo** | Already covered by Pack-Beast mounts (MOUNTS) |
 
 - Bag **capacity scales with realm/tier**; bags open in a dedicated bag panel.
 - Open-ended `bags.yml` type registry (same pattern); ties to **Scavenging** / gathering skills.
 - Persistence: `player_bags` table (auto-create, snapshot→async).
 
-**Key decisions:** how bags are accessed (bag panel vs equip slot) · auto-collect pouch scope/filters · bag capacity curve · do bags persist on death.
+**Artifact Bag (the SkyBlock accessory-bag model — headline mechanic):** passive Artifacts/accessories buff you *just by being in the bag*, no per-item equipping. Rules: **no duplicate stacking** (a higher-tier copy supersedes the lower — chase upgrades, don't hoard); **slots expand** with realm/upgrades (~3 → grows); **all passive stats sum into the Attribute layer (§4) and clamp to the caps**, so a full bag can't breach the budget. The rare **active**-power artifacts bind to a quick-use hotkey instead.
+
+**Key decisions:** how bags are accessed (bag panel vs equip slot) · auto-collect pouch scope/filters · bag capacity curve · do bags persist on death · Artifact Bag start size + expansion curve + the no-dup-supersede rule.
 
 ---
 
