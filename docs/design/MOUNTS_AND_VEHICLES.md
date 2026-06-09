@@ -194,6 +194,47 @@ Speed is shown as a multiplier over the vanilla ride baseline (≈ a sprinting p
 
 ---
 
+### 3.5 Archetypes & Base-Tier Evolution Lines (the structural skeleton)
+
+Mounts use the same generative model as weapons/gear: **archetype × realm-band × variant**, plus curated legendaries. Two structural axes define an archetype — **Movement Domain** × **Role**.
+
+**The 12 mount archetypes:**
+
+| # | Archetype | Domain | Role | Carrier entity | Purpose |
+|---|---|---|---|---|---|
+| 1 | **Courser** | Ground | Speed | horse-class | baseline fast travel |
+| 2 | **Destrier** | Ground | War | horse-class | mounted combat, charge/trample |
+| 3 | **Pack-Beast** | Ground | Utility/Cargo | llama/horse | hauling, +inventory, gathering |
+| 4 | **Prowler** | All-terrain | Speed | climber | walls/cliffs, no fall damage |
+| 5 | **Tunneler** | All-terrain | Utility | burrower | mining/dig mount |
+| 6 | **Skiff-Beast** | Aquatic | Speed | dolphin/boat | water travel |
+| 7 | **Leviathan** | Aquatic | War/Platform | large aquatic | sea combat + group |
+| 8 | **Glider-Beast** | Flight | Speed | horse + elytra-logic | fast air travel |
+| 9 | **Sky-Raptor** | Flight | War | flight | aerial combat, dive-strike |
+| 10 | **Cloud-Strider** | Flight | Speed/Utility | flight + hover | hover, no ceiling (apex flyer) |
+| 11 | **Sky-Platform** | Flight | Platform | airship-class | multi-rider sky-fortress |
+| 12 | **Amphibian** | Amphibious | Speed/War | frog/turtle | land + water |
+
+**Base Tier — Vanilla OGs & Evolution Lines.** The recognizable vanilla rideables are the **realm-1/2 base** of evolution lines that ascend to the fantastical apex. You bond the OG once and *ascend* it (`ascends-to:` chain, same bonded instance) — never replace it. Reusing the vanilla carrier entity gives the whole line working ride physics for free.
+
+| OG base (vanilla) | Archetype | Evolution line (realm climb) | Domain arc | Echo tie |
+|---|---|---|---|---|
+| **Horse** | Courser/Destrier | Horse → Warhorse → Charger → Pegasus *(earns flight)* → Cloud-Strider | Ground → Flight | neutral |
+| **Camel** | Courser (2-rider, dash) | Camel → War-Camel → Dune-Strider → Sand-Sovereign | Ground | SAND |
+| **Strider** | Amphibian (lava) | Strider → Magma-Strider → Cinder-Walker → Ash-Leviathan | Lava | ASH |
+| **Pig** | Utility → War | Pig → War-Boar → Tusked-Charger → Behemoth | Ground → War | neutral |
+| **Donkey** | Pack-Beast | Donkey → Pack-Mule → Caravan-Bearer → Cargo-apex | Utility/Cargo | neutral |
+| **Mule** | Pack-Beast (heavy) | Mule → Hauler → Siege-Bearer → Sky-Platform | Utility → Platform | neutral |
+| **Llama** | Pack/Caravan | Llama → War-Llama → Caravan-Train | Utility | TIDE |
+| **Skeleton Horse** | Undead Courser | (rare base) → Dread-Steed → Nightmare *(flight)* | Ground → Flight | MIRE |
+
+**Structural rules:**
+1. **Vanilla rideable = realm-1/2 base of an evolution line.** Reuse the vanilla carrier entity for the whole line → free ride physics + familiar onboarding (a new player rides a horse they recognize).
+2. **`ascends-to:` chains wire the line.** Model + abilities transform at realm gates (material/trial-gated), but it stays the **same bonded instance** — level, bond, name, lineage persist.
+3. **Cross-domain evolutions are realm milestones** (Horse→Pegasus = ground→flight, ties into the flight ladder §7) — earned, not purchased.
+
+**Count (structural target):** mounts are deep-bond, **not** a 250-collectible — **~40–60 distinct forms** = ~10–14 evolution lines × ~4 steps + ~6–10 pure legendaries. Bounded, each line anchored to a recognizable base.
+
 ### 4. Bonding, Taming & Beast Ascension (mounts that grow with you)
 
 A bonded mount is a **living Spirit Weapon** — it reuses the Spirit Weapon growth track (WEAPONS §5) but with its own flavor: **level, breakthroughs, loyalty, lineage.**
