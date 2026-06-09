@@ -6,28 +6,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Locks in the level-from-distance and tier/level-to-health math.
- * Uses the hardcoded defaults (no combat.yml needed):
- * base=20, hp-per-level=6, blocks-per-level=150, max-level=100, cap=5000,
- * tier mult COMMON=1.0, RARE=3.0, PRIMORDIAL=60.0.
+ * Locks the level-from-distance and the ×8 realm-curve health math.
+ * Defaults: base=50, level-slope=0.05, blocks-per-level=150, max-level=100,
+ * health-cap=1e14; tier mult COMMON=1, UNCOMMON=8, RARE=64, PRIMORDIAL=8^8.
  */
 class MobHealthScalingTest {
 
     private final MobHealthScaling scaling = new MobHealthScaling();
-    private static final double EPS = 1e-9;
+    private static final double EPS = 1e-6;
 
     // ── levelForDistance ────────────────────────────────────────
 
     @Test
     void levelStartsAtOneNearSpawn() {
         assertEquals(1, scaling.levelForDistance(0));
-        assertEquals(1, scaling.levelForDistance(149));   // floor(149/150)=0 -> level 1
+        assertEquals(1, scaling.levelForDistance(149));
     }
 
     @Test
     void levelIncrementsEveryBlocksPerLevel() {
-        assertEquals(2, scaling.levelForDistance(150));   // exactly one band out
-        assertEquals(4, scaling.levelForDistance(450));   // floor(450/150)=3 -> level 4
+        assertEquals(2, scaling.levelForDistance(150));
+        assertEquals(4, scaling.levelForDistance(450));
     }
 
     @Test
@@ -36,42 +35,42 @@ class MobHealthScalingTest {
         assertEquals(100, scaling.getMaxLevel());
     }
 
-    // ── calculate ───────────────────────────────────────────────
+    // ── calculate (×8 realm curve) ──────────────────────────────
 
     @Test
-    void levelOneCommonEqualsBaseHealth() {
-        assertEquals(20.0, scaling.calculate(Tier.COMMON, 1), EPS);
+    void levelOneCommonEqualsBaseAnchor() {
+        assertEquals(50.0, scaling.calculate(Tier.COMMON, 1), EPS);
     }
 
     @Test
-    void healthScalesLinearlyWithLevel() {
-        // 20 + (11-1)*6 = 80
-        assertEquals(80.0, scaling.calculate(Tier.COMMON, 11), EPS);
+    void levelScalesByLevelSlope() {
+        // 50 * 1 * (1 + 0.05*10) = 75
+        assertEquals(75.0, scaling.calculate(Tier.COMMON, 11), EPS);
     }
 
     @Test
-    void tierMultipliesHealth() {
-        // COMMON level 11 = 80, RARE is 3x
-        assertEquals(240.0, scaling.calculate(Tier.RARE, 11), EPS);
+    void tierStepsByEightPerRealm() {
+        double common = scaling.calculate(Tier.COMMON, 1);
+        assertEquals(8.0, scaling.calculate(Tier.UNCOMMON, 1) / common, EPS);
+        assertEquals(64.0, scaling.calculate(Tier.RARE, 1) / common, EPS);
     }
 
     @Test
     void nullTierTreatedAsCommon() {
-        assertEquals(20.0, scaling.calculate(null, 1), EPS);
+        assertEquals(50.0, scaling.calculate(null, 1), EPS);
     }
 
     @Test
     void levelIsClampedInsideCalculate() {
-        // Level below 1 clamps to 1; absurd level clamps to max-level (100)
-        assertEquals(20.0, scaling.calculate(Tier.COMMON, -5), EPS);
-        // 20 + (100-1)*6 = 614
-        assertEquals(614.0, scaling.calculate(Tier.COMMON, 999), EPS);
+        assertEquals(50.0, scaling.calculate(Tier.COMMON, -5), EPS);    // clamps to level 1
+        assertEquals(297.5, scaling.calculate(Tier.COMMON, 999), EPS);  // clamps to 100: 50*5.95
     }
 
     @Test
-    void healthCapIsEnforced() {
-        // PRIMORDIAL lvl 100 = 614 * 60 = 36840, capped to 5000
-        assertEquals(5000.0, scaling.calculate(Tier.PRIMORDIAL, 100), EPS);
+    void primordialReachesBillionsNotTheOldFiveThousandCap() {
+        double hp = scaling.calculate(Tier.PRIMORDIAL, 100);
+        assertTrue(hp > 1_000_000_000.0, "PRIMORDIAL L100 should be billions, was " + hp);
+        assertTrue(hp < 1.0e14, "stays under the sanity rail, was " + hp);
     }
 
     @Test

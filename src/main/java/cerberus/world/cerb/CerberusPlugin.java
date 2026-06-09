@@ -220,6 +220,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         playerHUDManager = new PlayerHUDManager(null, null, playerVirtualHealthManager);
         adminChestGUI = new AdminChestGUI(this);
         mobRegistry = new MobRegistry(this);
+        mobVirtualHealthManager = new Manager.MobVirtualHealthManager();
     }
 
     public AsyncSaveManager getAsyncSaver() {
@@ -228,6 +229,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     public MobRegistry getMobRegistry() {
         return mobRegistry;
+    }
+
+    private Manager.MobVirtualHealthManager mobVirtualHealthManager;
+
+    public Manager.MobVirtualHealthManager getMobVirtualHealthManager() {
+        return mobVirtualHealthManager;
     }
 
     public Manager.ChunkDiscoveryManager getChunkDiscoveryManager() {

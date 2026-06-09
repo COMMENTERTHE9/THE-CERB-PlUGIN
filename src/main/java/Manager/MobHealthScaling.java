@@ -8,19 +8,23 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Computes a mob's scaled maximum health from its {@link Tier} and level,
+ * Computes a mob's scaled maximum health from its {@link Tier} (realm) and level,
  * and derives a mob's level from how far it spawned from world spawn.
  *
  * <p>Level (distance in blocks from world spawn, horizontal):
  * <pre>
  *   level = clamp( 1 + floor(distance / blocksPerLevel), 1, maxLevel )
  * </pre>
- * Health:
+ * Health (controlled-hyperscaling realm curve — see docs/design/POWER_SCALING.md):
  * <pre>
- *   maxHealth = clamp( (baseHealth + level * hpPerLevel) * tierMultiplier, 1, healthCap )
+ *   levelMult = 1 + levelSlope * (level - 1)
+ *   maxHealth = clamp( baseHealth * tierMultiplier * levelMult, 1, healthCap )
  * </pre>
- * All constants load from the {@code mob-health-scaling} section of combat.yml.
- * Mirrors {@link MobDamageScaling} so both halves of mob scaling tune the same way.
+ * The tier multipliers are a geometric ×8/realm staircase (COMMON=1 … PRIMORDIAL=8^8),
+ * so HP climbs from tens (Mortal) to billions (Primordial). The result can far exceed
+ * the vanilla {@code MAX_HEALTH} attribute cap (1024) — callers store it in a
+ * {@link MobVirtualHealthManager} double pool, not the attribute. {@code healthCap} is a
+ * per-realm sanity rail (well under a double's 2^53 exact-integer limit), not a balance cap.
  */
 public final class MobHealthScaling {
 
@@ -28,7 +32,7 @@ public final class MobHealthScaling {
 
     private boolean enabled;
     private double baseHealth;
-    private double hpPerLevel;
+    private double levelSlope;
     private double healthCap;
     private double blocksPerLevel;
     private int maxLevel;
@@ -40,24 +44,25 @@ public final class MobHealthScaling {
     // ── Hardcoded defaults ───────────────────────────────────────
 
     private static final boolean DEFAULT_ENABLED = true;
-    private static final double DEFAULT_BASE_HEALTH = 20.0;
-    private static final double DEFAULT_HP_PER_LEVEL = 6.0;
-    private static final double DEFAULT_HEALTH_CAP = 5000.0;
+    private static final double DEFAULT_BASE_HEALTH = 50.0;     // HP anchor: a COMMON L1 mob
+    private static final double DEFAULT_LEVEL_SLOPE = 0.05;     // ×1.0 at L1 .. ×5.95 at L100
+    private static final double DEFAULT_HEALTH_CAP = 1.0e14;    // sanity rail only (< 2^53)
     private static final double DEFAULT_BLOCKS_PER_LEVEL = 150.0;
     private static final int DEFAULT_MAX_LEVEL = 100;
     private static final String DEFAULT_APPLY_TO = "MONSTERS";
 
+    // Geometric ×8 per realm: 8^realmIndex (WEAK=8^-1 .. PRIMORDIAL=8^8).
     private static final Map<Tier, Double> DEFAULT_TIER_MULT = Map.ofEntries(
-            Map.entry(Tier.WEAK,       0.5),
+            Map.entry(Tier.WEAK,       0.125),
             Map.entry(Tier.COMMON,     1.0),
-            Map.entry(Tier.UNCOMMON,   1.5),
-            Map.entry(Tier.RARE,       3.0),
-            Map.entry(Tier.EPIC,       6.0),
-            Map.entry(Tier.LEGENDARY,  10.0),
-            Map.entry(Tier.PERFECT,    16.0),
-            Map.entry(Tier.MYTHIC,     25.0),
-            Map.entry(Tier.GODLY,      40.0),
-            Map.entry(Tier.PRIMORDIAL, 60.0)
+            Map.entry(Tier.UNCOMMON,   8.0),
+            Map.entry(Tier.RARE,       64.0),
+            Map.entry(Tier.EPIC,       512.0),
+            Map.entry(Tier.LEGENDARY,  4096.0),
+            Map.entry(Tier.PERFECT,    32768.0),
+            Map.entry(Tier.MYTHIC,     262144.0),
+            Map.entry(Tier.GODLY,      2097152.0),
+            Map.entry(Tier.PRIMORDIAL, 16777216.0)
     );
 
     // ── Construction + loading ────────────────────────────────────
@@ -69,7 +74,7 @@ public final class MobHealthScaling {
     private void applyDefaults() {
         this.enabled = DEFAULT_ENABLED;
         this.baseHealth = DEFAULT_BASE_HEALTH;
-        this.hpPerLevel = DEFAULT_HP_PER_LEVEL;
+        this.levelSlope = DEFAULT_LEVEL_SLOPE;
         this.healthCap = DEFAULT_HEALTH_CAP;
         this.blocksPerLevel = DEFAULT_BLOCKS_PER_LEVEL;
         this.maxLevel = DEFAULT_MAX_LEVEL;
@@ -101,12 +106,12 @@ public final class MobHealthScaling {
         }
         this.baseHealth = bh;
 
-        double hpl = section.getDouble("hp-per-level", DEFAULT_HP_PER_LEVEL);
-        if (hpl < 0.0) {
-            log.warning("[MobHealthScaling] hp-per-level must be >= 0, got " + hpl + " — falling back to " + DEFAULT_HP_PER_LEVEL);
-            hpl = DEFAULT_HP_PER_LEVEL;
+        double slope = section.getDouble("level-slope", DEFAULT_LEVEL_SLOPE);
+        if (slope < 0.0) {
+            log.warning("[MobHealthScaling] level-slope must be >= 0, got " + slope + " — falling back to " + DEFAULT_LEVEL_SLOPE);
+            slope = DEFAULT_LEVEL_SLOPE;
         }
-        this.hpPerLevel = hpl;
+        this.levelSlope = slope;
 
         double cap = section.getDouble("health-cap", DEFAULT_HEALTH_CAP);
         if (cap < 1.0) {
@@ -137,7 +142,7 @@ public final class MobHealthScaling {
         this.showLevelInName = section.getBoolean("show-level-in-name", true);
         this.nameAlwaysVisible = section.getBoolean("name-always-visible", false);
 
-        // Tier multipliers
+        // Tier multipliers (geometric realm staircase)
         tierMultipliers.clear();
         ConfigurationSection tierSection = section.getConfigurationSection("tier-multiplier");
         double prev = -1.0;
@@ -161,7 +166,7 @@ public final class MobHealthScaling {
         }
 
         log.info("[MobHealthScaling] Loaded — enabled=" + enabled + " baseHealth=" + baseHealth
-                + " hpPerLevel=" + hpPerLevel + " cap=" + healthCap + " blocksPerLevel=" + blocksPerLevel
+                + " levelSlope=" + levelSlope + " cap=" + healthCap + " blocksPerLevel=" + blocksPerLevel
                 + " maxLevel=" + maxLevel + " applyTo=" + applyTo + " tiers=" + tierMultipliers.size());
     }
 
@@ -174,12 +179,13 @@ public final class MobHealthScaling {
         return Math.max(1, Math.min(maxLevel, level));
     }
 
-    /** Compute scaled max health for a mob of the given tier and level. */
+    /** Compute scaled max health for a mob of the given tier (realm) and level. */
     public double calculate(Tier tier, int level) {
         if (tier == null) tier = Tier.COMMON;
         level = Math.max(1, Math.min(maxLevel, level));
         double tierMult = tierMultipliers.getOrDefault(tier, 1.0);
-        double raw = (baseHealth + (level - 1) * hpPerLevel) * tierMult;
+        double levelMult = 1.0 + levelSlope * (level - 1);
+        double raw = baseHealth * tierMult * levelMult;
         return Math.max(1.0, Math.min(raw, healthCap));
     }
 

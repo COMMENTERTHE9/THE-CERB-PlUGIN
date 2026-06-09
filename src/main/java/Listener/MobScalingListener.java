@@ -16,6 +16,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 
 /**
  * Assigns a level and tier-scaled max health to mobs as they spawn.
@@ -72,10 +73,13 @@ public class MobScalingListener implements Listener {
         // 2. Tier from the registry (named/tagged specials resolve higher than COMMON)
         Tier tier = registry.resolve(entity).tier();
 
-        // 3. Apply scaled max health
+        // 3. Apply scaled max health into the VIRTUAL pool. Vanilla MAX_HEALTH is hard-capped
+        //    at 1024, so the real (possibly billions) HP lives in MobVirtualHealthManager; the
+        //    vanilla attribute is set to a cosmetic value only so the health bar still renders.
         double maxHealth = scaling.calculate(tier, level);
-        maxHealthAttr.setBaseValue(maxHealth);
-        entity.setHealth(maxHealth);
+        maxHealthAttr.setBaseValue(Manager.MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
+        entity.setHealth(Manager.MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
+        plugin.getMobVirtualHealthManager().init(entity, maxHealth);
 
         // 4. Persist the level so combat damage scaling can read it
         registry.tagLevel(entity, level);
@@ -88,6 +92,13 @@ public class MobScalingListener implements Listener {
                     + tier.displayColor + prettify(entity.getType().name()));
             entity.setCustomNameVisible(scaling.isNameAlwaysVisible());
         }
+    }
+
+    /** Free the mob's virtual-HP entry when it dies (prevents map growth). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onDeath(EntityDeathEvent event) {
+        Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
     }
 
     /** ZOMBIE -> "Zombie", CAVE_SPIDER -> "Cave Spider". */

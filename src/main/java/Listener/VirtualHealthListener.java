@@ -234,8 +234,24 @@ public class VirtualHealthListener implements Listener {
         return registry != null ? registry.getLevel(mob) : 1;
     }
 
+    /**
+     * Route player→mob damage through the mob's virtual-HP pool (set on spawn by
+     * MobScalingListener). The real (possibly billions) HP lives in the pool; the vanilla
+     * health bar is driven cosmetically so it renders the remaining fraction. Returns the
+     * vanilla damage to apply: enough to move the bar to the new fraction, or lethal when the
+     * pool is depleted. Untracked mobs take their vanilla damage unchanged.
+     */
     private double applyDamageMultiplierToEntity(Entity entity, double damage) {
-        return damage;
+        if (!(entity instanceof LivingEntity mob)) return damage;
+        Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        if (mvh == null || !mvh.has(mob)) return damage;
+
+        boolean lethal = mvh.damage(mob, damage);
+        var attr = mob.getAttribute(Attribute.MAX_HEALTH);
+        double cosmeticMax = attr != null ? attr.getValue() : 20.0;
+        double target = lethal ? 0.0 : Math.max(1.0, cosmeticMax * mvh.fraction(mob));
+        // vanilla damage needed to drive the rendered health bar to `target`
+        return Math.max(0.0, mob.getHealth() - target);
     }
 
     private void handleProjectileHit(Projectile projectile, Entity target, EntityDamageEvent event) {
