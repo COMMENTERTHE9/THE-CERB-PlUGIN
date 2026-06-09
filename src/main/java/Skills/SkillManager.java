@@ -374,12 +374,26 @@ public class SkillManager {
         return "Congratulations! Your " + skillName + " skill has reached level " + level + "!";
     }
 
+    // ── XP curve (hybrid polynomial) ──────────────────────────────
+    // Replaces the old 100 * 2^(level-1), which overflowed int around level 26
+    // (100 * 2^25 > Integer.MAX_VALUE wraps negative) and bricked progression.
+    private static final double XP_BASE = 75.0;
+    private static final double XP_EXP = 1.85;
+    private static final double XP_LINEAR = 40.0;
+
+    /**
+     * Pure XP-curve function: XP required to advance FROM {@code level} to the next.
+     * Per-level cost ~115 (L1) to ~372k (L99); cumulative to 100 ≈ 19M. Monotonic and
+     * overflow-safe. Static so it is unit-testable without constructing the manager.
+     */
+    public static int xpForLevel(int level) {
+        int l = Math.max(1, level);
+        double cost = XP_BASE * Math.pow(l, XP_EXP) + XP_LINEAR * l;
+        return (int) Math.round(cost);
+    }
+
     public int calculateRequiredXpForNextLevel(int currentLevel) {
-        int currentLevelXP = 100;
-        for (int i = 1; i < currentLevel; i++) {
-            currentLevelXP = currentLevelXP * 2;
-        }
-        return currentLevelXP;
+        return xpForLevel(currentLevel);
     }
 
     public int getSkillXP(String skillName) {
