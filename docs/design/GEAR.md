@@ -31,7 +31,7 @@ This section assumes the upward-retargeted power doctrine: the old ~1,500 HP pla
 
 Wearables occupy **equip slots** and contribute stats continuously while worn. Crucially, **slots are config-defined, not hardcoded** — the registry ships with the slot set below but a server can add `slot: halo` or `slot: tail` in `gear.yml` and the equip GUI renders it automatically.
 
-**Default equip-slot layout (12 slots):**
+**Default equip-slot layout (20 slots):**
 
 | Slot ID | Worn item examples | Primary stat contribution | Defense layer |
 |---|---|---|---|
@@ -43,12 +43,11 @@ Wearables occupy **equip slots** and contribute stats continuously while worn. C
 | `hands` | Gauntlets, wraps, bracers | Attack speed + armor-pen + flat melee | offense |
 | `belt` | Sashes, qi-belts, tool-belts | Mana pool + tool-belt slots | mana/utility |
 | `neck` | Amulets, pendants, soul-lockets | Elemental resist % + Max HP | L1 resist |
-| `ring_1` | Ring | Free-floating affix budget (offense or utility) | flexible |
-| `ring_2` | Ring | Free-floating affix budget | flexible |
+| `ring_1` … `ring_10` | Rings — **one per finger, 10 slots** | Free-floating affix budget (offense / crit / utility / resist / mobility) — the build's flex canvas | flexible |
 | `relic` | Realm-relic, dantian-anchor | Defense-bar regen + realm-suppression strength | L3 + suppression |
 | `aura` | Cosmetic-functional cultivation aura | Set-bonus carrier / passive proc | varies |
 
-Design intent: **chest/legs/feet/head** are the classic armor quad (own ~70% of the L2 armor budget combined), while **back/neck/relic** own the L1 resist and L3 defense-bar budgets, and **hands/rings/belt/aura** own offense and utility/flex budgets. This spreads the budget so no single slot is mandatory and build identity emerges from slot priorities.
+Design intent: **chest/legs/feet/head** are the classic armor quad (own ~70% of the L2 armor budget combined), while **back/neck/relic** own the L1 resist and L3 defense-bar budgets, and **hands/rings/belt/aura** own offense and utility/flex budgets. This spreads the budget so no single slot is mandatory and build identity emerges from slot priorities. The **10 ring slots** (one per finger) are a deliberate flex — each ring carries a *small* per-slot budget and is individually rare, so filling all ten is an endgame-long "rings of power" chase rather than an early freebie; the total ring budget is one large flex pool split across ten chase items.
 
 #### 2.2 Branch B — Equipment & Tools (wielded / activated)
 
@@ -178,11 +177,11 @@ For a generative family: `count = archetypes × realm-bands-it-appears-in × var
 | **Backs / cloaks** | 3 (Cloak, Wing, Mantle) | 5 | — | **15** | Wing variants grant glide; Mantle carries set bonuses. |
 | **Hands / gauntlets** | 2 (Gauntlet=armor, Wrap=attack-speed) | 5 | — | **10** | Hands own the armor-pen + flat-melee budget. |
 | **Necks / amulets** | 2 (Resist-amulet, HP-locket) | 5 | — | **10** | The elemental-resist (L1) carriers. |
-| **Rings** | 3 (Offense, Utility, Resist) | 5 | — | **15** | Free-budget flex; two ring slots → build defining. |
+| **Rings** | 6 (Offense, Crit, Utility, Resist, Mobility, Suppression) | 5 | — | **30** | **10 ring slots (one per finger)** — small per-ring budget, individually rare; filling all 10 is an endgame chase. |
 | **Belts / sashes** | 2 (Qi-belt=mana, Tool-belt=slots) | 5 | — | **10** | Tool-belt grants Branch-B activation slots. |
 | **Relics** | 2 (Aegis-relic=bar regen, Sovereign-relic=suppression) | 5 | — | **10** | The realm-suppression carrier (see §6). |
 | **Curated keyed/unique wearables** | — | — | — | **~20** | One per Echo Family per high band + named treasures (e.g. *Hoarfrost Monarch's Carapace*, *Mantle of the Sand Sovereign*). Bound-on-pickup. |
-| **Wearables subtotal** | | | | **~150** | |
+| **Wearables subtotal** | | | | **~165** | |
 
 #### 4.3 Branch B — Equipment & Tools (~100 items)
 
@@ -195,7 +194,7 @@ For a generative family: `count = archetypes × realm-bands-it-appears-in × var
 | **Curated unique tools** | *Cerberus's Own Fang* (harvests any node at PRIMORDIAL speed), *The First Drill* | — | — | **~5** (folded into above counts via uniques) | Boss/quest only. |
 | **Equipment & Tools subtotal** | | | | **~100** | |
 
-**Grand total: ~150 + ~100 = ~250 gear items**, almost entirely generated from a handful of archetype rows × 5 bands, plus ~20 curated uniques — the same low-authoring-cost pattern the rest of Cerberus uses.
+**Grand total: ~165 + ~100 = ~265 gear items** (plus the **Mounts & Vehicles** line — see [MOUNTS_AND_VEHICLES.md](MOUNTS_AND_VEHICLES.md)), almost entirely generated from a handful of archetype rows × 5 bands, plus ~20 curated uniques — the same low-authoring-cost pattern the rest of Cerberus uses.
 
 ---
 
@@ -218,7 +217,7 @@ The current `Tier.craftStatMultiplier` runs ~0.5×→4.0×. For the cultivation 
 | GODLY | 220,000 | ~10⁵ |
 | PRIMORDIAL | 2,600,000 | ~10⁶ |
 
-So a PRIMORDIAL chestplate carries **~2.6 million×** the stat budget of a COMMON one. Stacked across 12 slots + set bonuses + temper + affixes, a fully-equipped PRIMORDIAL cultivator's HP/defense/offense budget lands in the **billions-to-trillions**, exactly the target. This is **intentional, tunable (one config table), and representable** — see §5.3.
+So a PRIMORDIAL chestplate carries **~2.6 million×** the stat budget of a COMMON one. Stacked across 20 slots + set bonuses + temper + affixes, a fully-equipped PRIMORDIAL cultivator's HP/defense/offense budget lands in the **billions-to-trillions**, exactly the target. This is **intentional, tunable (one config table), and representable** — see §5.3.
 
 #### 5.2 The full stat formula
 
