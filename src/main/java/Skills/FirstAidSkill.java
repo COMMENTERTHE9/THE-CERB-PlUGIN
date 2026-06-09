@@ -20,28 +20,24 @@ public class FirstAidSkill extends UtilitySkill {
     public void applyEffect(Player player) {
         if (player == null) return;
 
-        // Handle experience gain and level up logic here
         int level = this.getLevel();
 
-        // Health boost based on skill level
-        double healthBoost = level * 1500.0; // Example: +1500 health per level
+        // NOTE (Step 0 — landmine defused): the old formula granted level*1500 max HP
+        // (+150,000 HP at level 100) plus level*1000 regen — an accidental runaway that made
+        // combat untunable. First Aid's REAL contribution will flow through the Attribute
+        // stat-bus (Vitality) once that layer is built (design Step 1-2). Until then these are
+        // hard-capped so the runaway can never fire.
+        double healthBoost = Math.min(level * 5.0, 500.0);   // capped (was level * 1500)
         healthManager.increaseMaxHealth(player, healthBoost);
 
-        // Regeneration enhancement based on skill level
-        double regenBoost = level * 1000.0; // Example: +1000 health regeneration per level
-        healthManager.applyHealthRegen(player, regenBoost, 20L * 10); // Regenerate over 10 seconds (20 ticks = 1 second)
+        double regenBoost = Math.min(level * 2.0, 200.0);    // capped (was level * 1000)
+        healthManager.applyHealthRegen(player, regenBoost, 20L * 10); // over 10 seconds
 
-        // Additional health boost scaling more steeply at higher levels
-        if (level > 100) {
-            double highLevelBoost = (level - 100) * 3000.0; // Example: +3000 health per level above 100
-            healthManager.increaseMaxHealth(player, highLevelBoost);
-        }
-
-        // Enhance healing items based on skill level
-        ItemStack healingItem = getHealingItem(player); // Assuming you get the healing item from the player's inventory or event
+        // Enhance healing items — bounded healing-effectiveness bonus
+        ItemStack healingItem = getHealingItem(player);
         if (healingItem != null) {
-            double healingBonus = level * 0.10; // Example: +10% healing effectiveness per level
-            craftingManager.enhanceHealingItems(player, healingItem, healingBonus); // Apply the enhancement to the healing item
+            double healingBonus = Math.min(level * 0.01, 0.50); // capped at +50% (was level*0.10)
+            craftingManager.enhanceHealingItems(player, healingItem, healingBonus);
         }
     }
 
