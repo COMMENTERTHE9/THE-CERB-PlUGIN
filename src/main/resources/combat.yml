@@ -75,7 +75,7 @@ mob-health-scaling:
   health-cap: 1.0e14       # sanity rail only (well under a double's 2^53) — NOT a balance cap
   blocks-per-level: 150.0  # every N blocks from world spawn = +1 mob level
   max-level: 100           # hard cap on mob level
-  apply-to: MONSTERS       # MONSTERS = hostile mobs only, ALL = every living mob
+  apply-to: ALL            # ALL = every mob gets a label; MONSTERS = hostiles only
   show-level-in-name: true # prefix generic mob names with "Lv<n>"
   name-always-visible: true    # floats above the mob (set false for hover-only)
   tier-multiplier:         # x8 per realm: 8^realmIndex (Mortal .. Primordial)

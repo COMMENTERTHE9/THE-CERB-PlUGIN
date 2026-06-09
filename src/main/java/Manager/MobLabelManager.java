@@ -102,19 +102,29 @@ public final class MobLabelManager implements Listener {
         if (mob == null) return;
         LabelState st = states.get(mob.getUniqueId());
         if (st == null) return;
-        Entity e = Bukkit.getEntity(st.labelId); // same region as the mob — safe here
-        if (e instanceof TextDisplay td && td.isValid()) {
+        TextDisplay td = findLabel(mob); // read off the mob's passengers — Folia-safe, no Bukkit.getEntity
+        if (td != null && td.isValid()) {
             td.text(buildText(st.level, st.tier, st.typeName, st.maxHp, fraction));
         }
+    }
+
+    /** Find our floating-text passenger on the mob (Folia-safe; runs on the mob's region thread). */
+    private TextDisplay findLabel(LivingEntity mob) {
+        for (Entity p : mob.getPassengers()) {
+            if (p instanceof TextDisplay td
+                    && td.getPersistentDataContainer().has(ownerKey, PersistentDataType.BYTE)) {
+                return td;
+            }
+        }
+        return null;
     }
 
     /** Remove the label. Call on the mob's region thread. */
     public void remove(LivingEntity mob) {
         if (mob == null) return;
-        LabelState st = states.remove(mob.getUniqueId());
-        if (st == null) return;
-        Entity e = Bukkit.getEntity(st.labelId);
-        if (e != null) e.remove();
+        states.remove(mob.getUniqueId());
+        TextDisplay td = findLabel(mob); // passenger lookup — Folia-safe
+        if (td != null) td.remove();
     }
 
     public void clear() { states.clear(); }

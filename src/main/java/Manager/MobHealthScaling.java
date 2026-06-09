@@ -49,7 +49,7 @@ public final class MobHealthScaling {
     private static final double DEFAULT_HEALTH_CAP = 1.0e14;    // sanity rail only (< 2^53)
     private static final double DEFAULT_BLOCKS_PER_LEVEL = 150.0;
     private static final int DEFAULT_MAX_LEVEL = 100;
-    private static final String DEFAULT_APPLY_TO = "MONSTERS";
+    private static final String DEFAULT_APPLY_TO = "ALL";
 
     // Geometric ×8 per realm: 8^realmIndex (WEAK=8^-1 .. PRIMORDIAL=8^8).
     private static final Map<Tier, Double> DEFAULT_TIER_MULT = Map.ofEntries(
