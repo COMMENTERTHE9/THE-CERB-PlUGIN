@@ -67,6 +67,11 @@ public final class MobLabelManager implements Listener {
 
     /** Spawn + mount the floating label. Call on the mob's region thread (CreatureSpawnEvent). */
     public void attach(LivingEntity mob, int level, Tier tier, double maxHp) {
+        attach(mob, level, tier, maxHp, 1.0);
+    }
+
+    /** @param fraction the mob's current HP fraction [0,1] — lets a reloaded damaged mob show its real HP. */
+    public void attach(LivingEntity mob, int level, Tier tier, double maxHp, double fraction) {
         if (mob == null) return;
         if (states.containsKey(mob.getUniqueId())) return; // idempotent — never double-label
 
@@ -80,7 +85,7 @@ public final class MobLabelManager implements Listener {
             World world = mob.getWorld();
             final String typeName = mob.getType().name();
             TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
-                td.text(buildText(level, tier, typeName, maxHp, 1.0));
+                td.text(buildText(level, tier, typeName, maxHp, fraction));
                 td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
                 td.setSeeThrough(true);                             // no block-occlusion hide
                 td.setShadowed(false);

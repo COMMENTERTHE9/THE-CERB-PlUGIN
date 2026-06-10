@@ -13,6 +13,7 @@ import Manager.CerbDamageResultEvent;
 import Manager.SpellDamageContext;
 import Manager.MobContext;
 import Manager.MobRegistry;
+import Manager.Tier;
 import Skills.FirstAidSkill;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -44,7 +45,10 @@ public class VirtualHealthListener implements Listener {
     private final PlayerVirtualHealthManager virtualHealthManager;
     private final FirstAidSkill firstAidSkill;
     private final CerberusPlugin plugin;
-    private boolean isHandlingEvent = false;
+    // Re-entrancy guard. MUST be per-thread: on Folia, damage events fire concurrently on
+    // many region threads against this one listener instance — a plain shared boolean made
+    // one region's event silently bypass the whole damage pipeline while another was inside it.
+    private final ThreadLocal<Boolean> isHandlingEvent = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     // Injected after construction (setter pattern)
     private @Nullable CombatSkillProcessor combatSkillProcessor;
@@ -113,9 +117,9 @@ public class VirtualHealthListener implements Listener {
                 return;
             }
         }
-        if (isHandlingEvent) return;
+        if (isHandlingEvent.get()) return;
 
-        isHandlingEvent = true;
+        isHandlingEvent.set(Boolean.TRUE);
         try {
             LivingEntity entity = (LivingEntity) event.getEntity();
             CustomDamageType damageType = DamageTypeMapper.mapToCustomDamageType(event.getCause());
@@ -217,7 +221,7 @@ public class VirtualHealthListener implements Listener {
                 }
             }
         } finally {
-            isHandlingEvent = false;
+            isHandlingEvent.set(Boolean.FALSE);
         }
     }
 
@@ -244,14 +248,35 @@ public class VirtualHealthListener implements Listener {
     private double applyDamageMultiplierToEntity(Entity entity, double damage) {
         if (!(entity instanceof LivingEntity mob)) return damage;
         Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
-        if (mvh == null || !mvh.has(mob)) return damage;
+        if (mvh == null) return damage;
+
+        // Defense-in-depth: a mob that carries a level tag but lost its transient pool
+        // (restart, hive exit, any missed lifecycle path) gets the pool lazily rebuilt
+        // here instead of silently taking raw vanilla damage on the cosmetic bar.
+        if (!mvh.has(mob)) {
+            MobRegistry registry = plugin.getMobRegistry();
+            CombatConfig cc = plugin.getCombatConfig();
+            if (registry == null || cc == null || !registry.hasLevel(mob)) return damage;
+            int level = registry.getLevel(mob);
+            Tier tier = registry.resolve(mob).tier();
+            mvh.init(mob, cc.mobHealthScaling.calculate(tier, level));
+        }
 
         boolean lethal = mvh.damage(mob, damage);
         var labels = plugin.getMobLabelManager();
         if (labels != null) labels.refresh(mob, mvh.fraction(mob)); // live HP on the floating label
+
+        if (lethal) {
+            // Guarantee the kill. Vanilla armor/enchant/potion reductions apply to event damage
+            // AFTER this handler, so returning exactly current-health can leave an armored mob
+            // alive with the pool at 0. Massive overkill survives any percentage reduction, and
+            // killing through the event preserves killer attribution (loot, XP, death message).
+            return Math.max(1.0e9, mob.getHealth() * 100.0);
+        }
+
         var attr = mob.getAttribute(Attribute.MAX_HEALTH);
         double cosmeticMax = attr != null ? attr.getValue() : 20.0;
-        double target = lethal ? 0.0 : Math.max(1.0, cosmeticMax * mvh.fraction(mob));
+        double target = Math.max(1.0, cosmeticMax * mvh.fraction(mob));
         // vanilla damage needed to drive the rendered health bar to `target`
         return Math.max(0.0, mob.getHealth() - target);
     }

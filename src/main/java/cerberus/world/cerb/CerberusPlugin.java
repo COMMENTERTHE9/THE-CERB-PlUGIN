@@ -143,6 +143,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 // MobKillListener registered in initListeners() with mobRegistry
 
                 initListeners();        // registers all listeners including PlayerSessionManager
+                sweepPreloadedMobs();   // spawn-region chunks load BEFORE enable — scale their mobs
                 enableImmediateRespawnForLoadedWorlds();
                 databaseManager.fixNullCustomIds();
 
@@ -243,6 +244,24 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     public Manager.MobLabelManager getMobLabelManager() {
         return mobLabelManager;
+    }
+
+    private MobScalingListener mobScalingListener;
+
+    /**
+     * Scale/label mobs already in the world at enable time. Spawn-region chunks load during
+     * world preparation — before plugins enable — so their EntitiesLoadEvent is never seen by
+     * our listener. Folia-safe: each entity is handled on its own region thread via its
+     * entity scheduler ('retired' callback = null skips entities removed before the task runs).
+     */
+    private void sweepPreloadedMobs() {
+        if (mobScalingListener == null) return;
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            for (org.bukkit.entity.LivingEntity le : world.getLivingEntities()) {
+                le.getScheduler().run(this,
+                        task -> mobScalingListener.scaleIfEligible(le, true), null);
+            }
+        }
     }
 
     public Manager.ChunkDiscoveryManager getChunkDiscoveryManager() {
@@ -349,7 +368,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // ── Combat & mobs ──
         pm.registerEvents(new CombatListener(this, skillManager, spellManager, playerMenuGUI, skillGUI, mobRegistry), this);
         pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper, mobRegistry), this);
-        pm.registerEvents(new MobScalingListener(this), this);
+        this.mobScalingListener = new MobScalingListener(this);
+        pm.registerEvents(mobScalingListener, this);
         pm.registerEvents(mobLabelManager, this);
 
         // ── HUD & defense (reactive — damage/heal/consume only) ──

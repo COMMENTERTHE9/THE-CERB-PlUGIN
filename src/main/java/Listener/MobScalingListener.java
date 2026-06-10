@@ -3,31 +3,44 @@ package Listener;
 import Manager.CombatConfig;
 import Manager.MobHealthScaling;
 import Manager.MobRegistry;
+import Manager.MobVirtualHealthManager;
 import Manager.Tier;
 import cerberus.world.cerb.CerberusPlugin;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Enemy;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 
 /**
- * Assigns a level and tier-scaled max health to mobs as they spawn.
+ * Assigns a level and realm-scaled virtual health to mobs, plus their floating label.
  *
- * <p>Level is derived from the mob's distance to world spawn (farther = higher
- * level); health from the {@code mob-health-scaling} section of combat.yml. The
- * level is stored on the mob via PDC so the combat damage pipeline
- * ({@code VirtualHealthListener.resolveMobLevel}) can read it later.
+ * <p>Two entry points share one scaling path:
+ * <ul>
+ *   <li>{@link CreatureSpawnEvent} — newly spawned mobs.</li>
+ *   <li>{@link EntitiesLoadEvent} — mobs arriving via chunk load. Covers (a) pre-existing
+ *       mobs that never scaled, (b) mobs reloading after a chunk unload (label must be
+ *       re-attached; the in-memory pool survives, preserving damage), and (c) mobs loading
+ *       after a server restart (the transient pool is gone and is re-initialized full).</li>
+ * </ul>
  *
- * <p>Folia-safe: {@link CreatureSpawnEvent} fires on the region thread that owns
- * the spawning chunk, so mutating the entity here needs no extra scheduling.
+ * <p>Level derives from distance to world spawn; health from the {@code mob-health-scaling}
+ * realm curve in combat.yml, stored in {@link MobVirtualHealthManager} (the vanilla
+ * MAX_HEALTH attribute is cosmetic only — it is hard-capped at 1024 by the game).
+ *
+ * <p>Folia-safe: CreatureSpawnEvent and EntitiesLoadEvent both fire on the region thread
+ * that owns the chunk, so entity mutation here needs no extra scheduling. (Label attach
+ * internally defers one tick — entities are not world-committed during CreatureSpawnEvent.)
  */
 public class MobScalingListener implements Listener {
 
@@ -37,90 +50,123 @@ public class MobScalingListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    // MONITOR: we only mutate the entity, never the event — and it means a spawn cancelled
+    // by any other plugin (mob stackers/limiters at HIGHEST) never leaks a pool entry.
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCreatureSpawn(CreatureSpawnEvent event) {
-        LivingEntity entity = event.getEntity();
+        scaleIfEligible(event.getEntity(), false);
+    }
 
+    /** Chunk load — scale/restore every mob the chunk brings in. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        for (Entity e : event.getEntities()) {
+            if (e instanceof LivingEntity le) {
+                scaleIfEligible(le, true);
+            }
+        }
+    }
+
+    /** Public so the plugin's startup sweep can scale mobs in chunks that loaded before enable. */
+    public void scaleIfEligible(LivingEntity entity, boolean fromChunkLoad) {
         CombatConfig cc = plugin.getCombatConfig();
         if (cc == null) return;
         MobHealthScaling scaling = cc.mobHealthScaling;
         if (scaling == null || !scaling.isEnabled()) return;
 
-        // apply-to filter (MONSTERS = any hostile mob incl. slimes/ghasts/phantoms via the
-        // Enemy marker; ALL = every living mob). Bukkit's Monster excludes Slime/Ghast/etc.,
-        // so we use Enemy to catch all hostiles.
+        // Real AI mobs only — never players, armor stands, or display entities.
+        if (!(entity instanceof Mob)) return;
+        // MONSTERS = hostiles only (Enemy covers slimes/ghasts/phantoms, which Monster misses).
         if (scaling.getApplyTo().equals("MONSTERS") && !(entity instanceof Enemy)) return;
 
         MobRegistry registry = plugin.getMobRegistry();
-        if (registry == null) return;
+        MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        if (registry == null || mvh == null) return;
 
-        // Already scaled (defensive — CreatureSpawnEvent normally fires once per mob)
-        if (registry.hasLevel(entity)) return;
+        boolean alreadyTagged = registry.hasLevel(entity);
+        // Spawn path: skip already-scaled mobs ONLY if their pool is intact. A tagged mob can
+        // re-fire CreatureSpawnEvent with its pool gone (e.g. a bee re-emerging from a hive —
+        // ENTER_BLOCK removal deleted the pool); fall through to rebuild pool + label.
+        if (alreadyTagged && !fromChunkLoad && mvh.has(entity)) return;
 
         AttributeInstance maxHealthAttr = entity.getAttribute(Attribute.MAX_HEALTH);
         if (maxHealthAttr == null) return;
 
-        // 1. Level from horizontal distance to world spawn
-        Location loc = entity.getLocation();
-        World world = loc.getWorld();
-        double distance = 0.0;
-        if (world != null) {
-            Location spawn = world.getSpawnLocation();
-            double dx = loc.getX() - spawn.getX();
-            double dz = loc.getZ() - spawn.getZ();
-            distance = Math.sqrt(dx * dx + dz * dz);
-        }
-        int level = scaling.levelForDistance(distance);
-
-        // 2. Tier from the registry (named/tagged specials resolve higher than COMMON)
+        // Level: reuse the tag on reloaded mobs (their birth distance), derive it fresh otherwise.
+        int level = alreadyTagged ? registry.getLevel(entity)
+                                  : scaling.levelForDistance(distanceToSpawn(entity));
         Tier tier = registry.resolve(entity).tier();
-
-        // 3. Apply scaled max health into the VIRTUAL pool. Vanilla MAX_HEALTH is hard-capped
-        //    at 1024, so the real (possibly billions) HP lives in MobVirtualHealthManager; the
-        //    vanilla attribute is set to a cosmetic value only so the health bar still renders.
         double maxHealth = scaling.calculate(tier, level);
-        maxHealthAttr.setBaseValue(Manager.MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
-        entity.setHealth(Manager.MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
-        plugin.getMobVirtualHealthManager().init(entity, maxHealth);
 
-        // 4. Persist the level so combat damage scaling can read it
-        registry.tagLevel(entity, level);
+        if (!alreadyTagged) {
+            maxHealthAttr.setBaseValue(MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
+            // setHealth to getValue(), not the base constant: vanilla modifiers (e.g. leader-
+            // zombie MULTIPLY_TOTAL bonuses) survive setBaseValue, and a health below the
+            // final attribute value renders a permanently part-empty bar.
+            entity.setHealth(maxHealthAttr.getValue());
+            registry.tagLevel(entity, level);
+        }
 
-        // 5. Floating always-on label (TextDisplay passenger) — replaces the cull-prone
-        //    vanilla nameplate. Only generic (un-named) mobs, so we never clobber a name
-        //    the registry uses to identify a special mob.
+        // (Re-)create the pool only if absent: an in-session chunk reload keeps the damaged
+        // pool (HP preserved); after a restart/hive-exit the pool is gone and re-initializes
+        // full — sync the cosmetic bar back to full so bar, pool, and label agree.
+        if (!mvh.has(entity)) {
+            mvh.init(entity, maxHealth);
+            entity.setHealth(maxHealthAttr.getValue());
+        }
+
+        // Floating label (only generic, un-named mobs — never clobber registry-named specials).
+        // attach() is idempotent and defers one tick internally; pass the live fraction so a
+        // reloaded damaged mob shows its real HP, not full.
         if (scaling.isShowLevelInName()
                 && (entity.getCustomName() == null || entity.getCustomName().isBlank())) {
-            plugin.getMobLabelManager().attach(entity, level, tier, maxHealth);
+            plugin.getMobLabelManager().attach(entity, level, tier, maxHealth, mvh.fraction(entity));
         }
     }
 
-    /** Free the mob's virtual-HP entry when it dies (prevents map growth). */
-    @EventHandler(priority = EventPriority.MONITOR)
+    /** Horizontal distance from the entity to its world's spawn point. */
+    private double distanceToSpawn(LivingEntity entity) {
+        Location loc = entity.getLocation();
+        World world = loc.getWorld();
+        if (world == null) return 0.0;
+        Location spawn = world.getSpawnLocation();
+        double dx = loc.getX() - spawn.getX();
+        double dz = loc.getZ() - spawn.getZ();
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+
+    /**
+     * A totem of undying ignores damage magnitude, so a totem-holding mob would survive our
+     * "guaranteed lethal" overkill and walk around alive at 0❤. If the pool is depleted, the
+     * resurrection is denied — the pool is the source of truth for death.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onResurrect(org.bukkit.event.entity.EntityResurrectEvent event) {
+        if (event.getEntity() instanceof org.bukkit.entity.Player) return;
+        MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        if (mvh != null && mvh.has(event.getEntity()) && mvh.getCurrent(event.getEntity()) <= 0) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Death-time cleanup (snappy — the label vanishes with the death, not the corpse). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDeath(EntityDeathEvent event) {
-        Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
         if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
         if (plugin.getMobLabelManager() != null) plugin.getMobLabelManager().remove(event.getEntity());
     }
 
-    /** Compact number for the name tag: 50, 1.6K, 5.0B. */
-    private static String compact(double v) {
-        if (v < 1000) return String.valueOf((long) v);
-        String[] u = {"K", "M", "B", "T", "Qa"};
-        int i = -1;
-        double x = v;
-        while (x >= 1000 && i < u.length - 1) { x /= 1000; i++; }
-        return String.format("%.1f%s", x, u[i]);
-    }
-
-    /** ZOMBIE -> "Zombie", CAVE_SPIDER -> "Cave Spider". */
-    private String prettify(String typeName) {
-        String[] parts = typeName.toLowerCase().split("_");
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p.isEmpty()) continue;
-            sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1)).append(' ');
-        }
-        return sb.toString().trim();
+    /**
+     * Pool cleanup for permanent removals (natural despawn, /kill, plugins) — without this
+     * the pool map leaks an entry per despawned mob. UNLOAD is deliberately kept: the pool
+     * survives a chunk unload so a reloading mob keeps its damaged HP (see onEntitiesLoad).
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemove(EntityRemoveEvent event) {
+        if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD) return;
+        if (!(event.getEntity() instanceof LivingEntity)) return;
+        MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
+        if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
     }
 }
