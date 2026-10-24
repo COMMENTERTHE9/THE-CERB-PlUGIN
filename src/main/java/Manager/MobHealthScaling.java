@@ -202,6 +202,7 @@ public final class MobHealthScaling {
 
     public boolean isEnabled() { return enabled; }
     public int getMaxLevel() { return maxLevel; }
+    public double getBlocksPerLevel() { return blocksPerLevel; }
     public String getApplyTo() { return applyTo; }
     public boolean isShowLevelInName() { return showLevelInName; }
     public boolean isNameAlwaysVisible() { return nameAlwaysVisible; }

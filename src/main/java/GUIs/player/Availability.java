@@ -25,6 +25,9 @@ public record Availability(State state, String note) {
 
     public static Availability available() { return new Availability(State.AVAILABLE, null); }
 
+    /** Available, with one line on what inside it is not built yet. */
+    public static Availability available(String note) { return new Availability(State.AVAILABLE, note); }
+
     /** @param requirement what the player must do, e.g. "Reach the Adept realm" */
     public static Availability locked(String requirement) { return new Availability(State.LOCKED, requirement); }
 

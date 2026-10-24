@@ -71,16 +71,18 @@ async function nav() {
   check('Health tile shows numbers, bar and Vitality skills', /Health/.test(slotName(11)) && /\d \/ \d/.test(slotLore(11)) && /\d+%/.test(slotLore(11)) && /Survival/.test(slotLore(11)) && /Heavy Armor Mastery/.test(slotLore(11)), slotLore(11));
   check('Realm tile: honest about breakthroughs', /Realm: /.test(slotName(13)) && /In development: breakthroughs/.test(slotLore(13)), slotLore(13));
   check('Essence tile shows pool and regeneration', /Essence/.test(slotName(15)) && /Regeneration: [\d.,]+ \/ s/.test(slotLore(15)), slotLore(15));
-  const expect = { 19: ['Skills', 'Available'], 21: ['Stats & Attributes', 'Available'], 23: ['Ascension', 'In development'],
-    25: ['Equipment', 'In development'], 28: ['Bestiary', 'In development'], 30: ['World & Exploration', 'In development'],
-    32: ['Collections', 'In development'], 34: ['Recipes', 'In development'], 39: ['Quests', 'In development'], 41: ['Guide', 'In development'] };
+  const expect = { 19: ['Skills', 'Available'], 21: ['Stats & Attributes', 'Available'], 23: ['Ascension', 'Available'],
+    25: ['Equipment', 'Available'], 28: ['Bestiary', 'Available'], 30: ['World & Exploration', 'Available'],
+    32: ['Collections', 'In development'], 34: ['Recipes', 'In development'], 38: ['Quests', 'In development'],
+    40: ['Unlocks', 'In development'], 42: ['Guide', 'Available'] };
   const wrong = Object.entries(expect).filter(([s, [n, st]]) => slotName(+s) !== n || !slotLore(+s).includes(st)).map(([s]) => s + ':' + slotName(+s));
   check('Every hub destination is there with an honest state', wrong.length === 0, wrong.join(', '));
   check('Hub has Close but no Back/Home', slotName(53) === 'Close' && slotName(45) === '' && slotName(49) === '', [slotName(45), slotName(49), slotName(53)].join('/'));
 
+  check('Available tiles still say what inside them is not built', /Breakthroughs are not built yet/.test(flat(23)) && /Kill tracking is not built yet/.test(flat(28)), flat(23) + ' || ' + flat(28));
   let at = chat.length;
-  await click(23);
-  check('An in-development tile explains itself and stays on the hub', !!saw(/Ascension is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
+  await click(32);
+  check('An in-development tile explains itself and stays on the hub', !!saw(/Collections is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
 
   await click(19);
   check('Skills opens', await waitTitle(SCREEN('Skills')), title());
@@ -135,6 +137,7 @@ async function nav() {
   check('Stats opens from the hub', await waitTitle(SCREEN('Stats & Attributes')), title());
   await click(45);
   check('Back from Stats returns to the hub', await waitTitle(SCREEN('Player Menu')), title());
+  await systems();
   await click(53);
   check('Close closes', await waitClosed(), title());
 
@@ -142,6 +145,64 @@ async function nav() {
   check('/menu opens the hub', await waitTitle(SCREEN('Player Menu')), title());
   await closeAny();
   check('Still exactly one head after browsing', heads() === 1 && bot.inventory.slots[44] && bot.inventory.slots[44].name === 'player_head', heads() + ' heads');
+}
+
+/** The destinations built on existing systems: Ascension, Equipment, Bestiary, World, Guide. Starts and ends on the hub. */
+async function systems() {
+  await click(13);
+  check('Realm tile opens Ascension', await waitTitle(SCREEN('Ascension')), title());
+  check('Ascension: your realm, honest about breakthroughs', /Your realm: R\d+ \w+/.test(flat(4)) && /moving up a realm is not built yet/.test(flat(4)), flat(4));
+  const here = [11, 12, 13, 14, 15, 20, 21, 22, 23, 24].find(i => /✦/.test(slotName(i)));
+  check('Ascension: ten realms, you are marked', [11, 12, 13, 14, 15, 20, 21, 22, 23, 24].every(i => /^R\d+ /.test(slotName(i))) && here !== undefined && /You are here/.test(flat(here)),
+      [11, 24].map(slotName).join(' .. ') + ', here=' + here);
+  check('Ascension: each realm is x8 the one before', /x8 the realm before it/.test(flat(15)) && /Above your realm/.test(flat(24)), flat(15));
+  await click(45); await waitTitle(SCREEN('Player Menu'));
+
+  let wore = false;
+  if (isOp()) { // wear an iron chestplate so the page has something to explain
+    await closeAny();
+    await cmd('/clear @s iron_chestplate', 400);
+    await cmd('/give @s iron_chestplate', 900);
+    const cp = bot.inventory.items().find(it => it.name === 'iron_chestplate');
+    if (cp) { try { await bot.equip(cp, 'torso'); wore = true; } catch (e) { console.log('  equip failed: ' + e.message); } }
+    await sleep(800);
+    await openViaHead();
+  }
+  await click(25);
+  check('Equipment opens', await waitTitle(SCREEN('Equipment')), title());
+  if (wore) check('Equipment: a worn iron chestplate shows its reduction and that it is heavy',
+      /^Chestplate: Iron Chestplate$/.test(slotName(20)) && /Damage reduction: \+[1-9][\d.]*%/.test(flat(20)) && /Heavy armor: trains Heavy Armor Mastery/.test(flat(20)) && /Heavy armor: yes/.test(flat(4)),
+      slotName(20) + ' | ' + flat(20) + ' || ' + flat(4));
+  check('Equipment: damage reduction with its parts', /Damage reduction: [\d.]+%/.test(flat(4)) && /From armor pieces: \+[\d.]+% From Heavy Armor Mastery: \+[\d.]+% From Fortitude: \+[\d.]+%/.test(flat(22)), flat(22));
+  check('Equipment: four armor slots and both hands', [11, 20, 29, 38].every(i => /^(Helmet|Chestplate|Leggings|Boots): /.test(slotName(i))) && /^Main hand: /.test(slotName(15)) && /^Off hand: /.test(slotName(24)),
+      [11, 20, 29, 38, 15, 24].map(slotName).join(' / '));
+  check('Equipment: custom gear marked in development', /In development/.test(flat(42)), flat(42));
+  await click(45); await waitTitle(SCREEN('Player Menu'));
+  if (wore) {
+    await closeAny();
+    try { await bot.unequip('torso'); } catch (e) {}
+    await cmd('/clear @s iron_chestplate', 500);
+    await openViaHead();
+  }
+
+  await click(28);
+  check('Bestiary opens', await waitTitle(SCREEN('Bestiary')), title());
+  const elite = findSlot(/^Elite Zombie$/);
+  check('Bestiary: entries with tier, realm, XP and health', /Named creatures: \d+/.test(flat(4)) && /Tier: \w+ \(\w+ realm\)/.test(flat(10)) && /Health at level 50: /.test(flat(10)), flat(10));
+  check('Bestiary: how to recognise a creature, in words', elite >= 0 && /A Zombie named 'Elite \.\.\.'/.test(flat(elite)), elite >= 0 ? flat(elite) : 'no Elite Zombie tile');
+  check('Bestiary: kill tracking marked in development', /kill counts and discoveries are not tracked yet/.test(flat(4)), flat(4));
+  await click(45); await waitTitle(SCREEN('Player Menu'));
+
+  await click(30);
+  check('World & Exploration opens', await waitTitle(SCREEN('World & Exploration')), title());
+  check('World: distance and creature level here', /Distance from spawn: [\d,]+ blocks?/.test(flat(4)) && /Creature level here: \d+ \/ \d+/.test(flat(4)), flat(4));
+  check('World: the distance rule and chunk discovery', /Every [\d,]+ blocks from world spawn adds a level/.test(flat(20)) && /Chunks discovered: [\d,]+/.test(flat(22)), flat(20) + ' || ' + flat(22));
+  await click(45); await waitTitle(SCREEN('Player Menu'));
+
+  await click(42);
+  check('Guide opens', await waitTitle(SCREEN('Guide')), title());
+  check('Guide: live numbers and honest notes', /every [\d,]+ blocks adds a level/.test(flat(19)) && /Fortune: not used in the game yet/.test(flat(23)) && /not built yet/.test(flat(29)), flat(19) + ' || ' + flat(29));
+  await click(45); await waitTitle(SCREEN('Player Menu'));
 }
 
 // ── names ─────────────────────────────────────────────────────────
@@ -244,7 +305,7 @@ async function safety() {
       try { await bot.activateEntityAt(stand, stand.position.offset(0, 1.7, 0)); } catch (e) {}
       await sleep(900);
     }
-    const s2 = bot.entities[stand.id];
+    const s2 = bot.entities[stand.id] || Object.values(bot.entities).find(e => e.name === 'armor_stand');
     check('Control: a carved pumpkin does go on the stand (the test reaches the server)', !!s2 && (s2.equipment || []).some(x => x && x.name === 'carved_pumpkin'),
         s2 ? JSON.stringify((s2.equipment || []).map(x => x && x.name)) : 'stand gone');
     await cmd('/clear @s carved_pumpkin', 400);
@@ -269,7 +330,7 @@ async function safety() {
     await cmd('/give @s dirt 1', 700);
     const dj = bot.inventory.slots.findIndex((it, i) => it && it.name === 'dirt' && i >= 36 && i <= 43);
     if (dj >= 0) { bot.setQuickBarSlot(dj - 36); await sleep(300); await bot.lookAt(frame.position, true); try { await bot.activateEntity(frame); } catch (e) {} await sleep(900); }
-    const f2 = bot.entities[frame.id];
+    const f2 = bot.entities[frame.id] || Object.values(bot.entities).find(e => e.name === 'item_frame');
     check('Control: dirt does go in the frame (the test reaches the server)', !!f2 && f2.metadata && f2.metadata[9] && f2.metadata[9].itemCount > 0,
         f2 ? JSON.stringify(f2.metadata && f2.metadata[9]) : 'frame gone');
   }
@@ -310,6 +371,7 @@ async function perf() {
     }
     await click(49, 500);
     await click(21, 600); await click(52, 500); await click(45, 500);
+    for (const sec of [23, 25, 28, 30, 42]) { await click(sec, 600); await click(45, 500); }
     await closeAny();
   }
   const after = await counters();

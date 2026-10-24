@@ -1,11 +1,16 @@
 package GUIs;
 
 import GUIs.menu.Ui;
+import GUIs.player.AscensionMenu;
 import GUIs.player.Availability;
+import GUIs.player.BestiaryMenu;
+import GUIs.player.EquipmentMenu;
+import GUIs.player.GuideMenu;
 import GUIs.player.PlayerHubMenu;
 import GUIs.player.PlayerMenuSections;
 import GUIs.player.PlayerMenuSections.Section;
 import GUIs.player.SkillsMenu;
+import GUIs.player.WorldMenu;
 import GUIs.stats.StatsMenu;
 import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.ChatColor;
@@ -120,34 +125,50 @@ public class PlayerMenuGUI {
     private void registerDefaultSections() {
         sections.register(new Section("skills", 19, Material.EXPERIENCE_BOTTLE, "Skills",
                 List.of("Levels and XP, what trains each", "skill and what it does for you."),
-                (pl, p) -> skillsLive(pl, p), p -> Availability.available(), SkillsMenu::new));
+                PlayerMenuGUI::skillsLive, p -> Availability.available(), SkillsMenu::new));
         sections.register(new Section("stats", 21, Material.BLAZE_POWDER, "Stats & Attributes",
                 List.of("Your six attributes, damage,", "survivability and magic numbers."),
                 null, p -> Availability.available(), StatsMenu::new));
         sections.register(new Section("ascension", 23, Material.END_CRYSTAL, "Ascension",
-                List.of("The ten realms and the road", "between them."),
-                null, p -> Availability.inDevelopment("Realm breakthroughs are not built yet."), null));
+                List.of("The ten realms and where you", "stand among them."),
+                (pl, p) -> List.of(ChatColor.GRAY + "Your realm: " + ChatColor.WHITE
+                        + pl.getAttributeService().get(p.getUniqueId()).realm().realm().displayName),
+                p -> Availability.available("Breakthroughs are not built yet."), AscensionMenu::new));
         sections.register(new Section("equipment", 25, Material.NETHERITE_CHESTPLATE, "Equipment",
-                List.of("Your gear and what it gives you."),
-                null, p -> Availability.inDevelopment("Gear stats are not built yet."), null));
+                List.of("What your armor and weapon", "do for you today."),
+                (pl, p) -> List.of(ChatColor.GRAY + "Damage reduction: " + ChatColor.WHITE
+                        + GUIs.menu.Fmt.pct(pl.getPlayerVirtualHealthManager().getArmorReduction(p))),
+                p -> Availability.available("Custom gear is not built yet."), EquipmentMenu::new));
         sections.register(new Section("bestiary", 28, Material.ZOMBIE_HEAD, "Bestiary",
-                List.of("The creatures of this world."),
-                null, p -> Availability.inDevelopment("Not built yet."), null));
+                List.of("The creatures of this world:", "tier, realm, XP and health."),
+                null, p -> Availability.available("Kill tracking is not built yet."), BestiaryMenu::new));
         sections.register(new Section("world", 30, Material.FILLED_MAP, "World & Exploration",
-                List.of("Where you have been and how", "dangerous the land is."),
-                null, p -> Availability.inDevelopment("Not built yet."), null));
+                List.of("How dangerous the land is here", "and how much you have explored."),
+                PlayerMenuGUI::worldLive, p -> Availability.available("Regions and landmarks are not built yet."), WorldMenu::new));
         sections.register(new Section("collections", 32, Material.CHEST, "Collections",
                 List.of("Items and materials you gather."),
                 null, p -> Availability.inDevelopment("Not designed yet."), null));
         sections.register(new Section("recipes", 34, Material.CRAFTING_TABLE, "Recipes",
                 List.of("Cerberus crafting recipes."),
                 null, p -> Availability.inDevelopment("Custom recipes are not built yet."), null));
-        sections.register(new Section("quests", 39, Material.WRITABLE_BOOK, "Quests",
+        sections.register(new Section("quests", 38, Material.WRITABLE_BOOK, "Quests",
                 List.of("Tasks, stories and rewards."),
                 null, p -> Availability.inDevelopment("Quests are not built yet."), null));
-        sections.register(new Section("guide", 41, Material.BOOK, "Guide",
-                List.of("How Cerberus works."),
-                null, p -> Availability.inDevelopment("Not written yet."), null));
+        sections.register(new Section("unlocks", 40, Material.TRIPWIRE_HOOK, "Unlocks",
+                List.of("Abilities and features you", "unlock as you progress."),
+                null, p -> Availability.inDevelopment("Nothing unlocks yet."), null));
+        sections.register(new Section("guide", 42, Material.BOOK, "Guide",
+                List.of("How Cerberus works, in short", "topics."),
+                null, p -> Availability.available(), GuideMenu::new));
+    }
+
+    private static List<String> worldLive(CerberusPlugin plugin, Player p) {
+        org.bukkit.Location loc = p.getLocation(), spawn = loc.getWorld().getSpawnLocation();
+        double dx = loc.getX() - spawn.getX(), dz = loc.getZ() - spawn.getZ();
+        int level = plugin.getCombatConfig().mobHealthScaling.levelForDistance(Math.sqrt(dx * dx + dz * dz));
+        int chunks = plugin.getChunkDiscoveryManager() == null ? -1 : plugin.getChunkDiscoveryManager().discoveredCount(p.getUniqueId());
+        return List.of(ChatColor.GRAY + "Creature level here: " + ChatColor.WHITE + level,
+                ChatColor.GRAY + "Chunks discovered: " + ChatColor.WHITE + (chunks < 0 ? "loading..." : String.format(java.util.Locale.ROOT, "%,d", chunks)));
     }
 
     private static List<String> skillsLive(CerberusPlugin plugin, Player p) {

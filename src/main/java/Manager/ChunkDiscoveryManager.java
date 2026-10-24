@@ -44,6 +44,12 @@ public class ChunkDiscoveryManager {
         visitedChunks.put(uuid, threadSafe);
     }
 
+    /** Chunks this player has discovered (in memory, no database read); -1 while still loading. */
+    public int discoveredCount(UUID uuid) {
+        Set<ChunkKey> set = visitedChunks.get(uuid);
+        return set == null ? -1 : set.size();
+    }
+
     /** Called from PlayerSessionManager.cleanupPlayer on quit. */
     public void unloadPlayer(UUID uuid) {
         visitedChunks.remove(uuid);

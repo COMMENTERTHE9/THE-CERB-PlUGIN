@@ -141,14 +141,7 @@ public class MobKillListener implements Listener {
 
     /** Check if player is wearing iron, diamond, or netherite armor (heavy armor only). */
     private boolean hasHeavyArmor(Player player) {
-        for (ItemStack piece : player.getInventory().getArmorContents()) {
-            if (piece == null) continue;
-            String name = piece.getType().name();
-            if (name.startsWith("IRON_") || name.startsWith("DIAMOND_") || name.startsWith("NETHERITE_")) {
-                return true;
-            }
-        }
-        return false;
+        return Manager.PlayerDefenseManager.wearsHeavyArmor(player);
     }
 
     private ElementalTag getElementalTagFromWeapon(ItemStack weapon) {

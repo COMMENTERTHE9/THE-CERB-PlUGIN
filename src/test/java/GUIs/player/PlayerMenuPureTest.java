@@ -44,6 +44,14 @@ class PlayerMenuPureTest {
     }
 
     @Test
+    void realmMagnitudesReadCorrectlyBelowOne() {
+        assertEquals("0.125", AscensionMenu.magnitude(0.125));
+        assertEquals("0.5", AscensionMenu.magnitude(0.5));
+        assertEquals("8", AscensionMenu.magnitude(8));
+        assertEquals("2.1M", AscensionMenu.magnitude(2_097_152));
+    }
+
+    @Test
     void availabilityStatesAreWordsNotJustColours() {
         for (Availability.State s : Availability.State.values()) {
             assertFalse(ChatColor.stripColor(s.label).isBlank());

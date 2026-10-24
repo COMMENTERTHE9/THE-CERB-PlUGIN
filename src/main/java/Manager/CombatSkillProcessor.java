@@ -275,14 +275,7 @@ public class CombatSkillProcessor {
 
 
     private boolean hasHeavyArmor(org.bukkit.entity.Player player) {
-        for (org.bukkit.inventory.ItemStack piece : player.getInventory().getArmorContents()) {
-            if (piece == null) continue;
-            String name = piece.getType().name();
-            if (name.startsWith("IRON_") || name.startsWith("DIAMOND_") || name.startsWith("NETHERITE_")) {
-                return true;
-            }
-        }
-        return false;
+        return PlayerDefenseManager.wearsHeavyArmor(player);
     }
 
     // ═══════════════════════════════════════════════════════════════

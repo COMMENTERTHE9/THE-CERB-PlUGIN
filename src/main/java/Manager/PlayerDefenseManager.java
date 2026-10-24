@@ -3,6 +3,7 @@ package Manager;
 import Skills.SkillManager;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -125,6 +126,20 @@ public class PlayerDefenseManager {
     /** Heavy Armor Training: extra defense bar points (before the realm multiplies the bar). */
     public static double heavyArmorBarBonus(CombatConfig cfg, int level) {
         return level > 0 ? ScalingFormula.compute(level, cfg.hatDefenseBarBonusScaling) : 0.0;
+    }
+
+    /** Heavy armor = iron, diamond or netherite (trains Heavy Armor Training; its kill fallback). */
+    public static boolean isHeavyArmor(Material material) {
+        String name = material.name();
+        return name.startsWith("IRON_") || name.startsWith("DIAMOND_") || name.startsWith("NETHERITE_");
+    }
+
+    /** True when at least one worn piece is heavy armor. */
+    public static boolean wearsHeavyArmor(Player player) {
+        for (ItemStack piece : player.getInventory().getArmorContents()) {
+            if (piece != null && isHeavyArmor(piece.getType())) return true;
+        }
+        return false;
     }
 
     /** Survival: fire resistance, 1% per level up to 30%. */
