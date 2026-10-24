@@ -37,6 +37,7 @@ async function cmd(c, wait = 1200) { const at = chat.length; bot.chat(c); await 
 const saw = (re, since) => chat.slice(since).some(m => re.test(m));
 
 async function main() {
+  await cmd('/time set night', 400); // test zombies must not burn to death mid-check
   await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 1000); // start from a clean area
   // Home
   let at = await cmd('/cerb panel', 1500);

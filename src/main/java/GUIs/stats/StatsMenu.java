@@ -84,7 +84,7 @@ public final class StatsMenu extends Menu {
         WeaponClass wc = WeaponClass.ofMaterial(hand.getType().name());
         v.set(29, weaponTile(s, wc, hand.getType(), svc.effect(Attribute.POWER)));
         v.set(31, survivalTile(p, s, svc));
-        v.set(33, magicTile(s, svc));
+        v.set(33, magicTile(p, s, svc));
 
         // Row 4: progression
         v.set(38, milestoneTile(svc, id, s, wc));
@@ -125,7 +125,7 @@ public final class StatsMenu extends Menu {
         var hs = vh.peekSnapshot(p.getUniqueId());
         var bar = plugin.getDefenseBarManager().peekDefenseBar(p.getUniqueId());
         Ui.Lore l = Ui.lore().text("From Vitality:")
-                .stat("  Max health", (hs == null ? "?" : Fmt.compact(hs.maxHp())) + "  (" + Fmt.mult(s.maxHpMultiplier()) + ")")
+                .stat("  Max health", (hs == null ? "?" : num(hs.maxHp())) + "  (" + Fmt.mult(s.maxHpMultiplier()) + ")")
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.VITALITY), Attribute.VITALITY))
                 .gap().text("From Fortitude (on top of gear and skills):")
                 .stat("  Armor bonus", "+" + Fmt.pct(s.armorBonus()))
@@ -134,17 +134,18 @@ public final class StatsMenu extends Menu {
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.FORTITUDE), Attribute.FORTITUDE))
                 .gap().text("Your totals now:")
                 .stat("  Armor reduction", Fmt.pct(vh.getArmorReduction(p)) + " (max " + Fmt.pct(s.rules().limits().armor()) + ")")
-                .stat("  Defense bar", bar == null ? "?" : Fmt.compact(bar.getMaximum()) + " points")
+                .stat("  Defense bar", bar == null ? "?" : num(bar.getMaximum()) + " points")
                 .stat("  Fire / cold / drowning", Fmt.pct(vh.getPlayerFireResistance(p)) + " / "
                         + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)));
         return Ui.item(Material.TOTEM_OF_UNDYING, ChatColor.RED + "Survivability", l.build());
     }
 
-    private static ItemStack magicTile(AttributeSnapshot s, AttributeService svc) {
+    private ItemStack magicTile(Player p, AttributeSnapshot s, AttributeService svc) {
+        double[] mana = plugin.getPlayerManaManager().peekMana(p.getUniqueId());
         Ui.Lore l = Ui.lore().text("From Essence:")
-                .stat("  Max mana", Fmt.mult(s.maxManaMultiplier()))
-                .stat("  Mana regeneration", Fmt.mult(s.manaRegenMultiplier()))
-                .stat("  Spell damage", Fmt.mult(s.spellDamageMultiplier()))
+                .stat("  Max mana", (mana == null ? "?" : num(mana[1])) + "  (" + Fmt.mult(s.maxManaMultiplier()) + ")")
+                .stat("  Mana regeneration", (mana == null ? "?" : Fmt.one(mana[2]) + " / s") + "  (" + Fmt.mult(s.manaRegenMultiplier()) + ")")
+                .stat("  Spell damage vs mobs", Fmt.mult(s.spellDamageMultiplier()))
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.ESSENCE), Attribute.ESSENCE));
         return Ui.item(Material.ENCHANTED_BOOK, ChatColor.AQUA + "Magic", l.build());
     }
@@ -206,5 +207,10 @@ public final class StatsMenu extends Menu {
             }
         }
         return Ui.item(Material.GOLD_NUGGET, ChatColor.YELLOW + "Kill XP", l.build());
+    }
+
+    /** Exact below 100,000 ("1,020"), compact above ("12.3M"), so small changes stay visible. */
+    private static String num(double v) {
+        return v < 100_000 ? Fmt.grouped(Math.round(v)) : Fmt.compact(v);
     }
 }

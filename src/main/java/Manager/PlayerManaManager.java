@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerManaManager {
     private final SkillManager skillManager;
-    private static final double DEFAULT_BASE_MANA = 1000.0;
-    private static final double DEFAULT_MANA_REGEN_RATE = 50.0;
+    static final double DEFAULT_BASE_MANA = 1000.0;
+    static final double DEFAULT_MANA_REGEN_RATE = 50.0;
     private static final double DEFAULT_MAGIC_DAMAGE_MULTIPLIER = 1.0;
 
     private static final class ManaState {

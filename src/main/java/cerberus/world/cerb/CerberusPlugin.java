@@ -344,7 +344,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         attributeService = new Attributes.AttributeService(attributesConfig::rules);
         attributeService.addSource(new Attributes.SkillSource(skillManager));
         playerDefenseManager.setAttributeService(attributeService);
-        attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager);
+        attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager,
+                playerManaManager);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
             @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
             @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }

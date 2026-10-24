@@ -4,6 +4,7 @@
 //   swings  - swings-to-kill table: Blade Mastery 1/50/100 vs zombie level 1/50 (prints numbers)
 //   stats   - Player Menu -> Stats page shows attributes, and updates after a level change
 //   survive - same level-50 zombie hits at Survival/Heavy Armor Training/First Aid 1 vs 100 (Vitality, Fortitude)
+//   magic   - Essence: Intelligence/Mana Regeneration 1 vs 100 -> max mana, regen, Fireball damage vs a mob
 //   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
@@ -132,7 +133,8 @@ async function stats() {
   check('Agility tile shows crit from Critical Strike', /Crit chance: 1[0-9]\.[0-9]%/.test(slotLore(11)), slotLore(11));
   check('Power is marked active against mobs', /Active \(fighting mobs\)/.test(slotLore(10)), slotLore(10));
   check('Vitality is marked active', /● Active/.test(slotLore(12)), slotLore(12));
-  check('Essence is honest about not being used yet', /not used in combat yet/.test(slotLore(15)), slotLore(15));
+  check('Essence is marked active', /● Active/.test(slotLore(15)), slotLore(15));
+  check('Fortune is honest about not being used yet', /not used in combat yet/.test(slotLore(16)), slotLore(16));
   // Stats is opened from the Player Menu, so the held item there is the head; check with the sword in hand.
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
   if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }
@@ -190,6 +192,48 @@ async function survive() {
   return out;
 }
 
+async function magic() {
+  await cmd('/gamemode creative');
+  await cmd('/time set day');
+  await cmd('/clear @s blaze_rod', 400);
+  await cmd('/givetestitem fireball', 900);
+  const wandItem = bot.inventory.items().find(it => it.name === 'blaze_rod');
+  if (wandItem) await bot.equip(wandItem, 'hand'); // works even when the hotbar is full
+  await sleep(400);
+  const out = {};
+  for (const lv of [1, 100]) {
+    for (const sk of ['Intelligence', 'Mana_Regeneration']) await cmd(`/cerb skill ${NAME} ${sk} level ${lv}`, 500);
+    await sleep(800);
+    await cmd('/stats', 1500);
+    const lore = slotLore(33);
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+    await cmd('/kill @e[type=zombie,distance=..16]', 600);
+    await cmd('/cerb spawn zombie 50 noai', 1200);
+    await cmd('/tp @s ~2.5 ~ ~', 800);
+    const z = mobsNear('zombie', 8)[0];
+    await cmd('/cerb combatdebug', 500);
+    const at = chat.length;
+    const held = bot.heldItem;
+    if (!held || held.name !== 'blaze_rod') { const w = bot.inventory.items().find(it => it.name === 'blaze_rod'); if (w) await bot.equip(w, 'hand'); }
+    if (z && bot.heldItem && bot.heldItem.name === 'blaze_rod') {
+      await bot.lookAt(z.position.offset(0, z.height * 0.5, 0), true);
+      await sleep(300);
+      bot.activateItem(); await sleep(150); bot.deactivateItem();
+      const t0 = Date.now();
+      while (Date.now() - t0 < 5000 && !chat.slice(at).some(m => /\[Combat\] Spell/.test(m))) await sleep(200);
+    }
+    await cmd('/cerb combatdebug', 500);
+    await cmd('/kill @e[type=zombie,distance=..16]', 600);
+    const trace = chat.slice(at).find(m => /\[Combat\] Spell/.test(m)) || '';
+    out[lv] = { lore, trace, mult: Number((trace.match(/Essence x([\d.]+)/) || [])[1]),
+      maxMana: Number((lore.match(/Max mana: ([\d,]+)/) || [])[1]?.replace(/,/g, "")) };
+    console.log(`Intelligence/Mana Regeneration ${lv}: ${lore.split(' | ').slice(1, 4).join(' / ')}`);
+    console.log('   ' + (trace || 'no spell trace'));
+  }
+  for (const sk of ['Intelligence', 'Mana_Regeneration']) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 500);
+  return out;
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
@@ -202,6 +246,11 @@ bot.once('spawn', async () => {
       check('Fortitude shows in the totals (armor and resistances rose)', /Armor bonus: \+15\.[0-9]%/.test(r[100].lore), r[100].lore);
       check('Each zombie hit costs a much smaller share of health at level 100', r[100].pct < r[1].pct / 2.5,
           `${(100 * r[1].pct).toFixed(2)}% -> ${(100 * r[100].pct).toFixed(2)}% per hit`);
+    }
+    else if (phase === 'magic') {
+      const r = await magic();
+      check('Essence raises max mana (about x3 at level 100)', r[100].maxMana > 2.5 * r[1].maxMana, `${r[1].maxMana} -> ${r[100].maxMana}`);
+      check('Fireball damage on a mob is scaled by Essence', r[1].mult > 1 && r[1].mult < 1.2 && r[100].mult > 4.5, `x${r[1].mult} -> x${r[100].mult}`);
     }
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');

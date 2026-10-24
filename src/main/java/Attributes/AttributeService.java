@@ -68,7 +68,7 @@ public final class AttributeService {
     static final boolean OFFENSE_WIRED = true;    // Manager.PveOffense, increment 4
     static final boolean VITALITY_WIRED = true;   // Manager.AttributeEffects, increment 5
     static final boolean FORTITUDE_WIRED = true;  // PlayerDefenseManager.updateDefense, increment 5
-    static final boolean ESSENCE_WIRED = false;
+    static final boolean ESSENCE_WIRED = true;    // AttributeEffects.applyMana + PveOffense.spellDamage, increment 6
 
     public Effect effect(Attribute a) {
         AttributeRules.Switches sw = rules.get().switches();

@@ -224,17 +224,25 @@ public class VirtualHealthListener implements Listener {
                 }
             } else {
                 // ── Non-player entity is the TARGET (player hitting a mob) ──
-                boolean weaponHit = attackerPlayer != null && spellCtx == null
+                boolean weaponHit = attackerPlayer != null && spellCtx == null && entity instanceof org.bukkit.entity.Mob
                         && (event.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK
                             || event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK);
                 if (weaponHit && pveOffense != null && pveOffense.enabled()) {
                     // Attributes scale the hit before it drains the pool (the Blade Mastery fix).
                     CombatContext ctx = pveOffense.hit(attackerPlayer, entity, damageType, dmg,
-                            Manager.PveOffense.meleeWeapon(attackerPlayer));
+                            Manager.PveOffense.meleeWeapon(attackerPlayer), plugin.isCombatDebugEnabled(attackerPlayer.getUniqueId()));
                     PoolHit hit = hitPool(entity, ctx.attack().getModifiedDamage());
                     event.setDamage(hit.vanillaDamage());
                     afterPveHit(ctx, attackerPlayer, hit.dealt(), true);
                 } else {
+                    if (spellCtx != null && attackerPlayer != null && pveOffense != null && pveOffense.spellsEnabled()) {
+                        double before = dmg;
+                        dmg = pveOffense.spellDamage(attackerPlayer, dmg); // Essence scales spells against mobs
+                        if (plugin.isCombatDebugEnabled(attackerPlayer.getUniqueId())) {
+                            attackerPlayer.sendMessage(String.format(java.util.Locale.ROOT,
+                                    "[Combat] Spell(%s, Essence x%.2f): %.1f -> %.1f", damageType.name(), dmg / before, before, dmg));
+                        }
+                    }
                     PoolHit hit = hitPool(entity, dmg);
                     event.setDamage(hit.vanillaDamage());
 
@@ -274,10 +282,15 @@ public class VirtualHealthListener implements Listener {
     /** What a hit did: the vanilla damage to put on the event, and the HP actually taken from the pool. */
     private record PoolHit(double vanillaDamage, double dealt) {}
 
+    /** A mob without a pool takes vanilla damage; it can't lose more than the health it has (caps lifesteal). */
+    private static PoolHit unpooled(LivingEntity mob, double damage) {
+        return new PoolHit(damage, Math.max(0.0, Math.min(damage, mob.getHealth() + mob.getAbsorptionAmount())));
+    }
+
     private PoolHit hitPool(Entity entity, double damage) {
         if (!(entity instanceof LivingEntity mob)) return new PoolHit(damage, damage);
         Manager.MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
-        if (mvh == null) return new PoolHit(damage, damage);
+        if (mvh == null) return unpooled(mob, damage);
 
         // Defense-in-depth: a mob that carries a level tag but lost its transient pool
         // (restart, hive exit, any missed lifecycle path) gets the pool lazily rebuilt
@@ -285,7 +298,7 @@ public class VirtualHealthListener implements Listener {
         if (!mvh.has(mob)) {
             MobRegistry registry = plugin.getMobRegistry();
             CombatConfig cc = plugin.getCombatConfig();
-            if (registry == null || cc == null || !registry.hasLevel(mob)) return new PoolHit(damage, damage);
+            if (registry == null || cc == null || !registry.hasLevel(mob)) return unpooled(mob, damage);
             int level = registry.getLevel(mob);
             Tier tier = registry.resolve(mob).tier();
             mvh.init(mob, cc.mobHealthScaling.calculate(tier, level));
@@ -316,11 +329,17 @@ public class VirtualHealthListener implements Listener {
      * debug trace. Lifesteal heals on the attacker's own thread (an arrow's shooter may be far away).
      */
     private void afterPveHit(CombatContext ctx, Player attacker, double dealt, boolean hitXp) {
-        pveOffense.dealt(ctx, dealt);
+        pveOffense.dealt(ctx, dealt, plugin.isCombatDebugEnabled(attacker.getUniqueId()));
         double heal = ctx.postDamage().getLifestealAmount();
         if (heal > 0) {
-            if (Bukkit.isOwnedByCurrentRegion(attacker)) virtualHealthManager.heal(attacker, heal);
-            else attacker.getScheduler().run(plugin, t -> virtualHealthManager.heal(attacker, heal), null);
+            Runnable lifesteal = () -> {
+                // A late arrow must not heal (and so revive) a shooter who died meanwhile.
+                if (attacker.isDead() || virtualHealthManager.isRespawning(attacker)
+                        || virtualHealthManager.hasPendingCustomDeath(attacker)) return;
+                virtualHealthManager.heal(attacker, heal);
+            };
+            if (Bukkit.isOwnedByCurrentRegion(attacker)) lifesteal.run();
+            else attacker.getScheduler().run(plugin, t -> lifesteal.run(), null);
         }
         if (hitXp && combatSkillProcessor != null && dealt > 0) combatSkillProcessor.awardAttackerHitXp(ctx, attacker);
         CombatConfig cc = plugin.getCombatConfig();
@@ -384,9 +403,10 @@ public class VirtualHealthListener implements Listener {
             // Do NOT call leb.damage() — that causes recursive event loops
             Attributes.WeaponClass weapon = projectile instanceof org.bukkit.entity.Trident ? Attributes.WeaponClass.TRIDENT
                     : projectile instanceof org.bukkit.entity.AbstractArrow ? Attributes.WeaponClass.BOW : null;
-            if (shooter instanceof Player p && weapon != null && target instanceof LivingEntity mob
+            if (shooter instanceof Player p && weapon != null && target instanceof org.bukkit.entity.Mob mob
                     && pveOffense != null && pveOffense.enabled()) {
-                CombatContext ctx = pveOffense.hit(p, mob, CustomDamageType.PROJECTILE, dmg, weapon);
+                CombatContext ctx = pveOffense.hit(p, mob, CustomDamageType.PROJECTILE, dmg, weapon,
+                        plugin.isCombatDebugEnabled(p.getUniqueId()));
                 PoolHit hit = hitPool(target, ctx.attack().getModifiedDamage());
                 event.setDamage(hit.vanillaDamage());
                 afterPveHit(ctx, p, hit.dealt(), false); // no per-hit Critical Strike XP for arrows (unchanged)
@@ -407,20 +427,16 @@ public class VirtualHealthListener implements Listener {
      * Send combat debug trace to any involved players that have debug enabled.
      */
     private void sendCombatDebugTrace(CombatContext ctx) {
+        Player attacker = ctx.getAttacker();
+        boolean toAttacker = attacker != null && plugin.isCombatDebugEnabled(attacker.getUniqueId());
+        boolean toTarget = ctx.getTarget() instanceof Player target
+                && plugin.isCombatDebugEnabled(target.getUniqueId())
+                && (attacker == null || !target.getUniqueId().equals(attacker.getUniqueId()));
+        if (!toAttacker && !toTarget) return; // the common case: build no string at all
 
         String trace = ctx.getTraceAsString();
-
-        Player attacker = ctx.getAttacker();
-        if (attacker != null && plugin.isCombatDebugEnabled(attacker.getUniqueId())) {
-            attacker.sendMessage(trace);
-        }
-
-        if (ctx.getTarget() instanceof Player target) {
-            if (plugin.isCombatDebugEnabled(target.getUniqueId())
-                    && (attacker == null || !target.getUniqueId().equals(attacker.getUniqueId()))) {
-                target.sendMessage(trace);
-            }
-        }
+        if (toAttacker) attacker.sendMessage(trace);
+        if (toTarget) ctx.getTarget().sendMessage(trace);
     }
 
 }

@@ -30,8 +30,23 @@ public final class PveOffense {
         return attributes.rules().switches().pveOffense();
     }
 
-    /** Build the hit: modified damage, crit flag and multiplier, and a readable trace. */
-    public CombatContext hit(Player attacker, LivingEntity mob, CustomDamageType type, double raw, WeaponClass weapon) {
+    /** True when attributes.yml has the Essence integration (spell damage, mana) switched on. */
+    public boolean spellsEnabled() {
+        return attributes.rules().switches().essence();
+    }
+
+    /** A player's spell hitting a mob: Essence's spell-damage multiplier. */
+    public double spellDamage(Player caster, double raw) {
+        double d = raw * attributes.get(caster.getUniqueId()).spellDamageMultiplier();
+        return Double.isFinite(d) && d >= 0 ? d : raw;
+    }
+
+    /**
+     * Build the hit: modified damage, crit flag and multiplier. The readable trace is only built
+     * when {@code trace} is set (the attacker has /cerb combatdebug on): no string work per hit otherwise.
+     */
+    public CombatContext hit(Player attacker, LivingEntity mob, CustomDamageType type, double raw, WeaponClass weapon,
+                             boolean trace) {
         AttributeSnapshot s = attributes.get(attacker.getUniqueId());
         boolean crit = s.critChance() > 0 && ThreadLocalRandom.current().nextDouble() < s.critChance();
         double damage = raw * s.offenseMultiplier(weapon, crit);
@@ -41,6 +56,7 @@ public final class PveOffense {
         ctx.attack().setModifiedDamage(damage);
         ctx.attack().setCritical(crit);
         ctx.attack().setCritMultiplier(crit ? s.critMultiplier() : 1.0);
+        if (!trace) return ctx;
         double afterPower = raw * s.powerMultiplier(weapon);
         ctx.appendTrace("Power", raw, afterPower, String.format(Locale.ROOT, "%s, Power %.1f -> x%.2f",
                 weapon.displayName, s.power(weapon), s.powerMultiplier(weapon)));
@@ -53,14 +69,14 @@ public final class PveOffense {
     }
 
     /** After the pool took the hit: record what was dealt and the lifesteal it earns. */
-    public void dealt(CombatContext ctx, double dealt) {
+    public void dealt(CombatContext ctx, double dealt, boolean trace) {
         ctx.defense().setFinalDamage(dealt);
         Player attacker = ctx.getAttacker();
         if (attacker == null || dealt <= 0) return;
         double lifesteal = attributes.get(attacker.getUniqueId()).lifesteal();
         if (lifesteal > 0) {
             ctx.postDamage().setLifestealAmount(dealt * lifesteal);
-            ctx.appendTrace("Lifesteal", 0, dealt * lifesteal, String.format(Locale.ROOT, "%.1f%%", lifesteal * 100));
+            if (trace) ctx.appendTrace("Lifesteal", 0, dealt * lifesteal, String.format(Locale.ROOT, "%.1f%%", lifesteal * 100));
         }
     }
 

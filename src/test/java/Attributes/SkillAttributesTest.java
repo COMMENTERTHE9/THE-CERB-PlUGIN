@@ -123,6 +123,31 @@ class SkillAttributesTest {
     }
 
     @Test
+    void weaponAllMeansEveryWeapon() {
+        YamlConfiguration cfg = new YamlConfiguration();
+        cfg.set("attributes.skills.Weapon Mastery", List.of(Map.of("attribute", "power", "per-level", 0.25, "weapon", "all")));
+        List<String> problems = new ArrayList<>();
+        AttributeRules r = AttributesConfig.parseRules(cfg.getConfigurationSection("attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
+        assertEquals(List.of(), problems);
+        assertEquals(List.of(new AttributeRules.SkillWeight(Attribute.POWER, 0.25, null)), r.skillWeights().get("Weapon Mastery"));
+    }
+
+    /** Config keys must not depend on the server's locale (Turkish dotless i). */
+    @Test
+    void capsReadTheSameUnderATurkishLocale() {
+        java.util.Locale before = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"));
+            YamlConfiguration cfg = new YamlConfiguration();
+            cfg.set("attributes.caps.vitality", 123.0);
+            AttributeRules r = AttributesConfig.parseRules(cfg.getConfigurationSection("attributes"), AttributeRules.DEFAULT_CURVES, p -> {});
+            assertEquals(123.0, r.cap(Attribute.VITALITY));
+        } finally {
+            java.util.Locale.setDefault(before);
+        }
+    }
+
+    @Test
     void badConfigEntriesAreReportedAndSkipped() {
         YamlConfiguration cfg = new YamlConfiguration();
         cfg.set("attributes.skills.Blade Mastery", List.of(Map.of("attribute", "powr", "per-level", 1.0)));

@@ -39,6 +39,8 @@ async function killNearest(names, maxSwings = 80) {
 bot.once('spawn', async () => {
   try {
     await sleep(3000);
+    // Mobs left over from other runs would hit us and block the /kill check (hit invulnerability).
+    bot.chat('/kill @e[type=!player,type=!text_display,distance=..48]'); await sleep(800);
     check('HUD action bar shows health and mana', /(\d+)\/\1♥/.test(actionBar) && /✎/.test(actionBar), actionBar);
     const head = bot.inventory.slots[44];
     check('Player Menu head in hotbar slot 9', !!head && head.name === 'player_head' && /Player Menu/.test(text(head.customName)));
@@ -96,7 +98,7 @@ bot.once('spawn', async () => {
     at = await cmd('/kill @s', 3500);
     at = await cmd('/cerb healthstate');
     // Max HP is 100 x Vitality (102 for a fresh character), so check "full", not a fixed number.
-    check('/kill -> instant respawn at full custom HP', !!saw(/Custom HP: ([\d.]+)\/\1\b/, at) && !!saw(/Lifecycle: ALIVE/, at));
+    check('/kill -> instant respawn at full custom HP', !!saw(/Custom HP: ([\d.]+)\/\1\b/, at) && !!saw(/Lifecycle: ALIVE/, at), chat.slice(at).filter(m => /Custom HP|Lifecycle/.test(m)).join(' / '));
   } catch (e) {
     console.log('SCRIPT ERROR', e.stack);
     results.push(false);

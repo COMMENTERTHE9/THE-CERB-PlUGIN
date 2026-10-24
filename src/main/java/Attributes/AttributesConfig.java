@@ -56,6 +56,10 @@ public final class AttributesConfig {
                     cfg.getDouble("kill-xp.anti-grind.factor", d.antiGrindFactor()),
                     cfg.getDouble("kill-xp.max-per-kill", d.maxPerKill()));
             List<String> problems = new ArrayList<>();
+            if (!cfg.isSet("attributes")) {
+                plugin.getLogger().info("[Attributes] attributes.yml has no 'attributes:' section (older file) - using the built-in"
+                        + " defaults. Delete attributes.yml and /cerb reload to get the full file with every setting.");
+            }
             rules = parseRules(section(cfg, "attributes"), curves.get(), problems::add);
             problems.forEach(p -> plugin.getLogger().warning("[Attributes] attributes.yml: " + p));
             plugin.getLogger().info("[Attributes] Loaded attributes.yml (kill XP v2 " + (killXp.enabled() ? "on" : "off")
@@ -85,12 +89,14 @@ public final class AttributesConfig {
                     Attribute a = Attribute.parse(String.valueOf(m.get("attribute")));
                     Object per = m.get("per-level");
                     Object weapon = m.get("weapon");
-                    WeaponClass w = weapon == null ? null : WeaponClass.parse(String.valueOf(weapon));
+                    String weaponName = weapon == null ? "" : String.valueOf(weapon).trim();
+                    boolean allWeapons = weaponName.isEmpty() || weaponName.equalsIgnoreCase("all");
+                    WeaponClass w = allWeapons ? null : WeaponClass.parse(weaponName);
                     if (a == null || !(per instanceof Number n) || !Double.isFinite(n.doubleValue())) {
                         problems.accept("skills." + skill + ": entry " + m + " needs a valid attribute and per-level - skipped");
                         continue;
                     }
-                    if (weapon != null && w == null) {
+                    if (!allWeapons && w == null) {
                         problems.accept("skills." + skill + ": unknown weapon '" + weapon + "' - skipped");
                         continue;
                     }
@@ -102,8 +108,9 @@ public final class AttributesConfig {
 
         Map<Attribute, Double> caps = new EnumMap<>(Attribute.class);
         for (Attribute a : Attribute.values()) {
-            double v = s.getDouble("caps." + a.name().toLowerCase(), def.cap(a));
-            caps.put(a, positive(v, def.cap(a), "caps." + a.name().toLowerCase(), problems));
+            String key = "caps." + a.name().toLowerCase(java.util.Locale.ROOT); // ROOT: "vitality", never "vıtalıty"
+            double v = s.getDouble(key, def.cap(a));
+            caps.put(a, positive(v, def.cap(a), key, problems));
         }
 
         AttributeRules.Derived dd = def.derived();
