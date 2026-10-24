@@ -33,7 +33,7 @@ final class HealthLifecycleEngine {
 
     DamageResolution applyResolvedDamage(MutableState state, double finalDamage, long now, long damageInvulnerabilityMs) {
         if (finalDamage <= 0) {
-            return DamageResolution.noDamage(state.currentHp);
+            return DamageResolution.zero(state.currentHp); // resolved, fully mitigated
         }
         if (state.pendingCustomDeath
                 || state.lifecycleState == HealthLifecycleState.DEAD

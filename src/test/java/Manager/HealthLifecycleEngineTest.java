@@ -90,4 +90,19 @@ class HealthLifecycleEngineTest {
         assertEquals(0.0, state.currentHp());
         assertTrue(state.pendingCustomDeath());
     }
+
+    @Test
+    void hitsInsideInvulnerabilityWindowAreMarkedSkipped() {
+        HealthLifecycleEngine.MutableState state = engine.newState(UUID.randomUUID());
+        engine.initializeForJoin(state);
+
+        DamageResolution first = engine.applyResolvedDamage(state, 20.0, 1_000L, 250L);
+        DamageResolution inWindow = engine.applyResolvedDamage(state, 20.0, 1_100L, 250L);
+        DamageResolution fullyAbsorbed = engine.applyResolvedDamage(state, 0.0, 2_000L, 250L);
+
+        assertFalse(first.skipped());
+        assertTrue(inWindow.skipped());      // ignored: no XP, no damage display
+        assertFalse(fullyAbsorbed.skipped()); // resolved but nothing got through: shows BLOCKED
+        assertEquals(0.0, fullyAbsorbed.finalDamage());
+    }
 }

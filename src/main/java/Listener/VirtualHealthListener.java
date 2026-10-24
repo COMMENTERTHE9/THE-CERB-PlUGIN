@@ -187,6 +187,14 @@ public class VirtualHealthListener implements Listener {
                 DamageResolution resolution = virtualHealthManager.applyResolvedDamage(player, modifiedDmg, armorReduction,
                         damageType, damager, ctx);
 
+                if (resolution.skipped()) {
+                    // Ignored hit (invulnerability window / dying / respawning): no XP, no
+                    // damage display, no debug trace. Fire/lava/cactus send one event per tick.
+                    event.setDamage(0);
+                    player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+                    return;
+                }
+
                 if (combatSkillProcessor != null && attackerPlayer != null) {
                     combatSkillProcessor.applyPostDamageEffects(ctx);
                 }
@@ -311,6 +319,12 @@ public class VirtualHealthListener implements Listener {
 
             DamageResolution resolution = virtualHealthManager.applyResolvedDamage(player, modifiedDmg, armorReduction,
                     CustomDamageType.PROJECTILE, shooter, ctx);
+
+            if (resolution.skipped()) {
+                event.setDamage(0); // ignored hit: no display, no post-damage effects
+                player.setHealth(player.getAttribute(Attribute.MAX_HEALTH).getValue());
+                return;
+            }
 
             if (combatSkillProcessor != null && attackerPlayer != null) {
                 combatSkillProcessor.applyPostDamageEffects(ctx);

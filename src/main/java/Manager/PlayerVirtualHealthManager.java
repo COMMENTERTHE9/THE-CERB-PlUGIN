@@ -342,7 +342,8 @@ public class PlayerVirtualHealthManager {
                 lifecycleResolution.finalDamage(),
                 lifecycleResolution.lethal(),
                 absorbed,
-                lifecycleResolution.remainingHp()
+                lifecycleResolution.remainingHp(),
+                lifecycleResolution.skipped()
         );
 
         if (resolution.finalDamage() > 0.0) {
@@ -355,8 +356,12 @@ public class PlayerVirtualHealthManager {
                     typeResist, absorptionRate, absorbed);
         }
 
-        logLifecycle("DAMAGE_APPLIED", player,
-                "type=" + damageType.name() + " final=" + String.format("%.2f", resolution.finalDamage()));
+        // Per-hit line only for players with /cerb combatdebug on: at INFO for every hit it buried
+        // real problems in latest.log. Full per-hit detail is still in the session log above.
+        if (plugin != null && plugin.isCombatDebugEnabled(player.getUniqueId())) {
+            logLifecycle("DAMAGE_APPLIED", player,
+                    "type=" + damageType.name() + " final=" + String.format("%.2f", resolution.finalDamage()));
+        }
 
         if (resolution.lethal()) {
             markPendingDeath(player);
