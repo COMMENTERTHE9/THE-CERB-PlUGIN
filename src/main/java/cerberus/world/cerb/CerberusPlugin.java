@@ -433,6 +433,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         this.virtualHealthListener = new VirtualHealthListener(playerVirtualHealthManager,
                 new FirstAidSkill("First Aid", playerVirtualHealthManager, craftingManager), this);
         virtualHealthListener.setCombatSkillProcessor(combatSkillProcessor);
+        virtualHealthListener.setPveOffense(new Manager.PveOffense(attributeService));
         spellManager.setVirtualHealthListener(virtualHealthListener);
         spellManager.setSkillManager(skillManager);
         pm.registerEvents(virtualHealthListener, this);

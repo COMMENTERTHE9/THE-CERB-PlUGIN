@@ -170,7 +170,8 @@ public class DamageDisplayListener implements Listener {
     }
 
     private Component formatDamageText(double damage, CustomDamageType type, boolean isCritical) {
-        String numberText = String.format("%.1f", damage);
+        // Realm-scaled hits reach millions: show "12.3M" rather than a 10-digit number.
+        String numberText = damage >= 10_000 ? GUIs.menu.Fmt.compact(damage) : String.format("%.1f", damage);
         if (isCritical) {
             numberText = "✯ " + numberText + " ✯";
         }

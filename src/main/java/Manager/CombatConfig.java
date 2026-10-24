@@ -70,6 +70,7 @@ public class CombatConfig {
     public int displayDamageNumberTicks;
     public int displayCritDamageNumberTicks;
     public int displayComboThreshold;
+    public boolean displayMobDamageNumbers;
 
     // ── Sound cooldowns (ms) ─────────────────────────────────────
     public int soundCooldownMelee;
@@ -181,6 +182,7 @@ public class CombatConfig {
         displayDamageNumberTicks    = config.getInt("display.damage-number-ticks",    20);
         displayCritDamageNumberTicks= config.getInt("display.crit-damage-number-ticks",30);
         displayComboThreshold       = config.getInt("display.combo-threshold",        2);
+        displayMobDamageNumbers     = config.getBoolean("display.mob-damage-numbers", true);
 
         // ── Sound cooldowns ──────────────────────────────────────
         soundCooldownMelee        = config.getInt("sound.hit-cooldown-ms.melee",         200);

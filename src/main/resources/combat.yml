@@ -109,6 +109,7 @@ display:
   damage-number-ticks: 20
   crit-damage-number-ticks: 30
   combo-threshold: 2
+  mob-damage-numbers: true   # floating damage numbers (crits marked) when players hit mobs
 
 sound:
   hit-cooldown-ms:

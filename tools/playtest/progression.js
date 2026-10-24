@@ -3,6 +3,7 @@
 //   killxp  - kill XP v2 by mob level, anti-grind
 //   swings  - swings-to-kill table: Blade Mastery 1/50/100 vs zombie level 1/50 (prints numbers)
 //   stats   - Player Menu -> Stats page shows attributes, and updates after a level change
+//   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -81,17 +82,31 @@ async function killxp() {
 async function swings() {
   await cmd('/gamemode creative');
   await equip('netherite_sword');
+  await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
   const rows = [];
   for (const bm of [1, 50, 100]) {
     await cmd(`/cerb skill ${NAME} Blade_Mastery level ${bm}`);
     for (const lvl of [1, 50]) {
-      const r = await killOne('zombie', lvl);
-      rows.push({ bm, lvl, swings: r.swings });
-      console.log(`Blade Mastery ${bm} vs zombie L${lvl}: ${r.swings} swings`);
+      // Average two kills: crits (12.5% at Critical Strike 1) make single kills vary by a swing.
+      const a = await killOne('zombie', lvl), b = await killOne('zombie', lvl);
+      const avg = (a.swings + b.swings) / 2;
+      rows.push({ bm, lvl, swings: avg });
+      console.log(`Blade Mastery ${bm} vs zombie L${lvl}: ${a.swings} and ${b.swings} swings`);
     }
   }
+  // One traced hit, to confirm the multiplier the server applied.
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
+  await cmd('/cerb combatdebug', 600);
+  const at = chat.length;
+  await cmd('/kill @e[type=zombie,distance=..10]', 600);
+  await cmd('/cerb spawn zombie 50 noai', 1500);
+  const z = mobsNear('zombie', 5)[0];
+  if (z) { await bot.lookAt(z.position.offset(0, z.height * 0.6, 0), true); bot.attack(z); await sleep(900); }
+  const trace = chat.slice(at).find(m => /\[Combat\] Power/.test(m)) || '';
+  await cmd('/cerb combatdebug', 600);
+  await cmd('/kill @e[type=zombie,distance=..10]', 600);
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
-  return rows;
+  return { rows, trace };
 }
 
 async function openStats() {
@@ -114,7 +129,8 @@ async function stats() {
   check('Power tile shows sword Power from Blade Mastery 1', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)) && /Blade Mastery 1: \+1\.0 \(swords\)/.test(slotLore(10)), slotLore(10));
   check('Power tile says which skills feed it', /Gained from.*Blade Mastery \+1 \(swords\).*Weapon Mastery \+0\.25/.test(slotLore(10)), slotLore(10));
   check('Agility tile shows crit from Critical Strike', /Crit chance: 1[0-9]\.[0-9]%/.test(slotLore(11)), slotLore(11));
-  check('Tiles are honest about not being in combat yet', /not used in combat yet/.test(slotLore(10)), slotLore(10));
+  check('Power is marked active against mobs', /Active \(fighting mobs\)/.test(slotLore(10)), slotLore(10));
+  check('Vitality is honest about not being used in combat yet', /not used in combat yet/.test(slotLore(12)), slotLore(12));
   // Stats is opened from the Player Menu, so the held item there is the head; check with the sword in hand.
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
   if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }
@@ -138,11 +154,23 @@ bot.once('spawn', async () => {
   try {
     if (phase === 'killxp') await killxp();
     else if (phase === 'stats') await stats();
+    else if (phase === 'offswitch') {
+      await cmd('/gamemode creative');
+      await equip('netherite_sword');
+      await cmd(`/cerb skill ${NAME} Blade_Mastery level 100`);
+      const r = await killOne('zombie', 1);
+      await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
+      check('PvE offense switched off: Blade Mastery 100 needs the old 6+ swings on a level-1 zombie', r.swings >= 6, r.swings + ' swings');
+    }
     else if (phase === 'swings') {
-      const rows = await swings();
+      const { rows, trace } = await swings();
       const at = (bm, lvl) => rows.find(r => r.bm === bm && r.lvl === lvl).swings;
-      check('Higher Blade Mastery kills a L1 zombie in fewer swings', at(100, 1) < at(1, 1), `BM1 ${at(1, 1)} vs BM100 ${at(100, 1)}`);
-      check('Equal-level fights take about the same swings (L1/BM1 vs L50/BM50)', Math.abs(at(50, 50) - at(1, 1)) <= 2, `${at(1, 1)} vs ${at(50, 50)}`);
+      console.log('\nSwings to kill (avg of 2)   zombie L1   zombie L50');
+      for (const bm of [1, 50, 100]) console.log(`  Blade Mastery ${String(bm).padEnd(3)}            ${String(at(bm, 1)).padEnd(10)}  ${at(bm, 50)}`);
+      check('The server applied Power to the hit (trace: Swords, Power 50 -> x3.50)', /Power\(Swords, Power 50\.0 -> x3\.50\)/.test(trace), trace);
+      check('Blade Mastery 100 kills a level-1 zombie in far fewer swings than Blade Mastery 1', at(100, 1) <= at(1, 1) / 2, `BM1 ${at(1, 1)} vs BM100 ${at(100, 1)}`);
+      check('Blade Mastery 100 kills a level-50 zombie in far fewer swings than Blade Mastery 1', at(100, 50) <= at(1, 50) / 3, `BM1 ${at(1, 50)} vs BM100 ${at(100, 50)}`);
+      check('Equal-level fights take about the same swings (BM1 vs L1, BM50 vs L50)', Math.abs(at(50, 50) - at(1, 1)) <= 2, `${at(1, 1)} vs ${at(50, 50)}`);
     }
   } catch (e) { console.log('SCRIPT ERROR', e.stack); results.push(false); }
   const failed = results.filter(r => !r).length;
