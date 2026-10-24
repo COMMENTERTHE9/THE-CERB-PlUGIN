@@ -5,7 +5,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 
 public class SeaMonster {
@@ -21,12 +20,19 @@ public class SeaMonster {
         World world = location.getWorld();
         if (world != null) {
             // You can customize this to spawn different types of sea monsters
-            entity = (Mob) world.spawnEntity(location, EntityType.GUARDIAN); // Ensure it's a Mob or subclass
-            entity.setCustomName("Sea Monster");
-            entity.setCustomNameVisible(true);
-            entity.getAttribute(Attribute.MAX_HEALTH).setBaseValue(100.0); // Example: Set max health
-            entity.setHealth(100.0); // Set health
-            entity.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(15.0); // Example: Set attack damage
+            // Name + registry tag in the pre-spawn callback so MobScalingListener (which scales on
+            // CreatureSpawnEvent) resolves it as sea_monster (RARE), not a COMMON guardian.
+            // Vanilla MAX_HEALTH is cosmetic; HP comes from the realm-scaled virtual pool.
+            entity = world.spawn(location, org.bukkit.entity.Guardian.class,
+                    org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM, g -> {
+                g.setCustomName("Sea Monster");
+                g.setCustomNameVisible(true);
+                g.getAttribute(Attribute.ATTACK_DAMAGE).setBaseValue(15.0);
+                cerberus.world.cerb.CerberusPlugin plugin = cerberus.world.cerb.CerberusPlugin.getInstance();
+                if (plugin != null && plugin.getMobRegistry() != null) {
+                    plugin.getMobRegistry().tagEntity(g, "sea_monster");
+                }
+            });
         }
     }
 

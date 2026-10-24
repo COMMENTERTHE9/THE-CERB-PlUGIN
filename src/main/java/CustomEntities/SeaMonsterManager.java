@@ -3,15 +3,17 @@ package CustomEntities;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.UUID;
 
 public class SeaMonsterManager {
+    // Written from whichever region thread a player fishes on (Folia) -> must be concurrent.
+    // Entries are pruned by MobScalingListener when the guardian dies or is removed.
     private final Map<UUID, SeaMonster> seaMonsters;
 
     public SeaMonsterManager() {
-        this.seaMonsters = new HashMap<>();
+        this.seaMonsters = new ConcurrentHashMap<>();
     }
 
     // Method to spawn a sea monster

@@ -404,18 +404,23 @@ public class CerbCommand implements CommandExecutor {
 
         // Spawn on the region thread owning the spawn location (Folia compatibility)
         Bukkit.getRegionScheduler().run(plugin, spawnLoc, task -> {
-            org.bukkit.entity.LivingEntity mob = (org.bukkit.entity.LivingEntity)
-                    spawnLoc.getWorld().spawnEntity(spawnLoc, entityType);
-
-            // Tag with cerb_mob_id so MobRegistry.resolve() returns the correct entry
-            mob.getPersistentDataContainer().set(mobIdKey,
-                    org.bukkit.persistence.PersistentDataType.STRING, mobId);
-
-            // Apply custom name if defined in the registry entry
-            if (customName != null) {
-                mob.setCustomName(customName);
-                mob.setCustomNameVisible(true);
+            Class<? extends org.bukkit.entity.Entity> cls = entityType.getEntityClass();
+            if (cls == null || !org.bukkit.entity.LivingEntity.class.isAssignableFrom(cls)) {
+                player.sendMessage(ChatColor.RED + "Mob '" + mobId + "' is not a living entity type.");
+                return;
             }
+            // Tag + name in the pre-spawn callback, i.e. BEFORE CreatureSpawnEvent: scaling runs
+            // on that event and must already see the registry ID, otherwise the mob is scaled
+            // and labelled as a COMMON vanilla mob of that type.
+            spawnLoc.getWorld().spawn(spawnLoc, cls,
+                    org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.COMMAND, mob -> {
+                mob.getPersistentDataContainer().set(mobIdKey,
+                        org.bukkit.persistence.PersistentDataType.STRING, mobId);
+                if (customName != null) {
+                    mob.setCustomName(customName);
+                    mob.setCustomNameVisible(true);
+                }
+            });
 
             player.sendMessage(ChatColor.GREEN + "Spawned " + ChatColor.GOLD + mobId
                     + ChatColor.GREEN + " (" + tier.displayColor + tier.displayName + ChatColor.GREEN + ")"

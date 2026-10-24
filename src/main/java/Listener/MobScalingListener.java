@@ -154,6 +154,7 @@ public class MobScalingListener implements Listener {
     public void onDeath(EntityDeathEvent event) {
         MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
         if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
+        if (plugin.getSeaMonsterManager() != null) plugin.getSeaMonsterManager().removeSeaMonster(event.getEntity().getUniqueId());
         if (plugin.getMobLabelManager() != null) plugin.getMobLabelManager().remove(event.getEntity());
     }
 
