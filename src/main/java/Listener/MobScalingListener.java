@@ -1,5 +1,7 @@
 package Listener;
 
+import Manager.MobLabelManager;
+
 import Manager.CombatConfig;
 import Manager.MobHealthScaling;
 import Manager.MobRegistry;
@@ -118,8 +120,14 @@ public class MobScalingListener implements Listener {
         // Floating label (only generic, un-named mobs — never clobber registry-named specials).
         // attach() is idempotent and defers one tick internally; pass the live fraction so a
         // reloaded damaged mob shows its real HP, not full.
-        if (scaling.isShowLevelInName()
-                && (entity.getCustomName() == null || entity.getCustomName().isBlank())) {
+        // Label: generic un-named mobs, plus registry mobs (/cerb spawn, High Health Zombie,
+        // Sea Monster), which are named before this runs. Their name moves into the label so it
+        // isn't shown twice. Mobs players named with a name tag are never relabelled.
+        boolean unnamed = entity.getCustomName() == null || entity.getCustomName().isBlank();
+        boolean registryMob = entity.getPersistentDataContainer().has(
+                registry.getMobIdKey(), org.bukkit.persistence.PersistentDataType.STRING);
+        if (scaling.isShowLevelInName() && (unnamed || registryMob)) {
+            if (!unnamed && !MobLabelManager.isRideable(entity)) entity.setCustomNameVisible(false);
             plugin.getMobLabelManager().attach(entity, level, tier, maxHealth, mvh.fraction(entity));
         }
     }

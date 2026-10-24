@@ -232,8 +232,9 @@ public class SkillManager {
             boolean isBoss
     ) {
         UUID uid = player.getUniqueId();
-        Map<String, Integer> levels = playerSkillLevels.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
-        Map<String, Integer> xp = playerSkillXP.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return; // data not loaded yet, or player already left
 
         applyAward(player, skillName, levels, xp, amount);
         saveSkills(player);
@@ -334,12 +335,40 @@ public class SkillManager {
 
     public boolean addXpAndCheckLevelUp(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();
-        Map<String, Integer> levels = playerSkillLevels.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
-        Map<String, Integer> xp = playerSkillXP.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
+        // Maps exist only between a successful load (setPlayerSkills) and quit (removePlayer).
+        // Awarding before the load used to create default maps (level 1) and SAVE them, which
+        // could overwrite the stored levels if the save landed first or the load then failed.
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return false;
 
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained);
         saveSkills(player);
         return r.levelsGained() > 0;
+    }
+
+    /**
+     * Admin/test helper: set a player's skill to an exact level with 0 XP into it, and save.
+     * Call on the player's region thread.
+     */
+    public void setSkillLevel(Player player, String skillName, int level) {
+        UUID uid = player.getUniqueId();
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return; // data not loaded yet
+        levels.put(skillName, SkillProgression.clampLevel(level));
+        xp.put(skillName, 0);
+        saveSkills(player);
+    }
+
+    /** Find a registered skill by name, ignoring case, spaces and underscores ("blade_mastery"). */
+    public String findSkillName(String input) {
+        if (input == null) return null;
+        String want = input.replace("_", "").replace(" ", "").toLowerCase();
+        for (String name : skills.keySet()) {
+            if (name.replace(" ", "").toLowerCase().equals(want)) return name;
+        }
+        return null;
     }
 
     public boolean isMaxLevel(String skillName, int newLevel) {

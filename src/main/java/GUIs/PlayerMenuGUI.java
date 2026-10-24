@@ -70,6 +70,12 @@ public class PlayerMenuGUI {
         }
         java.util.Map<Integer, ItemStack> leftover = inv.addItem(displaced);
         for (ItemStack drop : leftover.values()) {
+            // The Admin Control Panel chest is plugin-issued and re-issued on join when there is
+            // room; never leave it on the ground for someone else to pick up.
+            cerberus.world.cerb.CerberusPlugin cerb = cerberus.world.cerb.CerberusPlugin.getInstance();
+            if (cerb != null && cerb.getAdminChestGUI() != null && cerb.getAdminChestGUI().isAdminChest(drop)) {
+                continue;
+            }
             player.getWorld().dropItemNaturally(player.getLocation(), drop);
         }
         player.sendMessage(ChatColor.YELLOW + "Your item in hotbar slot 9 was moved "

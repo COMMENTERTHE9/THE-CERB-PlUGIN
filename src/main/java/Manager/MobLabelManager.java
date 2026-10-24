@@ -84,7 +84,11 @@ public final class MobLabelManager implements Listener {
             if (states.containsKey(mob.getUniqueId())) return;  // re-check after the tick gap
 
             World world = mob.getWorld();
-            final String typeName = mob.getType().name();
+            // Display name: a registry mob's custom name ("High Health Zombie") as-is, else the
+            // prettified entity type ("Zombie"). Stored ready-to-show for refresh().
+            final String customName = mob.getCustomName();
+            final String typeName = (customName != null && !customName.isBlank())
+                    ? customName : prettify(mob.getType().name());
             TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
                 td.text(buildText(level, tier, typeName, maxHp, fraction));
                 td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
@@ -172,7 +176,7 @@ public final class MobLabelManager implements Listener {
     private Component buildText(int level, Tier tier, String typeName, double maxHp, double fraction) {
         long shownHp = (long) Math.ceil(maxHp * Math.max(0.0, Math.min(1.0, fraction)));
         return Component.text("Lv" + level + " ", NamedTextColor.GRAY)
-                .append(Component.text(prettify(typeName), tierColor(tier)))
+                .append(Component.text(typeName, tierColor(tier)))
                 .append(Component.text("  " + compact(shownHp) + "❤", NamedTextColor.RED));
     }
 

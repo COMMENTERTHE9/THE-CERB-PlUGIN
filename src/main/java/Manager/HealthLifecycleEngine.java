@@ -32,9 +32,6 @@ final class HealthLifecycleEngine {
     }
 
     DamageResolution applyResolvedDamage(MutableState state, double finalDamage, long now, long damageInvulnerabilityMs) {
-        if (finalDamage <= 0) {
-            return DamageResolution.zero(state.currentHp); // resolved, fully mitigated
-        }
         if (state.pendingCustomDeath
                 || state.lifecycleState == HealthLifecycleState.DEAD
                 || state.lifecycleState == HealthLifecycleState.RESPAWNING) {
@@ -46,6 +43,12 @@ final class HealthLifecycleEngine {
 
         state.lastDamageAt = now;
         state.invulnerableUntil = now + Math.max(0L, damageInvulnerabilityMs);
+
+        if (finalDamage <= 0) {
+            // Fully mitigated, but it still counts as a hit and starts the window: otherwise
+            // fire/lava with 100% mitigation awarded XP and showed BLOCKED every single tick.
+            return DamageResolution.zero(state.currentHp);
+        }
 
         double damageToApply = Math.max(0.0, finalDamage);
         double remainingHp = Math.max(0.0, state.currentHp - damageToApply);

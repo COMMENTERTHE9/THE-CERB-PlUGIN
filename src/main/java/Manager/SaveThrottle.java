@@ -53,7 +53,8 @@ public final class SaveThrottle {
         }
     }
 
-    private Object lockFor(String key) {
+    /** Per-key lock shared with callers that must update related state atomically. */
+    static Object lockFor(String key) {
         return key.intern();
     }
 }

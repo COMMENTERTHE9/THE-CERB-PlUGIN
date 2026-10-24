@@ -65,18 +65,24 @@ public class AsyncSaveManager {
     }
 
     private void submit(String key, Runnable work) {
-        SaveThrottle.Decision d = throttle.request(key, System.currentTimeMillis());
+        SaveThrottle.Decision d;
+        // Decide and record the pending task atomically for this key, so a flush cannot run
+        // between "a flush is scheduled" and "here is the newest task" and leave it behind.
+        synchronized (SaveThrottle.lockFor(key)) {
+            d = throttle.request(key, System.currentTimeMillis());
+            if (d.action() != SaveThrottle.Action.RUN_NOW) pending.put(key, work);
+        }
         switch (d.action()) {
             case RUN_NOW -> Bukkit.getAsyncScheduler().runNow(plugin, task -> work.run());
-            case ALREADY_SCHEDULED -> pending.put(key, work);
-            case SCHEDULE_FLUSH -> {
-                pending.put(key, work);
-                Bukkit.getAsyncScheduler().runDelayed(plugin, task -> {
+            case ALREADY_SCHEDULED -> { } // the scheduled flush will run the newest pending task
+            case SCHEDULE_FLUSH -> Bukkit.getAsyncScheduler().runDelayed(plugin, task -> {
+                Runnable latest;
+                synchronized (SaveThrottle.lockFor(key)) {
                     throttle.flushed(key, System.currentTimeMillis());
-                    Runnable latest = pending.remove(key);
-                    if (latest != null) latest.run();
-                }, d.delayMs(), TimeUnit.MILLISECONDS);
-            }
+                    latest = pending.remove(key);
+                }
+                if (latest != null) latest.run();
+            }, d.delayMs(), TimeUnit.MILLISECONDS);
         }
     }
 }

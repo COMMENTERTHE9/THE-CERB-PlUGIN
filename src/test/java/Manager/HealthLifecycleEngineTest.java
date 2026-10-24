@@ -105,4 +105,17 @@ class HealthLifecycleEngineTest {
         assertFalse(fullyAbsorbed.skipped()); // resolved but nothing got through: shows BLOCKED
         assertEquals(0.0, fullyAbsorbed.finalDamage());
     }
+
+    @Test
+    void fullyAbsorbedHitStartsTheWindowToo() {
+        HealthLifecycleEngine.MutableState state = engine.newState(UUID.randomUUID());
+        engine.initializeForJoin(state);
+
+        DamageResolution blocked = engine.applyResolvedDamage(state, 0.0, 1_000L, 250L);
+        DamageResolution nextTick = engine.applyResolvedDamage(state, 0.0, 1_050L, 250L);
+
+        assertFalse(blocked.skipped());
+        assertTrue(nextTick.skipped()); // per-tick fire/lava events inside the window are ignored
+        assertEquals(100.0, state.currentHp());
+    }
 }

@@ -182,6 +182,14 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (trapManager != null)       trapManager.cleanup();
         if (mobLabelManager != null)   mobLabelManager.clear();
 
+        // Throttled async YAML saves may still be pending; async tasks don't outlive disable.
+        if (playerDataConfig != null && playerDataFile != null) {
+            synchronized (playerDataConfig) {
+                try { playerDataConfig.save(playerDataFile); }
+                catch (IOException e) { getLogger().severe("Could not save playerData.yml on shutdown: " + e.getMessage()); }
+            }
+        }
+
         getLogger().info("Cerberus Plugin has been disabled!");
     }
 
