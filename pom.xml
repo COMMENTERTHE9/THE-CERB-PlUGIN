@@ -25,10 +25,11 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>21</source>
-                    <target>21</target>
-                    <compilerArgs>--enable-preview</compilerArgs>
-                    <testCompilerArgs>--enable-preview</testCompilerArgs>
+                    <!-- release=21 emits Java 21 bytecode against the Java 21 API, so the build
+                         works with any JDK >= 21 (21 or 25). No preview language features are
+                         used, so the enable-preview flag is not needed (it also tied the build to
+                         exactly JDK 21). -->
+                    <release>21</release>
                 </configuration>
             </plugin>
             <plugin>
@@ -36,7 +37,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>--enable-preview</argLine>
                     <useModulePath>false</useModulePath>
                 </configuration>
             </plugin>
@@ -101,19 +101,10 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- DTR-1.0.0.jar dependency -->
-        <dependency>
-            <groupId>cerberus.plugins</groupId>
-            <artifactId>DTR</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-
-        <!-- Other dependencies -->
-        <dependency>
-            <groupId>cer-ber-us</groupId>
-            <artifactId>volor</artifactId>
-            <version>1.0.0</version>
-        </dependency>
+        <!-- DTR (terrain engine, lib/) and Volor (old skills plugin, libs/) were removed as
+             dependencies: no Cerberus code imports them, they are not in any Maven repository
+             (so fresh clones could not build), and shading them bundled unrelated classes and a
+             competing plugin.yml into Cerberus.jar. They remain separate projects. -->
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
