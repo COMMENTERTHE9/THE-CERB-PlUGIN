@@ -77,12 +77,9 @@ public class AdminChestGUI {
     }
 
     public void givePlayerMenu(Player player) {
-        ItemStack playerMenu = new ItemStack(Material.PLAYER_HEAD, 1);
-        ItemMeta meta = playerMenu.getItemMeta();
-        meta.setDisplayName(ChatColor.DARK_PURPLE + "Player Menu");
-        playerMenu.setItemMeta(meta);
-
-        player.getInventory().setItem(8, playerMenu);
+        // Use the real menu head (the old hand-built DARK_PURPLE copy was not recognised as a
+        // menu head: it opened nothing, was unprotected, and overwrote slot 9).
+        plugin.getPlayerMenuGUI().placeMenuHead(player);
         player.sendMessage(ChatColor.GREEN + "You have been given the Player Menu item in the rightmost slot of your hotbar.");
     }
 }

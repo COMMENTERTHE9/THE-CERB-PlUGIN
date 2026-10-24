@@ -43,6 +43,40 @@ public class PlayerMenuGUI {
                 ));
     }
 
+    /** Hotbar slot 9 (index 8) — where the Player Menu head lives. */
+    public static final int MENU_HEAD_SLOT = 8;
+
+    /**
+     * Put a fresh Player Menu head in hotbar slot 9 without destroying anything.
+     *
+     * <p>If the slot holds a real item, that item is moved to a free inventory slot, or dropped
+     * at the player's feet when the inventory is full. Stray menu heads elsewhere in the
+     * inventory (e.g. moved there with a number-key swap) are removed so the player never ends
+     * up with duplicates. Must run on the player's region thread (join, respawn, GUI click).
+     */
+    public void placeMenuHead(Player player) {
+        org.bukkit.inventory.PlayerInventory inv = player.getInventory();
+        ItemStack displaced = inv.getItem(MENU_HEAD_SLOT);
+        inv.setItem(MENU_HEAD_SLOT, getPlayerMenuItem(player));
+
+        for (int i = 0; i < inv.getSize(); i++) {
+            if (i != MENU_HEAD_SLOT && isPlayerMenuHead(inv.getItem(i))) {
+                inv.setItem(i, null);
+            }
+        }
+
+        if (displaced == null || displaced.getType().isAir() || isPlayerMenuHead(displaced)) {
+            return;
+        }
+        java.util.Map<Integer, ItemStack> leftover = inv.addItem(displaced);
+        for (ItemStack drop : leftover.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), drop);
+        }
+        player.sendMessage(ChatColor.YELLOW + "Your item in hotbar slot 9 was moved "
+                + (leftover.isEmpty() ? "into your inventory" : "to the ground (inventory full)")
+                + " to make room for the Player Menu.");
+    }
+
     /**
      * Checks whether an item is the Player Menu hotbar skull.
      * Used by the interaction listener to detect right-click opens.

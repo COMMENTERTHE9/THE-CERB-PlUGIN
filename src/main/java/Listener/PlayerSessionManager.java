@@ -90,8 +90,7 @@ public class PlayerSessionManager implements Listener {
         }
 
         try {
-            ItemStack menuHead = svc.playerMenuGUI().getPlayerMenuItem(player);
-            player.getInventory().setItem(8, menuHead);
+            svc.playerMenuGUI().placeMenuHead(player); // never destroys what was in slot 9
             giveAdminChestIfNeeded(player);
         } catch (Exception e) {
             log.warning("[PlayerSession] Phase INVENTORY failed for " + player.getName() + ": " + e.getMessage());

@@ -627,7 +627,32 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         }
         if (cursor != null && (playerMenuGUI.isPlayerMenuHead(cursor) || adminChestGUI.isAdminChest(cursor))) {
             e.setCancelled(true);
+            return;
         }
+        // Number-key swap: the hotbar item named by the key moves into the hovered slot, so the
+        // protected item never shows up as current/cursor. Same for the F-key offhand swap.
+        Player p = (Player) e.getWhoClicked();
+        if (e.getClick() == org.bukkit.event.inventory.ClickType.NUMBER_KEY && e.getHotbarButton() >= 0
+                && isProtectedMenuItem(p.getInventory().getItem(e.getHotbarButton()))) {
+            e.setCancelled(true);
+            return;
+        }
+        if (e.getClick() == org.bukkit.event.inventory.ClickType.SWAP_OFFHAND
+                && isProtectedMenuItem(p.getInventory().getItemInOffHand())) {
+            e.setCancelled(true);
+        }
+    }
+
+    /** F-key (outside inventories) moves the held item to the offhand — keep menu items put. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onSwapHands(PlayerSwapHandItemsEvent e) {
+        if (isProtectedMenuItem(e.getMainHandItem()) || isProtectedMenuItem(e.getOffHandItem())) {
+            e.setCancelled(true);
+        }
+    }
+
+    private boolean isProtectedMenuItem(ItemStack item) {
+        return item != null && (playerMenuGUI.isPlayerMenuHead(item) || adminChestGUI.isAdminChest(item));
     }
 
     // ── Item interactions ───────────────────────────────────────────
@@ -683,6 +708,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     private boolean handlePlayerMenuHeadInteraction(PlayerInteractEvent event, Player player, ItemStack item) {
+        // Right-click only: a left-click swing (e.g. attacking while holding the head) used to
+        // pop the menu open mid-fight.
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return false;
+        }
         if (playerMenuGUI.isPlayerMenuHead(item)) {
             event.setCancelled(true);
             playerMenuGUI.open(player);
