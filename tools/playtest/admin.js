@@ -48,7 +48,7 @@ async function main() {
   const missing = tiles.filter(t => findSlot(new RegExp('^' + t.replace(/[&]/g, '.') + '$')) < 0);
   check('Home shows all 7 sections', missing.length === 0, missing.length ? 'missing ' + missing.join(', ') : '');
   check('Home header shows plugin build', /build \d{4}-\d\d-\d\d/.test(slotLore(4)), slotLore(4).slice(0, 80));
-  check('Attributes tile is marked in development', /In development/.test(slotLore(findSlot(/^Attributes$/))));
+  check('Attributes tile is marked live', /Live/.test(slotLore(findSlot(/^Attributes$/))), slotLore(findSlot(/^Attributes$/)));
 
   // Players -> me -> skills -> Blade Mastery
   await click(findSlot(/^Players$/));
@@ -243,6 +243,7 @@ async function owners() {
   await new Promise(r => other.once('spawn', r));
   await sleep(3000);
   await cmd('/time set day', 400);
+  await cmd('/tp CerbTarget ' + NAME, 800); // other tests move us around: stand together
   await cmd('/kill @e[type=zombie,distance=..64]', 800);
   await cmd('/cerb spawn zombie 3 noai', 1200);
   other.chat('/cerb spawn zombie 4 noai');
