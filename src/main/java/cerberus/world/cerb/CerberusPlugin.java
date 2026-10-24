@@ -507,9 +507,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             sender.sendMessage(ChatColor.RED + "Player not found.");
             return;
         }
-        // TODO: restore their real + virtual health
-        target.setHealth(target.getAttribute(Attribute.MAX_HEALTH).getValue());
-        playerVirtualHealthManager.resetHealth(target);
+        // Folia: the target may live in another region than the sender, so touch its health on
+        // the target's own entity scheduler.
+        target.getScheduler().run(this, task -> {
+            target.setHealth(target.getAttribute(Attribute.MAX_HEALTH).getValue());
+            playerVirtualHealthManager.resetHealth(target);
+        }, null);
         sender.sendMessage(ChatColor.GREEN + "Healed " + playerName + ".");
     }
 

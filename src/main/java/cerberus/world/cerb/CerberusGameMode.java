@@ -4,8 +4,6 @@ import Manager.PlayerVirtualHealthManager;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
-import java.io.File;
-import java.io.IOException;
 
 /**
  * Handles Cerberus game-mode setup for players (first join and restore).
@@ -26,8 +24,13 @@ public class CerberusGameMode {
         virtualHealthManager.setMaxHealth(player, 100.0);
         player.setFoodLevel(20);
 
-        playerDataConfig.set(playerUUID + ".joinedBefore", true);
-        savePlayerData(playerDataConfig);
+        // One shared YamlConfiguration is touched from every joining player's region thread
+        // (Folia): mutate under its lock, and save off-thread via the coalescing saver (which
+        // takes the same lock while writing) instead of blocking the join tick on disk I/O.
+        synchronized (playerDataConfig) {
+            playerDataConfig.set(playerUUID + ".joinedBefore", true);
+        }
+        plugin.savePlayerDataConfig();
     }
 
     /** Restore player virtual health (clamp to max). */
@@ -42,14 +45,8 @@ public class CerberusGameMode {
     /** Check if the player has joined before. */
     public boolean hasPlayerJoinedBefore(Player player, FileConfiguration playerDataConfig) {
         String playerUUID = player.getUniqueId().toString();
-        return playerDataConfig.getBoolean(playerUUID + ".joinedBefore", false);
-    }
-
-    private void savePlayerData(FileConfiguration playerDataConfig) {
-        try {
-            playerDataConfig.save(new File(plugin.getDataFolder(), "playerData.yml"));
-        } catch (IOException e) {
-            e.printStackTrace();
+        synchronized (playerDataConfig) {
+            return playerDataConfig.getBoolean(playerUUID + ".joinedBefore", false);
         }
     }
 

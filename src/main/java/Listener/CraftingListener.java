@@ -14,7 +14,7 @@ import java.util.UUID;
 public class CraftingListener implements Listener {
 
     // A map to store the last crafted item for each player
-    private final Map<UUID, ItemStack> lastCraftedItem = new HashMap<>();
+    private final Map<UUID, ItemStack> lastCraftedItem = new java.util.concurrent.ConcurrentHashMap<>();
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onItemCraft(CraftItemEvent event) {
