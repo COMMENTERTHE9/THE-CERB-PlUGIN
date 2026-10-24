@@ -67,3 +67,6 @@ test-server/
 
 # Claude Code
 .claude/
+# Node (tools/playtest)
+node_modules/
+package-lock.json

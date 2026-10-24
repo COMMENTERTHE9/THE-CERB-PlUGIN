@@ -1,0 +1,7 @@
+{
+  "name": "cerberus-playtest",
+  "private": true,
+  "description": "Headless in-game smoke test for the Cerberus plugin (sandbox servers only).",
+  "scripts": { "smoke": "node smoke.js" },
+  "dependencies": { "mineflayer": "4.39.0" }
+}
