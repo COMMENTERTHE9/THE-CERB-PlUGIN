@@ -28,6 +28,15 @@ public class CombatSkillProcessor {
     private final PlayerVirtualHealthManager virtualHealthManager;
     private final Random random = new Random();
 
+    /** Critical Strike XP per melee hit on a mob, and per critical hit. */
+    public static final double CRIT_STRIKE_HIT_XP = 2.0;
+    public static final double CRIT_STRIKE_CRIT_XP = 8.0;
+    /** Heavy Armor Training XP per point of damage taken in heavy armor, capped per hit. */
+    public static final double HEAVY_ARMOR_XP_PER_DAMAGE = 0.5;
+    public static final double HEAVY_ARMOR_XP_MAX = 10.0;
+    /** Survival XP per hit taken. */
+    public static final double SURVIVAL_HIT_XP = 1.0;
+
     public CombatSkillProcessor(SkillManager skillManager,
                                 CombatConfig config,
                                 ElementalInfusionManager elementalManager,
@@ -123,7 +132,34 @@ public class CombatSkillProcessor {
         ItemStack mainHand = attacker.getInventory().getItemInMainHand();
         if (!isSword(mainHand.getType())) return 0;
 
-        return ScalingFormula.compute(level, config.bmDamageScaling);
+        return bladeMasteryBonus(config, level);
+    }
+
+    // ── The skill formulas, shared with the Player Menu skill pages ──────
+
+    /** Blade Mastery: extra sword damage against players (0.12 = +12%, added to the base). */
+    public static double bladeMasteryBonus(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.bmDamageScaling) : 0.0;
+    }
+
+    /** Weapon Mastery: extra damage against players (the curve includes the 1.0 base). */
+    public static double weaponMasteryBonus(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.wmDamageScaling) - 1.0 : 0.0;
+    }
+
+    /** Weapon Mastery: share of damage dealt that heals the attacker. */
+    public static double weaponMasteryLifesteal(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.wmLifestealScaling) : 0.0;
+    }
+
+    /** Critical Strike against players: chance per hit. */
+    public static double critChance(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.critChanceScaling) : 0.0;
+    }
+
+    /** Critical Strike against players: damage multiplier of a critical hit. */
+    public static double critMultiplier(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.critMultiplierScaling) : 1.0;
     }
 
     /** Weapon Mastery: scaled damage multiplier bonus. */
@@ -133,7 +169,7 @@ public class CombatSkillProcessor {
         int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
         if (level <= 0) return 0;
         // The scaling params include the base (e.g., 1.15), so subtract 1.0 for the bonus portion
-        return ScalingFormula.compute(level, config.wmDamageScaling) - 1.0;
+        return weaponMasteryBonus(config, level);
     }
 
     /** Critical Strike: roll chance, multiply if hit. Both use ScalingFormula. */
@@ -143,9 +179,9 @@ public class CombatSkillProcessor {
         int level = skillManager.getSkillLevel(attacker, "Critical Strike");
         if (level <= 0) return;
 
-        double chance = ScalingFormula.compute(level, config.critChanceScaling);
+        double chance = critChance(config, level);
         if (random.nextDouble() < chance) {
-            double multiplier = ScalingFormula.compute(level, config.critMultiplierScaling);
+            double multiplier = critMultiplier(config, level);
             double before = ctx.attack().getModifiedDamage();
             double after = before * multiplier;
             ctx.attack().setModifiedDamage(after);
@@ -180,7 +216,7 @@ public class CombatSkillProcessor {
         if (attacker == null) return 0;
         int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
         if (level <= 0) return 0;
-        return ScalingFormula.compute(level, config.wmLifestealScaling);
+        return weaponMasteryLifesteal(config, level);
     }
 
     /** Martial Expertise: knockback resistance bonus, scaled. */
@@ -216,8 +252,7 @@ public class CombatSkillProcessor {
         if (attacker == null || ctx.getRawDamage() <= 0) return;
 
         // Critical Strike: always gains XP from melee hits, bonus for crits
-        double critXp = 2.0;
-        if (ctx.attack().isCritical()) critXp = 8.0;
+        double critXp = ctx.attack().isCritical() ? CRIT_STRIKE_CRIT_XP : CRIT_STRIKE_HIT_XP;
         skillManager.addXpAndCheckLevelUp("Critical Strike", critXp, attacker);
     }
 
@@ -230,12 +265,12 @@ public class CombatSkillProcessor {
 
         // Heavy Armor Training: XP from taking hits while wearing heavy armor
         if (hasHeavyArmor(defender)) {
-            double hatXp = Math.min(damageTaken * 0.5, 10.0);
+            double hatXp = Math.min(damageTaken * HEAVY_ARMOR_XP_PER_DAMAGE, HEAVY_ARMOR_XP_MAX);
             skillManager.addXpAndCheckLevelUp("Heavy Armor Training", hatXp, defender);
         }
 
         // Survival: small XP for enduring any damage
-        skillManager.addXpAndCheckLevelUp("Survival", 1.0, defender);
+        skillManager.addXpAndCheckLevelUp("Survival", SURVIVAL_HIT_XP, defender);
     }
 
 

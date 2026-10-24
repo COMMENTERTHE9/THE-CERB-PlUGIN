@@ -1,7 +1,6 @@
 package Skills;
 
 import CustomEntities.SeaMonsterManager;
-import GUIs.PlayerMenuGUI;
 import Manager.*;
 import Listener.CraftingListener;
 import Manager.PlayerVirtualHealthManager;
@@ -46,7 +45,6 @@ public class SkillManager {
     private CraftingManager craftingManager;
     private final CraftingListener craftingListener;
     private final PlayerStrengthManager strengthManager;
-    private PlayerMenuGUI playerMenuGUI;
 
     public SkillManager(CerberusPlugin plugin,
                         Map<String, Integer> skillLevels,
@@ -79,9 +77,6 @@ public class SkillManager {
         this.craftingListener = craftingListener;
         this.strengthManager = strengthManager;
         this.seaMonsterManager = seaMonsterManager;
-
-        // Initialize the PlayerMenuGUI here (if needed)
-        this.playerMenuGUI = new PlayerMenuGUI(plugin, this);
 
         rebuildSkillRegistry();
     }
@@ -336,14 +331,6 @@ public class SkillManager {
         return totalMultiplier;
     }
 
-    public void setPlayerMenuGUI(PlayerMenuGUI playerMenuGUI) {
-        this.playerMenuGUI = playerMenuGUI;
-    }
-
-    public PlayerMenuGUI getPlayerMenu() {
-        return playerMenuGUI;
-    }
-
     public void refreshSkillMenu() {
         // Legacy no-op — GUI refreshes on reopen
     }
@@ -389,14 +376,18 @@ public class SkillManager {
         return playerSkillLevels.containsKey(uid) && playerSkillXP.containsKey(uid);
     }
 
-    /** Find a registered skill by name, ignoring case, spaces and underscores ("blade_mastery"). */
+    /**
+     * Find a registered skill by its internal name or the name players see ("blade_mastery",
+     * "Pathfinding" -> "Navigation"), ignoring case, spaces and underscores.
+     */
     public String findSkillName(String input) {
         if (input == null) return null;
-        String want = input.replace("_", "").replace(" ", "").toLowerCase();
+        String want = SkillNames.normalize(input);
         for (String name : skills.keySet()) {
-            if (name.replace(" ", "").toLowerCase().equals(want)) return name;
+            if (SkillNames.normalize(name).equals(want)) return name;
         }
-        return null;
+        String internal = SkillNames.internalForDisplay(input);
+        return internal != null && skills.containsKey(internal) ? internal : null;
     }
 
     public boolean isMaxLevel(String skillName, int newLevel) {
@@ -408,7 +399,7 @@ public class SkillManager {
     }
 
     public String createLevelUpMessage(String skillName, int level) {
-        return "Congratulations! Your " + skillName + " skill has reached level " + level + "!";
+        return "Congratulations! Your " + SkillNames.display(skillName) + " skill has reached level " + level + "!";
     }
 
     // ── XP curve (hybrid polynomial) ──────────────────────────────
@@ -438,7 +429,12 @@ public class SkillManager {
     }
 
     public int getSkillXP(Player player, String skillName) {
-        Map<String, Integer> xp = playerSkillXP.get(player.getUniqueId());
+        return getSkillXP(player.getUniqueId(), skillName);
+    }
+
+    /** In-level XP by UUID. Reads a concurrent map, so any thread may call it. */
+    public int getSkillXP(UUID playerId, String skillName) {
+        Map<String, Integer> xp = playerSkillXP.get(playerId);
         return xp != null ? xp.getOrDefault(skillName, 0) : 0;
     }
 

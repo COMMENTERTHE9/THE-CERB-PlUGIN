@@ -1,50 +1,72 @@
 package GUIs;
 
-import Skills.SkillManager;
+import GUIs.menu.Ui;
+import GUIs.player.Availability;
+import GUIs.player.PlayerHubMenu;
+import GUIs.player.PlayerMenuSections;
+import GUIs.player.PlayerMenuSections.Section;
+import GUIs.player.SkillsMenu;
+import GUIs.stats.StatsMenu;
+import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
 
 /**
- * Player Menu GUI — the main hub accessed via the hotbar skull.
- * Stateless: no live-update tasks, GUI refreshes on reopen.
+ * The Player Menu entry points: the hotbar head (slot 9), {@code /menu}, and the registry of hub
+ * destinations. The screens themselves live in {@code GUIs.player} on the shared menu framework.
+ *
+ * <p>The head is recognised by a plugin tag in its item data. Heads given out before the tag
+ * existed are still recognised by their name, so they get protected and replaced on the next
+ * join instead of becoming loose copies. A head only ever opens its holder's own menu.
  */
 public class PlayerMenuGUI {
 
-    private final JavaPlugin plugin;
-    private final SkillManager skillManager;
-
-    public PlayerMenuGUI(JavaPlugin plugin, SkillManager skillManager) {
-        this.plugin = plugin;
-        this.skillManager = skillManager;
-    }
-
-    // ── Hotbar item (used by PlayerSessionManager) ──────────────
-
-    /**
-     * Creates the player skull item placed in the hotbar.
-     * Called by PlayerSessionManager to give/refresh the menu item.
-     */
-    public ItemStack getPlayerMenuItem(Player player) {
-        int level = skillManager.getPlayerLevel(player);
-        return GuiBuilder.createSkull(player,
-                ChatColor.LIGHT_PURPLE + "Player Menu",
-                List.of(
-                        "",
-                        ChatColor.GRAY + "Level: " + ChatColor.WHITE + level,
-                        "",
-                        ChatColor.GOLD + "Right-click to open your player menu."
-                ));
-    }
-
     /** Hotbar slot 9 (index 8) — where the Player Menu head lives. */
     public static final int MENU_HEAD_SLOT = 8;
+
+    private static final String HEAD_NAME = ChatColor.LIGHT_PURPLE + "Player Menu";
+
+    private final CerberusPlugin plugin;
+    private final NamespacedKey headKey;
+    private final PlayerMenuSections sections = new PlayerMenuSections();
+
+    public PlayerMenuGUI(CerberusPlugin plugin) {
+        this.plugin = plugin;
+        this.headKey = new NamespacedKey(plugin, "player_menu_head");
+        registerDefaultSections();
+    }
+
+    /** The hub's destinations. Register a section to make a new system reachable from the hub. */
+    public PlayerMenuSections sections() { return sections; }
+
+    // ── Opening ─────────────────────────────────────────────────
+
+    /** Open the hub (fresh history). Safe from any thread. */
+    public void open(Player player) {
+        plugin.getMenuManager().openRoot(player, new PlayerHubMenu(plugin));
+    }
+
+    // ── Hotbar head ─────────────────────────────────────────────
+
+    /** The head placed in hotbar slot 9. */
+    public ItemStack getPlayerMenuItem(Player player) {
+        ItemStack head = Ui.head(player, HEAD_NAME, Ui.lore()
+                .text("Your character, skills and stats.")
+                .hint("Right-click to open (or /menu)").build());
+        ItemMeta meta = head.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(headKey, PersistentDataType.BYTE, (byte) 1);
+            head.setItemMeta(meta);
+        }
+        return head;
+    }
 
     /**
      * Put a fresh Player Menu head in hotbar slot 9 without destroying anything.
@@ -64,6 +86,7 @@ public class PlayerMenuGUI {
                 inv.setItem(i, null);
             }
         }
+        if (isPlayerMenuHead(player.getItemOnCursor())) player.setItemOnCursor(null);
 
         if (displaced == null || displaced.getType().isAir() || isPlayerMenuHead(displaced)) {
             return;
@@ -72,8 +95,7 @@ public class PlayerMenuGUI {
         for (ItemStack drop : leftover.values()) {
             // The Admin Control Panel chest is plugin-issued and re-issued on join when there is
             // room; never leave it on the ground for someone else to pick up.
-            cerberus.world.cerb.CerberusPlugin cerb = cerberus.world.cerb.CerberusPlugin.getInstance();
-            if (cerb != null && cerb.getAdminChestGUI() != null && cerb.getAdminChestGUI().isAdminChest(drop)) {
+            if (plugin.getAdminChestGUI() != null && plugin.getAdminChestGUI().isAdminChest(drop)) {
                 continue;
             }
             player.getWorld().dropItemNaturally(player.getLocation(), drop);
@@ -83,122 +105,64 @@ public class PlayerMenuGUI {
                 + " to make room for the Player Menu.");
     }
 
-    /**
-     * Checks whether an item is the Player Menu hotbar skull.
-     * Used by the interaction listener to detect right-click opens.
-     */
+    /** True for the Player Menu head: tagged by the plugin, or (older heads) named like it. */
     public boolean isPlayerMenuHead(ItemStack item) {
         if (item == null || item.getType() != Material.PLAYER_HEAD || !item.hasItemMeta()) {
             return false;
         }
         ItemMeta meta = item.getItemMeta();
-        return meta.hasDisplayName()
-                && meta.getDisplayName().equals(ChatColor.LIGHT_PURPLE + "Player Menu");
+        if (meta.getPersistentDataContainer().has(headKey, PersistentDataType.BYTE)) return true;
+        return meta.hasDisplayName() && meta.getDisplayName().equals(HEAD_NAME);
     }
 
-    // ── Main Player Menu (54 slots) ─────────────────────────────
+    // ── Hub destinations ────────────────────────────────────────
 
-    /**
-     * Opens the main player menu. Folia-safe.
-     */
-    public void open(Player player) {
-        Inventory gui = GuiBuilder.createGui(GuiIdentity.PLAYER_MENU, 6,
-                ChatColor.DARK_PURPLE.toString() + ChatColor.BOLD + "Player Menu");
-
-        GuiBuilder.fillBorders(gui, Material.BLACK_STAINED_GLASS_PANE);
-
-        // Slot 4: Player head with level info
-        int level = skillManager.getPlayerLevel(player);
-        gui.setItem(4, GuiBuilder.createSkull(player,
-                ChatColor.LIGHT_PURPLE + player.getName(),
-                List.of(
-                        "",
-                        ChatColor.GRAY + "Level: " + ChatColor.WHITE + level,
-                        ""
-                )));
-
-        // Row 3: primary actions
-        gui.setItem(20, GuiBuilder.createActionItem(Material.NETHERITE_SWORD,
-                ChatColor.DARK_RED + "Skills",
-                "open_skills", null,
-                ChatColor.GRAY + "View and manage your skills."));
-
-        gui.setItem(22, GuiBuilder.createActionItem(Material.CRAFTING_TABLE,
-                ChatColor.GREEN + "Recipes",
-                "coming_soon", "Recipes",
-                ChatColor.GRAY + "Discover crafting recipes."));
-
-        gui.setItem(24, GuiBuilder.createActionItem(Material.CHEST,
-                ChatColor.GOLD + "Collections",
-                "coming_soon", "Collections",
-                ChatColor.GRAY + "Track your collected items."));
-
-        // Row 4: secondary actions
-        gui.setItem(29, GuiBuilder.createActionItem(Material.NETHER_STAR,
-                ChatColor.LIGHT_PURPLE + "Stats",
-                "open_stats", null,
-                ChatColor.GRAY + "Your attributes, damage, crits,",
-                ChatColor.GRAY + "and what your next levels give."));
-
-        gui.setItem(31, GuiBuilder.createActionItem(Material.DRAGON_EGG,
-                ChatColor.DARK_PURPLE + "Mobs & Monsters",
-                "coming_soon", "Mobs & Monsters",
-                ChatColor.GRAY + "Learn about creatures."));
-
-        gui.setItem(33, GuiBuilder.createActionItem(Material.COMPASS,
-                ChatColor.DARK_AQUA + "World Map",
-                "coming_soon", "World Map",
-                ChatColor.GRAY + "Explore locations."));
-
-        // Row 5: equipment
-        gui.setItem(38, GuiBuilder.createActionItem(Material.NETHERITE_CHESTPLATE,
-                ChatColor.YELLOW + "Armor",
-                "coming_soon", "Armor",
-                ChatColor.GRAY + "Quick-swap your armor."));
-
-        GuiBuilder.fillEmpty(gui, Material.BLACK_STAINED_GLASS_PANE);
-
-        // Folia-safe open
-        player.getScheduler().run(plugin, task -> player.openInventory(gui), null);
+    private void registerDefaultSections() {
+        sections.register(new Section("skills", 19, Material.EXPERIENCE_BOTTLE, "Skills",
+                List.of("Levels and XP, what trains each", "skill and what it does for you."),
+                (pl, p) -> skillsLive(pl, p), p -> Availability.available(), SkillsMenu::new));
+        sections.register(new Section("stats", 21, Material.BLAZE_POWDER, "Stats & Attributes",
+                List.of("Your six attributes, damage,", "survivability and magic numbers."),
+                null, p -> Availability.available(), StatsMenu::new));
+        sections.register(new Section("ascension", 23, Material.END_CRYSTAL, "Ascension",
+                List.of("The ten realms and the road", "between them."),
+                null, p -> Availability.inDevelopment("Realm breakthroughs are not built yet."), null));
+        sections.register(new Section("equipment", 25, Material.NETHERITE_CHESTPLATE, "Equipment",
+                List.of("Your gear and what it gives you."),
+                null, p -> Availability.inDevelopment("Gear stats are not built yet."), null));
+        sections.register(new Section("bestiary", 28, Material.ZOMBIE_HEAD, "Bestiary",
+                List.of("The creatures of this world."),
+                null, p -> Availability.inDevelopment("Not built yet."), null));
+        sections.register(new Section("world", 30, Material.FILLED_MAP, "World & Exploration",
+                List.of("Where you have been and how", "dangerous the land is."),
+                null, p -> Availability.inDevelopment("Not built yet."), null));
+        sections.register(new Section("collections", 32, Material.CHEST, "Collections",
+                List.of("Items and materials you gather."),
+                null, p -> Availability.inDevelopment("Not designed yet."), null));
+        sections.register(new Section("recipes", 34, Material.CRAFTING_TABLE, "Recipes",
+                List.of("Cerberus crafting recipes."),
+                null, p -> Availability.inDevelopment("Custom recipes are not built yet."), null));
+        sections.register(new Section("quests", 39, Material.WRITABLE_BOOK, "Quests",
+                List.of("Tasks, stories and rewards."),
+                null, p -> Availability.inDevelopment("Quests are not built yet."), null));
+        sections.register(new Section("guide", 41, Material.BOOK, "Guide",
+                List.of("How Cerberus works."),
+                null, p -> Availability.inDevelopment("Not written yet."), null));
     }
 
-    // ── Skill Management sub-menu (27 slots) ────────────────────
-
-    /**
-     * Opens the skill category selection menu. Folia-safe.
-     */
-    public void openSkillManagement(Player player) {
-        Inventory gui = GuiBuilder.createGui(GuiIdentity.SKILL_MANAGEMENT, 3,
-                ChatColor.DARK_PURPLE.toString() + ChatColor.BOLD + "Skill Management");
-
-        GuiBuilder.fillBorders(gui, Material.BLACK_STAINED_GLASS_PANE);
-
-        gui.setItem(11, GuiBuilder.createActionItem(Material.DIAMOND_SWORD,
-                ChatColor.RED + "Combat Skills",
-                "open_combat", null,
-                ChatColor.GRAY + "Master your combat abilities."));
-
-        gui.setItem(13, GuiBuilder.createActionItem(Material.ENCHANTED_BOOK,
-                ChatColor.DARK_PURPLE + "Magic Skills",
-                "open_magic", null,
-                ChatColor.GRAY + "Harness magical powers."));
-
-        gui.setItem(15, GuiBuilder.createActionItem(Material.DIAMOND_PICKAXE,
-                ChatColor.GREEN + "Utility Skills",
-                "open_utility", null,
-                ChatColor.GRAY + "Develop practical skills."));
-
-        gui.setItem(22, GuiBuilder.createBackArrow("player_menu"));
-
-        GuiBuilder.fillEmpty(gui, Material.BLACK_STAINED_GLASS_PANE);
-
-        // Folia-safe open
-        player.getScheduler().run(plugin, task -> player.openInventory(gui), null);
-    }
-
-    // ── Convenience back-arrow delegate ─────────────────────────
-
-    private ItemStack createBackArrow(String target) {
-        return GuiBuilder.createBackArrow(target);
+    private static List<String> skillsLive(CerberusPlugin plugin, Player p) {
+        if (!plugin.getSkillManager().hasLoadedSkills(p.getUniqueId())) return List.of();
+        int total = 0, best = -1;
+        SkillDefinitions.SkillDef top = null;
+        for (SkillDefinitions.SkillDef d : SkillDefinitions.all()) {
+            int lvl = plugin.getSkillManager().getSkillLevel(p.getUniqueId(), d.name());
+            total += lvl;
+            if (lvl > best) { best = lvl; top = d; }
+        }
+        String cap = String.format(java.util.Locale.ROOT, "%,d", SkillDefinitions.all().size() * Skills.SkillProgression.MAX_LEVEL);
+        return top == null ? List.of() : List.of(
+                ChatColor.GRAY + "Total level: " + ChatColor.WHITE + String.format(java.util.Locale.ROOT, "%,d", total)
+                        + ChatColor.DARK_GRAY + " / " + cap,
+                ChatColor.GRAY + "Highest: " + ChatColor.WHITE + top.displayName() + " " + best);
     }
 }

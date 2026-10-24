@@ -125,6 +125,7 @@ final class AttributesInspectMenu extends AdminMenu {
                 .gap().stat("Players tracked", String.valueOf(svc.trackedCount()))
                 .stat("Snapshots cached", String.valueOf(svc.cachedCount()))
                 .stat("Rebuilds since start", Fmt.grouped(svc.rebuildCount()))
+                .stat("Menu previews since start", Fmt.grouped(svc.previewCount()))
                 .gap().status(Status.LIVE).build()));
     }
 

@@ -22,14 +22,14 @@ public final class SkillAttributes {
             for (AttributeRules.SkillWeight w : e.getValue()) {
                 double amount = w.perLevel() * level;
                 if (amount == 0) continue;
-                out.add(Contribution.attribute(SOURCE_PREFIX + skill, skill + " " + level, w.attribute(), amount, w.weapon()));
+                out.add(Contribution.attribute(SOURCE_PREFIX + skill, Skills.SkillNames.display(skill) + " " + level, w.attribute(), amount, w.weapon()));
             }
         }
         AttributeRules.Curves cv = rules.curves();
         if (cv.lifestealSkill() != null) {
             int level = Math.max(0, levels.getOrDefault(cv.lifestealSkill(), 0));
             if (level > 0) {
-                out.add(Contribution.stat(SOURCE_PREFIX + cv.lifestealSkill(), cv.lifestealSkill() + " " + level,
+                out.add(Contribution.stat(SOURCE_PREFIX + cv.lifestealSkill(), Skills.SkillNames.display(cv.lifestealSkill()) + " " + level,
                         Stat.LIFESTEAL, ScalingFormula.compute(level, cv.lifesteal()), null));
             }
         }

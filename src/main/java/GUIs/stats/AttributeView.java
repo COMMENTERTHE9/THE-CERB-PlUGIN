@@ -116,7 +116,7 @@ public final class AttributeView {
         List<String> out = new ArrayList<>();
         out.add(ChatColor.GRAY + "Gained from (per skill level):");
         for (Row r : rows) {
-            out.add(ChatColor.DARK_AQUA + "  " + r.skill() + ChatColor.GRAY + " +" + trim(r.perLevel())
+            out.add(ChatColor.DARK_AQUA + "  " + Skills.SkillNames.display(r.skill()) + ChatColor.GRAY + " +" + trim(r.perLevel())
                     + (r.weapons().isEmpty() ? "" : " (" + String.join(", ", r.weapons()) + ")"));
         }
         if (rows.isEmpty()) out.add(ChatColor.DARK_GRAY + "  no skill feeds it");

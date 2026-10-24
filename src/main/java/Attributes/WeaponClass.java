@@ -4,20 +4,23 @@ import java.util.Locale;
 
 /** What a hit was made with. Power can be general or limited to one class (Blade Mastery: swords). */
 public enum WeaponClass {
-    SWORD("Swords"),
-    AXE("Axes"),
-    MACE("Maces"),
-    TRIDENT("Tridents"),
-    SPEAR("Spears"),
-    BOW("Bows and crossbows"),
-    UNARMED("Unarmed"),
+    SWORD("Swords", "Sword"),
+    AXE("Axes", "Axe"),
+    MACE("Maces", "Mace"),
+    TRIDENT("Tridents", "Trident"),
+    SPEAR("Spears", "Spear"),
+    BOW("Bows and crossbows", "Bow"),
+    UNARMED("Unarmed", "Unarmed"),
     /** Anything else in hand (tools, blocks): only general Power applies. */
-    OTHER("Other items");
+    OTHER("Other items", "Other item");
 
     public final String displayName;
+    /** For "Sword damage", "Axe damage"... */
+    public final String singular;
 
-    WeaponClass(String displayName) {
+    WeaponClass(String displayName, String singular) {
         this.displayName = displayName;
+        this.singular = singular;
     }
 
     /** Classify by material name (e.g. "NETHERITE_SWORD", "AIR"). Never null. */

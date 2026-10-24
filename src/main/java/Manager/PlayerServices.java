@@ -2,7 +2,6 @@ package Manager;
 
 import GUIs.AdminChestGUI;
 import GUIs.PlayerMenuGUI;
-import GUIs.SkillGUI;
 import Skills.SkillManager;
 import cerberus.world.cerb.DatabaseManager;
 
@@ -21,7 +20,6 @@ public record PlayerServices(
         PlayerStrengthManager strength,
         EffectManager effects,
         DefenseBarManager defenseBar,
-        SkillGUI skillGUI,
         PlayerMenuGUI playerMenuGUI,
         AdminChestGUI adminChestGUI,
         MobRegistry mobRegistry,

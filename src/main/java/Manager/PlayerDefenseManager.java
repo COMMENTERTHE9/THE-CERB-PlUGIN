@@ -111,12 +111,35 @@ public class PlayerDefenseManager {
     private double calculateSkillArmorBonus(Player player) {
         if (skillManager == null) return 0.0;
 
-        double bonus = 0.0;
-        int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
-        if (hatLevel > 0 && combatConfig != null) {
-            bonus += ScalingFormula.compute(hatLevel, combatConfig.hatArmorBonusScaling);
-        }
-        return bonus;
+        if (combatConfig == null) return 0.0;
+        return heavyArmorBonus(combatConfig, skillManager.getSkillLevel(player, "Heavy Armor Training"));
+    }
+
+    // ── The skill formulas, shared with the Player Menu skill pages ──────
+
+    /** Heavy Armor Training: armor reduction added to the gear's. */
+    public static double heavyArmorBonus(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.hatArmorBonusScaling) : 0.0;
+    }
+
+    /** Heavy Armor Training: extra defense bar points (before the realm multiplies the bar). */
+    public static double heavyArmorBarBonus(CombatConfig cfg, int level) {
+        return level > 0 ? ScalingFormula.compute(level, cfg.hatDefenseBarBonusScaling) : 0.0;
+    }
+
+    /** Survival: fire resistance, 1% per level up to 30%. */
+    public static double survivalFireResist(int level) {
+        return Math.min(0.30, Math.max(0, level) * 0.01);
+    }
+
+    /** Survival: cold resistance, 1% per level up to 20%. */
+    public static double survivalColdResist(int level) {
+        return Math.min(0.20, Math.max(0, level) * 0.01);
+    }
+
+    /** Survival: drowning resistance, 1% per level up to 20%. */
+    public static double survivalDrowningResist(int level) {
+        return Math.min(0.20, Math.max(0, level) * 0.01);
     }
 
     /**
@@ -126,24 +149,16 @@ public class PlayerDefenseManager {
     private void applyElementalResistances(Player player, @Nullable Attributes.AttributeSnapshot fort) {
         if (skillManager == null) return;
 
+        // No early return at Survival 0: Fortitude from other skills (Heavy Armor...) still counts.
         int survivalLevel = skillManager.getSkillLevel(player, "Survival");
-        if (survivalLevel <= 0) return;
 
         // Fortitude adds the same amount to each, within the attribute resist limit.
         double fortResist = fort != null ? fort.resist() : 0.0;
         double limit = fort != null ? fort.rules().limits().resist() : 1.0;
 
-        // Fire: 1% per level, cap 30%
-        double fireResist = Math.min(limit, Math.min(0.30, survivalLevel * 0.01) + fortResist);
-        virtualHealthManager.setFireResistance(player, fireResist);
-
-        // Cold: 1% per level, cap 20%
-        double coldResist = Math.min(limit, Math.min(0.20, survivalLevel * 0.01) + fortResist);
-        virtualHealthManager.setColdResistance(player, coldResist);
-
-        // Drowning: 1% per level, cap 20%
-        double drowningResist = Math.min(limit, Math.min(0.20, survivalLevel * 0.01) + fortResist);
-        virtualHealthManager.setDrowningResistance(player, drowningResist);
+        virtualHealthManager.setFireResistance(player, Math.min(limit, survivalFireResist(survivalLevel) + fortResist));
+        virtualHealthManager.setColdResistance(player, Math.min(limit, survivalColdResist(survivalLevel) + fortResist));
+        virtualHealthManager.setDrowningResistance(player, Math.min(limit, survivalDrowningResist(survivalLevel) + fortResist));
     }
 
     /**
@@ -155,7 +170,7 @@ public class PlayerDefenseManager {
 
         double base = defenseBarManager.getBaseMaxPoints();
         int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
-        double bar = base + (hatLevel > 0 ? ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling) : 0.0);
+        double bar = base + heavyArmorBarBonus(combatConfig, hatLevel);
         if (fort != null) bar += base * (fort.defenseBarMultiplier() - 1.0);
         bar *= (Double.isFinite(realm) && realm > 0 ? realm : 1.0);
         defenseBarManager.setBonusMaxPoints(player, Math.max(0.0, bar - base));

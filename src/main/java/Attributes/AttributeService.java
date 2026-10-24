@@ -26,6 +26,7 @@ public final class AttributeService {
     private final Set<UUID> tracked = ConcurrentHashMap.newKeySet();
     private final Map<UUID, AttributeSnapshot> cache = new ConcurrentHashMap<>();
     private final LongAdder rebuilds = new LongAdder();
+    private final LongAdder previews = new LongAdder();
     private volatile AttributeSnapshot empty;
     private volatile java.util.function.Function<UUID, RealmContext> realms = id -> RealmContext.NEUTRAL;
 
@@ -101,6 +102,7 @@ public final class AttributeService {
         AttributeSnapshot built = cache.compute(player, (id, old) -> {
             if (old != null && old.rules() == r) return old;     // another thread just rebuilt it
             if (!tracked.contains(id)) return null;              // quit while we were here: cache nothing
+            rebuilds.increment();
             return build(id, r, UnaryOperator.identity());
         });
         return built != null ? built : empty(r);
@@ -111,13 +113,13 @@ public final class AttributeService {
      * Used by previews such as "Blade Mastery 51 would give...".
      */
     public AttributeSnapshot preview(UUID player, UnaryOperator<List<Contribution>> edit) {
+        previews.increment();
         return build(player, rules.get(), edit);
     }
 
     private AttributeSnapshot build(UUID player, AttributeRules r, UnaryOperator<List<Contribution>> edit) {
         List<Contribution> all = new ArrayList<>();
         for (AttributeSource src : sources) all.addAll(src.contributions(player, r));
-        rebuilds.increment();
         RealmContext realm = r.switches().realmMagnitude() ? realms.apply(player) : RealmContext.NEUTRAL;
         return AttributeCalculator.compute(edit.apply(all), r, realm);
     }
@@ -131,5 +133,8 @@ public final class AttributeService {
     // Diagnostics (admin Server Info)
     public int trackedCount() { return tracked.size(); }
     public int cachedCount() { return cache.size(); }
+    /** Cached snapshots built (join, level-up, buff, reload): what combat pays for. */
     public long rebuildCount() { return rebuilds.sum(); }
+    /** What-if snapshots computed for menus (never cached, never used by combat). */
+    public long previewCount() { return previews.sum(); }
 }

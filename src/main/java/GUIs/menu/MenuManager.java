@@ -71,6 +71,19 @@ public final class MenuManager implements Listener {
         });
     }
 
+    /**
+     * Swap the current screen for {@code menu} without growing the history (Back still returns to
+     * the screen before). For browsing sideways, e.g. next/previous skill; the window title changes too.
+     */
+    public void replace(Player player, Menu menu) {
+        onPlayerThread(player, () -> {
+            Deque<Menu> stack = stacks.computeIfAbsent(player.getUniqueId(), k -> new ArrayDeque<>());
+            if (!stack.isEmpty()) stack.pop();
+            stack.push(menu);
+            show(player, menu);
+        });
+    }
+
     /** Go back one screen (closes when there is nothing to go back to). */
     public void back(Player player) {
         backFrom(player, null);
@@ -248,6 +261,12 @@ public final class MenuManager implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         stacks.remove(event.getPlayer().getUniqueId());
         lastClick.remove(event.getPlayer().getUniqueId());
+    }
+
+    /** How many screens deep the player is (1 = a root screen, 0 = no menu open). */
+    public int depth(Player player) {
+        Deque<Menu> stack = stacks.get(player.getUniqueId());
+        return stack == null ? 0 : stack.size();
     }
 
     /** For diagnostics: how many players currently have a menu history. */

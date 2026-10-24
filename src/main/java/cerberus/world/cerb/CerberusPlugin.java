@@ -53,7 +53,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private SkillManager skillManager;
     private AdminChestGUI adminChestGUI;
     private PlayerMenuGUI playerMenuGUI;
-    private SkillGUI skillGUI;
     private DatabaseManager databaseManager;
     private SpellManager spellManager;
     private SeaMonsterManager seaMonsterManager;
@@ -96,7 +95,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private ElementalInfusionManager elementalInfusionManager;
     private VirtualHealthListener virtualHealthListener;
     private SessionLogger sessionLogger;
-    private SkillDetailGUI skillDetailGUI;
 
     /** Players with combat debug mode enabled — see /cerb combatdebug */
     private final Set<UUID> combatDebugPlayers = ConcurrentHashMap.newKeySet();
@@ -370,8 +368,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         });
         sessionLogger = new SessionLogger(this);
 
-        // GUI identity keys and skill definitions (data-driven GUI metadata)
-        GuiIdentity.init(this);
+        // Skill catalog (names, descriptions, training, effects; skills.yml overrides)
         SkillDefinitions.reload(this);
 
         defenseBarManager.applyCombatConfig(combatConfig);
@@ -390,9 +387,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
 
     private void initGUIs() {
-        skillGUI = new SkillGUI(this, skillManager);
-        playerMenuGUI = new PlayerMenuGUI(this, skillManager);
-        skillDetailGUI = new SkillDetailGUI(this, skillManager, combatConfig);
+        playerMenuGUI = new PlayerMenuGUI(this); // Player Menu: hotbar head, /menu, hub destinations
         // Control Center: menu framework + shared mob test tools + the admin panel itself
         menuManager = new GUIs.menu.MenuManager(this);
         mobTestService = new Manager.MobTestService(this);
@@ -413,8 +408,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         Objects.requireNonNull(getCommand("giveTestItem")).setExecutor(new GiveTestItemCommand(this));
         Objects.requireNonNull(getCommand("givetestarmor")).setExecutor(new GiveTestArmorCommand());
         Objects.requireNonNull(getCommand("stats")).setExecutor((sender, command, label, args) -> {
-            if (sender instanceof Player p) menuManager.openRoot(p, new GUIs.stats.StatsMenu(menuManager, this));
+            if (sender instanceof Player p) menuManager.openRoot(p, new GUIs.stats.StatsMenu(this));
             else sender.sendMessage("Only players have stats.");
+            return true;
+        });
+        Objects.requireNonNull(getCommand("menu")).setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player p) playerMenuGUI.open(p);
+            else sender.sendMessage("Only players have a Player Menu.");
             return true;
         });
         var cerbCmd = Objects.requireNonNull(getCommand("cerb"));
@@ -435,15 +435,15 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 databaseManager, skillManager, playerVirtualHealthManager,
                 playerDefenseManager, playerManaManager, playerHUDManager,
                 playerStrengthManager, effectManager, defenseBarManager,
-                skillGUI, playerMenuGUI, adminChestGUI, mobRegistry,
+                playerMenuGUI, adminChestGUI, mobRegistry,
                 chunkDiscoveryManager
         );
         playerSessionManager = new PlayerSessionManager(this, services);
         pm.registerEvents(playerSessionManager, this);
 
         // ── Combat & mobs ──
-        pm.registerEvents(new CombatListener(this, skillManager, spellManager, playerMenuGUI, skillGUI, mobRegistry), this);
-        pm.registerEvents(new MobKillListener(this, skillManager, skillGUI, skillMapper, mobRegistry), this);
+        pm.registerEvents(new CombatListener(this, skillManager, spellManager, mobRegistry), this);
+        pm.registerEvents(new MobKillListener(this, skillManager, skillMapper, mobRegistry), this);
         this.mobScalingListener = new MobScalingListener(this);
         pm.registerEvents(mobScalingListener, this);
         pm.registerEvents(mobLabelManager, this);
@@ -461,10 +461,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         spellManager.setVirtualHealthListener(virtualHealthListener);
         spellManager.setSkillManager(skillManager);
         pm.registerEvents(virtualHealthListener, this);
-
-        // ── GUIs & interactions (unified listener replaces old per-GUI listeners) ──
-        pm.registerEvents(new UnifiedGUIListener(this, skillManager, skillGUI, skillDetailGUI, playerMenuGUI, adminChestGUI), this);
-        pm.registerEvents(new PlayerJoinListener(skillManager, this, skillGUI, playerMenuGUI), this);
 
         // ── Other ──
         pm.registerEvents(new CustomItemListener(spellManager, this), this);
@@ -636,7 +632,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             }
             int lvl = skillManager.getSkillLevel(target, skill);
             int xp = skillManager.getSkillXP(target, skill);
-            sender.sendMessage(ChatColor.GREEN + target.getName() + ": " + skill + " is now level " + lvl + " (" + xp + " XP)");
+            String shown = SkillNames.display(skill); // "Skills." would name the class Skills.Skills here
+            sender.sendMessage(ChatColor.GREEN + target.getName() + ": " + (shown.equals(skill) ? skill : shown + " (" + skill + ")")
+                    + " is now level " + lvl + " (" + xp + " XP)");
         }, null);
     }
 
@@ -691,9 +689,14 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     /** /cerb showqueues */
+    /** Runtime counters for checking load (e.g. that browsing menus does no database work). */
     public void showQueues(CommandSender sender) {
-        // TODO: iterate your scheduled tasks & HUD‐update timers and print them
-        sender.sendMessage(ChatColor.YELLOW + "Queue listing not implemented yet.");
+        sender.sendMessage(ChatColor.GOLD + "Cerberus runtime counters:");
+        sender.sendMessage(ChatColor.GRAY + "Database connections since start: " + ChatColor.WHITE + databaseManager.connectionsOpened());
+        sender.sendMessage(ChatColor.GRAY + "Attribute rebuilds since start: " + ChatColor.WHITE + attributeService.rebuildCount());
+        sender.sendMessage(ChatColor.GRAY + "Attribute previews since start: " + ChatColor.WHITE + attributeService.previewCount());
+        sender.sendMessage(ChatColor.GRAY + "Players with a menu open: " + ChatColor.WHITE + menuManager.activeViewers());
+        sender.sendMessage(ChatColor.GRAY + "Mob HP pools tracked: " + ChatColor.WHITE + mobVirtualHealthManager.size());
     }
 
     // ---------------------------
@@ -815,7 +818,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             if (adminChestGUI.isAdminChest(item)) {
                 event.setCancelled(true);
-                adminChestGUI.open(player);
+                if (event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND) adminChestGUI.open(player); // once, not again for the off hand
                 return true;
             }
         }
@@ -829,11 +832,31 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             return false;
         }
         if (playerMenuGUI.isPlayerMenuHead(item)) {
-            event.setCancelled(true);
-            playerMenuGUI.open(player);
+            event.setCancelled(true); // never placed as a block, never equipped
+            // The client follows a main-hand right-click with an off-hand one: open once.
+            if (event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND) playerMenuGUI.open(player);
             return true;
         }
         return false;
+    }
+
+    /** Right-clicking a mob, item frame, villager... with the head opens the menu instead of giving the head away. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onInteractEntityWithMenuItem(PlayerInteractEntityEvent e) {
+        ItemStack hand = e.getPlayer().getInventory().getItemInMainHand();
+        if (!isProtectedMenuItem(hand)) return;
+        e.setCancelled(true);
+        if (e.getHand() == org.bukkit.inventory.EquipmentSlot.HAND && playerMenuGUI.isPlayerMenuHead(hand)) {
+            playerMenuGUI.open(e.getPlayer());
+        }
+    }
+
+    /** Armor stands have their own event: the head must never end up on one. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onArmorStandWithMenuItem(PlayerArmorStandManipulateEvent e) {
+        if (isProtectedMenuItem(e.getPlayerItem()) || isProtectedMenuItem(e.getPlayer().getInventory().getItemInMainHand())) {
+            e.setCancelled(true);
+        }
     }
 
 

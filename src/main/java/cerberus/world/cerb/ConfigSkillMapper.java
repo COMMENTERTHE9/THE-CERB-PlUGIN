@@ -198,4 +198,37 @@ public class ConfigSkillMapper {
     public boolean isMagicSkill(String skillName) {
         return magicSkillNames.contains(skillName);
     }
+
+    /**
+     * What a player must hold for a kill to train {@code skillName}, in words ("any sword",
+     * "mace, trident, any axe"), or "" when kills never train it (no rule, or kill XP for spell
+     * focus items turned off). Read from the same rules {@link #resolve} uses.
+     */
+    public String describeKillItems(String skillName) {
+        if (isMagicSkill(skillName) && !awardKillXpForSpellFocus) return "";
+        for (SkillTrigger t : triggers) {
+            if (t.skillName().equals(skillName)) {
+                List<String> regex = new ArrayList<>();
+                for (Pattern p : t.regexPatterns()) regex.add(p.pattern());
+                return describeItems(new TreeSet<>(t.exactMaterials()), regex);
+            }
+        }
+        return "";
+    }
+
+    /** Pure: material names and name patterns as words. Exact names first, then patterns. */
+    static String describeItems(Collection<String> materials, List<String> regexes) {
+        List<String> parts = new ArrayList<>();
+        for (String m : materials) {
+            parts.add(m.equals("AIR") ? "an empty hand" : m.toLowerCase(Locale.ROOT).replace('_', ' '));
+        }
+        for (String r : regexes) {
+            java.util.regex.Matcher suffix = Pattern.compile("^\\.\\*_([A-Za-z]+)$").matcher(r);
+            java.util.regex.Matcher contains = Pattern.compile("^\\.\\*([A-Za-z]+)\\.\\*$").matcher(r);
+            if (suffix.matches()) parts.add("any " + suffix.group(1).toLowerCase(Locale.ROOT));
+            else if (contains.matches()) parts.add("any " + contains.group(1).toLowerCase(Locale.ROOT));
+            else parts.add("items matching " + r);
+        }
+        return String.join(", ", parts);
+    }
 }

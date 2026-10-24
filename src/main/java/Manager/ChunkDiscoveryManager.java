@@ -25,7 +25,8 @@ public class ChunkDiscoveryManager {
     private final Map<UUID, Set<ChunkKey>> visitedChunks = new ConcurrentHashMap<>();
 
     /** XP awarded per newly discovered chunk. */
-    private static final double XP_PER_CHUNK = 5.0;
+    /** Navigation XP for each chunk a player enters for the first time. */
+    public static final double XP_PER_CHUNK = 5.0;
 
     public ChunkDiscoveryManager(CerberusPlugin plugin, DatabaseManager database, SkillManager skills) {
         this.plugin = plugin;

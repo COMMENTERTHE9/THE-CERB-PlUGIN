@@ -116,6 +116,7 @@ final class ServerInfoMenu extends AdminMenu {
         v.set(31, Ui.item(Material.OBSERVER, ChatColor.WHITE + "Runtime state",
                 Ui.lore().stat("Player sessions", String.valueOf(sessions))
                         .stat("Mob HP pools tracked", Fmt.grouped(plugin.getMobVirtualHealthManager().size()))
-                        .stat("Admins with menus open", String.valueOf(panel.menus().activeViewers())).build()));
+                        .stat("Players with a menu open", String.valueOf(panel.menus().activeViewers()))
+                        .stat("Database connections since start", Fmt.grouped(plugin.getDatabaseManager().connectionsOpened())).build()));
     }
 }

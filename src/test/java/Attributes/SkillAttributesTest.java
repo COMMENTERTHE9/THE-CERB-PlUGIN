@@ -66,6 +66,13 @@ class SkillAttributesTest {
     }
 
     @Test
+    void labelsUseThePlayerFacingNameButSourceIdsKeepTheInternalOne() {
+        List<Contribution> cs = SkillAttributes.contributions(Map.of("Navigation", 8), R);
+        assertEquals("Pathfinding 8", cs.get(0).label());
+        assertEquals("skill:Navigation", cs.get(0).sourceId());
+    }
+
+    @Test
     void weaponClassFromMaterial() {
         assertEquals(WeaponClass.SWORD, WeaponClass.ofMaterial("NETHERITE_SWORD"));
         assertEquals(WeaponClass.AXE, WeaponClass.ofMaterial("IRON_AXE"));

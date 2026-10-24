@@ -123,8 +123,8 @@ async function openStats() {
   bot.setQuickBarSlot(8); await sleep(300);
   bot.activateItem(); await sleep(1200);
   if (!(await waitTitle(/Player Menu/))) return false;
-  await click(29, 1200);
-  return waitTitle(/Your Stats/);
+  await click(21, 1200); // hub: Stats & Attributes
+  return waitTitle(/Stats & Attributes/);
 }
 
 async function stats() {
@@ -145,7 +145,7 @@ async function stats() {
   if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }
   bot.setQuickBarSlot(heldSlot); await sleep(300);
   await cmd('/stats', 1500);
-  const viaCommand = /Your Stats/.test(title());
+  const viaCommand = /Stats & Attributes/.test(title());
   check('/stats opens the page', viaCommand, title());
   if (!viaCommand) return;
   check('A level change shows immediately (Blade Mastery 50 -> Power 50, x3.50)', /Swords: 50\.0 +-> +x3\.50 damage/.test(slotLore(10)), slotLore(10));

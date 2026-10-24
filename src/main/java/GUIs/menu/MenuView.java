@@ -54,6 +54,14 @@ public final class MenuView {
         holder.bind(slot, action);
     }
 
+    /** Fill every slot that is still empty with a filler pane (call last). */
+    public void fill(Material glass) {
+        ItemStack pane = Ui.filler(glass);
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            if (inventory.getItem(slot) == null) inventory.setItem(slot, pane);
+        }
+    }
+
     /** Fill a whole row with a filler pane. */
     public void row(int row, Material glass) {
         ItemStack pane = Ui.filler(glass);

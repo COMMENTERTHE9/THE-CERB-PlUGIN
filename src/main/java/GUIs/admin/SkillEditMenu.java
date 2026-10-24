@@ -6,6 +6,7 @@ import GUIs.menu.MenuClick;
 import GUIs.menu.MenuView;
 import GUIs.menu.Ui;
 import Skills.SkillManager;
+import Skills.SkillNames;
 import Skills.SkillProgression;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -35,7 +36,13 @@ final class SkillEditMenu extends AdminMenu {
         this.skill = skill;
     }
 
-    @Override public String title() { return PREFIX + skill; }
+    @Override public String title() { return PREFIX + SkillNames.display(skill); }
+
+    /** For admins: the name players see, plus the internal name when they differ. */
+    private String label() {
+        String shown = SkillNames.display(skill);
+        return shown.equals(skill) ? skill : shown + " (" + skill + ")";
+    }
 
     @Override
     protected void build(MenuView v) {
@@ -57,9 +64,10 @@ final class SkillEditMenu extends AdminMenu {
         if (!max) head.raw(ChatColor.GREEN + Fmt.bar(xp, req, 20)).stat("XP", Fmt.grouped(xp) + " / " + Fmt.grouped(req))
                 .stat("XP to next level", Fmt.grouped(req - xp));
         else head.raw(ChatColor.GOLD + "MAX LEVEL");
+        if (SkillNames.formerName(skill) != null) head.stat("Internal name", skill + " (commands, database)");
         if (d != null && d.description() != null) head.gap().text(d.description());
         v.set(MenuView.HEADER, Ui.item(d == null || d.icon() == null ? Material.BOOK : d.icon(),
-                (d == null ? ChatColor.WHITE : d.category().color) + "" + ChatColor.BOLD + skill, head.build()));
+                (d == null ? ChatColor.WHITE : d.category().color) + "" + ChatColor.BOLD + SkillNames.display(skill), head.build()));
 
         // Row 2: step the level (applied to the level at the moment of the click, not when drawn)
         stepButton(v, 19, Material.RED_CONCRETE, -10, lvl);
@@ -120,12 +128,12 @@ final class SkillEditMenu extends AdminMenu {
         Player t = Bukkit.getPlayer(targetId);
         if (t == null) { Ui.fail(admin, "That player is no longer online."); return; }
         int expected = plugin.getSkillManager().getSkillLevel(t, skill);
-        if (newLevel == expected) { Ui.info(admin, skill + " is already level " + expected + "."); return; }
+        if (newLevel == expected) { Ui.info(admin, label() + " is already level " + expected + "."); return; }
         Runnable apply = () -> changePlayer(admin, targetId, target -> {
             SkillManager sm = plugin.getSkillManager();
             int before = sm.getSkillLevel(target, skill);
             if (before != expected) {
-                menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s " + skill + " changed to level "
+                menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s " + label() + " changed to level "
                         + before + " meanwhile - nothing changed. Check and try again."));
                 return;
             }
@@ -133,12 +141,12 @@ final class SkillEditMenu extends AdminMenu {
                 menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s skills are not loaded yet - nothing changed."));
                 return;
             }
-            panel.audit(admin, "set " + target.getName() + "'s " + skill + " " + before + " -> " + newLevel);
-            notifyTarget(admin, target, "set your " + skill + " to level " + newLevel + ".");
-            menus.onPlayerThread(admin, () -> Ui.ok(admin, target.getName() + ": " + skill + " " + before + " -> " + newLevel));
+            panel.audit(admin, "set " + target.getName() + "'s " + label() + " " + before + " -> " + newLevel);
+            notifyTarget(admin, target, "set your " + SkillNames.display(skill) + " to level " + newLevel + ".");
+            menus.onPlayerThread(admin, () -> Ui.ok(admin, target.getName() + ": " + label() + " " + before + " -> " + newLevel));
         });
         if (newLevel < expected) {
-            confirm(admin, "Lower " + skill + "?", List.of(
+            confirm(admin, "Lower " + SkillNames.display(skill) + "?", List.of(
                     t.getName() + ": level " + expected + " -> " + newLevel,
                     "XP into the level resets to 0.",
                     "Levels lost this way are not restored automatically."), p -> apply.run());
@@ -158,7 +166,7 @@ final class SkillEditMenu extends AdminMenu {
             }
             int before = sm.getSkillLevel(target, skill);
             if (before >= SkillProgression.MAX_LEVEL) {
-                menus.onPlayerThread(admin, () -> Ui.info(admin, skill + " is already at max level."));
+                menus.onPlayerThread(admin, () -> Ui.info(admin, label() + " is already at max level."));
                 return;
             }
             long grant = amount == FILL_TO_NEXT
@@ -166,9 +174,9 @@ final class SkillEditMenu extends AdminMenu {
                     : amount;
             sm.addXpAndCheckLevelUp(skill, grant, target);
             int after = sm.getSkillLevel(target, skill);
-            panel.audit(admin, "granted " + grant + " " + skill + " XP to " + target.getName() + " (level " + before + " -> " + after + ")");
-            notifyTarget(admin, target, "granted you " + Fmt.grouped(grant) + " " + skill + " XP.");
-            menus.onPlayerThread(admin, () -> Ui.ok(admin, "+" + Fmt.grouped(grant) + " " + skill + " XP to " + target.getName()
+            panel.audit(admin, "granted " + grant + " " + label() + " XP to " + target.getName() + " (level " + before + " -> " + after + ")");
+            notifyTarget(admin, target, "granted you " + Fmt.grouped(grant) + " " + SkillNames.display(skill) + " XP.");
+            menus.onPlayerThread(admin, () -> Ui.ok(admin, "+" + Fmt.grouped(grant) + " " + label() + " XP to " + target.getName()
                     + (after != before ? " (level " + before + " -> " + after + ")" : "")));
         });
     }

@@ -13,6 +13,9 @@ commands:
   stats:
     description: Your character sheet - attributes, damage, crits and what your next levels give.
     usage: /<command>
+  menu:
+    description: Open your Player Menu (same as right-clicking the head in hotbar slot 9).
+    usage: /<command>
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

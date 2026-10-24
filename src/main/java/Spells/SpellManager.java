@@ -12,6 +12,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SpellManager {
+    /** XP for each successful cast: Spell Weaving and Intelligence on any spell, Elemental Mastery on Fireball. */
+    public static final double SPELL_WEAVING_CAST_XP = 15;
+    public static final double ELEMENTAL_MASTERY_FIREBALL_XP = 10;
+    public static final double INTELLIGENCE_CAST_XP = 5;
+
     private final Map<String, Spell> spells;
     private final PlayerManaManager playerManaManager;
     private final EffectManager effectManager;
@@ -56,15 +61,15 @@ public class SpellManager {
             // so spamming with no mana still levelled the magic skills)
             if (cast && skillManager != null) {
                 // Spell Weaving: XP for casting any spell
-                skillManager.addXpAndCheckLevelUp("Spell Weaving", 15, player);
+                skillManager.addXpAndCheckLevelUp("Spell Weaving", SPELL_WEAVING_CAST_XP, player);
 
                 // Elemental Mastery: bonus XP for elemental spells
                 if (name.equals("Fireball")) {
-                    skillManager.addXpAndCheckLevelUp("Elemental Mastery", 10, player);
+                    skillManager.addXpAndCheckLevelUp("Elemental Mastery", ELEMENTAL_MASTERY_FIREBALL_XP, player);
                 }
 
                 // Intelligence: small XP for any mana usage
-                skillManager.addXpAndCheckLevelUp("Intelligence", 5, player);
+                skillManager.addXpAndCheckLevelUp("Intelligence", INTELLIGENCE_CAST_XP, player);
             }
         } else {
             player.sendMessage("Spell not found!");

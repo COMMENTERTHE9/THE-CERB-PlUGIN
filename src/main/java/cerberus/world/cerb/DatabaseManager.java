@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import cerberus.world.cerb.CerberusPlugin;
 // Import HashMap, Map, UUID, SecureRandom, and other necessary classes
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.security.SecureRandom;
@@ -42,6 +43,11 @@ public class DatabaseManager {
             "Navigation", "Animal Taming", "Riding", "Lockpicking",
             "Survival"
     };
+
+    /** Every skill row a new player gets: the internal skill names (never renamed). */
+    public static List<String> allSkillNames() {
+        return List.of(ALL_SKILL_NAMES);
+    }
 
     public DatabaseManager(CerberusPlugin plugin) {
         this.plugin    = plugin;
@@ -117,8 +123,17 @@ public class DatabaseManager {
         }
     }
 
+    /** Every query and save opens one connection, so this counts database work (diagnostics). */
+    private final java.util.concurrent.atomic.AtomicLong connectionsOpened = new java.util.concurrent.atomic.AtomicLong();
+
     public Connection getConnection() throws SQLException {
+        connectionsOpened.incrementAndGet();
         return DriverManager.getConnection(url);
+    }
+
+    /** Connections opened since startup (one per query or save batch). */
+    public long connectionsOpened() {
+        return connectionsOpened.get();
     }
 
     // Generate or retrieve custom identifier

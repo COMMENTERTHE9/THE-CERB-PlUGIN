@@ -7,10 +7,10 @@ import Attributes.AttributeSnapshot;
 import Attributes.KillXp;
 import Attributes.WeaponClass;
 import GUIs.menu.Fmt;
-import GUIs.menu.Menu;
-import GUIs.menu.MenuManager;
 import GUIs.menu.MenuView;
 import GUIs.menu.Ui;
+import GUIs.player.PlayerMenu;
+import GUIs.player.PlayerTheme;
 import Manager.Tier;
 import cerberus.world.cerb.CerberusPlugin;
 import org.bukkit.ChatColor;
@@ -25,30 +25,31 @@ import java.util.UUID;
  * what the held weapon does, survivability and magic, the next skill milestone, and kill XP.
  * Read-only; every number comes from the same {@link AttributeSnapshot} combat uses.
  */
-public final class StatsMenu extends Menu {
+public final class StatsMenu extends PlayerMenu {
 
     private static final Attribute[] ORDER = {Attribute.POWER, Attribute.AGILITY, Attribute.VITALITY,
             null, Attribute.FORTITUDE, Attribute.ESSENCE, Attribute.FORTUNE};
+    /** Weapon types the weapon tile cycles through. */
+    private static final WeaponClass[] WEAPONS = {WeaponClass.SWORD, WeaponClass.AXE, WeaponClass.MACE,
+            WeaponClass.TRIDENT, WeaponClass.SPEAR, WeaponClass.BOW, WeaponClass.UNARMED};
 
-    private final CerberusPlugin plugin;
+    /** Weapon type shown in the weapon/next-level/kill-XP tiles; null = held weapon, else the strongest. */
+    private WeaponClass selected;
 
-    public StatsMenu(MenuManager menus, CerberusPlugin plugin) {
-        super(menus);
-        this.plugin = plugin;
+    public StatsMenu(CerberusPlugin plugin) {
+        super(plugin);
     }
 
-    @Override public String title() { return ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "Your Stats"; }
+    @Override public String title() { return PlayerTheme.title("Stats & Attributes"); }
 
     @Override
-    protected void build(MenuView v) {
+    protected void content(MenuView v) {
         Player p = v.viewer();
         UUID id = p.getUniqueId();
         AttributeService svc = plugin.getAttributeService();
         AttributeSnapshot s = svc.get(id);
         AttributeRules rules = s.rules();
 
-        v.row(0, Material.PURPLE_STAINED_GLASS_PANE);
-        v.row(5, Material.BLACK_STAINED_GLASS_PANE);
         var realm = s.realm();
         boolean testRealm = plugin.getPlayerRealms().hasTestRealm(id);
         v.set(MenuView.HEADER, Ui.head(p, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + p.getName(), Ui.lore()
@@ -56,13 +57,11 @@ public final class StatsMenu extends Menu {
                         + ChatColor.GRAY + "  (" + realm.realm().epithet + ")")
                 .stat("Realm magnitude", Fmt.mult(realm.multiplier()) + (testRealm ? "  (test realm set by an admin)" : ""))
                 .raw(ChatColor.DARK_GRAY + "  Breakthroughs to higher realms are not built yet.")
-                .stat("Total skill level", String.valueOf(plugin.getSkillManager().getPlayerLevel(p)))
+                .stat("Total skill level", Fmt.grouped(GUIs.player.SkillView.totalLevel(plugin, id)))
                 .gap().text("Your attributes grow by themselves").text("as your skills level up.").build()));
 
         if (!svc.isTracked(id)) {
-            v.set(22, Ui.item(Material.CLOCK, ChatColor.YELLOW + "Loading your character...",
-                    Ui.lore().text("Your saved data is still loading.").hint("Try again in a moment").build()));
-            nav(v);
+            loading(v);
             return;
         }
 
@@ -84,32 +83,50 @@ public final class StatsMenu extends Menu {
                 .text("top, up to " + Fmt.mult(rules.limits().offenseBudget()) + " (crit chance max "
                         + Fmt.pct(rules.limits().critChance()) + ").").build()));
 
-        // Row 3: outcomes
+        // Row 3: outcomes. The weapon shown: the one in hand if it is a weapon, else the strongest
+        // weapon type (the hand usually holds the menu head here); clicking cycles weapon types.
         ItemStack hand = p.getInventory().getItemInMainHand();
-        WeaponClass wc = WeaponClass.ofMaterial(hand.getType().name());
-        v.set(29, weaponTile(s, wc, hand.getType(), svc.effect(Attribute.POWER)));
+        WeaponClass heldClass = WeaponClass.ofMaterial(hand.getType().name());
+        boolean holdingWeapon = heldClass != WeaponClass.OTHER && heldClass != WeaponClass.UNARMED;
+        WeaponClass wc = selected != null ? selected
+                : holdingWeapon ? heldClass : GUIs.player.PlayerHubMenu.bestPowerClass(s);
+        Material shown = selected == null && holdingWeapon ? hand.getType() : representative(wc);
+        v.button(29, weaponTile(s, wc, shown, selected == null && holdingWeapon, svc.effect(Attribute.POWER)),
+                c -> { selected = next(wc, c.type() == org.bukkit.event.inventory.ClickType.RIGHT ? -1 : 1); menus.refresh(c.player()); });
         v.set(31, survivalTile(p, s, svc));
         v.set(33, magicTile(p, s, svc));
 
         // Row 4: progression
         v.set(38, milestoneTile(svc, id, s, wc));
-        v.set(40, killXpTile(p, hand.getType()));
-        v.button(42, Ui.item(Material.ENCHANTED_BOOK, ChatColor.GOLD + "Skills",
-                Ui.lore().text("Levels and XP of every skill.").hint("Click to open").build()),
-                c -> plugin.getPlayerMenuGUI().openSkillManagement(c.player()));
-        nav(v);
-    }
-
-    private void nav(MenuView v) {
-        v.button(MenuView.BACK, Ui.item(Material.ARROW, ChatColor.YELLOW + "Back",
-                Ui.lore().text("Player Menu").build()), c -> plugin.getPlayerMenuGUI().open(c.player()));
+        v.set(40, killXpTile(p, representative(wc), wc));
+        v.button(42, Ui.item(Material.EXPERIENCE_BOTTLE, ChatColor.GOLD + "Skills",
+                Ui.lore().text("Levels, XP and what every skill gives.").hint("Click to open").build()),
+                c -> menus.open(c.player(), new GUIs.player.SkillsMenu(plugin)));
         v.refreshButton();
-        v.button(MenuView.CLOSE, Ui.item(Material.BARRIER, ChatColor.RED + "Close"), c -> menus.close(c.player()));
     }
 
-    private static ItemStack weaponTile(AttributeSnapshot s, WeaponClass wc, Material held, AttributeService.Effect effect) {
-        Ui.Lore l = Ui.lore().stat("Holding", held == Material.AIR ? "nothing (fists)" : Fmt.title(held.name()))
-                .stat("Weapon type", wc.displayName);
+    private static WeaponClass next(WeaponClass current, int step) {
+        int i = 0;
+        for (int k = 0; k < WEAPONS.length; k++) if (WEAPONS[k] == current) i = k;
+        return WEAPONS[Math.floorMod(i + step, WEAPONS.length)];
+    }
+
+    /** An item of each weapon type, for the icon and for the kill-XP skill lookup (skills.yml). */
+    private static Material representative(WeaponClass c) {
+        return switch (c) {
+            case SWORD -> Material.IRON_SWORD;
+            case AXE -> Material.IRON_AXE;
+            case MACE -> Material.MACE;
+            case TRIDENT -> Material.TRIDENT;
+            case SPEAR -> Material.STICK; // icon only; resolved by name below
+            case BOW -> Material.BOW;
+            case UNARMED, OTHER -> Material.AIR;
+        };
+    }
+
+    private static ItemStack weaponTile(AttributeSnapshot s, WeaponClass wc, Material held, boolean inHand, AttributeService.Effect effect) {
+        Ui.Lore l = Ui.lore().stat(inHand ? "Holding" : "Weapon type", inHand ? Fmt.title(held.name()) : wc.displayName);
+        if (inHand) l.stat("Weapon type", wc.displayName);
         double power = s.power(wc);
         l.stat("Power", Fmt.one(power) + "  ->  " + Fmt.mult(s.powerMultiplier(wc)) + " damage")
                 .stat("Crits", Fmt.pct(s.critChance()) + " for " + Fmt.mult(s.critMultiplier()))
@@ -123,7 +140,9 @@ public final class StatsMenu extends Menu {
                 .text("level-1 mob did with no Power.");
         if (wc == WeaponClass.OTHER) l.gap().warn("Not a weapon: only all-weapon Power counts.");
         l.gap().raw(AttributeView.effectLabel(effect, Attribute.POWER));
-        return Ui.item(Material.NETHERITE_SWORD, ChatColor.GOLD + "Your weapon right now", l.build());
+        l.hint("Left/right click: other weapon types");
+        Material icon = held == Material.AIR || held == Material.STICK ? Material.NETHERITE_SWORD : held;
+        return Ui.item(icon, ChatColor.GOLD + (inHand ? "Your weapon" : "Weapon: " + wc.displayName), l.build());
     }
 
     private ItemStack survivalTile(Player p, AttributeSnapshot s, AttributeService svc) {
@@ -166,16 +185,16 @@ public final class StatsMenu extends Menu {
                 AttributeSnapshot next = AttributeView.withSkillLevel(svc, id, weaponSkill, lvl + 1);
                 AttributeSnapshot ten = AttributeView.withSkillLevel(svc, id, weaponSkill,
                         Math.min(Skills.SkillProgression.MAX_LEVEL, lvl + 10));
-                l.text(weaponSkill + " " + lvl + " -> " + (lvl + 1) + ":")
-                        .raw(ChatColor.WHITE + "  " + wc.displayName + " damage " + Fmt.mult(s.powerMultiplier(wc))
+                l.text(Skills.SkillNames.display(weaponSkill) + " " + lvl + " -> " + (lvl + 1) + ":")
+                        .raw(ChatColor.WHITE + "  " + wc.singular + " damage " + Fmt.mult(s.powerMultiplier(wc))
                                 + ChatColor.GRAY + " -> " + ChatColor.GREEN + Fmt.mult(next.powerMultiplier(wc)))
                         .raw(ChatColor.GRAY + "  At level " + Math.min(Skills.SkillProgression.MAX_LEVEL, lvl + 10) + ": "
                                 + ChatColor.GREEN + Fmt.mult(ten.powerMultiplier(wc)));
             } else {
-                l.text(weaponSkill + " is at max level.");
+                l.text(Skills.SkillNames.display(weaponSkill) + " is at max level.");
             }
         } else {
-            l.text("Hold a weapon to see what its skill's").text("next level gives you.");
+            l.text("No skill adds Power to this weapon type yet.");
         }
         int crit = plugin.getSkillManager().getSkillLevel(id, "Critical Strike");
         if (crit < Skills.SkillProgression.MAX_LEVEL && rules.skillWeights().containsKey("Critical Strike")) {
@@ -187,18 +206,19 @@ public final class StatsMenu extends Menu {
         return Ui.item(Material.EXPERIENCE_BOTTLE, ChatColor.GREEN + "Next level gives", l.build());
     }
 
-    private ItemStack killXpTile(Player p, Material held) {
+    private ItemStack killXpTile(Player p, Material held, WeaponClass wc) {
         KillXp.Params kx = plugin.getAttributesConfig().killXp();
         var mapper = plugin.getSkillMapper();
-        String skill = mapper == null ? "" : mapper.resolve(held == Material.AIR ? "AIR" : held.name());
+        String material = wc == WeaponClass.SPEAR ? "IRON_SPEAR" : held == Material.AIR ? "AIR" : held.name();
+        String skill = mapper == null ? "" : mapper.resolve(material);
         Ui.Lore l = Ui.lore();
         if (skill.isEmpty()) {
-            l.text("This item trains no skill on kills.").text("Hold a weapon to see its kill XP.");
+            l.text("Kills with this weapon type don't").text("train a skill yet.");
         } else if (!kx.enabled()) {
             l.text("Kill XP v2 is turned off on this server.");
         } else {
             int lvl = plugin.getSkillManager().getSkillLevel(p, skill);
-            l.stat("Trains", skill + " (level " + lvl + ")").text("XP per kill:");
+            l.stat("Trains", Skills.SkillNames.display(skill) + " (level " + lvl + ")").text("XP per kill:");
             for (int mobLevel : new int[]{1, 10, 25, 50, 100}) {
                 long common = (long) KillXp.compute(mobLevel, Tier.COMMON.xpMultiplier, lvl, kx);
                 long rare = (long) KillXp.compute(mobLevel, Tier.RARE.xpMultiplier, lvl, kx);

@@ -1,6 +1,5 @@
 package Listener;
 
-import GUIs.SkillGUI;
 import Skills.SkillManager;
 import Skills.UtilitySkill;
 import CustomTags.ElementalTag;
@@ -26,18 +25,15 @@ public class MobKillListener implements Listener {
     private final CerberusPlugin plugin;
     private final ConfigSkillMapper skillMapper;
     private final SkillManager skillManager;
-    private final SkillGUI skillGUI;
     private final MobRegistry mobRegistry;
     private final NamespacedKey elementalTagKey;
 
     public MobKillListener(CerberusPlugin plugin,
                            SkillManager skillManager,
-                           SkillGUI skillGUI,
                            ConfigSkillMapper skillMapper,
                            MobRegistry mobRegistry) {
         this.plugin        = plugin;
         this.skillManager  = skillManager;
-        this.skillGUI      = skillGUI;
         this.elementalTagKey = new NamespacedKey(plugin, "elemental_tag");
         this.skillMapper   = skillMapper;
         this.mobRegistry   = mobRegistry;
@@ -91,7 +87,7 @@ public class MobKillListener implements Listener {
             xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
         }
         skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
-        player.sendMessage(ChatColor.GREEN + "+" + (long) Math.floor(xpGained) + " " + skillName + " XP");
+        player.sendMessage(ChatColor.GREEN + "+" + (long) Math.floor(xpGained) + " " + Skills.SkillNames.display(skillName) + " XP");
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

@@ -23,8 +23,6 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import cerberus.world.cerb.CerberusPlugin;
 import Skills.SkillManager;
 import Spells.SpellManager;
-import GUIs.PlayerMenuGUI;
-import GUIs.SkillGUI;
 import Manager.MobContext;
 import Manager.MobRegistry;
 
@@ -32,8 +30,6 @@ public class CombatListener implements Listener {
     private final CerberusPlugin      plugin;
     private final SkillManager         skillManager;
     private final SpellManager         spellManager;
-    private final PlayerMenuGUI        playerMenuGUI;
-    private final SkillGUI             skillGUI;
     private final MobRegistry          mobRegistry;
 
     // Combat tracking maps
@@ -46,14 +42,10 @@ public class CombatListener implements Listener {
     public CombatListener(CerberusPlugin plugin,
                           SkillManager skillManager,
                           SpellManager spellManager,
-                          PlayerMenuGUI playerMenuGUI,
-                          SkillGUI skillGUI,
                           MobRegistry mobRegistry) {
         this.plugin            = plugin;
         this.skillManager      = skillManager;
         this.spellManager      = spellManager;
-        this.playerMenuGUI     = playerMenuGUI;
-        this.skillGUI          = skillGUI;
         this.mobRegistry       = mobRegistry;
     }
 

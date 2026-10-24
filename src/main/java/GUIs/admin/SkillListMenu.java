@@ -32,13 +32,13 @@ final class SkillListMenu extends AdminMenu {
         return PREFIX + "Skills: " + (t != null ? t.getName() : "offline");
     }
 
-    /** Registered skill names, ordered Combat / Magic / Utility, then by name. */
+    /** Registered (internal) skill names, ordered Combat / Magic / Utility, then by the name players see. */
     static List<String> orderedSkills(SkillManager sm) {
         List<String> names = new ArrayList<>(sm.getSkills().keySet());
         names.sort(Comparator.comparingInt((String n) -> {
             SkillDefinitions.SkillDef d = SkillDefinitions.byName(n);
             return d == null ? 99 : d.category().ordinal();
-        }).thenComparing(String.CASE_INSENSITIVE_ORDER));
+        }).thenComparing(Skills.SkillNames::display, String.CASE_INSENSITIVE_ORDER)); // by the name shown
         return names;
     }
 
@@ -68,7 +68,8 @@ final class SkillListMenu extends AdminMenu {
             if (req > 0) lore.raw(ChatColor.GREEN + Fmt.bar(xp, req, 20)).stat("XP", Fmt.grouped(xp) + " / " + Fmt.grouped(req));
             else lore.raw(ChatColor.GOLD + "MAX LEVEL");
             if (d != null) lore.stat("Category", Fmt.title(d.category().name()));
-            return Ui.amount(Ui.item(icon, color + name, lore.hint("Click to edit").build()), Math.max(1, lvl));
+            if (Skills.SkillNames.formerName(name) != null) lore.stat("Internal name", name);
+            return Ui.amount(Ui.item(icon, color + Skills.SkillNames.display(name), lore.hint("Click to edit").build()), Math.max(1, lvl));
         }, name -> c -> open(c.player(), new SkillEditMenu(panel, targetId, name)), np -> page = np);
     }
 }

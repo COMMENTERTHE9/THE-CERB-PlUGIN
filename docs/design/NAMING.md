@@ -57,6 +57,28 @@ Ten Realms, 1:1 with the ten tiers (and the ten Bands and the 1–100 level curv
 
 ---
 
+## Skill display names (Player Menu 2.0, 2026-10-24)
+
+A light polish, not a renaming pass: four skills read better under a new name, the other 31 keep
+theirs (Blade Mastery, Critical Strike... are already good names).
+
+| Internal name (database, config, commands) | Shown to players |
+|---|---|
+| Heavy Armor Training | **Heavy Armor Mastery** |
+| First Aid | **Field Medicine** |
+| Mana Regeneration | **Essence Regeneration** (Essence = the Mana pool's name, see glossary) |
+| Navigation | **Pathfinding** |
+
+- Only text changes. The internal name stays the database key, the skills.yml / attributes.yml
+  key and the XP route, so no level or XP moves. Code: `Skills/SkillNames.java`.
+- Commands accept both names (`/cerb skill Steve Pathfinding level 5` = `... Navigation ...`);
+  admin screens show "Pathfinding (Navigation)"; skill pages say "Formerly Navigation".
+- A server can rename any skill in skills.yml: `skill-gui.<internal name>.display-name`.
+- Descriptions are short identity lines; what a skill actually does is listed on its page with an
+  honest status (live / against players only / not active yet). Catalog: `GUIs/SkillDefinitions.java`.
+
+---
+
 ## Apply-going-forward
 
 - New docs and code use the canonical Realm names and the right-hand glossary terms.
