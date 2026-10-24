@@ -1,25 +1,6 @@
 @echo off
-setlocal
-
-:: ── Create directories if missing ──
-if not exist "test-server\plugins" mkdir "test-server\plugins"
-
-:: ── Build ──
-echo Building Cerberus plugin...
-call mvnw.cmd package -q
-if errorlevel 1 (
-    echo BUILD FAILED
-    pause
-    exit /b 1
-)
-
-if not exist "target\Cerberus.jar" (
-    echo ERROR: Build succeeded but target\Cerberus.jar not found.
-    pause
-    exit /b 1
-)
-
-:: ── Deploy ──
-copy /Y "target\Cerberus.jar" "test-server\plugins\Cerberus.jar" >nul
-echo Deployed! Stop and restart the server to load changes.
+rem Build the plugin and copy it into test-server\plugins (server must be stopped).
+rem All logic lives in tools\cerb.ps1 (see RESTART_GUIDE.md).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\cerb.ps1" deploy
+echo.
 pause

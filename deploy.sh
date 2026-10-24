@@ -1,18 +1,4 @@
-#!/bin/bash
-set -e
-
-# ── Create directories if missing ──
-mkdir -p test-server/plugins
-
-# ── Build ──
-echo "Building Cerberus plugin..."
-./mvnw package -q
-
-if [ ! -f target/Cerberus.jar ]; then
-    echo "ERROR: Build succeeded but target/Cerberus.jar not found."
-    exit 1
-fi
-
-# ── Deploy ──
-cp target/Cerberus.jar test-server/plugins/Cerberus.jar
-echo "Deployed! Stop and restart the server to load changes."
+#!/usr/bin/env bash
+# Build the plugin and copy it into test-server/plugins (server must be stopped).
+# All logic lives in tools/cerb.sh (see RESTART_GUIDE.md).
+exec "$(dirname "$0")/tools/cerb.sh" deploy "$@"

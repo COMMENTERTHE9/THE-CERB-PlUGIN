@@ -1,0 +1,6 @@
+# Windows batch files need CRLF; shell scripts need LF - regardless of local git settings.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.sh   text eol=lf
+mvnw   text eol=lf
+*.ps1  text eol=lf
