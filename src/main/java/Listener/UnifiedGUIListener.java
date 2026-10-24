@@ -110,6 +110,8 @@ public class UnifiedGUIListener implements Listener {
     private void handlePlayerMenu(Player player, String action, String data) {
         switch (action) {
             case "open_skills" -> playerMenuGUI.openSkillManagement(player);
+            case "open_stats" -> openFolia(player, () ->
+                    plugin.getMenuManager().openRoot(player, new GUIs.stats.StatsMenu(plugin.getMenuManager(), plugin)));
             case "open_recipes",
                  "open_collections",
                  "open_features",

@@ -238,6 +238,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     private Attributes.AttributesConfig attributesConfig;
+    private Attributes.AttributeService attributeService;
+
+    public Attributes.AttributeService getAttributeService() { return attributeService; }
 
     public Attributes.AttributesConfig getAttributesConfig() { return attributesConfig; }
 
@@ -334,6 +337,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         combatConfig = new CombatConfig(this);
         // After combat.yml: the attribute engine reuses its crit and lifesteal curves.
         attributesConfig = new Attributes.AttributesConfig(this, this::attributeCurves);
+        attributeService = new Attributes.AttributeService(attributesConfig::rules);
+        attributeService.addSource(new Attributes.SkillSource(skillManager));
+        skillManager.setLevelListener(new SkillManager.LevelListener() {
+            @Override public void loaded(java.util.UUID p) { attributeService.track(p); }
+            @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); }
+            @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); }
+        });
         sessionLogger = new SessionLogger(this);
 
         // GUI identity keys and skill definitions (data-driven GUI metadata)
@@ -378,6 +388,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         Objects.requireNonNull(getCommand("testregen")).setExecutor(new TestRegenCommand(playerVirtualHealthManager));
         Objects.requireNonNull(getCommand("giveTestItem")).setExecutor(new GiveTestItemCommand(this));
         Objects.requireNonNull(getCommand("givetestarmor")).setExecutor(new GiveTestArmorCommand());
+        Objects.requireNonNull(getCommand("stats")).setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player p) menuManager.openRoot(p, new GUIs.stats.StatsMenu(menuManager, this));
+            else sender.sendMessage("Only players have stats.");
+            return true;
+        });
         var cerbCmd = Objects.requireNonNull(getCommand("cerb"));
         cerbCmd.setExecutor(new CerbCommand(this));
         cerbCmd.setTabCompleter(new Commands.CerbTabCompleter(this));
@@ -819,6 +834,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     public AdminChestGUI getAdminChestGUI() { return adminChestGUI; }
     public PlayerMenuGUI getPlayerMenuGUI() { return playerMenuGUI; }
+
+    /** Which skill a weapon/item trains (skills.yml). */
+    public ConfigSkillMapper getSkillMapper() { return skillMapper; }
     public SpellManager getSpellManager() { return spellManager; }
     public SeaMonsterManager getSeaMonsterManager() { return seaMonsterManager; }
     public SkillManager getSkillManager() { return skillManager; }

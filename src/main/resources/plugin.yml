@@ -10,6 +10,9 @@ commands:
     usage: /cerb <reload|...|healthstate|showqueues>
     permission: cerb.admin
     permission-message: You do not have permission to use /cerb.
+  stats:
+    description: Your character sheet - attributes, damage, crits and what your next levels give.
+    usage: /<command>
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

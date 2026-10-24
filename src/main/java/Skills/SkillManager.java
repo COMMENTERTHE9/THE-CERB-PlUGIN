@@ -117,6 +117,25 @@ public class SkillManager {
         customPlayers.remove(playerUUID);
         playerSkillLevels.remove(playerUUID);
         playerSkillXP.remove(playerUUID);
+        levelListener.unloaded(playerUUID);
+    }
+
+    /** Told when a player's skill levels are loaded, change, or are unloaded (quit). Any thread. */
+    public interface LevelListener {
+        void loaded(UUID player);
+        void changed(UUID player);
+        void unloaded(UUID player);
+    }
+
+    private static final LevelListener NO_LISTENER = new LevelListener() {
+        public void loaded(UUID player) {}
+        public void changed(UUID player) {}
+        public void unloaded(UUID player) {}
+    };
+    private volatile LevelListener levelListener = NO_LISTENER;
+
+    public void setLevelListener(LevelListener listener) {
+        this.levelListener = listener == null ? NO_LISTENER : listener;
     }
 
     public void setPlayerManaManager(PlayerManaManager playerManaManager) {
@@ -255,6 +274,7 @@ public class SkillManager {
         for (int i = r.levelsGained() - 1; i >= 0; i--) {
             player.sendMessage(createLevelUpMessage(skillName, r.level() - i));
         }
+        if (r.levelsGained() > 0) levelListener.changed(player.getUniqueId());
         return r;
     }
 
@@ -360,6 +380,7 @@ public class SkillManager {
         levels.put(skillName, Math.max(1, SkillProgression.clampLevel(level)));
         xp.put(skillName, 0);
         saveSkills(player);
+        levelListener.changed(uid);
         return true;
     }
 
@@ -441,7 +462,12 @@ public class SkillManager {
 
     /** Get a specific player's level for a skill. */
     public int getSkillLevel(Player player, String skillName) {
-        Map<String, Integer> levels = playerSkillLevels.get(player.getUniqueId());
+        return getSkillLevel(player.getUniqueId(), skillName);
+    }
+
+    /** Same, by UUID. Reads a concurrent map, so any thread may call it. */
+    public int getSkillLevel(UUID playerId, String skillName) {
+        Map<String, Integer> levels = playerSkillLevels.get(playerId);
         return levels != null ? levels.getOrDefault(skillName, 1) : 1;
     }
 
@@ -498,6 +524,7 @@ public class SkillManager {
         }
         playerSkillLevels.put(uid, levels);
         playerSkillXP    .put(uid, xp);
+        levelListener.loaded(uid);
     }
 
     public int getPlayerLevel(Player player) {

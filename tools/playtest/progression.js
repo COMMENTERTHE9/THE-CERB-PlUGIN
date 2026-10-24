@@ -2,6 +2,7 @@
 // LOCAL SANDBOX servers only; the bot must be op.  Usage: node progression.js [phase]
 //   killxp  - kill XP v2 by mob level, anti-grind
 //   swings  - swings-to-kill table: Blade Mastery 1/50/100 vs zombie level 1/50 (prints numbers)
+//   stats   - Player Menu -> Stats page shows attributes, and updates after a level change
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -13,16 +14,33 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAM
 bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
 
+// Text of a chat component as mineflayer exposes it (NBT compound, JSON string, or JSON object).
+const plain = v => {
+  if (v == null) return '';
+  if (typeof v === 'string') { try { return plain(JSON.parse(v)); } catch { return v; } }
+  const s = JSON.stringify(v);
+  const nbt = [...s.matchAll(/"text":\{"type":"string","value":"([^"]*)"/g)].map(m => m[1]);
+  if (nbt.length) return nbt.join('');
+  return [...s.matchAll(/"text":"([^"]*)"/g)].map(m => m[1]).join('');
+};
+const title = () => bot.currentWindow ? plain(bot.currentWindow.title) : '';
+const slotName = i => { const it = bot.currentWindow && bot.currentWindow.slots[i]; return it ? plain(it.customName) : ''; };
+const slotLore = i => { const it = bot.currentWindow && bot.currentWindow.slots[i]; return it && it.customLore ? it.customLore.map(plain).join(' | ') : ''; };
+async function waitTitle(re, ms = 4000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (bot.currentWindow && re.test(title())) return true; await sleep(100); } return false; }
+async function click(i, wait = 800) { await bot.clickWindow(i, 0, 0); await sleep(wait); }
+
 async function cmd(c, wait = 1000) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
 const saw = (re, since) => chat.slice(since).find(m => re.test(m));
 const mobsNear = (name, r = 6) => Object.values(bot.entities).filter(e => e.name === name && e.position.distanceTo(bot.entity.position) < r);
 
+let heldSlot = 0;
 async function equip(item) {
   await cmd('/clear @s ' + item, 600);
   await cmd('/give @s ' + item, 900);
   const slot = bot.inventory.slots.findIndex((it, i) => it && it.name === item && i >= 36 && i <= 44);
   if (slot >= 0) bot.setQuickBarSlot(slot - 36);
   await sleep(300);
+  heldSlot = slot - 36;
   return slot >= 0;
 }
 
@@ -76,10 +94,50 @@ async function swings() {
   return rows;
 }
 
+async function openStats() {
+  if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(400); }
+  const head = bot.inventory.slots[44];
+  if (!head || head.name !== 'player_head') return false;
+  bot.setQuickBarSlot(8); await sleep(300);
+  bot.activateItem(); await sleep(1200);
+  if (!(await waitTitle(/Player Menu/))) return false;
+  await click(29, 1200);
+  return waitTitle(/Your Stats/);
+}
+
+async function stats() {
+  await cmd('/gamemode creative');
+  await equip('netherite_sword');
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
+  await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
+  check('Player Menu -> Stats opens', await openStats(), title());
+  check('Power tile shows sword Power from Blade Mastery 1', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)) && /Blade Mastery 1: \+1\.0 \(swords\)/.test(slotLore(10)), slotLore(10));
+  check('Power tile says which skills feed it', /Gained from.*Blade Mastery \+1 \(swords\).*Weapon Mastery \+0\.25/.test(slotLore(10)), slotLore(10));
+  check('Agility tile shows crit from Critical Strike', /Crit chance: 1[0-9]\.[0-9]%/.test(slotLore(11)), slotLore(11));
+  check('Tiles are honest about not being in combat yet', /not used in combat yet/.test(slotLore(10)), slotLore(10));
+  // Stats is opened from the Player Menu, so the held item there is the head; check with the sword in hand.
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
+  if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }
+  bot.setQuickBarSlot(heldSlot); await sleep(300);
+  await cmd('/stats', 1500);
+  const viaCommand = /Your Stats/.test(title());
+  check('/stats opens the page', viaCommand, title());
+  if (!viaCommand) return;
+  check('A level change shows immediately (Blade Mastery 50 -> Power 50, x3.50)', /Swords: 50\.0 +-> +x3\.50 damage/.test(slotLore(10)), slotLore(10));
+  check('Weapon tile reads the held sword', /Holding: Netherite Sword.*Power: 50\.0 +-> +x3\.50 damage.*Keeps pace with level-51 mobs/.test(slotLore(29)), slotLore(29));
+  check('Next-level tile previews Blade Mastery 51', /Blade Mastery 50 -> 51:.*x3\.50 -> x3\.55/.test(slotLore(38)), slotLore(38));
+  check('Kill XP tile lists XP per mob level', /Trains: Blade Mastery \(level 50\).*Level 1: 10 .*reduced.*Level 50: 334/.test(slotLore(40)), slotLore(40));
+  await click(45, 1200);
+  check('Back returns to the Player Menu', await waitTitle(/Player Menu/), title());
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
     if (phase === 'killxp') await killxp();
+    else if (phase === 'stats') await stats();
     else if (phase === 'swings') {
       const rows = await swings();
       const at = (bm, lvl) => rows.find(r => r.bm === bm && r.lvl === lvl).swings;

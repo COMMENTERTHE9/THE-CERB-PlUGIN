@@ -56,7 +56,7 @@ public final class AttributesConfig {
                     cfg.getDouble("kill-xp.anti-grind.factor", d.antiGrindFactor()),
                     cfg.getDouble("kill-xp.max-per-kill", d.maxPerKill()));
             List<String> problems = new ArrayList<>();
-            rules = parseRules(cfg.getConfigurationSection("attributes"), curves.get(), problems::add);
+            rules = parseRules(section(cfg, "attributes"), curves.get(), problems::add);
             problems.forEach(p -> plugin.getLogger().warning("[Attributes] attributes.yml: " + p));
             plugin.getLogger().info("[Attributes] Loaded attributes.yml (kill XP v2 " + (killXp.enabled() ? "on" : "off")
                     + ", " + rules.skillWeights().size() + " skills feed attributes, PvE offense "
@@ -75,7 +75,7 @@ public final class AttributesConfig {
         if (s == null) return new AttributeRules(def.skillWeights(), def.caps(), def.derived(), def.limits(), curves, def.switches());
 
         Map<String, List<AttributeRules.SkillWeight>> weights = new LinkedHashMap<>();
-        ConfigurationSection sk = s.getConfigurationSection("skills");
+        ConfigurationSection sk = section(s, "skills");
         if (sk == null) {
             weights.putAll(def.skillWeights());
         } else {
@@ -135,6 +135,15 @@ public final class AttributesConfig {
                 s.getBoolean("integration.essence", ds.essence()));
 
         return new AttributeRules(weights, caps, derived, limits, curves, switches);
+    }
+
+    /**
+     * The section at {@code path}, falling back to the jar defaults when the server's file
+     * doesn't have it (an attributes.yml from an older version). Unlike
+     * {@code getConfigurationSection}, this never substitutes a new empty section.
+     */
+    static ConfigurationSection section(ConfigurationSection parent, String path) {
+        return parent.get(path) instanceof ConfigurationSection c ? c : null;
     }
 
     private static double num(ConfigurationSection s, String path, double def, Consumer<String> problems) {

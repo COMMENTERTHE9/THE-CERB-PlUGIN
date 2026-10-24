@@ -134,10 +134,11 @@ public class PlayerMenuGUI {
                 ChatColor.GRAY + "Track your collected items."));
 
         // Row 4: secondary actions
-        gui.setItem(29, GuiBuilder.createActionItem(Material.BOOK,
-                ChatColor.DARK_BLUE + "General",
-                "coming_soon", "General",
-                ChatColor.GRAY + "Character stats and features."));
+        gui.setItem(29, GuiBuilder.createActionItem(Material.NETHER_STAR,
+                ChatColor.LIGHT_PURPLE + "Stats",
+                "open_stats", null,
+                ChatColor.GRAY + "Your attributes, damage, crits,",
+                ChatColor.GRAY + "and what your next levels give."));
 
         gui.setItem(31, GuiBuilder.createActionItem(Material.DRAGON_EGG,
                 ChatColor.DARK_PURPLE + "Mobs & Monsters",

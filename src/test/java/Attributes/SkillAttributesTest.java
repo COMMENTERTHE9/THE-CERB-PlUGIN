@@ -96,6 +96,32 @@ class SkillAttributesTest {
         assertEquals(R.switches(), parsed.switches());
     }
 
+    /** A server's attributes.yml from before the attributes section existed gets the shipped weights. */
+    @Test
+    void olderConfigFileFallsBackToTheShippedSection() throws Exception {
+        YamlConfiguration bundled;
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream("attributes.yml")) {
+            bundled = YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8));
+        }
+        YamlConfiguration old = new YamlConfiguration();
+        old.set("kill-xp.enabled", true);
+        old.setDefaults(bundled);
+        List<String> problems = new ArrayList<>();
+        AttributeRules parsed = AttributesConfig.parseRules(AttributesConfig.section(old, "attributes"),
+                AttributeRules.DEFAULT_CURVES, problems::add);
+        assertEquals(List.of(), problems);
+        assertEquals(R.skillWeights(), parsed.skillWeights());
+
+        // Same when the file has the section but not every part of it.
+        YamlConfiguration partial = new YamlConfiguration();
+        partial.set("attributes.caps.power", 250.0);
+        partial.setDefaults(bundled);
+        AttributeRules p2 = AttributesConfig.parseRules(AttributesConfig.section(partial, "attributes"),
+                AttributeRules.DEFAULT_CURVES, problems::add);
+        assertEquals(R.skillWeights(), p2.skillWeights());
+        assertEquals(250.0, p2.cap(Attribute.POWER));
+    }
+
     @Test
     void badConfigEntriesAreReportedAndSkipped() {
         YamlConfiguration cfg = new YamlConfiguration();
