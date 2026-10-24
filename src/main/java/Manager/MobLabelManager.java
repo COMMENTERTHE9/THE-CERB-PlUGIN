@@ -73,6 +73,7 @@ public final class MobLabelManager implements Listener {
     /** @param fraction the mob's current HP fraction [0,1] — lets a reloaded damaged mob show its real HP. */
     public void attach(LivingEntity mob, int level, Tier tier, double maxHp, double fraction) {
         if (mob == null) return;
+        if (isRideable(mob)) return; // the label rides as a passenger and would take the seat
         if (states.containsKey(mob.getUniqueId())) return; // idempotent — never double-label
 
         // DEFER one tick onto the mob's region thread. During CreatureSpawnEvent the mob is NOT
@@ -111,6 +112,19 @@ public final class MobLabelManager implements Listener {
             }
             states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp));
         }, null); // retired=null: if the mob is gone before next tick, just skip (nothing spawned yet)
+    }
+
+    /**
+     * Mobs a player can sit on. The label is mounted as a passenger, and these mobs accept only
+     * one passenger, so a labelled horse/pig/strider/camel/happy ghast/nautilus could not be
+     * ridden or tamed. They keep their scaled HP pool; they just get no floating label.
+     */
+    public static boolean isRideable(org.bukkit.entity.Entity e) {
+        return e instanceof org.bukkit.entity.AbstractHorse   // horse, donkey, mule, llama, camel
+                || e instanceof org.bukkit.entity.Steerable    // pig, strider
+                || e instanceof org.bukkit.entity.HappyGhast
+                || e instanceof org.bukkit.entity.AbstractNautilus
+                || e instanceof org.bukkit.entity.CamelHusk;
     }
 
     /** Update the HP shown on the label. {@code fraction} = remaining/max in [0,1]. */
