@@ -131,6 +131,14 @@ public class UnifiedGUIListener implements Listener {
                         new ComingSoonGUI(plugin).open(player, featureName,
                                 "This feature is under development."));
             }
+            // The menu buttons are built with action "coming_soon" + the feature name as data;
+            // without this case every button except Skills silently did nothing.
+            case "coming_soon" -> {
+                String featureName = (data == null || data.isEmpty()) ? "This feature" : data;
+                openFolia(player, () ->
+                        new ComingSoonGUI(plugin).open(player, featureName,
+                                "This feature is under development."));
+            }
             default -> {} // unknown action, ignore
         }
     }
@@ -166,6 +174,8 @@ public class UnifiedGUIListener implements Listener {
     private void handleSkillDetail(Player player, String action, String data) {
         switch (action) {
             case "upgrade" -> {
+                // Admin test tool only: +10 XP per click would let any player buy levels.
+                if (!player.hasPermission("cerb.admin")) return;
                 if (data != null && !data.isEmpty()) {
                     skillManager.addXpAndCheckLevelUp(data, 10, player);
                     skillDetailGUI.open(player, data); // reopen with updated values

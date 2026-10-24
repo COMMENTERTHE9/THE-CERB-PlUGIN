@@ -171,12 +171,16 @@ public class SkillDetailGUI {
         fillRowBorder(inv, 4, Material.BLACK_STAINED_GLASS_PANE);
         inv.setItem(36, GuiBuilder.createBackArrow(cat.name()));
 
-        if (!maxLevel) {
+        if (!maxLevel && player.hasPermission("cerb.admin")) {
             inv.setItem(44, GuiBuilder.createActionItem(Material.LIME_CONCRETE,
-                    ChatColor.GREEN + "" + ChatColor.BOLD + "Upgrade!",
-                    List.of(ChatColor.GRAY + "Click to level up",
+                    ChatColor.GREEN + "" + ChatColor.BOLD + "Admin: +10 XP",
+                    List.of(ChatColor.GRAY + "Test tool (admins only)",
                             ChatColor.GRAY + "XP: " + xp + " / " + reqXp),
                     "upgrade", skillName));
+        } else if (!maxLevel) {
+            inv.setItem(44, GuiBuilder.createItem(Material.EXPERIENCE_BOTTLE,
+                    ChatColor.GREEN + "Level up by using this skill",
+                    ChatColor.GRAY + "XP: " + xp + " / " + reqXp));
         } else {
             inv.setItem(44, GuiBuilder.createItem(Material.RED_CONCRETE,
                     ChatColor.RED + "Cannot Upgrade",
