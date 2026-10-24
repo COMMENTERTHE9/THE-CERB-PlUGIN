@@ -20,6 +20,9 @@ import java.util.Map;
 
 public class CerbCommand implements CommandExecutor {
 
+    private static final java.util.List<String> CONSOLE_SAFE =
+            java.util.List.of("reload", "status", "backup", "skill", "heal", "log");
+
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
@@ -35,8 +38,16 @@ public class CerbCommand implements CommandExecutor {
                              Command command,
                              String label,
                              String[] args) {
-        // only players with the cerb.admin node can do anything
-        if (!(sender instanceof Player) || !sender.hasPermission("cerb.admin")) {
+        // Players need cerb.admin. The server console may run the subcommands that never touch
+        // the sender's own entity and hand player work to that player's scheduler (Folia).
+        boolean console = sender instanceof org.bukkit.command.ConsoleCommandSender;
+        String first = args.length > 0 ? args[0].toLowerCase() : "";
+        if (console) {
+            if (!CONSOLE_SAFE.contains(first)) {
+                sender.sendMessage(ChatColor.RED + "From the console use: " + String.join(", ", CONSOLE_SAFE) + ". Other /cerb commands are in-game only.");
+                return true;
+            }
+        } else if (!(sender instanceof Player) || !sender.hasPermission("cerb.admin")) {
             sender.sendMessage(ChatColor.RED + "You lack permission.");
             return true;
         }
@@ -168,11 +179,13 @@ public class CerbCommand implements CommandExecutor {
                 break;
 
             case "speed":
-                handleSpeedDiag((Player) sender, args);
+                if (!(sender instanceof Player sp)) { sender.sendMessage(ChatColor.RED + "Run /cerb speed in-game."); break; }
+                handleSpeedDiag(sp, args);
                 break;
 
             case "spawn":
-                handleSpawn((Player) sender, args);
+                if (!(sender instanceof Player sw)) { sender.sendMessage(ChatColor.RED + "Run /cerb spawn in-game (it spawns at your position)."); break; }
+                handleSpawn(sw, args);
                 break;
 
             default:
@@ -190,8 +203,11 @@ public class CerbCommand implements CommandExecutor {
         Player target;
         if (args.length >= 2) {
             target = Bukkit.getPlayer(args[1]);
+        } else if (sender instanceof Player self) {
+            target = self;
         } else {
-            target = (Player) sender;
+            sender.sendMessage(ChatColor.RED + "Use: /cerb healthstate <player>");
+            return;
         }
 
         if (target == null) {

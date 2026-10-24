@@ -530,10 +530,35 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.YELLOW + "Mana adjustment is not implemented yet.");
     }
 
-    /** /cerb skill <player> <skill> <level|xp> <value> */
+    /**
+     * /cerb skill <player> <skill> <level|xp> <value>
+     * Skill names may use underscores for spaces (Blade_Mastery). "level" sets an exact level
+     * (0-100, XP reset to 0); "xp" adds XP through the normal award path (level-up messages).
+     */
     public void adjustSkill(CommandSender sender, String[] args) {
-        // TODO: parse args into target, skill name, "level" vs "xp", and value
-        sender.sendMessage(ChatColor.YELLOW + "Skill adjustment is not implemented yet.");
+        String usage = ChatColor.RED + "Use: /cerb skill <player> <skill> <level|xp> <value>   (e.g. /cerb skill Steve Blade_Mastery level 50)";
+        if (args.length != 5) { sender.sendMessage(usage); return; }
+        Player target = getServer().getPlayerExact(args[1]);
+        if (target == null) { sender.sendMessage(ChatColor.RED + "Player not online: " + args[1]); return; }
+        String skill = skillManager.findSkillName(args[2]);
+        if (skill == null) { sender.sendMessage(ChatColor.RED + "Unknown skill: " + args[2] + " (tab-complete shows the names)"); return; }
+        String mode = args[3].toLowerCase();
+        double value;
+        try { value = Double.parseDouble(args[4]); } catch (NumberFormatException e) { sender.sendMessage(usage); return; }
+        if (!mode.equals("level") && !mode.equals("xp")) { sender.sendMessage(usage); return; }
+        if (!Double.isFinite(value) || value < 0) { sender.sendMessage(ChatColor.RED + "Value must be a number >= 0."); return; }
+
+        // Skill state belongs to the target's region thread (Folia).
+        target.getScheduler().run(this, task -> {
+            if (mode.equals("level")) {
+                skillManager.setSkillLevel(target, skill, (int) value);
+            } else {
+                skillManager.addXpAndCheckLevelUp(skill, value, target);
+            }
+            int lvl = skillManager.getSkillLevel(target, skill);
+            int xp = skillManager.getSkillXP(target, skill);
+            sender.sendMessage(ChatColor.GREEN + target.getName() + ": " + skill + " is now level " + lvl + " (" + xp + " XP)");
+        }, null);
     }
 
     /** /cerb resetdata <player> */

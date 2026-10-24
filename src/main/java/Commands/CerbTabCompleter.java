@@ -125,7 +125,9 @@ public class CerbTabCompleter implements TabCompleter {
         SkillManager sm = plugin.getSkillManager();
         if (sm == null) return List.of();
         return sm.getSkills().keySet().stream()
+                .map(name -> name.replace(' ', '_'))   // one argument per skill name
                 .filter(name -> name.toLowerCase().startsWith(partial.toLowerCase()))
+                .sorted()
                 .collect(Collectors.toList());
     }
 

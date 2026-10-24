@@ -75,6 +75,15 @@ bot.once('spawn', async () => {
     check('/cerb spawn elite_zombie uses its RARE pool', !!saw(/Spawned elite_zombie \(Rare\)/, at) && eLabels.some(l => /K❤/.test(l)), eLabels.join(' | '));
     await cmd('/kill @e[type=zombie,distance=..16]', 800);
 
+    at = await cmd('/spawncustomzombie 10', 2500);
+    const bLabels = labelsNear();
+    check('High Health Zombie spawns with a named BOSS-tier label', bLabels.some(l => /High Health Zombie.*K❤/.test(l)), bLabels.join(' | '));
+    await cmd('/kill @e[type=zombie,distance=..16]', 800);
+
+    at = await cmd('/cerb skill ' + NAME + ' Blade_Mastery level 25', 1500);
+    check('/cerb skill sets a skill level', !!saw(/Blade Mastery is now level 25/, at), chat.slice(at).join(' / '));
+    await cmd('/cerb skill ' + NAME + ' Blade_Mastery level 1', 1000);
+
     await cmd('/summon minecraft:horse ~2 ~ ~ {Tame:1b,NoAI:1b}', 2500);
     const horse = mobsNear(['horse'])[0];
     bot.setQuickBarSlot(emptyHotbar());
