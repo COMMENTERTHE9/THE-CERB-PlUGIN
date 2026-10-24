@@ -6,9 +6,8 @@ Minecraft RPG plugin — cultivation / xianxia-flavored but **Western-named** �
 ## Tech
 - **Main class:** `cerberus.world.cerb.CerberusPlugin`
 - **Platform:** **Folia 1.21.11** (region-threaded — entity/player ops must run on the owning region thread; no main thread; use `teleportAsync` for cross-region; **NO ProtocolLib**)
-- **Java:** 21 with `--enable-preview`
-- **Build:** Maven wrapper. `JAVA_HOME` MUST point to **JDK 21** (not 25), or `--enable-preview` fails:
-  `$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.9.10-hotspot"; .\mvnw.cmd test`
+- **Java:** 21 (`maven.compiler.release=21`; no preview features). Any JDK **>= 21** builds it (21 and 25 verified) and Folia 1.21.11 runs on Java >= 21.
+- **Build/run:** see `RESTART_GUIDE.md`. `run.bat` = build + back up plugin data + deploy + start; `status.bat` reports Java/server/worlds/running state. Logic lives in `tools/cerb.ps1` (Windows) and `tools/cerb.sh` (Linux/macOS). Tests: `.\mvnw.cmd test`.
 - **DB:** SQLite, async via `AsyncSaveManager` (5 tables auto-create on startup)
 
 ## Design (read this first)
@@ -19,6 +18,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Mob virtual-HP pool + ×8 realm health curve (`MobVirtualHealthManager`; mobs hold billions+; vanilla MAX_HEALTH is cosmetic only)
 - ✅ First Aid runaway capped
 - ✅ Repo hygiene (removed the `Creb/` nested duplicate; `target/` untracked)
+- ✅ Playtest-readiness pass (2026-10-24): fresh-clone build, launcher scripts, kill-XP overflow + level cap, hotbar slot-9 item loss, rideable-mob labels, registry-mob spawn tier, particle cap, save coalescing, failed-load protection — each verified on a real Folia 1.21.11 server
 - ⬜ Next: Step 1–2 — the **Attribute stat-bus** (Vitality/Essence/Power/Fortitude/Agility/Fortune) + the constants treaty
 
 ## Key files
@@ -33,7 +33,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 ## Conventions
 - **Folia threading:** snapshot on the entity/region thread → async I/O → reschedule back. Never touch Bukkit entity/player APIs off-thread.
 - New content ships as **config** (mobs.yml / combat.yml / *.yml + a registry), not code.
-- Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (JDK 21).
+- Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (any JDK >= 21).
+- Verify gameplay changes on a running server, not just the build. In a cloud/Linux session, `tools/cerb.sh` can download Folia and run a local test server (see RESTART_GUIDE.md).
 - Commit working increments; keep the tree clean.
 
 ## History / audits
