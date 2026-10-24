@@ -192,6 +192,46 @@ public class DatabaseManager {
     }
 
 
+    /** A player's skill rows, loaded strictly (see {@link #loadPlayerSkillsStrict}). */
+    public record StrictSkills(String customId, Map<String, Integer> levels, Map<String, Integer> xp) {}
+
+    /**
+     * Load a player's custom ID and skill rows, throwing on any database error.
+     *
+     * <p>The other load methods log SQL errors and return empty maps, which the join path could
+     * not tell apart from a brand-new player: the session went ACTIVE with default levels and
+     * the next XP award saved level 1 over the real stored level. The join path uses this
+     * instead and refuses to activate the session when it throws.
+     */
+    public StrictSkills loadPlayerSkillsStrict(UUID playerUUID) throws SQLException {
+        try (Connection conn = getConnection()) {
+            String customId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT custom_id FROM player_custom_ids WHERE player_uuid = ?")) {
+                ps.setString(1, playerUUID.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    customId = rs.next() ? rs.getString("custom_id") : null;
+                }
+            }
+            if (customId == null) {
+                throw new SQLException("no custom_id row for " + playerUUID + " (creating it failed)");
+            }
+            Map<String, Integer> levels = new HashMap<>();
+            Map<String, Integer> xp = new HashMap<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT skill_name, skill_level, skill_xp FROM player_skills WHERE custom_id = ?")) {
+                ps.setString(1, customId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        levels.put(rs.getString("skill_name"), rs.getInt("skill_level"));
+                        xp.put(rs.getString("skill_name"), rs.getInt("skill_xp"));
+                    }
+                }
+            }
+            return new StrictSkills(customId, levels, xp);
+        }
+    }
+
     /**
      * Load all skill levels for a given custom_id.
      */

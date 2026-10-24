@@ -99,11 +99,15 @@ public class PlayerSessionManager implements Listener {
         session.setState(PlayerSession.State.LOADING_DATA);
 
         CompletableFuture.supplyAsync(() -> {
-            String customId = svc.database().getOrCreateCustomId(uuid, player.getName());
-            Map<String, Integer> levels = svc.database().loadPlayerSkillLevels(uuid);
-            Map<String, Integer> xp = svc.database().loadPlayerSkillXP(uuid);
+            svc.database().getOrCreateCustomId(uuid, player.getName());
+            cerberus.world.cerb.DatabaseManager.StrictSkills loaded;
+            try {
+                loaded = svc.database().loadPlayerSkillsStrict(uuid);
+            } catch (java.sql.SQLException e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
             java.util.Set<Manager.ChunkKey> chunks = svc.database().loadVisitedChunks(uuid);
-            return new SkillSnapshot(customId, levels, xp, chunks);
+            return new SkillSnapshot(loaded.customId(), loaded.levels(), loaded.xp(), chunks);
         }, dbExecutor).handle((data, ex) -> {
             player.getScheduler().run(plugin, task -> {
                 PlayerSession current = sessions.get(uuid);
@@ -113,9 +117,15 @@ public class PlayerSessionManager implements Listener {
                 }
 
                 if (ex != null) {
-                    log.severe("[PlayerSession] DB load failed for " + player.getName() + ": " + ex.getMessage());
-                    session.setState(PlayerSession.State.ACTIVE);
-                    completeJoinSetup(player);
+                    // Never play on empty defaults after a failed load: the first XP save would
+                    // overwrite the player's real stored levels. Disconnect instead; the stored
+                    // data is untouched and a rejoin retries the load.
+                    log.severe("[PlayerSession] DB load failed for " + player.getName()
+                            + " - disconnecting to protect saved progress: " + ex.getMessage());
+                    player.kick(net.kyori.adventure.text.Component.text(
+                            "Cerberus could not load your saved data (database error).\n"
+                            + "Your progress was not changed. Please rejoin; if this repeats, "
+                            + "check the server log."));
                     return;
                 }
 
