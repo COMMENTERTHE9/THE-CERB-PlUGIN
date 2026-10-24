@@ -388,7 +388,20 @@ public class PlayerSessionManager implements Listener {
 
 
     private void giveAdminChestIfNeeded(Player player) {
-        if (!player.hasPermission("cerberus.admin")) {
+        boolean admin = player.hasPermission(GUIs.admin.AdminPanel.PERMISSION);
+        if (!admin) {
+            // The item grants nothing without the permission, but non-admins shouldn't carry it.
+            int removed = 0;
+            for (int i = 0; i < player.getInventory().getSize(); i++) {
+                ItemStack item = player.getInventory().getItem(i);
+                if (item != null && svc.adminChestGUI().isAdminChest(item)) {
+                    player.getInventory().setItem(i, null);
+                    removed++;
+                }
+            }
+            if (removed > 0) {
+                log.info("[Admin] Removed " + removed + " Admin Control Panel item(s) from non-admin " + player.getName());
+            }
             return;
         }
 
@@ -403,7 +416,7 @@ public class PlayerSessionManager implements Listener {
 
         if (!hasAdminChest) {
             player.getInventory().addItem(svc.adminChestGUI().createAdminChest());
-            player.sendMessage(ChatColor.GREEN + "You have received the Admin Control Panel chest!");
+            player.sendMessage(ChatColor.GREEN + "You have received the Admin Control Panel chest! " + ChatColor.GRAY + "(or use /cerb panel)");
         } else if (adminChestCount > 1) {
             removeExcessAdminChests(player, adminChestCount);
         }

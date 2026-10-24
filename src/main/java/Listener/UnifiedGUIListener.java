@@ -82,8 +82,6 @@ public class UnifiedGUIListener implements Listener {
                  SKILL_MAGIC,
                  SKILL_UTILITY       -> handleSkillCategory(player, action, data);
             case SKILL_DETAIL        -> handleSkillDetail(player, action, data);
-            case ADMIN_PANEL         -> handleAdminPanel(player, action, data);
-            case ADMIN_COMMANDS      -> handleAdminCommands(player, action, data);
             case COMING_SOON         -> handleComingSoon(player, action, data);
         }
     }
@@ -197,36 +195,6 @@ public class UnifiedGUIListener implements Listener {
         }
     }
 
-    // ── Route: Admin Panel ──────────────────────────────────────────
-
-    private void handleAdminPanel(Player player, String action, String data) {
-        switch (action) {
-            case "open_regions" -> openFolia(player, () ->
-                    new ComingSoonGUI(plugin).open(player, "Region Management",
-                            "Region management has been removed."));
-            case "open_commands" -> openFolia(player, () ->
-                    openAdminCommandsMenu(player));
-            case "open_players" -> openFolia(player, () ->
-                    new ComingSoonGUI(plugin).open(player, "Player Management",
-                            "Admin player management tools coming soon."));
-            case "back" -> player.closeInventory();
-            default -> {}
-        }
-    }
-
-    // ── Route: Admin Commands ───────────────────────────────────────
-
-    private void handleAdminCommands(Player player, String action, String data) {
-        switch (action) {
-            case "give_player_menu" -> {
-                adminChestGUI.givePlayerMenu(player);
-            }
-            case "back" -> openFolia(player, () ->
-                    openAdminPanelMenu(player));
-            default -> {}
-        }
-    }
-
     // ── Route: Coming Soon ──────────────────────────────────────────
 
     private void handleComingSoon(Player player, String action, String data) {
@@ -240,55 +208,6 @@ public class UnifiedGUIListener implements Listener {
             }
             default -> {}
         }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  GUI construction methods (admin — will be moved to GUI classes in Phase 5)
-    // ═══════════════════════════════════════════════════════════════
-
-    /** Open the admin control panel. */
-    private void openAdminPanelMenu(Player player) {
-        Inventory inv = GuiBuilder.createGui(GuiIdentity.ADMIN_PANEL, 3,
-                ChatColor.DARK_PURPLE + "Admin Control Panel");
-
-        inv.setItem(10, GuiBuilder.createActionItem(Material.BOOK,
-                ChatColor.GOLD + "Manage Regions",
-                "open_regions", null,
-                ChatColor.GRAY + "View and manage regions"));
-
-        inv.setItem(12, GuiBuilder.createActionItem(Material.COMMAND_BLOCK,
-                ChatColor.RED + "Server Commands",
-                "open_commands", null,
-                ChatColor.GRAY + "Execute server commands"));
-
-        inv.setItem(14, GuiBuilder.createActionItem(Material.PLAYER_HEAD,
-                ChatColor.BLUE + "Manage Players",
-                "open_players", null,
-                ChatColor.GRAY + "Manage player settings"));
-
-        inv.setItem(16, GuiBuilder.createActionItem(Material.BARRIER,
-                ChatColor.RED + "Close",
-                "back", null,
-                ChatColor.GRAY + "Close the Admin Control Panel"));
-
-        GuiBuilder.fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
-        player.openInventory(inv);
-    }
-
-    /** Open the server commands sub-menu. */
-    private void openAdminCommandsMenu(Player player) {
-        Inventory inv = GuiBuilder.createGui(GuiIdentity.ADMIN_COMMANDS, 3,
-                ChatColor.RED + "Server Commands");
-
-        inv.setItem(10, GuiBuilder.createActionItem(Material.PLAYER_HEAD,
-                ChatColor.DARK_PURPLE + "Give Player Menu",
-                "give_player_menu", null,
-                ChatColor.GRAY + "Gives the Player Menu item to hotbar slot 9"));
-
-        inv.setItem(16, GuiBuilder.createBackArrow("admin_panel"));
-
-        GuiBuilder.fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
-        player.openInventory(inv);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ public class CerbTabCompleter implements TabCompleter {
     private static final List<String> SUBCOMMANDS = List.of(
             "reload", "backup", "debug", "combatdebug",
             "scalingpreview", "log", "healthstate", "status",
-            "heal", "mana", "skill", "resetdata",
+            "panel", "heal", "mana", "skill", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
             "speed", "spawn"

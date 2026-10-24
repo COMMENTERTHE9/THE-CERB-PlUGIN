@@ -343,7 +343,19 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         skillGUI = new SkillGUI(this, skillManager);
         playerMenuGUI = new PlayerMenuGUI(this, skillManager);
         skillDetailGUI = new SkillDetailGUI(this, skillManager, combatConfig);
+        // Control Center: menu framework + shared mob test tools + the admin panel itself
+        menuManager = new GUIs.menu.MenuManager(this);
+        mobTestService = new Manager.MobTestService(this);
+        adminPanel = new GUIs.admin.AdminPanel(this, menuManager, mobTestService);
     }
+
+    private GUIs.menu.MenuManager menuManager;
+    private Manager.MobTestService mobTestService;
+    private GUIs.admin.AdminPanel adminPanel;
+
+    public GUIs.menu.MenuManager getMenuManager() { return menuManager; }
+    public Manager.MobTestService getMobTestService() { return mobTestService; }
+    public GUIs.admin.AdminPanel getAdminPanel() { return adminPanel; }
 
     private void initCommands() {
         Objects.requireNonNull(getCommand("spawncustomzombie")).setExecutor(new SpawnZombieCommand(this));
@@ -358,6 +370,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private void initListeners() {
         PluginManager pm = getServer().getPluginManager();
         pm.registerEvents(this, this);
+        pm.registerEvents(menuManager, this); // routes clicks for Control Center menus
 
         // ── Chunk discovery (Navigation skill) ──
         chunkDiscoveryManager = new Manager.ChunkDiscoveryManager(this, databaseManager, skillManager);

@@ -24,7 +24,7 @@ public class CerbCommand implements CommandExecutor {
             java.util.List.of("reload", "status", "backup", "skill", "heal", "log");
 
     private static final String USAGE =
-            ChatColor.YELLOW + "Usage: /cerb <reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|resetdata|"
+            ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
                     + "timings|profiler|listentities|showqueues>";
     private final CerberusPlugin plugin;
@@ -181,6 +181,12 @@ public class CerbCommand implements CommandExecutor {
             case "speed":
                 if (!(sender instanceof Player sp)) { sender.sendMessage(ChatColor.RED + "Run /cerb speed in-game."); break; }
                 handleSpeedDiag(sp, args);
+                break;
+
+            case "panel":
+            case "admin":
+                if (!(sender instanceof Player pp)) { sender.sendMessage(ChatColor.RED + "Run /cerb panel in-game."); break; }
+                plugin.getAdminPanel().open(pp);
                 break;
 
             case "spawn":
@@ -385,7 +391,7 @@ public class CerbCommand implements CommandExecutor {
      */
     private void handleSpawn(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mobId>");
+            player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mobId> [level]");
             Manager.MobRegistry registry = plugin.getMobRegistry();
             if (registry != null) {
                 player.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", registry.getEntryIds()));
@@ -412,34 +418,24 @@ public class CerbCommand implements CommandExecutor {
             return;
         }
 
+        int level = 0; // 0 = normal distance-based level
+        if (args.length >= 3) {
+            try { level = Math.max(1, Integer.parseInt(args[2])); }
+            catch (NumberFormatException e) { player.sendMessage(ChatColor.RED + "Level must be a number."); return; }
+        }
         org.bukkit.Location spawnLoc = player.getLocation();
-        org.bukkit.NamespacedKey mobIdKey = registry.getMobIdKey();
         Manager.Tier tier = entry.getTier();
-        String customName = entry.getCustomNameExact();
-        org.bukkit.entity.EntityType entityType = entry.getEntityType();
+        Manager.MobTestService.SpawnRequest req = new Manager.MobTestService.SpawnRequest(
+                entry.getEntityType(), mobId, entry.getCustomNameExact(), level, true, false);
+        int lvl = level;
 
-        // Spawn on the region thread owning the spawn location (Folia compatibility)
+        // Spawn on the region thread owning the spawn location (Folia), through the shared
+        // MobTestService: tag/name/level are applied before the spawn event so scaling sees them.
         Bukkit.getRegionScheduler().run(plugin, spawnLoc, task -> {
-            Class<? extends org.bukkit.entity.Entity> cls = entityType.getEntityClass();
-            if (cls == null || !org.bukkit.entity.LivingEntity.class.isAssignableFrom(cls)) {
-                player.sendMessage(ChatColor.RED + "Mob '" + mobId + "' is not a living entity type.");
-                return;
-            }
-            // Tag + name in the pre-spawn callback, i.e. BEFORE CreatureSpawnEvent: scaling runs
-            // on that event and must already see the registry ID, otherwise the mob is scaled
-            // and labelled as a COMMON vanilla mob of that type.
-            spawnLoc.getWorld().spawn(spawnLoc, cls,
-                    org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.COMMAND, mob -> {
-                mob.getPersistentDataContainer().set(mobIdKey,
-                        org.bukkit.persistence.PersistentDataType.STRING, mobId);
-                if (customName != null) {
-                    mob.setCustomName(customName);
-                    mob.setCustomNameVisible(true);
-                }
-            });
-
+            plugin.getMobTestService().spawn(spawnLoc, req);
             player.sendMessage(ChatColor.GREEN + "Spawned " + ChatColor.GOLD + mobId
                     + ChatColor.GREEN + " (" + tier.displayColor + tier.displayName + ChatColor.GREEN + ")"
+                    + (lvl > 0 ? " at level " + lvl : "")
                     + " at " + ChatColor.WHITE + String.format("%.0f, %.0f, %.0f",
                     spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ()));
         });
