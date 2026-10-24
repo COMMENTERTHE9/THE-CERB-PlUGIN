@@ -174,6 +174,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        // Empty open menus first: once our click listener is gone their items must not be takeable.
+        if (menuManager != null) menuManager.closeAll();
+
         // Centralized player cleanup + async skill save
         if (playerSessionManager != null) playerSessionManager.shutdown();
 
@@ -571,6 +574,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
         // Skill state belongs to the target's region thread (Folia).
         target.getScheduler().run(this, task -> {
+            if (!skillManager.hasLoadedSkills(target.getUniqueId())) {
+                sender.sendMessage(ChatColor.RED + target.getName() + "'s skills are not loaded yet - nothing changed. Try again in a moment.");
+                return;
+            }
             if (mode.equals("level")) {
                 skillManager.setSkillLevel(target, skill, (int) value);
             } else {

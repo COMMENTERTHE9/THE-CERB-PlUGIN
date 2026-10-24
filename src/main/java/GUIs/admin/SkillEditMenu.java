@@ -23,6 +23,8 @@ final class SkillEditMenu extends AdminMenu {
 
     private static final int[] PRESETS = {1, 10, 25, 50, 75, 99, 100};
     private static final long[] XP_GRANTS = {10, 100, 1_000, 10_000, 100_000};
+    /** Sentinel for "grant what the next level needs, measured when the grant runs". */
+    private static final long FILL_TO_NEXT = -1;
 
     private final UUID targetId;
     private final String skill;
@@ -59,7 +61,7 @@ final class SkillEditMenu extends AdminMenu {
         v.set(MenuView.HEADER, Ui.item(d == null || d.icon() == null ? Material.BOOK : d.icon(),
                 (d == null ? ChatColor.WHITE : d.category().color) + "" + ChatColor.BOLD + skill, head.build()));
 
-        // Row 2: step the level
+        // Row 2: step the level (applied to the level at the moment of the click, not when drawn)
         stepButton(v, 19, Material.RED_CONCRETE, -10, lvl);
         stepButton(v, 20, Material.PINK_CONCRETE, -1, lvl);
         v.set(22, Ui.amount(Ui.item(Material.EXPERIENCE_BOTTLE, ChatColor.YELLOW + "Level " + lvl,
@@ -87,38 +89,57 @@ final class SkillEditMenu extends AdminMenu {
                     c -> grantXp(c, amount));
         }
         if (!max) {
-            long toNext = req - xp;
             v.button(43, Ui.item(Material.DRAGON_BREATH, ChatColor.LIGHT_PURPLE + "Fill to next level",
-                    Ui.lore().stat("Grants", Fmt.grouped(toNext) + " XP").hint("Click to grant").build()),
-                    c -> grantXp(c, toNext));
+                    Ui.lore().stat("Grants", Fmt.grouped(req - xp) + " XP (re-checked on click)").hint("Click to grant").build()),
+                    c -> grantXp(c, FILL_TO_NEXT));
         }
     }
 
     private void stepButton(MenuView v, int slot, Material m, int delta, int lvl) {
-        int target = Math.max(0, Math.min(SkillProgression.MAX_LEVEL, lvl + delta));
         String label = (delta > 0 ? "+" : "") + delta + " level" + (Math.abs(delta) == 1 ? "" : "s");
         v.button(slot, Ui.item(m, (delta > 0 ? ChatColor.GREEN : ChatColor.RED) + label,
-                Ui.lore().stat("Result", lvl + " -> " + target)
+                Ui.lore().stat("Result", lvl + " -> " + clamp(lvl + delta))
                         .hint(delta < 0 ? "Click (asks to confirm)" : "Click to apply").build()),
-                c -> setLevel(c, target));
+                c -> {
+                    Player t = Bukkit.getPlayer(targetId);
+                    if (t == null) { Ui.fail(c.player(), "That player is no longer online."); return; }
+                    setLevel(c, clamp(plugin.getSkillManager().getSkillLevel(t, skill) + delta));
+                });
     }
 
+    private static int clamp(int level) {
+        return Math.max(1, Math.min(SkillProgression.MAX_LEVEL, level));
+    }
+
+    /**
+     * Set an exact level. {@code expected} is the level the admin saw when deciding (and
+     * confirming); if the player's level has moved since, nothing changes.
+     */
     private void setLevel(MenuClick c, int newLevel) {
         Player admin = c.player();
         Player t = Bukkit.getPlayer(targetId);
         if (t == null) { Ui.fail(admin, "That player is no longer online."); return; }
-        int current = plugin.getSkillManager().getSkillLevel(t, skill);
-        if (newLevel == current) { Ui.info(admin, skill + " is already level " + current + "."); return; }
+        int expected = plugin.getSkillManager().getSkillLevel(t, skill);
+        if (newLevel == expected) { Ui.info(admin, skill + " is already level " + expected + "."); return; }
         Runnable apply = () -> changePlayer(admin, targetId, target -> {
-            int before = plugin.getSkillManager().getSkillLevel(target, skill);
-            plugin.getSkillManager().setSkillLevel(target, skill, newLevel);
+            SkillManager sm = plugin.getSkillManager();
+            int before = sm.getSkillLevel(target, skill);
+            if (before != expected) {
+                menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s " + skill + " changed to level "
+                        + before + " meanwhile - nothing changed. Check and try again."));
+                return;
+            }
+            if (!sm.setSkillLevel(target, skill, newLevel)) {
+                menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s skills are not loaded yet - nothing changed."));
+                return;
+            }
             panel.audit(admin, "set " + target.getName() + "'s " + skill + " " + before + " -> " + newLevel);
             notifyTarget(admin, target, "set your " + skill + " to level " + newLevel + ".");
             menus.onPlayerThread(admin, () -> Ui.ok(admin, target.getName() + ": " + skill + " " + before + " -> " + newLevel));
         });
-        if (newLevel < current) {
+        if (newLevel < expected) {
             confirm(admin, "Lower " + skill + "?", List.of(
-                    t.getName() + ": level " + current + " -> " + newLevel,
+                    t.getName() + ": level " + expected + " -> " + newLevel,
                     "XP into the level resets to 0.",
                     "Levels lost this way are not restored automatically."), p -> apply.run());
         } else {
@@ -126,20 +147,28 @@ final class SkillEditMenu extends AdminMenu {
         }
     }
 
+    /** Grant XP through the normal award path. {@link #FILL_TO_NEXT} = exactly what the next level needs, measured now. */
     private void grantXp(MenuClick c, long amount) {
         Player admin = c.player();
         changePlayer(admin, targetId, target -> {
             SkillManager sm = plugin.getSkillManager();
+            if (!sm.hasLoadedSkills(target.getUniqueId())) {
+                menus.onPlayerThread(admin, () -> Ui.fail(admin, target.getName() + "'s skills are not loaded yet - nothing changed."));
+                return;
+            }
             int before = sm.getSkillLevel(target, skill);
             if (before >= SkillProgression.MAX_LEVEL) {
                 menus.onPlayerThread(admin, () -> Ui.info(admin, skill + " is already at max level."));
                 return;
             }
-            sm.addXpAndCheckLevelUp(skill, amount, target);
+            long grant = amount == FILL_TO_NEXT
+                    ? Math.max(1, (long) SkillManager.xpForLevel(before) - sm.getSkillXP(target, skill))
+                    : amount;
+            sm.addXpAndCheckLevelUp(skill, grant, target);
             int after = sm.getSkillLevel(target, skill);
-            panel.audit(admin, "granted " + amount + " " + skill + " XP to " + target.getName() + " (level " + before + " -> " + after + ")");
-            notifyTarget(admin, target, "granted you " + Fmt.grouped(amount) + " " + skill + " XP.");
-            menus.onPlayerThread(admin, () -> Ui.ok(admin, "+" + Fmt.grouped(amount) + " " + skill + " XP to " + target.getName()
+            panel.audit(admin, "granted " + grant + " " + skill + " XP to " + target.getName() + " (level " + before + " -> " + after + ")");
+            notifyTarget(admin, target, "granted you " + Fmt.grouped(grant) + " " + skill + " XP.");
+            menus.onPlayerThread(admin, () -> Ui.ok(admin, "+" + Fmt.grouped(grant) + " " + skill + " XP to " + target.getName()
                     + (after != before ? " (level " + before + " -> " + after + ")" : "")));
         });
     }

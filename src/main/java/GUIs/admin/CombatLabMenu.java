@@ -25,7 +25,8 @@ final class CombatLabMenu extends AdminMenu {
         v.refreshButton();
         Player me = v.viewer();
         List<LivingEntity> nearby = panel.mobTools().nearbyMobs(me, NEARBY_RADIUS);
-        long tests = panel.mobTools().nearbyMobs(me, CLEANUP_RADIUS).stream().filter(plugin.getMobRegistry()::isTestSpawn).count();
+        long tests = panel.mobTools().nearbyMobs(me, CLEANUP_RADIUS).stream()
+                .filter(m -> panel.mobTools().isOwnTestSpawn(m, me.getUniqueId())).count();
         boolean debug = plugin.isCombatDebugEnabled(me.getUniqueId());
 
         v.set(MenuView.HEADER, Ui.item(Material.IRON_SWORD, ChatColor.GOLD + "" + ChatColor.BOLD + "Combat Lab",
@@ -46,11 +47,12 @@ final class CombatLabMenu extends AdminMenu {
                 c -> open(c.player(), new NearbyMobsMenu(panel)));
 
         v.button(24, Ui.item(Material.LAVA_BUCKET, ChatColor.RED + "Clean up my test mobs",
-                Ui.lore().text("Removes only mobs spawned from this panel,").text("within " + (int) CLEANUP_RADIUS + " blocks of you. Nothing else.")
-                        .stat("Test mobs nearby", String.valueOf(tests))
+                Ui.lore().text("Removes only test mobs YOU spawned (panel").text("or /cerb spawn) within " + (int) CLEANUP_RADIUS + " blocks.")
+                        .text("Other admins' mobs and natural mobs stay.")
+                        .stat("Your test mobs nearby", String.valueOf(tests))
                         .hint("Click (asks to confirm)").build()),
-                c -> confirm(c.player(), "Remove " + tests + " test mob(s)?",
-                        List.of("Only mobs spawned from the Control Center,", "within " + (int) CLEANUP_RADIUS + " blocks of you."),
+                c -> confirm(c.player(), "Remove your test mobs?",
+                        List.of("Only test mobs you spawned,", "within " + (int) CLEANUP_RADIUS + " blocks of you."),
                         p -> {
                             int n = panel.mobTools().cleanupTestSpawns(p, CLEANUP_RADIUS);
                             panel.audit(p, "removed " + n + " test mob(s)");

@@ -73,7 +73,19 @@ public final class MenuManager implements Listener {
 
     /** Go back one screen (closes when there is nothing to go back to). */
     public void back(Player player) {
+        backFrom(player, null);
+    }
+
+    /**
+     * Go back one screen, but only if the player is still looking at {@code from} (null: any
+     * menu). For callers that finish later (after a task on another thread): if the admin has
+     * closed the panel or moved on meanwhile, this does nothing instead of closing whatever
+     * they have open now or popping the wrong screen.
+     */
+    public void backFrom(Player player, Menu from) {
         onPlayerThread(player, () -> {
+            Menu current = viewing(player);
+            if (current == null || (from != null && current != from)) return;
             Deque<Menu> stack = stacks.get(player.getUniqueId());
             if (stack == null || stack.size() <= 1) { close(player); return; }
             stack.pop();
@@ -84,6 +96,7 @@ public final class MenuManager implements Listener {
     /** Return to the bottom (root) screen. */
     public void home(Player player) {
         onPlayerThread(player, () -> {
+            if (viewing(player) == null) return; // panel already closed
             Deque<Menu> stack = stacks.get(player.getUniqueId());
             if (stack == null || stack.isEmpty()) { close(player); return; }
             while (stack.size() > 1) stack.pop();
@@ -107,6 +120,27 @@ public final class MenuManager implements Listener {
             stacks.remove(player.getUniqueId());
             player.closeInventory();
         });
+    }
+
+    /** The menu this player is looking at right now, or null. Call on the player's thread. */
+    private static Menu viewing(Player player) {
+        Inventory top = player.getOpenInventory().getTopInventory();
+        return top.getHolder() instanceof MenuHolder h && h.viewerId().equals(player.getUniqueId()) ? h.menu() : null;
+    }
+
+    /**
+     * Plugin shutdown: empty every open menu so nothing in it can be taken once our click
+     * listener is gone, then drop all history.
+     */
+    public void closeAll() {
+        for (UUID id : stacks.keySet()) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null) continue;
+            Inventory top = p.getOpenInventory().getTopInventory();
+            if (top.getHolder() instanceof MenuHolder) top.clear();
+        }
+        stacks.clear();
+        lastClick.clear();
     }
 
     /** Run {@code task} on the player's region thread (immediately if already there). */
@@ -200,8 +234,13 @@ public final class MenuManager implements Listener {
     public void onClose(InventoryCloseEvent event) {
         if (!(event.getInventory().getHolder() instanceof MenuHolder)) return;
         // Switching screens closes the old inventory with reason OPEN_NEW - keep the history then.
+        UUID id = event.getPlayer().getUniqueId();
         if (event.getReason() != InventoryCloseEvent.Reason.OPEN_NEW) {
-            stacks.remove(event.getPlayer().getUniqueId());
+            stacks.remove(id);
+        } else if (event.getPlayer() instanceof Player p) {
+            // ...unless what opened next was not one of our menus (another plugin's inventory, or
+            // a cancelled open): then the history is stale. Checked once the open has settled.
+            p.getScheduler().run(plugin, t -> { if (viewing(p) == null) stacks.remove(id); }, null);
         }
     }
 

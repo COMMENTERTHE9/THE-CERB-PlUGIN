@@ -75,7 +75,12 @@ abstract class AdminMenu extends Menu {
             return;
         }
         mob.getScheduler().run(plugin, t -> {
-            change.accept(mob);
+            try {
+                change.accept(mob);
+            } catch (Throwable e) {
+                plugin.getLogger().warning("[Admin] change on " + mob.getType() + " failed: " + e);
+                menus.onPlayerThread(admin, () -> Ui.fail(admin, "Change failed: " + e.getMessage()));
+            }
             menus.refresh(admin);
         }, () -> menus.onPlayerThread(admin, () -> Ui.fail(admin, "That mob was removed before the change applied.")));
     }

@@ -67,7 +67,7 @@ final class MobInspectMenu extends AdminMenu {
                     Runnable remove = () -> changeMob(c.player(), mob, m -> {
                         panel.audit(c.player(), "removed " + m.getType() + " (" + info.mobId() + ", level " + info.level() + ")");
                         tools.remove(m);
-                        menus.onPlayerThread(c.player(), () -> { Ui.ok(c.player(), "Removed."); menus.back(c.player()); });
+                        menus.onPlayerThread(c.player(), () -> { Ui.ok(c.player(), "Removed."); menus.backFrom(c.player(), this); });
                     });
                     if (test) remove.run();
                     else confirm(c.player(), "Remove this mob?", List.of(

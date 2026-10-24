@@ -3,6 +3,7 @@
 //   main    - bot must be op: clicks through every section and edits/spawns/removes things
 //   nonop   - bot must NOT be op: /cerb panel and a forged panel item must both be refused
 //   deopmid - bot is op; opens the panel, prints READY, waits 6 s (deop it then), then clicks
+//   owners  - bot and CerbTarget must be op: cleanup removes only the clicking admin's test mobs
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'main';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -231,6 +232,38 @@ async function cross() {
   await sleep(1500);
 }
 
+async function owners() {
+  // Two admins: "Clean up my test mobs" removes only the clicker's own test spawns.
+  // The harness must op CerbTarget first.
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  other.on('messagestr', () => {});
+  await new Promise(r => other.once('spawn', r));
+  await sleep(3000);
+  await cmd('/time set day', 400);
+  await cmd('/kill @e[type=zombie,distance=..64]', 800);
+  await cmd('/cerb spawn zombie 3 noai', 1200);
+  other.chat('/cerb spawn zombie 4 noai');
+  await sleep(1500);
+  const zombies = () => Object.values(bot.entities).filter(e => e.name === 'zombie' && e.position.distanceTo(bot.entity.position) < 12).length;
+  check('Both admins spawned a test zombie', zombies() === 2, zombies() + ' zombies');
+  await cmd('/cerb panel', 1500);
+  await click(findSlot(/^Combat Lab$/));
+  await waitTitle(/Combat Lab/);
+  const lore = slotLore(24);
+  check('Cleanup counts only my own test mobs', /Your test mobs nearby: 1\b/.test(lore), lore);
+  const at = chat.length;
+  await click(24, 900);
+  check('Cleanup asks to confirm', /Confirm|Remove your test mobs/.test(title()), title());
+  await click(11, 1500);
+  check('Cleanup removed exactly one mob', saw(/Removed 1 test mob/, at), chat.slice(at).join(' / '));
+  check("The other admin's test mob is still there", zombies() === 1, zombies() + ' zombies');
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  other.chat('/kill @e[type=zombie,distance=..64]');
+  await sleep(800);
+  other.quit();
+  await sleep(1500);
+}
+
 async function deopmid() {
   await cmd('/cerb panel', 1500);
   check('Opened as op', await waitTitle(/Control Center/), title());
@@ -249,6 +282,7 @@ bot.once('spawn', async () => {
     else if (phase === 'deopmid') await deopmid();
     else if (phase === 'dupe') await dupe();
     else if (phase === 'cross') await cross();
+    else if (phase === 'owners') await owners();
   } catch (e) { console.log('SCRIPT ERROR', e.stack); results.push(false); }
   const failed = results.filter(r => !r).length;
   console.log(`\n${results.length - failed}/${results.length} checks passed`);

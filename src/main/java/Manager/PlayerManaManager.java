@@ -63,6 +63,12 @@ public class PlayerManaManager {
         return manaStates.computeIfAbsent(player.getUniqueId(), ignored -> new ManaState());
     }
 
+    /** Read-only {current, max, regen per second} if this player is tracked, else null. Never creates state. */
+    public double[] peekMana(UUID playerId) {
+        ManaState s = manaStates.get(playerId);
+        return s == null ? null : new double[] {s.currentMana, s.totalMana, s.manaRegenRate};
+    }
+
     // Getter for the maximum mana
     public double getMaxMana(Player player) {
         return state(player).totalMana;

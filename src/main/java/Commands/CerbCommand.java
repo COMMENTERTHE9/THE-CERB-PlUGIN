@@ -447,7 +447,7 @@ public class CerbCommand implements CommandExecutor {
         org.bukkit.Location spawnLoc = player.getLocation();
         // Command spawns are test spawns: never saved into the world, removed by panel cleanup.
         Manager.MobTestService.SpawnRequest req = new Manager.MobTestService.SpawnRequest(
-                type, mobId, customName, level, ai, true);
+                type, mobId, customName, level, ai, true, player.getUniqueId());
         int lvl = level;
         String shown = mobId != null ? mobId : type.name().toLowerCase();
         Manager.Tier shownTier = tier;

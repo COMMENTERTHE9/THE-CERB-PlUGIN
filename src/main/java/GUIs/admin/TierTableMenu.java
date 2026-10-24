@@ -37,9 +37,11 @@ final class TierTableMenu extends AdminMenu {
                         .stat("Damage multiplier", Fmt.mult(cc.mobDamageScaling.calculate(tier, level)))
                         .stat("Armor penetration", Fmt.pct(tier.armorPenetration))
                         .stat("Kill XP multiplier", Fmt.mult(tier.xpMultiplier)).build()), null, p -> {});
-        for (int i = 0; i < LEVELS.length; i++) {
+        for (int i = 0, slot = 37, prev = -1; i < LEVELS.length; i++) {
             int lv = Math.min(cc.mobHealthScaling.getMaxLevel(), LEVELS[i]);
-            v.button(37 + i, Ui.glow(Ui.amount(Ui.item(lv == level ? Material.GOLD_BLOCK : Material.IRON_BLOCK,
+            if (lv == prev) continue; // levels above max-level collapse into one button
+            prev = lv;
+            v.button(slot++, Ui.glow(Ui.amount(Ui.item(lv == level ? Material.GOLD_BLOCK : Material.IRON_BLOCK,
                     ChatColor.WHITE + "Level " + lv, Ui.lore().hint("Click to show this level").build()), Math.min(64, lv)), lv == level),
                     c -> { level = lv; menus.refresh(c.player()); });
         }

@@ -21,10 +21,12 @@ record PlayerVitals(String name, double hp, double maxHp, String lifecycle, doub
                     Map<String, Integer> topSkills) {
 
     static PlayerVitals of(CerberusPlugin plugin, Player p) {
+        // Peek only: a player whose quit is in progress must not get fresh state recreated here
+        // (that state would outlive them and be handed back, stale, when they rejoin).
         var vh = plugin.getPlayerVirtualHealthManager();
-        HealthStateSnapshot hs = vh.snapshot(p);
-        var mana = plugin.getPlayerManaManager();
-        DefenseBarManager.DefenseBar bar = plugin.getDefenseBarManager().getDefenseBar(p);
+        HealthStateSnapshot hs = vh.peekSnapshot(p.getUniqueId());
+        double[] mana = plugin.getPlayerManaManager().peekMana(p.getUniqueId());
+        DefenseBarManager.DefenseBar bar = plugin.getDefenseBarManager().peekDefenseBar(p.getUniqueId());
         SkillManager sm = plugin.getSkillManager();
         PlayerSession s = plugin.getPlayerSessionManager() == null ? null : plugin.getPlayerSessionManager().getSession(p.getUniqueId());
 
@@ -35,9 +37,10 @@ record PlayerVitals(String name, double hp, double maxHp, String lifecycle, doub
                 .limit(5)
                 .forEach(e -> top.put(e.getKey(), e.getValue()));
 
-        return new PlayerVitals(p.getName(), hs.currentHp(), hs.maxHp(), hs.lifecycleState().name(),
-                mana.getCurrentMana(p), mana.getMaxMana(p), mana.getManaRegenRate(p),
-                bar.getCurrent(), bar.getMaximum(), vh.getArmorReduction(p),
+        return new PlayerVitals(p.getName(),
+                hs == null ? 0 : hs.currentHp(), hs == null ? 0 : hs.maxHp(), hs == null ? "NOT LOADED" : hs.lifecycleState().name(),
+                mana == null ? 0 : mana[0], mana == null ? 0 : mana[1], mana == null ? 0 : mana[2],
+                bar == null ? 0 : bar.getCurrent(), bar == null ? 0 : bar.getMaximum(), vh.getArmorReduction(p),
                 vh.getPlayerFireResistance(p), vh.getPlayerColdResistance(p), vh.getPlayerDrowningResistance(p),
                 sm.getPlayerLevel(p), s == null ? "NONE" : s.getState().name(), top);
     }

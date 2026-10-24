@@ -64,9 +64,11 @@ final class SpawnSetupMenu extends AdminMenu {
                 Ui.lore().text("Mob level 1-" + maxLevel + ". Normally it comes from").text("distance to world spawn.").build()), Math.min(64, level)));
         step(v, 24, Material.LIME_CONCRETE, +1, maxLevel);
         step(v, 25, Material.GREEN_CONCRETE, +10, maxLevel);
-        for (int i = 0; i < PRESETS.length; i++) {
+        for (int i = 0, slot = 28, prev = -1; i < PRESETS.length; i++) {
             int lv = Math.min(maxLevel, PRESETS[i]);
-            v.button(28 + i, Ui.glow(Ui.amount(Ui.item(lv == level ? Material.GOLD_BLOCK : Material.IRON_BLOCK,
+            if (lv == prev) continue; // presets above max-level collapse into one "max" button
+            prev = lv;
+            v.button(slot++, Ui.glow(Ui.amount(Ui.item(lv == level ? Material.GOLD_BLOCK : Material.IRON_BLOCK,
                     ChatColor.WHITE + "Level " + lv, Ui.lore().stat("HP pool", Fmt.compact(cc.mobHealthScaling.calculate(choice.tier(), lv))).build()),
                     Math.min(64, lv)), lv == level), c -> { level = lv; menus.refresh(c.player()); });
         }
@@ -108,8 +110,8 @@ final class SpawnSetupMenu extends AdminMenu {
         fwd.normalize();
         Vector side = new Vector(-fwd.getZ(), 0, fwd.getX());
         MobTestService.SpawnRequest req = new MobTestService.SpawnRequest(choice.type(), choice.mobId(),
-                choice.customName(), level, ai, true);
-        int spawned = 0;
+                choice.customName(), level, ai, true, admin.getUniqueId());
+        int spawned = 0, deferred = 0;
         for (int i = 0; i < count; i++) {
             double offset = (i - (count - 1) / 2.0) * 1.5;
             Location at = base.clone().add(fwd.clone().multiply(3)).add(side.clone().multiply(offset));
@@ -118,12 +120,15 @@ final class SpawnSetupMenu extends AdminMenu {
                 panel.mobTools().spawn(at, req);
                 spawned++;
             } else {
+                // Spot belongs to another region (Folia): spawn there; it lands a tick later.
                 Bukkit.getRegionScheduler().run(plugin, at, t -> panel.mobTools().spawn(at, req));
-                spawned++;
+                deferred++;
             }
         }
-        panel.audit(admin, "spawned " + spawned + " x " + choice.label() + " level " + level + (ai ? " (AI)" : " (no AI)"));
-        Ui.ok(admin, "Spawned " + spawned + " x " + Fmt.title(choice.label()) + " (" + choice.tier().displayName + ") at level " + level + ".");
+        panel.audit(admin, "spawned " + spawned + (deferred > 0 ? " (+" + deferred + " queued)" : "") + " x "
+                + choice.label() + " level " + level + (ai ? " (AI)" : " (no AI)"));
+        Ui.ok(admin, "Spawned " + spawned + (deferred > 0 ? " (+" + deferred + " queued at the region edge)" : "") + " x "
+                + Fmt.title(choice.label()) + " (" + choice.tier().displayName + ") at level " + level + ".");
         if (close) menus.close(admin);
     }
 }

@@ -139,6 +139,12 @@ public class PlayerVirtualHealthManager {
         return getOrCreateState(player).snapshot();
     }
 
+    /** Read-only: the snapshot if this player is tracked, else null. Never creates state. */
+    public HealthStateSnapshot peekSnapshot(java.util.UUID playerId) {
+        HealthLifecycleEngine.MutableState s = healthStates.get(playerId);
+        return s == null ? null : s.snapshot();
+    }
+
     public boolean enforceHealthInvariant(Player player, String detail) {
         if (player == null || !player.isOnline()) {
             return false;

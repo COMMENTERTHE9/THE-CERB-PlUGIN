@@ -111,11 +111,12 @@ final class PlayerInspectMenu extends AdminMenu {
                             var loc = target.getLocation();
                             admin.getScheduler().run(plugin, at -> admin.teleportAsync(loc).thenAccept(ok ->
                                     menus.onPlayerThread(admin, () -> {
-                                        if (ok) Ui.ok(admin, "Teleported to " + target.getName() + ".");
-                                        else Ui.fail(admin, "Teleport was refused.");
+                                        if (ok) {
+                                            panel.audit(admin, "teleported to " + target.getName());
+                                            Ui.ok(admin, "Teleported to " + target.getName() + ".");
+                                        } else Ui.fail(admin, "Teleport was refused.");
                                     })), null);
                         }, null);
-                        panel.audit(admin, "teleported to " + target.getName());
                     });
         }
 
@@ -124,10 +125,17 @@ final class PlayerInspectMenu extends AdminMenu {
                 Ui.lore().text("Writes this player's live log").text("(hits, damage, heals) to a file.")
                         .hint("Click to dump").build()),
                 c -> {
+                    Player admin = c.player();
                     var logger = plugin.getSessionLogger();
-                    String path = logger == null ? null : logger.dumpLive(targetId);
-                    if (path == null) Ui.info(c.player(), "No log entries for this player yet.");
-                    else Ui.ok(c.player(), "Log written: " + path);
+                    if (logger == null) { Ui.info(admin, "Session logging is off."); return; }
+                    // File I/O off the region thread; the log buffer is synchronized.
+                    Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+                        String path = logger.dumpLive(targetId);
+                        menus.onPlayerThread(admin, () -> {
+                            if (path == null) Ui.info(admin, "No log entries for this player yet.");
+                            else Ui.ok(admin, "Log written: " + path);
+                        });
+                    });
                 });
     }
 

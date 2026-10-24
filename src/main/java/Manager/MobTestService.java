@@ -36,9 +36,12 @@ public final class MobTestService {
         this.plugin = plugin;
     }
 
-    /** What to spawn. {@code mobId}/{@code customName} may be null for a plain vanilla mob. */
+    /**
+     * What to spawn. {@code mobId}/{@code customName} may be null for a plain vanilla mob;
+     * {@code owner} is the admin a test spawn belongs to (their cleanup removes it).
+     */
     public record SpawnRequest(EntityType type, String mobId, String customName, int level,
-                               boolean ai, boolean testSpawn) {}
+                               boolean ai, boolean testSpawn, java.util.UUID owner) {}
 
     /** Read-only view of a mob for display. */
     public record MobInfo(String typeName, String displayName, String mobId, Tier tier, int level,
@@ -67,7 +70,7 @@ public final class MobTestService {
             }
             if (r.level() > 0) registry.requestSpawnLevel(le, r.level());
             if (r.testSpawn()) {
-                registry.markTestSpawn(le);
+                registry.markTestSpawn(le, r.owner());
                 le.setPersistent(false);         // test mobs never get saved into the world
                 le.setRemoveWhenFarAway(true);
             }
@@ -125,10 +128,10 @@ public final class MobTestService {
      */
     public List<LivingEntity> nearbyMobs(Player player, double radius) {
         List<LivingEntity> out = new ArrayList<>();
-        for (Entity e : player.getNearbyEntities(radius, radius, radius)) {
+        for (Entity e : nearbyEntities(player, radius)) {
             // Only entities this thread owns (Folia): safe to read and modify right here.
             if (e instanceof LivingEntity le && !(e instanceof Player) && !(e instanceof org.bukkit.entity.ArmorStand)
-                    && le.isValid() && Bukkit.isOwnedByCurrentRegion(le)) {
+                    && Bukkit.isOwnedByCurrentRegion(le) && le.isValid()) {
                 out.add(le);
             }
         }
@@ -137,11 +140,33 @@ public final class MobTestService {
         return out;
     }
 
-    /** Remove test-spawned mobs (only those) within {@code radius} of the player. Returns the count. */
+    /**
+     * Folia only lets a region search a box it fully owns. Near a region edge the full box can
+     * throw; shrink it until it fits rather than failing the whole lookup.
+     */
+    private static java.util.Collection<Entity> nearbyEntities(Player player, double radius) {
+        for (double r = radius; ; r /= 2) {
+            try {
+                return player.getNearbyEntities(r, r, r);
+            } catch (IllegalStateException e) {
+                if (r <= 8) return List.of();
+            }
+        }
+    }
+
+    /** True for a test spawn owned by {@code admin}. */
+    public boolean isOwnTestSpawn(Entity e, java.util.UUID admin) {
+        return admin.equals(plugin.getMobRegistry().getTestSpawnOwner(e));
+    }
+
+    /**
+     * Remove this player's own test spawns (only those - not other admins', not natural mobs)
+     * within {@code radius}. Returns the count.
+     */
     public int cleanupTestSpawns(Player player, double radius) {
         int n = 0;
         for (LivingEntity le : nearbyMobs(player, radius)) {
-            if (plugin.getMobRegistry().isTestSpawn(le)) { remove(le); n++; }
+            if (isOwnTestSpawn(le, player.getUniqueId())) { remove(le); n++; }
         }
         return n;
     }

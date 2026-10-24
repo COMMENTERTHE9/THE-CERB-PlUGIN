@@ -349,16 +349,23 @@ public class SkillManager {
 
     /**
      * Admin/test helper: set a player's skill to an exact level with 0 XP into it, and save.
-     * Call on the player's region thread.
+     * Call on the player's region thread. Returns false (and changes nothing) when the
+     * player's skills are not loaded yet.
      */
-    public void setSkillLevel(Player player, String skillName, int level) {
+    public boolean setSkillLevel(Player player, String skillName, int level) {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = playerSkillLevels.get(uid);
         Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) return; // data not loaded yet
-        levels.put(skillName, SkillProgression.clampLevel(level));
+        if (levels == null || xp == null) return false; // data not loaded yet
+        levels.put(skillName, Math.max(1, SkillProgression.clampLevel(level)));
         xp.put(skillName, 0);
         saveSkills(player);
+        return true;
+    }
+
+    /** True once this player's skills are loaded (between a successful load and quit). */
+    public boolean hasLoadedSkills(UUID uid) {
+        return playerSkillLevels.containsKey(uid) && playerSkillXP.containsKey(uid);
     }
 
     /** Find a registered skill by name, ignoring case, spaces and underscores ("blade_mastery"). */

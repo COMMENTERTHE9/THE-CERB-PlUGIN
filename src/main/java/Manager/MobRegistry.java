@@ -248,12 +248,24 @@ public class MobRegistry {
     }
 
     /** Mark a mob as spawned for testing, so cleanup tools can remove it (and only it). */
-    public void markTestSpawn(LivingEntity entity) {
-        entity.getPersistentDataContainer().set(testSpawnKey, PersistentDataType.BYTE, (byte) 1);
+    /** Mark a mob as a test spawn owned by {@code owner} (the admin who spawned it). */
+    public void markTestSpawn(LivingEntity entity, java.util.UUID owner) {
+        entity.getPersistentDataContainer().set(testSpawnKey, PersistentDataType.STRING,
+                owner == null ? "" : owner.toString());
     }
 
     public boolean isTestSpawn(org.bukkit.entity.Entity entity) {
-        return entity.getPersistentDataContainer().has(testSpawnKey, PersistentDataType.BYTE);
+        return entity.getPersistentDataContainer().has(testSpawnKey);
+    }
+
+    /** The admin who spawned this test mob, or null (not a test spawn / no owner recorded). */
+    public java.util.UUID getTestSpawnOwner(org.bukkit.entity.Entity entity) {
+        try {
+            String s = entity.getPersistentDataContainer().get(testSpawnKey, PersistentDataType.STRING);
+            return s == null || s.isEmpty() ? null : java.util.UUID.fromString(s);
+        } catch (IllegalArgumentException e) {
+            return null; // older byte-typed marker, or not a UUID
+        }
     }
 
     /** The registry ID stamped on a plugin-spawned mob, or null. */

@@ -14,6 +14,9 @@ import java.util.List;
 /** One-click tools for the admin's own test character. */
 final class SelfToolsMenu extends AdminMenu {
 
+    /** /givetestitem's own permission (plugin.yml); the panel never bypasses it. */
+    private static final String TEST_KIT_PERMISSION = "cerberus.give.testitem";
+
     SelfToolsMenu(AdminPanel panel) { super(panel); }
 
     @Override public String title() { return PREFIX + "My test character"; }
@@ -43,10 +46,18 @@ final class SelfToolsMenu extends AdminMenu {
                 c -> { boolean on = plugin.toggleCombatDebug(c.player().getUniqueId());
                        Ui.ok(c.player(), "Combat debug traces " + (on ? "on" : "off") + "."); menus.refresh(c.player()); });
 
-        v.button(21, Ui.item(Material.NETHERITE_SWORD, ChatColor.GOLD + "Test kit",
-                Ui.lore().text("Cerberus Blade, Styx Cleaver, Hydra's Reach,").text("Fireball Wand, Cerberus armor.")
-                        .text("Fills empty slots; full inventory overflows.").hint("Click (runs /givetestitem kit)").build()),
-                c -> { c.player().performCommand("givetestitem kit"); panel.audit(c.player(), "took the test kit"); });
+        boolean kitAllowed = v.viewer().hasPermission(TEST_KIT_PERMISSION);
+        v.button(21, Ui.item(kitAllowed ? Material.NETHERITE_SWORD : Material.GRAY_DYE, ChatColor.GOLD + "Test kit",
+                (kitAllowed ? Ui.lore().text("Cerberus Blade, Styx Cleaver, Hydra's Reach,").text("Fireball Wand, Cerberus armor.")
+                        .text("Fills empty slots; full inventory overflows.").hint("Click (runs /givetestitem kit)")
+                        : Ui.lore().warn("Needs the " + TEST_KIT_PERMISSION + " permission.")).build()),
+                c -> {
+                    if (!c.player().hasPermission(TEST_KIT_PERMISSION)) {   // checked again at click time
+                        Ui.fail(c.player(), "You need " + TEST_KIT_PERMISSION + " for the test kit.");
+                        return;
+                    }
+                    if (c.player().performCommand("givetestitem kit")) panel.audit(c.player(), "took the test kit");
+                });
 
         v.button(22, Ui.item(Material.PLAYER_HEAD, ChatColor.LIGHT_PURPLE + "Player Menu head",
                 Ui.lore().text("Puts it back in hotbar slot 9;").text("whatever is there is moved, not lost.").hint("Click").build()),
@@ -80,9 +91,9 @@ final class SelfToolsMenu extends AdminMenu {
                 });
 
         v.button(32, Ui.item(Material.LAVA_BUCKET, ChatColor.RED + "Clean up my test mobs",
-                Ui.lore().text("Removes only mobs spawned from this panel,").text("within " + (int) CombatLabMenu.CLEANUP_RADIUS + " blocks.")
+                Ui.lore().text("Removes only test mobs you spawned,").text("within " + (int) CombatLabMenu.CLEANUP_RADIUS + " blocks.")
                         .hint("Click (asks to confirm)").build()),
-                c -> confirm(c.player(), "Remove your test mobs?", List.of("Only Control Center test spawns nearby."), p -> {
+                c -> confirm(c.player(), "Remove your test mobs?", List.of("Only test mobs you spawned, nearby."), p -> {
                     int n = panel.mobTools().cleanupTestSpawns(p, CombatLabMenu.CLEANUP_RADIUS);
                     panel.audit(p, "removed " + n + " test mob(s)");
                     Ui.ok(p, "Removed " + n + " test mob(s).");

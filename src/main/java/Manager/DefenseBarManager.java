@@ -49,6 +49,11 @@ public class DefenseBarManager {
                 uuid -> new DefenseBar(player, baseMaxPoints));
     }
 
+    /** Read-only: the bar if this player has one, else null. Never creates one. */
+    public DefenseBar peekDefenseBar(UUID playerId) {
+        return playerDefenseBars.get(playerId);
+    }
+
     /**
      * Apply damage through partial absorption. Returns damage that passes through to health.
      * <p>
