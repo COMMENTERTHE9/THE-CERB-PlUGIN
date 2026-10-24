@@ -5,6 +5,8 @@
 //   stats   - Player Menu -> Stats page shows attributes, and updates after a level change
 //   survive - same level-50 zombie hits at Survival/Heavy Armor Training/First Aid 1 vs 100 (Vitality, Fortitude)
 //   magic   - Essence: Intelligence/Mana Regeneration 1 vs 100 -> max mana, regen, Fireball damage vs a mob
+//   persist - PERSIST=set: set test levels and record Stats; restart the server; PERSIST=check: same Stats after restart
+//   perf    - 20 hits on a mob cause no attribute rebuilds (snapshot stays cached; only level-ups rebuild)
 //   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
@@ -234,6 +236,62 @@ async function magic() {
   return out;
 }
 
+async function statsValues() {
+  await equip('netherite_sword');
+  await cmd('/stats', 1500);
+  const v = { power: (slotLore(10).match(/Swords: ([\d.]+)/) || [])[1], health: (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1],
+              mana: (slotLore(33).match(/Max mana: ([\d,]+)/) || [])[1], crit: (slotLore(11).match(/Crit chance: ([\d.]+%)/) || [])[1] };
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  return v;
+}
+
+async function persist() {
+  const file = require('path').join(__dirname, '.persist.json');
+  const fs = require('fs');
+  if (process.env.PERSIST === 'set') {
+    await cmd('/gamemode creative');
+    for (const [sk, lv] of [['Blade_Mastery', 50], ['Survival', 100], ['Intelligence', 100], ['Critical_Strike', 40]]) await cmd(`/cerb skill ${NAME} ${sk} level ${lv}`, 500);
+    await sleep(1000);
+    const v = await statsValues();
+    fs.writeFileSync(file, JSON.stringify(v));
+    console.log('recorded ' + JSON.stringify(v));
+    check('Recorded values after setting levels', !!v.power && !!v.health && !!v.mana, JSON.stringify(v));
+  } else {
+    const before = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const after = await statsValues();
+    console.log('after restart ' + JSON.stringify(after));
+    check('Attributes and derived stats are the same after a server restart', JSON.stringify(before) === JSON.stringify(after),
+        JSON.stringify(before) + ' vs ' + JSON.stringify(after));
+    for (const sk of ['Blade_Mastery', 'Survival', 'Intelligence', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 500);
+    fs.unlinkSync(file);
+  }
+}
+
+async function rebuilds() {
+  await cmd('/cerb panel', 1500);
+  const tile = Object.keys(bot.currentWindow ? bot.currentWindow.slots : {}).find(i => /^Attributes$/.test(slotName(+i)));
+  await click(+tile, 900); await click(10, 900);
+  const n = Number(((slotLore(40).match(/Rebuilds since start: ([\d,]+)/) || [])[1] || 'NaN').replace(/,/g, ''));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await sleep(300);
+  return n;
+}
+
+async function perf() {
+  await cmd('/gamemode creative');
+  await equip('netherite_sword');
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
+  await cmd(`/cerb skill ${NAME} Critical_Strike level 99`); // max-ish: per-hit XP can't level it during the test
+  await sleep(500);
+  const before = await rebuilds();
+  bot.setQuickBarSlot(heldSlot);
+  const r = await killOne('zombie', 50);
+  const after = await rebuilds();
+  console.log(`hits ${r.swings}, rebuilds ${before} -> ${after}`);
+  check("Hitting mobs does not rebuild attributes (only the kill's level-up may)", r.swings >= 8 && after - before <= 1, `${r.swings} hits, ${after - before} rebuilds`);
+  await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
@@ -252,6 +310,8 @@ bot.once('spawn', async () => {
       check('Essence raises max mana (about x3 at level 100)', r[100].maxMana > 2.5 * r[1].maxMana, `${r[1].maxMana} -> ${r[100].maxMana}`);
       check('Fireball damage on a mob is scaled by Essence', r[1].mult > 1 && r[1].mult < 1.2 && r[100].mult > 4.5, `x${r[1].mult} -> x${r[100].mult}`);
     }
+    else if (phase === 'persist') await persist();
+    else if (phase === 'perf') await perf();
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');
       await equip('netherite_sword');
