@@ -235,12 +235,18 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         mobRegistry = new MobRegistry(this);
         mobVirtualHealthManager = new Manager.MobVirtualHealthManager();
         mobLabelManager = new Manager.MobLabelManager(this);
-        attributesConfig = new Attributes.AttributesConfig(this);
     }
 
     private Attributes.AttributesConfig attributesConfig;
 
     public Attributes.AttributesConfig getAttributesConfig() { return attributesConfig; }
+
+    /** combat.yml's crit / lifesteal curves for the attribute engine (defaults until it is loaded). */
+    private Attributes.AttributeRules.Curves attributeCurves() {
+        if (combatConfig == null) return Attributes.AttributeRules.DEFAULT_CURVES;
+        return new Attributes.AttributeRules.Curves(combatConfig.critChanceScaling, combatConfig.critMultiplierScaling,
+                Attributes.AttributeRules.DEFAULT_CURVES.lifestealSkill(), combatConfig.wmLifestealScaling);
+    }
 
     public AsyncSaveManager getAsyncSaver() {
         return asyncSaver;
@@ -326,6 +332,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
         // Combat system: config, elemental, skill processor
         combatConfig = new CombatConfig(this);
+        // After combat.yml: the attribute engine reuses its crit and lifesteal curves.
+        attributesConfig = new Attributes.AttributesConfig(this, this::attributeCurves);
         sessionLogger = new SessionLogger(this);
 
         // GUI identity keys and skill definitions (data-driven GUI metadata)

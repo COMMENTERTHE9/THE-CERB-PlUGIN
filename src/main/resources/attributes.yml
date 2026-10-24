@@ -15,3 +15,68 @@ kill-xp:
     level-gap: 20        # 0 disables
     factor: 0.25
   max-per-kill: 1000000  # safety ceiling
+
+# ── Attributes: derived automatically from skills (no manual points yet) ──
+# Each skill level adds `per-level` points. `weapon` limits Power to one weapon type
+# (sword, axe, mace, trident, spear, bow, unarmed); leave it out for "all weapons".
+# Skills not listed here add nothing.
+attributes:
+  skills:
+    Blade Mastery:        [ { attribute: power, per-level: 1.0, weapon: sword } ]
+    Weapon Mastery:
+      - { attribute: power, per-level: 1.0, weapon: axe }
+      - { attribute: power, per-level: 1.0, weapon: mace }
+      - { attribute: power, per-level: 1.0, weapon: trident }
+      - { attribute: power, per-level: 1.0, weapon: spear }
+      - { attribute: power, per-level: 0.25 }
+    Martial Expertise:    [ { attribute: power, per-level: 1.0, weapon: unarmed } ]
+    Ranged Precision:     [ { attribute: power, per-level: 1.0, weapon: bow } ]
+    Critical Strike:      [ { attribute: agility, per-level: 1.0 } ]
+    Dual Wielding:        [ { attribute: agility, per-level: 0.5 } ]
+    Navigation:           [ { attribute: agility, per-level: 0.25 } ]
+    Stealth:              [ { attribute: agility, per-level: 0.25 } ]
+    Survival:             [ { attribute: vitality, per-level: 1.0 }, { attribute: fortitude, per-level: 0.5 } ]
+    Heavy Armor Training: [ { attribute: fortitude, per-level: 1.0 }, { attribute: vitality, per-level: 0.5 } ]
+    First Aid:            [ { attribute: vitality, per-level: 0.5 } ]
+    Defensive Magic:      [ { attribute: fortitude, per-level: 0.5 } ]
+    Intelligence:         [ { attribute: essence, per-level: 1.0 } ]
+    Mana Regeneration:    [ { attribute: essence, per-level: 1.0 } ]
+    Spell Weaving:        [ { attribute: essence, per-level: 0.5 } ]
+    Elemental Mastery:    [ { attribute: essence, per-level: 0.5 } ]
+    Arcane Knowledge:     [ { attribute: essence, per-level: 0.5 } ]
+    Scavenging:           [ { attribute: fortune, per-level: 0.5 } ]
+    Lockpicking:          [ { attribute: fortune, per-level: 0.5 } ]
+    Trading:              [ { attribute: fortune, per-level: 0.5 } ]
+    Fishing:              [ { attribute: fortune, per-level: 0.5 } ]
+
+  # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
+  caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }
+
+  # What one attribute point is worth.
+  derived:
+    power-damage: 0.05          # weapon damage x(1 + 0.05 * Power): Power 50 = x3.5, matching a level-50 mob's HP (x3.45)
+    vitality-hp: 0.01           # max health x(1 + 0.01 * Vitality): 100 = x2
+    fortitude-armor: 0.001      # +0.1% armor reduction per point (gear + this stays under limits.armor)
+    fortitude-defense-bar: 0.01 # defense bar size x(1 + 0.01 * Fortitude)
+    fortitude-resist: 0.002     # fire / cold / drowning resistance per point
+    essence-mana: 0.01          # max mana x(1 + 0.01 * Essence)
+    essence-regen: 0.01         # mana regeneration x(1 + 0.01 * Essence)
+    essence-spell: 0.02         # spell damage x(1 + 0.02 * Essence)
+
+  # Applied once, in the attribute engine (docs/design/POWER_SCALING.md 4.2).
+  # Crit chance / multiplier / lifesteal CURVES stay in combat.yml (skills section).
+  limits:
+    offense-budget: 6.0     # crit + damage bonuses may multiply the Power baseline by at most this
+    crit-chance: 0.75
+    crit-multiplier: 3.5
+    lifesteal: 0.40
+    armor: 0.40             # total armor reduction (gear + Fortitude)
+    resist: 0.50            # each of fire / cold / drowning
+    total-mitigation: 0.75  # resist + armor + defense bar together
+
+  # Kill switches: false = that part of combat ignores attributes (behaves as before).
+  integration:
+    pve-offense: true       # Power / crit / lifesteal on player -> mob hits (PvP is unchanged)
+    vitality: true          # max health
+    fortitude: true         # armor, defense bar, resistances
+    essence: true           # mana and spell damage
