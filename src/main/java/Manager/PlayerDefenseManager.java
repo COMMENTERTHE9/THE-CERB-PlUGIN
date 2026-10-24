@@ -26,6 +26,7 @@ public class PlayerDefenseManager {
     private final PlayerVirtualHealthManager virtualHealthManager;
     private @Nullable CombatConfig combatConfig;
     private @Nullable DefenseBarManager defenseBarManager;
+    private @Nullable Attributes.AttributeService attributes;
 
     private static final Logger log = Logger.getLogger("Cerberus");
 
@@ -41,6 +42,17 @@ public class PlayerDefenseManager {
         this.defenseBarManager = defenseBarManager;
     }
 
+    /** Fortitude: armor, resistances and defense bar on top of gear and skill bonuses. */
+    public void setAttributeService(Attributes.AttributeService attributes) {
+        this.attributes = attributes;
+    }
+
+    /** The player's attributes when the Fortitude integration is on, else null. */
+    private @Nullable Attributes.AttributeSnapshot fortitude(Player player) {
+        if (attributes == null || !attributes.rules().switches().fortitude()) return null;
+        return attributes.get(player.getUniqueId());
+    }
+
     /** Inject CombatConfig for reading armor values and caps. */
     public void setCombatConfig(CombatConfig config) {
         this.combatConfig = config;
@@ -51,11 +63,17 @@ public class PlayerDefenseManager {
      * Call on join, armor change, skill level up.
      */
     public void updateDefense(Player player) {
+        Attributes.AttributeSnapshot fort = fortitude(player);
         double armorSum = calculateArmorFromGear(player);
         double skillBonus = calculateSkillArmorBonus(player);
         double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
+        double fortArmor = 0.0;
+        if (fort != null) {
+            fortArmor = fort.armorBonus();                       // Fortitude adds on top of gear + Heavy Armor Training
+            cap = Math.min(cap, fort.rules().limits().armor());
+        }
 
-        double totalReduction = Math.min(cap, armorSum + skillBonus);
+        double totalReduction = Math.min(cap, armorSum + skillBonus + fortArmor);
         playerArmorReduction.put(player.getUniqueId(), totalReduction);
 
         // Push to virtual health manager
@@ -67,11 +85,11 @@ public class PlayerDefenseManager {
             player.getAttribute(Attribute.ARMOR).setBaseValue(totalReduction * 50.0);
         }
 
-        // Push elemental resistances from Survival skill
-        applyElementalResistances(player);
+        // Push elemental resistances from Survival skill (+ Fortitude)
+        applyElementalResistances(player, fort);
 
-        // Push defense bar bonus from Heavy Armor Training
-        applyDefenseBarBonus(player);
+        // Push defense bar bonus from Heavy Armor Training (+ Fortitude)
+        applyDefenseBarBonus(player, fort);
     }
 
     /** Sum per-piece armor reduction from equipped gear using CombatConfig values. */
@@ -104,36 +122,37 @@ public class PlayerDefenseManager {
      * Survival skill grants elemental resistances (fire, cold, drowning).
      * These are pushed to PlayerVirtualHealthManager's per-type resistance maps.
      */
-    private void applyElementalResistances(Player player) {
+    private void applyElementalResistances(Player player, @Nullable Attributes.AttributeSnapshot fort) {
         if (skillManager == null) return;
 
         int survivalLevel = skillManager.getSkillLevel(player, "Survival");
         if (survivalLevel <= 0) return;
 
+        // Fortitude adds the same amount to each, within the attribute resist limit.
+        double fortResist = fort != null ? fort.resist() : 0.0;
+        double limit = fort != null ? fort.rules().limits().resist() : 1.0;
+
         // Fire: 1% per level, cap 30%
-        double fireResist = Math.min(0.30, survivalLevel * 0.01);
+        double fireResist = Math.min(limit, Math.min(0.30, survivalLevel * 0.01) + fortResist);
         virtualHealthManager.setFireResistance(player, fireResist);
 
         // Cold: 1% per level, cap 20%
-        double coldResist = Math.min(0.20, survivalLevel * 0.01);
+        double coldResist = Math.min(limit, Math.min(0.20, survivalLevel * 0.01) + fortResist);
         virtualHealthManager.setColdResistance(player, coldResist);
 
         // Drowning: 1% per level, cap 20%
-        double drowningResist = Math.min(0.20, survivalLevel * 0.01);
+        double drowningResist = Math.min(limit, Math.min(0.20, survivalLevel * 0.01) + fortResist);
         virtualHealthManager.setDrowningResistance(player, drowningResist);
     }
 
-    /** Heavy Armor Training grants bonus defense bar max points. */
-    private void applyDefenseBarBonus(Player player) {
-        if (skillManager == null || combatConfig == null) return;
+    /** Heavy Armor Training grants bonus defense bar max points; Fortitude scales the base bar. */
+    private void applyDefenseBarBonus(Player player, @Nullable Attributes.AttributeSnapshot fort) {
+        if (skillManager == null || combatConfig == null || defenseBarManager == null) return;
 
         int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
-        if (hatLevel <= 0) return;
-
-        double barBonus = ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling);
-        if (defenseBarManager != null) {
-            defenseBarManager.setBonusMaxPoints(player, barBonus);
-        }
+        double barBonus = hatLevel > 0 ? ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling) : 0.0;
+        if (fort != null) barBonus += defenseBarManager.getBaseMaxPoints() * (fort.defenseBarMultiplier() - 1.0);
+        defenseBarManager.setBonusMaxPoints(player, Math.max(0.0, barBonus));
     }
 
     /** Get the current armor reduction for a player (0.0–cap). */

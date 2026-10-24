@@ -39,7 +39,7 @@ async function killNearest(names, maxSwings = 80) {
 bot.once('spawn', async () => {
   try {
     await sleep(3000);
-    check('HUD action bar shows health and mana', /\/100♥/.test(actionBar) && /✎/.test(actionBar), actionBar);
+    check('HUD action bar shows health and mana', /(\d+)\/\1♥/.test(actionBar) && /✎/.test(actionBar), actionBar);
     const head = bot.inventory.slots[44];
     check('Player Menu head in hotbar slot 9', !!head && head.name === 'player_head' && /Player Menu/.test(text(head.customName)));
 
@@ -95,7 +95,8 @@ bot.once('spawn', async () => {
     await cmd('/gamemode survival');
     at = await cmd('/kill @s', 3500);
     at = await cmd('/cerb healthstate');
-    check('/kill -> instant respawn at full custom HP', !!saw(/Custom HP: 100\.00\/100\.00/, at) && !!saw(/Lifecycle: ALIVE/, at));
+    // Max HP is 100 x Vitality (102 for a fresh character), so check "full", not a fixed number.
+    check('/kill -> instant respawn at full custom HP', !!saw(/Custom HP: ([\d.]+)\/\1\b/, at) && !!saw(/Lifecycle: ALIVE/, at));
   } catch (e) {
     console.log('SCRIPT ERROR', e.stack);
     results.push(false);

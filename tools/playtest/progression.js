@@ -3,6 +3,7 @@
 //   killxp  - kill XP v2 by mob level, anti-grind
 //   swings  - swings-to-kill table: Blade Mastery 1/50/100 vs zombie level 1/50 (prints numbers)
 //   stats   - Player Menu -> Stats page shows attributes, and updates after a level change
+//   survive - same level-50 zombie hits at Survival/Heavy Armor Training/First Aid 1 vs 100 (Vitality, Fortitude)
 //   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
@@ -130,7 +131,8 @@ async function stats() {
   check('Power tile says which skills feed it', /Gained from.*Blade Mastery \+1 \(swords\).*Weapon Mastery \+0\.25/.test(slotLore(10)), slotLore(10));
   check('Agility tile shows crit from Critical Strike', /Crit chance: 1[0-9]\.[0-9]%/.test(slotLore(11)), slotLore(11));
   check('Power is marked active against mobs', /Active \(fighting mobs\)/.test(slotLore(10)), slotLore(10));
-  check('Vitality is honest about not being used in combat yet', /not used in combat yet/.test(slotLore(12)), slotLore(12));
+  check('Vitality is marked active', /● Active/.test(slotLore(12)), slotLore(12));
+  check('Essence is honest about not being used yet', /not used in combat yet/.test(slotLore(15)), slotLore(15));
   // Stats is opened from the Player Menu, so the held item there is the head; check with the sword in hand.
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
   if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }
@@ -149,11 +151,58 @@ async function stats() {
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
 }
 
+async function survive() {
+  await cmd('/gamemode survival');
+  await cmd('/difficulty normal');
+  await cmd('/time set day');
+  const out = {};
+  for (const lv of [1, 100]) {
+    for (const sk of ['Survival', 'Heavy_Armor_Training', 'First_Aid']) await cmd(`/cerb skill ${NAME} ${sk} level ${lv}`, 500);
+    await sleep(800);
+    await cmd(`/cerb heal ${NAME}`, 800);
+    await cmd('/stats', 1500);
+    const lore = slotLore(31);
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+    const maxHp = Number((lore.match(/Max health: ([\d.]+)/) || [])[1]);
+    await cmd('/kill @e[type=zombie,distance=..16]', 600);
+    await cmd('/cerb combatdebug', 500);
+    const at = chat.length;
+    await cmd('/cerb spawn zombie 50', 500);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 25000 && chat.slice(at).filter(m => /\[Combat\].*Final/.test(m)).length < 3) await sleep(250);
+    await cmd('/cerb combatdebug', 500);
+    await cmd('/kill @e[type=zombie,distance=..16]', 600);
+    const traces = chat.slice(at).filter(m => /\[Combat\].*Final/.test(m)).slice(0, 3);
+    const finals = traces.map(t => Number((t.match(/Final: ([\d.]+)/) || [])[1]));
+    const avg = finals.reduce((a, b) => a + b, 0) / Math.max(1, finals.length);
+    // Switching away from an item with metadata (the Player Menu head) used to reset max health to 100.
+    bot.setQuickBarSlot(8); await sleep(400); bot.setQuickBarSlot(0); await sleep(400);
+    await cmd('/stats', 1500);
+    const afterSwap = Number(((slotLore(31).match(/Max health: ([\d.]+)/)) || [])[1]);
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+    out[lv] = { maxHp, avg, pct: avg / maxHp, traces, lore, afterSwap };
+    console.log(`Defensive skills ${lv}: max HP ${maxHp}, HP lost per hit ${avg.toFixed(2)} (${(100 * avg / maxHp).toFixed(2)}% of max)`);
+    console.log('   ' + (traces[0] || 'no trace'));
+  }
+  for (const sk of ['Survival', 'Heavy_Armor_Training', 'First_Aid']) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 500);
+  await cmd(`/cerb heal ${NAME}`, 500);
+  await cmd('/gamemode creative');
+  return out;
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
     if (phase === 'killxp') await killxp();
     else if (phase === 'stats') await stats();
+    else if (phase === 'survive') {
+      const r = await survive();
+      check('Vitality: defensive skills 1 -> 100 take max health from 102 to 300', r[1].maxHp === 102 && r[100].maxHp === 300, `${r[1].maxHp} -> ${r[100].maxHp}`);
+      check('Max health survives switching held items', r[100].afterSwap === 300, String(r[100].afterSwap));
+      check('Fortitude shows in the totals (armor and resistances rose)', /Armor bonus: \+15\.[0-9]%/.test(r[100].lore), r[100].lore);
+      check('Each zombie hit costs a much smaller share of health at level 100', r[100].pct < r[1].pct / 2.5,
+          `${(100 * r[1].pct).toFixed(2)}% -> ${(100 * r[100].pct).toFixed(2)}% per hit`);
+    }
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');
       await equip('netherite_sword');

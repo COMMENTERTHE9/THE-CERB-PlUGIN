@@ -239,6 +239,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     private Attributes.AttributesConfig attributesConfig;
     private Attributes.AttributeService attributeService;
+    private Manager.AttributeEffects attributeEffects;
+
+    /** Vitality / Fortitude → max health and defense (see Manager.AttributeEffects). */
+    public Manager.AttributeEffects getAttributeEffects() { return attributeEffects; }
 
     public Attributes.AttributeService getAttributeService() { return attributeService; }
 
@@ -339,9 +343,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         attributesConfig = new Attributes.AttributesConfig(this, this::attributeCurves);
         attributeService = new Attributes.AttributeService(attributesConfig::rules);
         attributeService.addSource(new Attributes.SkillSource(skillManager));
+        playerDefenseManager.setAttributeService(attributeService);
+        attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
-            @Override public void loaded(java.util.UUID p) { attributeService.track(p); }
-            @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); }
+            @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
+            @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }
             @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); }
         });
         sessionLogger = new SessionLogger(this);
@@ -473,6 +479,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         }
         if (attributesConfig != null) {
             attributesConfig.reload();
+        }
+        if (attributeEffects != null) {
+            attributeEffects.refreshAll(); // new weights/limits: re-apply max health and defense
         }
         if (defenseBarManager != null && combatConfig != null) {
             defenseBarManager.applyCombatConfig(combatConfig);

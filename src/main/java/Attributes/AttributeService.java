@@ -66,8 +66,8 @@ public final class AttributeService {
     // Which integrations exist in code. Each flips to true in the increment that wires it
     // (docs/ATTRIBUTES_ENGINE.md), so menus never claim an effect that isn't there.
     static final boolean OFFENSE_WIRED = true;    // Manager.PveOffense, increment 4
-    static final boolean VITALITY_WIRED = false;
-    static final boolean FORTITUDE_WIRED = false;
+    static final boolean VITALITY_WIRED = true;   // Manager.AttributeEffects, increment 5
+    static final boolean FORTITUDE_WIRED = true;  // PlayerDefenseManager.updateDefense, increment 5
     static final boolean ESSENCE_WIRED = false;
 
     public Effect effect(Attribute a) {

@@ -49,6 +49,9 @@ public class DefenseBarManager {
                 uuid -> new DefenseBar(player, baseMaxPoints));
     }
 
+    /** Bar size before any skill or attribute bonus (combat.yml defense-bar.base-max-points). */
+    public double getBaseMaxPoints() { return baseMaxPoints; }
+
     /** Read-only: the bar if this player has one, else null. Never creates one. */
     public DefenseBar peekDefenseBar(UUID playerId) {
         return playerDefenseBars.get(playerId);

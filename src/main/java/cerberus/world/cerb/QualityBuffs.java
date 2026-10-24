@@ -55,7 +55,11 @@ public class QualityBuffs {
     // Method to remove buffs from the player when an item is unequipped or removed
     public void removeQualityBuffs(Player player) {
         // Reset player stats to default values when removing buffs
-        virtualHealthManager.setPlayerMaxVirtualHealth(player, 100.0); // Reset virtual health
+        // Reset virtual max health to the attribute-derived value (plain 100 with no Vitality),
+        // not a flat 100 that would wipe Vitality every time the held item changes.
+        var effects = CerberusPlugin.getInstance().getAttributeEffects();
+        if (effects != null) effects.applyMaxHealth(player);
+        else virtualHealthManager.setPlayerMaxVirtualHealth(player, 100.0);
         defenseManager.updateDefense(player); // Recalculate defense from current gear
 
         // Reset vanilla Minecraft stats

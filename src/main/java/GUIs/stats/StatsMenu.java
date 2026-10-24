@@ -83,7 +83,7 @@ public final class StatsMenu extends Menu {
         ItemStack hand = p.getInventory().getItemInMainHand();
         WeaponClass wc = WeaponClass.ofMaterial(hand.getType().name());
         v.set(29, weaponTile(s, wc, hand.getType(), svc.effect(Attribute.POWER)));
-        v.set(31, survivalTile(s, svc));
+        v.set(31, survivalTile(p, s, svc));
         v.set(33, magicTile(s, svc));
 
         // Row 4: progression
@@ -120,15 +120,23 @@ public final class StatsMenu extends Menu {
         return Ui.item(Material.NETHERITE_SWORD, ChatColor.GOLD + "Your weapon right now", l.build());
     }
 
-    private static ItemStack survivalTile(AttributeSnapshot s, AttributeService svc) {
+    private ItemStack survivalTile(Player p, AttributeSnapshot s, AttributeService svc) {
+        var vh = plugin.getPlayerVirtualHealthManager();
+        var hs = vh.peekSnapshot(p.getUniqueId());
+        var bar = plugin.getDefenseBarManager().peekDefenseBar(p.getUniqueId());
         Ui.Lore l = Ui.lore().text("From Vitality:")
-                .stat("  Max health", Fmt.mult(s.maxHpMultiplier()))
+                .stat("  Max health", (hs == null ? "?" : Fmt.compact(hs.maxHp())) + "  (" + Fmt.mult(s.maxHpMultiplier()) + ")")
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.VITALITY), Attribute.VITALITY))
-                .gap().text("From Fortitude:")
-                .stat("  Armor", "+" + Fmt.pct(s.armorBonus()) + " (all armor max " + Fmt.pct(s.rules().limits().armor()) + ")")
+                .gap().text("From Fortitude (on top of gear and skills):")
+                .stat("  Armor bonus", "+" + Fmt.pct(s.armorBonus()))
                 .stat("  Defense bar", Fmt.mult(s.defenseBarMultiplier()))
                 .stat("  Resistances", "+" + Fmt.pct(s.resist()))
-                .raw(AttributeView.effectLabel(svc.effect(Attribute.FORTITUDE), Attribute.FORTITUDE));
+                .raw(AttributeView.effectLabel(svc.effect(Attribute.FORTITUDE), Attribute.FORTITUDE))
+                .gap().text("Your totals now:")
+                .stat("  Armor reduction", Fmt.pct(vh.getArmorReduction(p)) + " (max " + Fmt.pct(s.rules().limits().armor()) + ")")
+                .stat("  Defense bar", bar == null ? "?" : Fmt.compact(bar.getMaximum()) + " points")
+                .stat("  Fire / cold / drowning", Fmt.pct(vh.getPlayerFireResistance(p)) + " / "
+                        + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)));
         return Ui.item(Material.TOTEM_OF_UNDYING, ChatColor.RED + "Survivability", l.build());
     }
 
