@@ -13,6 +13,11 @@ public abstract class Spell {
         return name;
     }
 
-    // Abstract method to be implemented by each specific spell
-    public abstract void cast(Player player);
+    /**
+     * Cast the spell.
+     *
+     * @return true if the spell was actually cast; false if it fizzled before casting (e.g. not
+     *         enough mana). Callers award cast XP only on true.
+     */
+    public abstract boolean cast(Player player);
 }

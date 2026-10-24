@@ -57,7 +57,7 @@ public class FireballSpell extends Spell {
     }
 
     @Override
-    public void cast(Player player) {
+    public boolean cast(Player player) {
         double manaCost = baseManaCost;
         double damage = baseDamage;
 
@@ -66,7 +66,7 @@ public class FireballSpell extends Spell {
 
         if (!manaManager.spendMana(player, ManaType.BASIC, manaCost)) {
             player.sendMessage("Not enough mana to cast Fireball!");
-            return;
+            return false;
         }
 
         Location startLocation = player.getEyeLocation();
@@ -79,6 +79,7 @@ public class FireballSpell extends Spell {
 
         player.sendMessage(net.kyori.adventure.text.Component.text("You cast Fireball!")
                 .color(net.kyori.adventure.text.format.NamedTextColor.RED));
+        return true;
     }
 
     /**
@@ -132,7 +133,8 @@ public class FireballSpell extends Spell {
         List<Entity> nearbyEntities = (List<Entity>) location.getWorld()
                 .getNearbyEntities(location, explosionRadius, explosionRadius, explosionRadius);
         for (Entity entity : nearbyEntities) {
-            if (entity instanceof LivingEntity target && !entity.equals(caster)) {
+            if (entity instanceof LivingEntity target && !entity.equals(caster)
+                    && !isCastersPet(target, caster)) {
                 // Register spell context BEFORE dealing damage — the listener picks it up
                 if (listener != null) {
                     listener.registerSpellDamage(target.getEntityId(), FIREBALL_CONTEXT);
@@ -143,5 +145,13 @@ public class FireballSpell extends Spell {
                 target.setFireTicks(60);
             }
         }
+    }
+
+    /** Never burn the caster's own tamed animals (wolves, cats, parrots, horses...). */
+    private static boolean isCastersPet(LivingEntity target, Player caster) {
+        return target instanceof org.bukkit.entity.Tameable pet
+                && pet.isTamed()
+                && pet.getOwnerUniqueId() != null
+                && pet.getOwnerUniqueId().equals(caster.getUniqueId());
     }
 }

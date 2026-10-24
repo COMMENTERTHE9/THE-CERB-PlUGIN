@@ -50,10 +50,11 @@ public class SpellManager {
     public void castSpell(String name, Player player) {
         Spell spell = getSpell(name);
         if (spell != null) {
-            spell.cast(player);
+            boolean cast = spell.cast(player);
 
-            // Award magic XP on successful cast
-            if (skillManager != null) {
+            // Award magic XP only on a successful cast (a failed cast used to grant XP too,
+            // so spamming with no mana still levelled the magic skills)
+            if (cast && skillManager != null) {
                 // Spell Weaving: XP for casting any spell
                 skillManager.addXpAndCheckLevelUp("Spell Weaving", 15, player);
 
