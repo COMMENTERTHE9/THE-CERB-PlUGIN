@@ -247,6 +247,9 @@ public class DamageDisplayListener implements Listener {
                 display.text(Component.text(comboText, NamedTextColor.GOLD));
                 display.setBillboard(Billboard.CENTER);
                 display.setDefaultBackground(false);
+                // Not saved with the chunk: if the chunk unloads or the server stops before the
+                // removal task runs, the text must not stay floating in the world forever.
+                display.setPersistent(false);
             });
 
             Bukkit.getRegionScheduler().runDelayed(plugin, location, task -> {
@@ -278,6 +281,20 @@ public class DamageDisplayListener implements Listener {
         };
 
         location.getWorld().spawnParticle(particle, location.add(0, 1, 0),
-                (int)(damage * 2), 0.3, 0.3, 0.3, 0.1);
+                particleCount(damage), 0.3, 0.3, 0.3, 0.1);
+    }
+
+    /** Upper bound on hit particles. Clients spawn every particle in a packet one by one. */
+    static final int MAX_HIT_PARTICLES = 40;
+
+    /**
+     * Particle count for a hit: two per point of damage, at least 1, at most
+     * {@link #MAX_HIT_PARTICLES}. Uncapped, /kill (~3.4e38 damage) produced a packet asking
+     * for Integer.MAX_VALUE particles, which would hang the client of every nearby player;
+     * at cultivation-scale damage every big hit did the same.
+     */
+    static int particleCount(double damage) {
+        if (!(damage > 0)) return 1; // also catches NaN
+        return (int) Math.max(1, Math.min(MAX_HIT_PARTICLES, damage * 2));
     }
 }
