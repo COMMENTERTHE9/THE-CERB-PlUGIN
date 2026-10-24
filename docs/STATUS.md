@@ -19,7 +19,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Combat XP | Kill XP goes to the weapon's skill (sword → Blade Mastery, fist → Martial Expertise; `skills.yml`). Critical Strike XP per hit; Survival XP when hit. Level-up messages. |
 | Persistence | Skill levels and XP survive restarts; saves coalesce within 1 s; a failed database load disconnects the player instead of overwriting data. |
 | Menus | Player Menu head (slot 9) → Skills → Combat / Magic / Utility → per-skill detail page. Other menu buttons open *Coming Soon*. |
-| Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
+| Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
 ## Incomplete (Read unless noted)
 
@@ -33,7 +33,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Spells | Fireball only. It damages other players caught in the blast (PvP rules are not designed yet); it now spares the caster's own pets. |
 | Elements / knockback | Elemental bonuses are computed but never applied; the `knockback:` config is never read. |
 | Defensive Magic | Disabled (needed ProtocolLib, which Folia can't use). |
-| Admin commands | `/cerb skill`, `mana`, `resetdata`, `worldgen`, `repairchunk`, `quest`, `event`, `timings`, `profiler`, `listentities`, `showqueues` are stubs. `config.yml` is never loaded. |
+| Admin commands | `/cerb mana`, `resetdata`, `worldgen`, `repairchunk`, `quest`, `event`, `timings`, `profiler`, `listentities`, `showqueues` are stubs. `config.yml` is never loaded. |
 | Realm names | Players see tier names (Common, Rare…). The Western realm ladder (Mortal…Primordial, `NAMING.md`) is not in the UI yet. |
 
 ## Known defects still open
@@ -42,14 +42,12 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 |---|---|
 | Labels on *every* mob (`apply-to: ALL`): each fish, bat and villager gets an extra entity | Performance on busy servers; mob pools are also kept for a whole session after chunk unload |
 | Void kills of high-tier mobs take minutes (void damage drains the pool slowly) | Cosmetic / odd |
-| Custom-ID race when a brand-new player's first saves overlap (suspected) | Progress could save under an orphaned ID |
-| SQLite opens a connection per call, no WAL (suspected) | "database is locked" under load |
+| SQLite opens a connection per call, no WAL (suspected) | "database is locked" if several players save at once for > 3 s |
 | Same-day session logs overwrite each other | Debugging only |
-| `/cerb speed` and `/cerb spawn` from the console throw (they assume a player) | Admin annoyance |
 
 ## Fixed and verified on 2026-10-24
 
-Fresh-clone build (dead DTR/Volor deps) and any JDK ≥ 21 · launcher scripts with prerequisite checks and backups · **kill XP of ~500,000,000 per kill** (wrapped negative after ~5 kills) plus the level cap and load-time repair of corrupted values · **hit-particle burst that would hang clients** on `/kill` or big hits · **item in hotbar slot 9 deleted on every join** · labels blocking horse/pig/strider riding and taming · registry mobs (`/cerb spawn`, High Health Zombie, Sea Monster) spawning as common mobs · menu buttons that did nothing · free-XP Upgrade button (now admin-only) · spell XP on failed casts · per-tick XP and "BLOCKED" text in fire/lava · per-hit log spam · dropped saves · empty-data overwrite after a failed load · several Folia thread-safety issues. Details: `git log 031a6b4..HEAD`. Regression check: `tools/playtest/smoke.js` (9/9; the pre-fix build fails 3).
+Fresh-clone build (dead DTR/Volor deps) and any JDK ≥ 21 · launcher scripts with prerequisite checks and backups · **kill XP of ~500,000,000 per kill** (wrapped negative after ~5 kills) plus the level cap and load-time repair of corrupted values · **hit-particle burst that would hang clients** on `/kill` or big hits · **item in hotbar slot 9 deleted on every join** · labels blocking horse/pig/strider riding and taming · registry mobs (`/cerb spawn`, High Health Zombie, Sea Monster) spawning as common mobs · menu buttons that did nothing · free-XP Upgrade button (now admin-only) · spell XP on failed casts · XP saved before a player's data loaded · per-tick XP and "BLOCKED" text in fire/lava · per-hit log spam · dropped saves · empty-data overwrite after a failed load · several Folia thread-safety issues. Details: `git log 031a6b4..HEAD`. An independent review of the fixes found no regressions; its follow-ups are in. Regression check: `tools/playtest/smoke.js` (11/11; the pre-fix build fails the kill-XP, elite-spawn and horse checks).
 
 ## Recommended next milestone — "Progression that matters" (Attributes v1)
 
@@ -63,10 +61,10 @@ Fresh-clone build (dead DTR/Volor deps) and any JDK ≥ 21 · launcher scripts w
 3. Mob damage path: apply the attacker's Power/crit **before** the hit drains the mob's pool (today the bonus is computed and thrown away).
 4. Vitality → max HP, Fortitude → defense, Essence → mana max/regen; recompute on level-up, join, and gear change.
 5. Replace shared-level `applyEffect` paths (starting with Navigation speed) with per-player attributes.
-6. Stats page; a working `/cerb skill <player> <skill> <level>` admin command for testing.
+6. Stats page (`/cerb skill` for setting test levels already works).
 7. Smoke-test checks for each.
 
-**How we verify it in-game.** `/cerb skill <you> "Blade Mastery" 50` → a level-1 zombie dies in clearly fewer swings than at level 1; the Stats page shows the new numbers; a level-10 mob far from spawn pays more XP than a level-1 mob; HP above 100 after Vitality grows; everything survives a restart.
+**How we verify it in-game.** `/cerb skill <you> Blade_Mastery level 50` → a level-1 zombie dies in clearly fewer swings than at level 1; the Stats page shows the new numbers; a level-10 mob far from spawn pays more XP than a level-1 mob; HP above 100 after Vitality grows; everything survives a restart.
 
 ## Roadmap after that
 

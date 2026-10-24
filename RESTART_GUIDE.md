@@ -27,7 +27,7 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 3. **Java missing?** Install Eclipse Temurin JDK 21 from https://adoptium.net. If you keep Java somewhere unusual, set `BUILD_JAVA_HOME` (and optionally `RUN_JAVA_HOME`) to its folder.
 4. **No server yet?** Double-click **`setup.bat`**. It creates `test-server\` and downloads the Folia jar, checking its SHA-256. It never touches an existing jar, world, or config.
 5. **EULA (only for a brand-new server folder).** The first start creates `test-server\eula.txt` and stops. Read https://aka.ms/MinecraftEULA, change `eula=false` to `eula=true` yourself, and start again.
-6. **Make yourself operator (once).** With the server running, type in its window: `op YourMinecraftName`. The test commands below need it.
+6. **Make yourself operator (once).** With the server running, type in its window: `op YourMinecraftName`. The test commands below need it. (The server window itself accepts `cerb status`, `cerb reload`, `cerb skill …`, `cerb heal …`.)
 7. **Client.** In the Minecraft Launcher: *Installations → New installation → Version: release 1.21.11*.
 
 ## Daily loop
@@ -54,6 +54,7 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 | `/summon minecraft:zombie`, then kill it with the Cerberus Blade | A floating label like `Zombie 50❤ Lv1` that drops as you hit. On the kill: `+40 Blade Mastery XP`. |
 | `/cerb spawn elite_zombie` | `Spawned elite_zombie (Rare)`; its label shows about `3.2K❤`. |
 | `/cerb combatdebug`, then let a zombie hit you | A chat trace `MobScaling → Incoming → DefenseBar → Final`. Run it again to turn it off. |
+| `/cerb skill YourName Blade_Mastery level 25` | `Blade Mastery is now level 25 (0 XP)`; the Skills menu shows it. Set it back the same way. |
 | `/testregen 50` | Health drops by 50, then regenerates about 4 per second. |
 | `/kill` | Instant respawn at full 100 HP. No death screen; this is intentional. |
 
