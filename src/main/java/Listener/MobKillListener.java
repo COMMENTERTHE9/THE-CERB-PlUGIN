@@ -79,7 +79,7 @@ public class MobKillListener implements Listener {
 
         double xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
         skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
-        player.sendMessage(ChatColor.GREEN + "XP gained: " + xpGained + " in " + skillName);
+        player.sendMessage(ChatColor.GREEN + "+" + String.format("%.0f", xpGained) + " " + skillName + " XP");
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

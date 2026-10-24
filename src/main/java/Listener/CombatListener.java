@@ -91,32 +91,10 @@ public class CombatListener implements Listener {
         checkExitCombat(player);                                           // your existing method
     }
 
-    // ——————————————————————————————
-// Killing blow XP (melee or projectile)
-// ——————————————————————————————
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onCombatDamage(EntityDamageByEntityEvent e) {
-        Player killer = null;
-        if (e.getDamager() instanceof Player p)           killer = p;
-        else if (e.getDamager() instanceof Projectile pr &&
-                pr.getShooter() instanceof Player p2)    killer = p2;
-        if (killer == null) return;
-
-        if (!(e.getEntity() instanceof LivingEntity victim)) return;
-        double damage = e.getFinalDamage();
-        double maxHp   = victim.getAttribute(Attribute.MAX_HEALTH).getValue();
-
-        // only award if this *would* kill them
-        if (victim.getHealth() - damage > 0) return;
-
-        // Resolve mob classification from the registry (config-driven)
-        MobContext ctx = mobRegistry.resolve(victim);
-
-        // award XP and refresh the menu if it’s open
-        skillManager.addXpForMobKill(killer, "Combat", maxHp, damage, ctx);
-        killer.sendMessage(ChatColor.GREEN + "You gained combat XP!");
-        // GUI refreshes on reopen — no live update needed
-    }
+    // Kill XP is awarded once, by MobKillListener, to the skill of the weapon used (design
+    // plan: "mob kill -> the combat skill used, weapon-type routed"). This listener used to
+    // also award a second share to a "Combat" key that is not a registered skill: invisible
+    // in the skill menus, but it inflated the menu-head Level and doubled kill XP.
 
     private void enterCombat(Player player) {
         UUID playerUUID = player.getUniqueId();

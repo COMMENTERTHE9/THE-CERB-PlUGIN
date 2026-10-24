@@ -235,20 +235,26 @@ public class SkillManager {
         Map<String, Integer> levels = playerSkillLevels.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
         Map<String, Integer> xp = playerSkillXP.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
 
+        applyAward(player, skillName, levels, xp, amount);
+        saveSkills(player);
+    }
+
+    /**
+     * Single award path for every XP source: overflow-safe, capped at
+     * {@link SkillProgression#MAX_LEVEL}, one level-up message per level gained.
+     */
+    private SkillProgression.Result applyAward(Player player, String skillName,
+                                               Map<String, Integer> levels, Map<String, Integer> xp,
+                                               double amount) {
         int currentLevel = levels.getOrDefault(skillName, 1);
         int currentXP = xp.getOrDefault(skillName, 0);
-        int newXP = currentXP + (int) amount;
-        int reqXP = calculateRequiredXpForNextLevel(currentLevel);
-
-        if (newXP >= reqXP && !isMaxLevel(skillName, currentLevel + 1)) {
-            levels.put(skillName, currentLevel + 1);
-            xp.put(skillName, newXP - reqXP);
-            player.sendMessage(createLevelUpMessage(skillName, currentLevel + 1));
-        } else {
-            xp.put(skillName, newXP);
+        SkillProgression.Result r = SkillProgression.award(currentLevel, currentXP, amount);
+        levels.put(skillName, r.level());
+        xp.put(skillName, r.xp());
+        for (int i = r.levelsGained() - 1; i >= 0; i--) {
+            player.sendMessage(createLevelUpMessage(skillName, r.level() - i));
         }
-
-        saveSkills(player);
+        return r;
     }
 
     private void saveSkills(Player player) {
@@ -267,25 +273,18 @@ public class SkillManager {
 
 
     public double calculateDynamicXp(double health, double damage, boolean isRare, boolean isBoss) {
-        double baseXp = 0;
-        double healthFactor = health * 0.50;
-        double damageFactor = damage * 0.50;
         double rarityFactor = isRare ? 2.0 : 1.0;
         double bossFactor = isBoss ? 5.0 : 1.0;
-
-        return baseXp + healthFactor + damageFactor * rarityFactor * bossFactor;
+        return SkillProgression.killXp(health, damage, rarityFactor * bossFactor);
     }
 
-    /** Base XP from health + damage only — no classification multiplier. */
-    private double calculateBaseXp(double health, double damage) {
-        double healthFactor = health * 0.50;
-        double damageFactor = damage * 0.50;
-        return healthFactor + damageFactor;
-    }
-
-    /** MobContext-aware XP calculation — applies ONLY the config multiplier, no double-mult. */
+    /**
+     * MobContext-aware kill XP — applies ONLY the config multiplier, no double-mult.
+     * Overkill damage (e.g. the 1e9 guaranteed-kill hit) does not count; see
+     * {@link SkillProgression#killXp}.
+     */
     public double calculateDynamicXp(double health, double damage, MobContext ctx) {
-        return calculateBaseXp(health, damage) * ctx.xpMultiplier();
+        return SkillProgression.killXp(health, damage, ctx.xpMultiplier());
     }
 
     public void addXpForMobKill(Player player,
@@ -338,32 +337,13 @@ public class SkillManager {
         Map<String, Integer> levels = playerSkillLevels.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
         Map<String, Integer> xp = playerSkillXP.computeIfAbsent(uid, k -> new ConcurrentHashMap<>());
 
-        int currentLevel = levels.getOrDefault(skillName, 1);
-        int currentXP = xp.getOrDefault(skillName, 0);
-        int newXP = currentXP + (int) xpGained;
-        int requiredXP = calculateRequiredXpForNextLevel(currentLevel);
-
-        boolean leveledUp = false;
-
-        if (newXP >= requiredXP) {
-            int excessXP = newXP - requiredXP;
-            int newLevel = currentLevel + 1;
-            levels.put(skillName, newLevel);
-            xp.put(skillName, isMaxLevel(skillName, newLevel) ? 0 : excessXP);
-
-            leveledUp = true;
-            player.sendMessage(createLevelUpMessage(skillName, newLevel));
-        } else {
-            xp.put(skillName, newXP);
-        }
-
+        SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained);
         saveSkills(player);
-        return leveledUp;
+        return r.levelsGained() > 0;
     }
 
     public boolean isMaxLevel(String skillName, int newLevel) {
-        int maxLevel = 100;
-        return newLevel >= maxLevel;
+        return newLevel >= SkillProgression.MAX_LEVEL;
     }
 
     public void refreshSkillDisplay(Player player) {
@@ -458,9 +438,30 @@ public class SkillManager {
 
     public void setPlayerSkills(Player player, Map<String,Integer> skillLevels, Map<String,Integer> skillXP) {
         UUID uid = player.getUniqueId();
-        playerSkillLevels.put(uid, new ConcurrentHashMap<>(skillLevels));
-        playerSkillXP    .put(uid, new ConcurrentHashMap<>(skillXP));
-
+        Map<String, Integer> levels = new ConcurrentHashMap<>();
+        Map<String, Integer> xp = new ConcurrentHashMap<>();
+        int repaired = 0;
+        for (Map.Entry<String, Integer> e : skillLevels.entrySet()) {
+            int raw = e.getValue() == null ? 0 : e.getValue();
+            int fixed = SkillProgression.clampLevel(raw);
+            if (fixed != raw) repaired++;
+            levels.put(e.getKey(), fixed);
+        }
+        for (Map.Entry<String, Integer> e : skillXP.entrySet()) {
+            int raw = e.getValue() == null ? 0 : e.getValue();
+            int fixed = SkillProgression.sanitizeStoredXp(levels.getOrDefault(e.getKey(), 1), raw);
+            if (fixed != raw) repaired++;
+            xp.put(e.getKey(), fixed);
+        }
+        // Out-of-range values can only come from the old kill-XP overflow (huge or negative XP)
+        // or the missing level cap (> 100). Repair them on load; the next save rewrites them.
+        if (repaired > 0) {
+            plugin.getLogger().warning("[SkillManager] Repaired " + repaired
+                    + " out-of-range skill value(s) for " + player.getName()
+                    + " (XP outside its level's range, or level above " + SkillProgression.MAX_LEVEL + ").");
+        }
+        playerSkillLevels.put(uid, levels);
+        playerSkillXP    .put(uid, xp);
     }
 
     public int getPlayerLevel(Player player) {
