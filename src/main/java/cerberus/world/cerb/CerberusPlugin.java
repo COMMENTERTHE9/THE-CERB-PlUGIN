@@ -232,7 +232,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         mobRegistry = new MobRegistry(this);
         mobVirtualHealthManager = new Manager.MobVirtualHealthManager();
         mobLabelManager = new Manager.MobLabelManager(this);
+        attributesConfig = new Attributes.AttributesConfig(this);
     }
+
+    private Attributes.AttributesConfig attributesConfig;
+
+    public Attributes.AttributesConfig getAttributesConfig() { return attributesConfig; }
 
     public AsyncSaveManager getAsyncSaver() {
         return asyncSaver;
@@ -438,6 +443,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         }
         if (combatConfig != null) {
             combatConfig.reload();
+        }
+        if (attributesConfig != null) {
+            attributesConfig.reload();
         }
         if (defenseBarManager != null && combatConfig != null) {
             defenseBarManager.applyCombatConfig(combatConfig);

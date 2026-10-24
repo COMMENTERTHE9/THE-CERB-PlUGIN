@@ -71,7 +71,7 @@ public final class MobTestService {
                 le.setPersistent(false);         // test mobs never get saved into the world
                 le.setRemoveWhenFarAway(true);
             }
-            if (!r.ai() && le instanceof Mob mob) mob.setAware(false); // "punching bag": no AI, still takes knockback
+            if (!r.ai()) le.setAI(false); // "punching bag": vanilla NoAI - no movement, attacks or knockback drift
         });
         return (LivingEntity) e;
     }
@@ -88,7 +88,7 @@ public final class MobTestService {
         double max = pooled ? pools.getMax(mob) : attr(mob);
         double cur = pooled ? pools.getCurrent(mob) : mob.getHealth();
         double dist = viewerLoc != null && viewerLoc.getWorld() == mob.getWorld() ? viewerLoc.distance(mob.getLocation()) : -1;
-        boolean ai = !(mob instanceof Mob m) || m.isAware();
+        boolean ai = mob.hasAI();
         String name = mob.getCustomName() != null && !mob.getCustomName().isBlank() ? mob.getCustomName() : null;
         return new MobInfo(mob.getType().name(), name, ctx.mobId(), ctx.tier(), level, cur, max, pooled, dmg,
                 ctx.xpMultiplier(), registry.isTestSpawn(mob), ai, dist);
@@ -107,9 +107,8 @@ public final class MobTestService {
 
     /** Toggle "punching bag" mode. Returns the new AI state. */
     public boolean toggleAi(LivingEntity mob) {
-        if (!(mob instanceof Mob m)) return true;
-        m.setAware(!m.isAware());
-        return m.isAware();
+        mob.setAI(!mob.hasAI());
+        return mob.hasAI();
     }
 
     /** Remove a mob and its pool/label (no death, no drops, no XP). */

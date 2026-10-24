@@ -4,7 +4,6 @@ import GUIs.menu.Fmt;
 import GUIs.menu.MenuView;
 import GUIs.menu.Status;
 import GUIs.menu.Ui;
-import Manager.MobVirtualHealthManager;
 import Skills.SkillManager;
 import Skills.SkillProgression;
 import org.bukkit.ChatColor;
@@ -40,14 +39,22 @@ final class ProgressionLabMenu extends AdminMenu {
         curve.stat("Level 1 -> 100 in total", Fmt.grouped(cumulative) + " XP").gap().status(Status.LIVE);
         v.set(19, Ui.item(Material.EXPERIENCE_BOTTLE, ChatColor.GREEN + "XP curve", curve.build()));
 
-        // Kill XP (current rule)
-        double flat = SkillProgression.killXp(MobVirtualHealthManager.COSMETIC_MAX_HEALTH, MobVirtualHealthManager.COSMETIC_MAX_HEALTH, 1.0);
-        v.set(20, Ui.item(Material.ROTTEN_FLESH, ChatColor.YELLOW + "Kill XP (current rule)",
-                Ui.lore().text("Goes to the skill of the weapon used").text("(skills.yml: sword -> Blade Mastery...).")
-                        .stat("Every scaled mob", Fmt.one(flat) + " x its registry multiplier")
-                        .text("Bounded and safe, but the same for a").text("level-1 and a level-100 mob.")
-                        .gap().status(Status.PARTIAL)
-                        .text("Next: Kill XP v2 by mob level x tier").text("(approved; part of Attributes 2.0).").build()));
+        // Kill XP v2 (attributes.yml)
+        var kx = plugin.getAttributesConfig().killXp();
+        Ui.Lore kill = Ui.lore().text("Goes to the skill of the weapon used").text("(skills.yml: sword -> Blade Mastery...).");
+        if (kx.enabled()) {
+            kill.text("XP = base x (1 + slope x (level - 1)) x tier mult");
+            kill.stat("base / slope", Fmt.one(kx.base()) + " / " + kx.levelSlope());
+            for (Object[] row : new Object[][]{{"Common", 1, 1.0}, {"Common", 50, 1.0}, {"Rare", 50, 2.0}, {"Epic", 75, 3.0}, {"Primordial", 100, 15.0}}) {
+                kill.raw(ChatColor.GRAY + "  " + row[0] + " L" + row[1] + ": " + ChatColor.WHITE
+                        + Fmt.grouped(Math.round(Attributes.KillXp.compute((int) row[1], (double) row[2], 1, kx))) + " XP");
+            }
+            kill.text("Mobs " + kx.antiGrindGap() + "+ levels below your skill pay x" + kx.antiGrindFactor() + ".")
+                    .stat("Ceiling per kill", Fmt.grouped((long) kx.maxPerKill())).gap().status(Status.LIVE);
+        } else {
+            kill.text("Kill XP v2 is switched off in attributes.yml;").text("using the old HP-based rule.").gap().status(Status.PARTIAL);
+        }
+        v.set(20, Ui.item(Material.ROTTEN_FLESH, ChatColor.YELLOW + "Kill XP", kill.build()));
 
         // XP sources
         v.set(21, Ui.item(Material.HOPPER, ChatColor.AQUA + "XP sources",

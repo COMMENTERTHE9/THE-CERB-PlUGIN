@@ -391,7 +391,7 @@ public class CerbCommand implements CommandExecutor {
      */
     private void handleSpawn(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mobId> [level]");
+            player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mobId|vanilla mob> [level] [noai]");
             Manager.MobRegistry registry = plugin.getMobRegistry();
             if (registry != null) {
                 player.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", registry.getEntryIds()));
@@ -405,36 +405,65 @@ public class CerbCommand implements CommandExecutor {
             return;
         }
 
+        // /cerb spawn <mobId|entity> [level] [noai] - a mobs.yml id, or a vanilla living mob type.
         String mobId = args[1].toLowerCase();
         Manager.MobRegistry.MobEntry entry = registry.getEntry(mobId);
-        if (entry == null) {
-            player.sendMessage(ChatColor.RED + "No mob registered with id: " + mobId);
-            player.sendMessage(ChatColor.GRAY + "Available: " + String.join(", ", registry.getEntryIds()));
-            return;
+        org.bukkit.entity.EntityType type;
+        String customName = null;
+        Manager.Tier tier;
+        if (entry != null) {
+            type = entry.getEntityType();
+            customName = entry.getCustomNameExact();
+            tier = entry.getTier();
+            if (type == null || type.getEntityClass() == null
+                    || !org.bukkit.entity.LivingEntity.class.isAssignableFrom(type.getEntityClass())) {
+                player.sendMessage(ChatColor.RED + "Mob '" + mobId + "' has no living entity-type in mobs.yml - cannot spawn.");
+                return;
+            }
+        } else {
+            type = org.bukkit.Registry.ENTITY_TYPE.get(org.bukkit.NamespacedKey.minecraft(mobId));
+            if (type == null || type.getEntityClass() == null
+                    || !org.bukkit.entity.Mob.class.isAssignableFrom(type.getEntityClass())) {
+                player.sendMessage(ChatColor.RED + "No mobs.yml id or vanilla mob called '" + mobId + "'.");
+                player.sendMessage(ChatColor.GRAY + "mobs.yml: " + String.join(", ", registry.getEntryIds()));
+                return;
+            }
+            Manager.MobRegistry.MobEntry byType = registry.getEntryByType(type);
+            tier = byType != null ? byType.getTier() : Manager.Tier.COMMON;
+            mobId = null; // resolved through the registry like any natural spawn
         }
-
-        if (entry.getEntityType() == null) {
-            player.sendMessage(ChatColor.RED + "Mob '" + mobId + "' has no entity-type defined — cannot spawn.");
+        if (Manager.MobTestService.TERRAIN_DESTROYING.contains(type)) {
+            player.sendMessage(ChatColor.RED + "Not spawning " + type.name() + " from the command: its vanilla behaviour destroys terrain.");
             return;
         }
 
         int level = 0; // 0 = normal distance-based level
-        if (args.length >= 3) {
-            try { level = Math.max(1, Integer.parseInt(args[2])); }
-            catch (NumberFormatException e) { player.sendMessage(ChatColor.RED + "Level must be a number."); return; }
+        boolean ai = true;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].equalsIgnoreCase("noai")) { ai = false; continue; }
+            try { level = Math.max(1, Integer.parseInt(args[i])); }
+            catch (NumberFormatException e) { player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mob> [level] [noai]"); return; }
         }
         org.bukkit.Location spawnLoc = player.getLocation();
-        Manager.Tier tier = entry.getTier();
+        // Command spawns are test spawns: never saved into the world, removed by panel cleanup.
         Manager.MobTestService.SpawnRequest req = new Manager.MobTestService.SpawnRequest(
-                entry.getEntityType(), mobId, entry.getCustomNameExact(), level, true, false);
+                type, mobId, customName, level, ai, true);
         int lvl = level;
+        String shown = mobId != null ? mobId : type.name().toLowerCase();
+        Manager.Tier shownTier = tier;
 
         // Spawn on the region thread owning the spawn location (Folia), through the shared
         // MobTestService: tag/name/level are applied before the spawn event so scaling sees them.
         Bukkit.getRegionScheduler().run(plugin, spawnLoc, task -> {
-            plugin.getMobTestService().spawn(spawnLoc, req);
-            player.sendMessage(ChatColor.GREEN + "Spawned " + ChatColor.GOLD + mobId
-                    + ChatColor.GREEN + " (" + tier.displayColor + tier.displayName + ChatColor.GREEN + ")"
+            try {
+                plugin.getMobTestService().spawn(spawnLoc, req);
+            } catch (RuntimeException ex) {
+                player.sendMessage(ChatColor.RED + "Could not spawn " + shown + ": " + ex.getMessage());
+                plugin.getLogger().warning("[Spawn] " + shown + " failed: " + ex);
+                return;
+            }
+            player.sendMessage(ChatColor.GREEN + "Spawned " + ChatColor.GOLD + shown
+                    + ChatColor.GREEN + " (" + shownTier.displayColor + shownTier.displayName + ChatColor.GREEN + ")"
                     + (lvl > 0 ? " at level " + lvl : "")
                     + " at " + ChatColor.WHITE + String.format("%.0f, %.0f, %.0f",
                     spawnLoc.getX(), spawnLoc.getY(), spawnLoc.getZ()));

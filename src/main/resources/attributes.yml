@@ -1,0 +1,17 @@
+# ════════════════════════════════════════════════════════════════════
+# Cerberus Attributes & Progression 2.0 (see docs/ATTRIBUTES_ENGINE.md)
+# ════════════════════════════════════════════════════════════════════
+config-version: 1
+
+# ── Kill XP v2: based on mob LEVEL and TIER, not HP ──────────────────
+# xp = base * (1 + level-slope * (mobLevel - 1)) * tierMultiplier
+# tierMultiplier = the mobs.yml entry's xp-multiplier, else the tier's default (combat.yml tiers).
+# Anti-grind: a mob at least `anti-grind.level-gap` levels below the receiving skill pays x factor.
+kill-xp:
+  enabled: true          # false = old rule (half the mob's cosmetic HP + killing blow)
+  base: 40.0             # Common level-1 mob (same as the old rule, so early game isn't slower)
+  level-slope: 0.15      # Common L50 = 334, Rare L50 = 668, Primordial L100 = 9,510
+  anti-grind:
+    level-gap: 20        # 0 disables
+    factor: 0.25
+  max-per-kill: 1000000  # safety ceiling

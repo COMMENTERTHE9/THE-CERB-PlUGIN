@@ -42,15 +42,17 @@ final class SpawnSetupMenu extends AdminMenu {
         boolean scaled = cc.mobHealthScaling.isEnabled();
         double pool = cc.mobHealthScaling.calculate(choice.tier(), level);
         double dmg = cc.mobDamageScaling.isEnabled() ? cc.mobDamageScaling.calculate(choice.tier(), level) : 1.0;
-        double killXp = SkillProgression.killXp(MobVirtualHealthManager.COSMETIC_MAX_HEALTH,
-                MobVirtualHealthManager.COSMETIC_MAX_HEALTH, choice.xpMultiplier());
+        var kx = plugin.getAttributesConfig().killXp();
+        double killXp = kx.enabled()
+                ? Attributes.KillXp.compute(level, choice.xpMultiplier(), 1, kx)
+                : SkillProgression.killXp(MobVirtualHealthManager.COSMETIC_MAX_HEALTH, MobVirtualHealthManager.COSMETIC_MAX_HEALTH, choice.xpMultiplier());
 
         v.set(MenuView.HEADER, Ui.amount(Ui.item(choice.icon(), choice.tier().displayColor + "" + ChatColor.BOLD + Fmt.title(choice.label()),
                 Ui.lore().stat("Tier", choice.tier().displayColor + choice.tier().displayName)
                         .stat("Level", level + " / " + maxLevel)
                         .stat("HP pool", scaled ? Fmt.compact(pool) + " each" : "vanilla (scaling disabled)")
                         .stat("Damage multiplier", Fmt.mult(dmg))
-                        .stat("Kill XP now", Fmt.one(killXp) + "  (flat by level - Kill XP v2 is next)")
+                        .stat("Kill XP", Fmt.grouped(Math.round(killXp)) + " to the weapon's skill" + (kx.enabled() ? "" : "  (old rule)"))
                         .stat("Will spawn", count + " x, " + (ai ? "normal AI" : "no AI (punching bag)"))
                         .stat("Where", "3 blocks in front of you")
                         .build()), Math.min(64, level)));

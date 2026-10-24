@@ -77,7 +77,19 @@ public class MobKillListener implements Listener {
             player.sendMessage(ChatColor.DARK_GRAY + "[SkillTrigger] Held=" + materialName + " → " + debugInfo);
         }
 
-        double xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
+        // Kill XP v2: mob level x tier (attributes.yml). The old HP-based rule stays as fallback.
+        var killCfg = plugin.getAttributesConfig() != null ? plugin.getAttributesConfig().killXp() : null;
+        double xpGained;
+        if (killCfg != null && killCfg.enabled()) {
+            int mobLevel = mobRegistry.getLevel(mob);
+            int skillLevel = skillManager.getSkillLevel(player, skillName);
+            xpGained = Attributes.KillXp.compute(mobLevel, ctx.xpMultiplier(), skillLevel, killCfg);
+            if (Attributes.KillXp.isGreyKill(mobLevel, skillLevel, killCfg)) {
+                player.sendMessage(ChatColor.GRAY + "(Low-level mob: reduced XP. Fight stronger enemies for full XP.)");
+            }
+        } else {
+            xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
+        }
         skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
         player.sendMessage(ChatColor.GREEN + "+" + (long) Math.floor(xpGained) + " " + skillName + " XP");
     }
