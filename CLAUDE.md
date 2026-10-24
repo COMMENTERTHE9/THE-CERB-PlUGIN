@@ -19,7 +19,9 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ First Aid runaway capped
 - ✅ Repo hygiene (removed the `Creb/` nested duplicate; `target/` untracked)
 - ✅ Playtest-readiness pass (2026-10-24): fresh-clone build, launcher scripts, kill-XP overflow + level cap, hotbar slot-9 item loss, rideable-mob labels, registry-mob spawn tier, particle cap, save coalescing, failed-load protection — each verified on a real Folia 1.21.11 server
-- ⬜ Next: Step 1–2 — the **Attribute stat-bus** (Vitality/Essence/Power/Fortitude/Agility/Fortune) + the constants treaty
+- ✅ Admin Control Panel 2.0 (`GUIs/menu` framework + `GUIs/admin`; permission re-checked per click; `tools/playtest/admin.js`)
+- ✅ Attributes & Progression 2.0, increments 1–7 (`docs/ATTRIBUTES_ENGINE.md`): kill XP v2, attribute engine + `attributes.yml`, Stats page, PvE offense, Vitality/Fortitude/Essence, admin inspector/simulator/dev buffs (`tools/playtest/progression.js`)
+- ⬜ Next: increment 8 (persistence + load check on the owner's server), then the gathering/crafting loop (`docs/STATUS.md`)
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -27,7 +29,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - `Manager/Tier.java` — the unified 10-tier ladder (= realms)
 - `Manager/MobHealthScaling.java` · `Listener/MobScalingListener.java` · `Manager/MobVirtualHealthManager.java` — mob level/HP scaling
 - `Manager/CombatConfig.java` + `src/main/resources/combat.yml` — combat tuning (mob-health-scaling, mob-damage-scaling, tiers)
-- `Listener/VirtualHealthListener.java` — damage pipeline (player + mob virtual HP)
+- `Listener/VirtualHealthListener.java` — damage pipeline (player + mob virtual HP); `Manager/PveOffense.java` — attributes on player→mob hits
+- `Attributes/*` — attribute engine (pure calculator, cached per-player `AttributeService`, sources); `Manager/AttributeEffects.java` pushes Vitality/Fortitude/Essence into health/defense/mana
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions

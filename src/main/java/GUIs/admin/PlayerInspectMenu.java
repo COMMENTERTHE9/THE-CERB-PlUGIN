@@ -86,11 +86,15 @@ final class PlayerInspectMenu extends AdminMenu {
         v.button(23, Ui.item(Material.ENCHANTED_BOOK, ChatColor.GOLD + "Skills", skills.hint("Click to view and edit all skills").build()),
                 c -> open(c.player(), new SkillListMenu(panel, targetId)));
 
-        // Attributes (next milestone)
-        v.button(24, Ui.item(Material.NETHER_STAR, ChatColor.GRAY + "Attributes",
-                Ui.lore().text("Vitality, Essence, Power, Fortitude,").text("Agility, Fortune.")
-                        .gap().status(Status.IN_DEVELOPMENT).hint("Click to see the plan").build()),
-                c -> open(c.player(), new AttributesDevMenu(panel, targetId)));
+        // Attributes
+        var snap = plugin.getAttributeService().get(targetId);
+        v.button(24, Ui.item(Material.NETHER_STAR, ChatColor.LIGHT_PURPLE + "Attributes",
+                Ui.lore().stat("Power (swords)", Fmt.one(snap.power(Attributes.WeaponClass.SWORD)))
+                        .stat("Agility / Vitality", Fmt.one(snap.get(Attributes.Attribute.AGILITY)) + " / " + Fmt.one(snap.get(Attributes.Attribute.VITALITY)))
+                        .stat("Fortitude / Essence", Fmt.one(snap.get(Attributes.Attribute.FORTITUDE)) + " / " + Fmt.one(snap.get(Attributes.Attribute.ESSENCE)))
+                        .text("Sources, simulator, dev buffs.")
+                        .gap().status(Status.LIVE).hint("Click to inspect").build()),
+                c -> open(c.player(), new AttributesInspectMenu(panel, targetId)));
 
         // Combat stats
         v.button(25, Ui.item(Material.IRON_CHESTPLATE, ChatColor.YELLOW + "Combat stats",

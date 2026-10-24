@@ -72,7 +72,7 @@ attributes:
     lifesteal: 0.40
     armor: 0.40             # total armor reduction (gear + Fortitude)
     resist: 0.50            # each of fire / cold / drowning
-    total-mitigation: 0.75  # resist + armor + defense bar together
+    total-mitigation: 0.75  # RESERVED, not enforced yet: today's defense pipeline allows ~82%; enforcing is an owner decision
 
   # Kill switches: false = that part of combat ignores attributes (behaves as before).
   integration:

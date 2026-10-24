@@ -4,6 +4,8 @@
 //   nonop   - bot must NOT be op: /cerb panel and a forged panel item must both be refused
 //   deopmid - bot is op; opens the panel, prints READY, waits 6 s (deop it then), then clicks
 //   owners  - bot and CerbTarget must be op: cleanup removes only the clicking admin's test mobs
+//   attrs   - bot must be op: Attributes section, inspector, simulator (changes nothing), dev buffs
+//   buffexpire - bot must be op: a dev buff ends by itself after 5 minutes (max health returns)
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'main';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -265,6 +267,68 @@ async function owners() {
   await sleep(1500);
 }
 
+async function attrs() {
+  await cmd('/cerb skill ' + NAME + ' Blade_Mastery level 1', 600);
+  await cmd('/cerb skill ' + NAME + ' Survival level 1', 600);
+  await cmd('/cerb panel', 1500);
+  const tile = findSlot(/^Attributes$/);
+  check('Home shows Attributes as live', tile >= 0 && /Live/.test(slotLore(tile)), slotLore(tile));
+  await click(tile, 900);
+  check('Attributes section lists players, you first', await waitTitle(/Attributes$/) && new RegExp(NAME).test(slotName(10)), slotName(10));
+  await click(10, 900);
+  check('Inspector opens for yourself', await waitTitle(new RegExp('Attributes: ' + NAME)), title());
+  check('Inspector shows the same Power tile as the Stats page', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)), slotLore(10));
+  check('Rules tile shows integrations and limits', /PvE offense.*: on/.test(slotLore(40)) && /Offense budget: x6\.00/.test(slotLore(40)), slotLore(40));
+
+  // Simulator: Blade Mastery at 100, then confirm nothing really changed
+  await click(29, 900);
+  check('Simulator opens', await waitTitle(/Attribute simulator/), title());
+  for (let i = 0; i < 25 && !/^Blade Mastery$/.test(slotName(22)); i++) await click(25, 500);
+  await click(43, 900); // preset level 100
+  check('Simulator: Blade Mastery 100 would take swords to x6.00', /Swords: x1\.05 -> x6\.00/.test(slotLore(10)) && /changes/.test(slotName(10)), slotName(10) + ' | ' + slotLore(10));
+  await click(45, 900); // back
+  check('Simulating changed nothing', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)), slotLore(10));
+
+  // Dev buffs: +100 Vitality, check max health, clear
+  await click(31, 900);
+  check('Dev buffs open', await waitTitle(/Dev buffs/), title());
+  let at = chat.length;
+  const vit = findSlot(/^\+100 Vitality$/);
+  await click(vit, 1500);
+  check('Buff applied and reported', saw(/\+100 Vitality for 5 minutes/, at), chat.slice(at).join(' / '));
+  check('Active list shows the buff', /Dev buff \+100 Vitality/.test(slotLore(31)), slotLore(31));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await cmd('/stats', 1500);
+  const buffed = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
+  check('Max health rose with the buff (102 -> 202)', buffed === '202', slotLore(31));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await cmd('/cerb panel', 1500);
+  await click(findSlot(/^Attributes$/), 900); await click(10, 900); await click(31, 900);
+  at = chat.length;
+  await click(40, 1500);
+  check('Clear all buffs', saw(/Cleared 1 buff/, at), chat.slice(at).join(' / '));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await cmd('/stats', 1500);
+  const after = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
+  check('Max health back to normal after clearing', after === '102', slotLore(31));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+}
+
+async function buffexpire() {
+  await cmd('/cerb panel', 1500);
+  await click(findSlot(/^Attributes$/), 900); await click(10, 900); await click(31, 900);
+  await click(findSlot(/^\+100 Vitality$/), 1500);
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await cmd('/stats', 1500);
+  const during = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  console.log('buff applied, max health ' + during + '; waiting 5m10s for it to expire');
+  await sleep(310000);
+  await cmd('/stats', 1500);
+  const after = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
+  check('Dev buff expires on its own: max health ' + during + ' -> back to normal', during === '202' && after === '102', `${during} -> ${after}`);
+}
+
 async function deopmid() {
   await cmd('/cerb panel', 1500);
   check('Opened as op', await waitTitle(/Control Center/), title());
@@ -284,9 +348,11 @@ bot.once('spawn', async () => {
     else if (phase === 'dupe') await dupe();
     else if (phase === 'cross') await cross();
     else if (phase === 'owners') await owners();
+    else if (phase === 'attrs') await attrs();
+    else if (phase === 'buffexpire') await buffexpire();
   } catch (e) { console.log('SCRIPT ERROR', e.stack); results.push(false); }
   const failed = results.filter(r => !r).length;
   console.log(`\n${results.length - failed}/${results.length} checks passed`);
   bot.quit(); await sleep(400); process.exit(failed ? 1 : 0);
 });
-setTimeout(() => { console.log('TIMEOUT'); process.exit(3); }, 240000);
+setTimeout(() => { console.log('TIMEOUT'); process.exit(3); }, phase === 'buffexpire' ? 420000 : 240000);

@@ -67,17 +67,21 @@ final class ProgressionLabMenu extends AdminMenu {
 
         // Skill effects
         v.set(23, Ui.item(Material.KNOWLEDGE_BOOK, ChatColor.LIGHT_PURPLE + "Do skill levels change gameplay?",
-                Ui.lore().raw(ChatColor.GREEN + "Yes:").text("  Heavy Armor Training (defense),").text("  Survival (resistances)")
-                        .raw(ChatColor.YELLOW + "PvP only:").text("  Blade/Weapon Mastery, Critical Strike")
-                        .raw(ChatColor.RED + "Not yet:").text("  most other skills; damage vs mobs")
-                        .gap().status(Status.PARTIAL)
-                        .text("Attributes 2.0 makes every skill feed").text("Vitality / Essence / Power / Fortitude /").text("Agility / Fortune, which combat reads.").build()));
+                Ui.lore().raw(ChatColor.GREEN + "Yes, through attributes (vs mobs):")
+                        .text("  weapon skills -> Power (damage)").text("  Critical Strike, Dual Wielding,")
+                        .text("  Navigation, Stealth -> Agility (crits)")
+                        .text("  Survival, Heavy Armor, First Aid ->").text("  Vitality (max health)")
+                        .text("  Heavy Armor, Survival, Defensive Magic").text("  -> Fortitude (armor, bar, resist)")
+                        .text("  magic skills -> Essence (mana, spells)")
+                        .raw(ChatColor.YELLOW + "PvP:").text("  unchanged (old skill bonuses)")
+                        .raw(ChatColor.RED + "Not yet:").text("  Fortune (shown only); gathering and").text("  crafting skills feed nothing")
+                        .gap().status(Status.PARTIAL).build()));
 
         v.button(24, Ui.item(Material.ENCHANTED_BOOK, ChatColor.GOLD + "My skills",
                 Ui.lore().text("Set your own levels and XP for testing.").hint("Click to open").build()),
                 c -> open(c.player(), new SkillListMenu(panel, c.player().getUniqueId())));
-        v.button(25, Ui.item(Material.NETHER_STAR, ChatColor.GRAY + "Attributes",
-                Ui.lore().status(Status.IN_DEVELOPMENT).hint("Click to see the plan").build()),
-                c -> open(c.player(), new AttributesDevMenu(panel, c.player().getUniqueId())));
+        v.button(25, Ui.item(Material.NETHER_STAR, ChatColor.LIGHT_PURPLE + "My attributes",
+                Ui.lore().text("Your attributes, sources, simulator").text("and dev buffs.").status(Status.LIVE).hint("Click to open").build()),
+                c -> open(c.player(), new AttributesInspectMenu(panel, c.player().getUniqueId())));
     }
 }

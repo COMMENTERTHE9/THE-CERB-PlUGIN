@@ -2,6 +2,16 @@
 
 *2026-10-24. Implements `docs/design/SYSTEMS_BASE_LAYER.md` §4 within the limits of `POWER_SCALING.md` §2 and §4. Owner decisions already made: attributes are **derived from skills and realm** (no manual points yet, but the architecture allows them later), and **kill XP is based on mob level and tier**, not HP.*
 
+## Status (2026-10-24)
+
+Increments 1–7 are built, unit-tested (81 tests) and verified on a Folia 1.21.11 sandbox with `tools/playtest/progression.js` and `admin.js attrs`. Increment 8 (persistence on the owner's server, load test) is open. Where the build differs from the plan below:
+
+- **Fortitude adds on top** of the existing gear, Heavy Armor Training and Survival bonuses instead of replacing them, so no existing character loses defense. The limits still apply once (armor 40%, resist 50%).
+- **No RealmSource yet.** Every player is Awakened and realms grant nothing until advancement exists; the AttributeSource interface is ready for it.
+- **Total mitigation (75%) is reserved, not enforced.** Today's pipeline allows ~82% (40% armor, then a 70% bar); enforcing it is an owner decision.
+- **Fixes found on the way:** QualityBuffs reset max health to 100 on every held-item change (would have wiped Vitality); an attributes.yml from an older version loaded zero skill weights; lifesteal could be farmed on targets without an HP pool; a late arrow could heal a dead shooter.
+- **Behaviour notes:** Critical Strike hit XP follows real crits, which Agility now drives (more crits, more XP). Spells hitting mobs scale with Essence ×(1 + 0.02·Essence). Damage numbers now float over mobs (`combat.yml display.mob-damage-numbers`).
+
 ## The problem it solves
 
 Skill levels barely change PvE combat. A zombie took 10 sword swings at Blade Mastery 1 and still 10 at level 100, because the combat-skill bonus is computed and then thrown away on the mob-damage path. The stat code that does exist is scattered across managers that each stack their own bonus: `PlayerDefenseManager`, Strength, Luck, Magic Find, and every skill's `applyEffect`. Most of them read one level shared by the whole server instead of the player's own.
@@ -53,7 +63,7 @@ The weights follow the design's "drives / existing system" table. The tuning goa
 ## Combat integration (each piece behind its own switch)
 
 1. **PvE offense.** In the player → mob path, the attacker's Power multiplier for the weapon class, the crit roll and lifesteal are applied **before** the hit drains the mob's HP pool. Today they are applied after, and thrown away. The weapon class comes from the held item for melee and from the projectile type for arrows.
-2. **Vitality** sets max HP through `PlayerVirtualHealthManager` (the current HP fraction is kept). **Fortitude** extends `PlayerDefenseManager.updateDefense`: it keeps gear armor as a source and replaces the separate Heavy Armor Training and Survival bonuses.
+2. **Vitality** sets max HP through `PlayerVirtualHealthManager` (the current HP fraction is kept). **Fortitude** extends `PlayerDefenseManager.updateDefense`: it adds to gear armor and the existing Heavy Armor Training and Survival bonuses (built that way so nobody's defense drops).
 3. **Essence** sets max mana and regen through `PlayerManaManager`. Spell damage (Fireball) scales with it.
 4. **PvP stays as it is today** (the `CombatSkillProcessor` path). Changing PvP is a separate design decision. One side effect: Vitality and Fortitude also apply when a player is hit by a player.
 
@@ -85,11 +95,11 @@ The weights follow the design's "drives / existing system" table. The tuning goa
 
 ## Increments (each is built, unit-tested, and verified on the Folia sandbox)
 
-1. **Kill XP v2:** pure formula and tests, wired into `MobKillListener`.
-2. **Engine core:** Attribute, Contribution, Calculator (caps, derived stats) and `attributes.yml`, with unit tests.
-3. **Service plus Skill and Realm sources**, with dirty-tracking on level change, join and quit. **Stats page** (read-only).
-4. **PvE offense integration:** in-game swing-count comparison at Blade Mastery 1 / 50 / 100 against level 1 / 50 mobs.
-5. **Vitality and Fortitude integration:** survivability comparison under the same mob hits.
-6. **Essence integration:** mana, regen, Fireball damage.
-7. **Admin Attributes inspector, simulator and dev buffs**, replacing the in-development screen.
-8. **Restart-persistence check, a performance pass, and an independent review.**
+1. ✅ **Kill XP v2:** pure formula and tests, wired into `MobKillListener`. Played: L1 40, L50 334, anti-grind ×0.25.
+2. ✅ **Engine core:** Attribute, Contribution, Calculator (caps, derived stats) and `attributes.yml`, with unit tests.
+3. ✅ **Service plus Skill source** (Realm source deferred, see Status), dirty-tracking on level change, join and quit. **Stats page** (`/stats`, Player Menu → Stats).
+4. ✅ **PvE offense integration.** Played: swings to kill an L50 zombie 19.5 / 7.5 / 5 at Blade Mastery 1 / 50 / 100; equal-level fights 7 vs 7.5.
+5. ✅ **Vitality and Fortitude integration.** Played: defensive skills 1 → 100: max health 102 → 300, a level-50 zombie hit costs 1.1–1.4% → 0.33% of health.
+6. ✅ **Essence integration.** Played: max mana 1,040 → 3,020, regen 51.7 → 150.8/s, Fireball ×1.08 → ×5.04 vs mobs.
+7. ✅ **Admin Attributes inspector, simulator and dev buffs** (Played: `admin.js attrs` 14/14).
+8. ⬜ **Restart-persistence check on the owner's server, a performance pass under load.** An independent review of increments 2–4 is done; its findings are fixed.

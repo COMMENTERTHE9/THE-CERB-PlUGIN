@@ -240,6 +240,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Attributes.AttributesConfig attributesConfig;
     private Attributes.AttributeService attributeService;
     private Manager.AttributeEffects attributeEffects;
+    private Attributes.BuffSource attributeBuffs;
+
+    /** Temporary attribute buffs (admin dev buffs); in memory only. */
+    public Attributes.BuffSource getAttributeBuffs() { return attributeBuffs; }
 
     /** Vitality / Fortitude → max health and defense (see Manager.AttributeEffects). */
     public Manager.AttributeEffects getAttributeEffects() { return attributeEffects; }
@@ -343,13 +347,15 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         attributesConfig = new Attributes.AttributesConfig(this, this::attributeCurves);
         attributeService = new Attributes.AttributeService(attributesConfig::rules);
         attributeService.addSource(new Attributes.SkillSource(skillManager));
+        attributeBuffs = new Attributes.BuffSource();
+        attributeService.addSource(attributeBuffs);
         playerDefenseManager.setAttributeService(attributeService);
         attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager,
                 playerManaManager);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
             @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
             @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }
-            @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); }
+            @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); attributeBuffs.clear(p); }
         });
         sessionLogger = new SessionLogger(this);
 

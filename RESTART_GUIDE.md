@@ -46,9 +46,9 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 
 | Do | You should see |
 |---|---|
-| Join | Action bar: `300/300⛨  100/100♥  0.00%★  1000.00/1000.00✎` (defense, health, luck, mana). A **Player Menu** head in hotbar slot 9. Operators also get an **Admin Control Panel** ender chest. |
+| Join | Action bar like `305/305⛨  102/102♥  0.00%★  1035.00/1035.00✎` (defense, health, luck, mana; they grow with your skills). A **Player Menu** head in hotbar slot 9. Operators also get an **Admin Control Panel** ender chest. |
 | Right-click the head → **Skills → Combat Skills** | Each skill with its level and XP bar. Click one for its detail page. Other main-menu buttons say *Coming Soon* (not built yet). |
-| `/cerb healthstate` | `Custom HP: 100.00/100.00`, `Lifecycle: ALIVE`, `Session: ACTIVE` |
+| `/cerb healthstate` | `Custom HP: 102.00/102.00` (full), `Lifecycle: ALIVE`, `Session: ACTIVE` |
 | `/givetestitem kit` | Cerberus Blade, Styx Cleaver, Hydra's Reach, Fireball Wand, and Cerberus armor (fills your hotbar). |
 | Right-click the **Fireball Wand** | `You cast Fireball!`; mana drops by 20 and refills. |
 | `/summon minecraft:zombie`, then kill it with the Cerberus Blade | A floating label like `Zombie 50❤ Lv1` that drops as you hit. On the kill: `+40 Blade Mastery XP`. |
@@ -56,7 +56,20 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 | `/cerb combatdebug`, then let a zombie hit you | A chat trace `MobScaling → Incoming → DefenseBar → Final`. Run it again to turn it off. |
 | `/cerb skill YourName Blade_Mastery level 25` | `Blade Mastery is now level 25 (0 XP)`; the Skills menu shows it. Set it back the same way. |
 | `/testregen 50` | Health drops by 50, then regenerates about 4 per second. |
-| `/kill` | Instant respawn at full 100 HP. No death screen; this is intentional. |
+| `/kill` | Instant respawn at full health. No death screen; this is intentional. |
+| Player Menu head → **Stats**, or `/stats` | Your six attributes (Power, Agility, Vitality, Fortitude, Essence, Fortune), what each does and which skills feed it; your weapon's damage and crits; health, armor, mana; what the next level gives; kill XP per mob level. |
+
+### Feel the progression (attributes)
+
+| Try this | You should see |
+|---|---|
+| `/cerb spawn zombie 50 noai`, hit it with a netherite sword at Blade Mastery 1, then `/cerb skill YourName Blade_Mastery level 100` and spawn another | About 20 swings at level 1, about 5 at level 100. Damage numbers float over the mob (crits marked `✯`). |
+| `/cerb combatdebug`, then hit a mob | `[Combat] Power(Swords, Power 50.0 -> x3.50): 28.0`, plus crit and lifesteal steps. |
+| Set Survival, Heavy Armor Training and First Aid to 100 | `/stats` → Survivability: max health about 300, armor bonus, bigger defense bar, 50% resistances. |
+| Set Intelligence and Mana Regeneration to 100 | Max mana about 3,000, regeneration about 150/s; Fireball does about x5 damage to mobs. |
+| Kill a mob far below your weapon skill (20+ levels) | Reduced XP and the message `(Low-level mob: reduced XP...)`. |
+
+Turn any part off in `plugins/CerberusPlugin/attributes.yml` (`attributes.integration`), then `/cerb reload`. PvP is unchanged.
 
 ## Admin Control Panel (Cerberus Control Center)
 
@@ -66,8 +79,8 @@ Operators open it with **`/cerb panel`** or by right-clicking the **Admin Contro
 |---|---|
 | Players | Inspect anyone online (health, mana, defense, skills). Full restore, refill mana, teleport to them, set skill levels and grant XP. Lowering a level asks first; the player is told. |
 | Combat Lab | Spawn any `mobs.yml` entry or vanilla test mob at an exact level (1–100), count and AI mode. Inspect nearby mobs' tier, level and HP pool; set their HP, freeze, highlight, remove. Clean up test mobs. Combat stats, debug traces, tier table. |
-| Progression Lab | XP curve, kill-XP rules, XP sources, which skills affect play today. |
-| Attributes | The plan for the next milestone; marked *in development*. |
+| Progression Lab | XP curve, kill-XP v2 table (by mob level and tier), XP sources, which skills affect play today. |
+| Attributes | Pick a player: every attribute with its sources (the same numbers as their Stats page), the rules and limits in force, a **simulator** ("what would Blade Mastery 80 give?", changes nothing) and **dev buffs** (+25/+100 to an attribute for 5 minutes, never saved). |
 | My Test Character | Full restore, test kit, menu head, game mode, teleport to spawn, skills, combat stats. |
 | Server & Plugin | Build time, versions, memory, worlds, config and registry state. |
 | Maintenance | Reload configs, save all players (both ask first where it matters). |

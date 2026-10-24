@@ -23,9 +23,9 @@ final class AdminSections {
                 List.of("XP curve, kill-XP rules, XP sources", "and which skills affect gameplay today."),
                 Status.PARTIAL, ProgressionLabMenu::new));
         p.registerSection(new AdminPanel.Section("attributes", 35, Material.NETHER_STAR, "Attributes",
-                List.of("Vitality, Essence, Power, Fortitude,", "Agility, Fortune - the next milestone.",
-                        "Shows the plan; nothing here is live yet."),
-                Status.IN_DEVELOPMENT, panel -> new AttributesDevMenu(panel, null)));
+                List.of("Inspect anyone's attributes and where", "they come from, simulate skill levels,",
+                        "give temporary test buffs, see the", "rules and limits in force."),
+                Status.LIVE, AttributesLabMenu::new));
         p.registerSection(new AdminPanel.Section("self", 40, Material.ARMOR_STAND, "My Test Character",
                 List.of("One-click tools for your own", "character: restore, test kit, skills,",
                         "debug traces, game mode, spawn."),

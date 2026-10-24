@@ -2,13 +2,13 @@
 
 *Last updated 2026-10-24 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
-**Current milestone:** Admin Control Panel 2.0 is built and verified in-game (see RESTART_GUIDE.md); Attributes & Progression 2.0 is next (`docs/ATTRIBUTES_ENGINE.md`).
+**Current milestone:** Admin Control Panel 2.0 and Attributes & Progression 2.0 (increments 1–7 of `docs/ATTRIBUTES_ENGINE.md`) are built and verified in-game on the cloud sandbox; waiting for the owner's playtest on the real server.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
 ## Summary
 
-The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and 25, saves and reloads player progress, and survives restarts. The playable loop today is: fight mobs → earn skill XP → level up → see it in the Skills menu. **The loop breaks at "get stronger":** skill levels do not change how you fight mobs (Blade Mastery 1 and 100 kill a zombie in the same 10 swings — Played). Most of the designed game (realms, weapons, gear, talismans, mounts, families, crafting) exists only in `docs/design/`.
+The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and 25, saves and reloads player progress, and survives restarts. The playable loop today is: fight mobs → earn skill XP (more from higher-level mobs) → level up → **get stronger**: skills feed six attributes that combat reads, so Blade Mastery 100 kills a level-50 zombie in about 5 swings instead of 20, defensive skills triple max health, magic skills triple mana and scale spells (Played). The Stats page shows all of it. Most of the designed game (realms, weapons, gear, talismans, mounts, families, crafting) exists only in `docs/design/`.
 
 ## What works (Played)
 
@@ -21,17 +21,19 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Combat XP | Kill XP goes to the weapon's skill (sword → Blade Mastery, fist → Martial Expertise; `skills.yml`). Critical Strike XP per hit; Survival XP when hit. Level-up messages. |
 | Persistence | Skill levels and XP survive restarts; saves coalesce within 1 s; a failed database load disconnects the player instead of overwriting data. |
 | Menus | Player Menu head (slot 9) → Skills → Combat / Magic / Utility → per-skill detail page. Other menu buttons open *Coming Soon*. |
-| Admin Control Panel | `/cerb panel`: Players (inspect/edit), Combat Lab (spawn at level, mob inspector, cleanup), Progression Lab, My Test Character, Server & Plugin, Maintenance. Permission-checked on every click; verified with `tools/playtest/admin.js` (40 + 8 security checks). |
+| Admin Control Panel | `/cerb panel`: Players (inspect/edit), Combat Lab (spawn at level, mob inspector, cleanup of your own test mobs), Progression Lab, Attributes (inspector, simulator, dev buffs), My Test Character, Server & Plugin, Maintenance. Permission-checked on every click; verified with `tools/playtest/admin.js` (main 40, attrs 14, owners 5, cross 5, security 6). An independent review found no security or item-duplication hole; its correctness findings are fixed. |
+| Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only). Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats). Verified with `tools/playtest/progression.js` and 81 unit tests. |
+| Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
 ## Incomplete (Read unless noted)
 
 | Area | State |
 |---|---|
-| **Skill effects** | Leveling barely changes play. Combat-skill bonuses (Blade/Weapon Mastery, crits, lifesteal) apply only in PvP; against mobs the raw hit is used (Played). Most `applyEffect` code reads one level shared by the whole server, not yours. |
+| **Skill effects** | Through attributes (vs mobs): weapon skills, crit skills, defensive skills and magic skills now matter (Played). PvP still uses the old per-skill bonuses (a design decision for later). Fortune and the gathering/crafting skills feed nothing yet. Most old per-skill `applyEffect` code is still never called. |
 | **XP sources** | Only combat, spells, damage taken, and new-chunk discovery grant XP. Mining, Woodcutting, Farming, Fishing, Crafting, Smithing, Alchemy, Enchanting, Herbalism, Cooking and 9 more have **no XP source**. |
-| **Kill XP size** | Now bounded (40 × mob multiplier), but flat: a level-80 mob pays the same as a level-1 mob. The design's HP-based formula no longer fits billions-scale HP pools (decision below). |
-| Attributes | No stat bus. Strength / Luck / Magic Find / Yield managers exist but nothing reachable calls them. Mana is fixed at 1000 / 50 per second. |
+| Realms | Every player is Awakened; realm advancement (and its attribute bonuses) is not built. |
+| Old stat managers | Strength / Luck / Magic Find / Yield managers exist but nothing reachable calls them (Fortune will replace Luck / Magic Find). |
 | Crafting & traps | ~600 lines of quality-crafting and trap code, but no recipes are registered and the trap listener is never registered: unreachable. |
 | Spells | Fireball only. It damages other players caught in the blast (PvP rules are not designed yet); it now spares the caster's own pets. |
 | Elements / knockback | Elemental bonuses are computed but never applied; the `knockback:` config is never read. |
@@ -52,38 +54,36 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 
 Fresh-clone build (dead DTR/Volor deps) and any JDK ≥ 21 · launcher scripts with prerequisite checks and backups · **kill XP of ~500,000,000 per kill** (wrapped negative after ~5 kills) plus the level cap and load-time repair of corrupted values · **hit-particle burst that would hang clients** on `/kill` or big hits · **item in hotbar slot 9 deleted on every join** · labels blocking horse/pig/strider riding and taming · registry mobs (`/cerb spawn`, High Health Zombie, Sea Monster) spawning as common mobs · menu buttons that did nothing · free-XP Upgrade button (now admin-only) · spell XP on failed casts · XP saved before a player's data loaded · per-tick XP and "BLOCKED" text in fire/lava · per-hit log spam · dropped saves · empty-data overwrite after a failed load · several Folia thread-safety issues. Details: `git log 031a6b4..HEAD`. An independent review of the fixes found no regressions; its follow-ups are in. Regression check: `tools/playtest/smoke.js` (11/11; the pre-fix build fails the kill-XP, elite-spawn and horse checks).
 
-## Recommended next milestone — "Progression that matters" (Attributes v1)
+## Done: "Progression that matters" (Attributes v1)
 
-**Player-facing result.** Leveling combat skills makes you visibly stronger against mobs: more damage and crit, more HP, better defense. Kill XP grows with mob level and tier, so walking away from spawn becomes the way to progress. A *Stats* page (the current "General" button) shows your attributes.
+Built as `docs/ATTRIBUTES_ENGINE.md` increments 1–7 and verified on the sandbox server (Played):
 
-**Why this is next.** It repairs the broken step of the only playable loop, and it is the locked next step of the plan (`SYSTEMS_BASE_LAYER.md` §4, Step 1–2). Every later system — gear, talismans, realms, mounts — is designed to feed this layer, so building those first would repeat today's problem: content that can't affect combat.
+| Check | Before | Now |
+|---|---|---|
+| Swings to kill a level-50 zombie (netherite sword) | ~20 at any Blade Mastery | 19.5 at BM 1, 7.5 at BM 50, 5 at BM 100 |
+| Equal-level fight (BM 1 vs L1, BM 50 vs L50) | — | 7 vs 7.5 swings: progression keeps fights fair |
+| Max health with Survival, Heavy Armor Training, First Aid at 100 | 100 | 300 (plus armor 30%, defense bar 846, resist 50%) |
+| Max mana / regen with Intelligence, Mana Regeneration at 100 | 1000 / 50 per s | 3,020 / 150.8 per s; Fireball x5 vs mobs |
+| Kill XP, Common L50 | 40 | 334 |
 
-**Changes, as small reviewable steps:**
-1. Constants block in `combat.yml`: attribute caps and the kill-XP formula by mob level × tier (pure function + tests).
-2. `PlayerAttributes`: per-player Vitality / Essence / Power / Fortitude / Agility / Fortune derived from skill levels (+ realm base), clamped at the caps (pure function + tests).
-3. Mob damage path: apply the attacker's Power/crit **before** the hit drains the mob's pool (today the bonus is computed and thrown away).
-4. Vitality → max HP, Fortitude → defense, Essence → mana max/regen; recompute on level-up, join, and gear change.
-5. Replace shared-level `applyEffect` paths (starting with Navigation speed) with per-player attributes.
-6. Stats page (`/cerb skill` for setting test levels already works).
-7. Smoke-test checks for each.
-
-**How we verify it in-game.** `/cerb skill <you> Blade_Mastery level 50` → a level-1 zombie dies in clearly fewer swings than at level 1; the Stats page shows the new numbers; a level-10 mob far from spawn pays more XP than a level-1 mob; HP above 100 after Vitality grows; everything survives a restart.
+Still to do in this milestone (increment 8): the restart-persistence check on your real server, and a performance look under load.
 
 ## Roadmap after that
 
-1. **Progression that matters** — Attributes v1 + XP treaty (above).
-2. **Gathering & crafting loop** — block-break XP for the 19 dead skills, capped yields, register recipes and wire the existing quality-crafting code.
-3. **Bestiary & zones as data** — mob families in `mobs.yml`, location → band/realm (`ZoneManager`), realm suppression; themed areas instead of plain distance.
-4. **First weapons & gear slice** — ~20 registry items feeding attributes; the 20-slot equip layout.
-5. **Ascension (realms)** — realm display names, breakthroughs and stages over the existing tiers.
+1. **Gathering & crafting loop** — block-break XP for the 19 dead skills, capped yields, register recipes and wire the existing quality-crafting code. Fortune starts paying off here.
+2. **Bestiary & zones as data** — mob families in `mobs.yml`, location → band/realm (`ZoneManager`), realm suppression; themed areas instead of plain distance.
+3. **First weapons & gear slice** — ~20 registry items feeding attributes through a GearSource; the 20-slot equip layout.
+4. **Ascension (realms)** — realm display names, breakthroughs and stages over the existing tiers; a RealmSource feeding attributes.
+5. **PvP rules** — whether PvP should use attributes too (today it uses the old per-skill bonuses).
 
-Each milestone ends with in-game checks and new smoke-test checks.
+Each milestone ends with in-game checks and new playtest checks.
 
 ## Decisions that are yours
 
-1. **Attributes: derived-only or manual points?** Recommend derived from skills + realm for v1; a point-allocation layer can sit on top later without rework.
-2. **Kill-XP formula.** Recommend XP by mob level × tier (keeping the design's ~300–600 XP for a level-50 Rare), instead of by HP, which is now in the billions.
-3. **Merging.** Today's work is on `claude/quirky-mccarthy-nhaz58`. Open a pull request into `master`, or keep working on the branch?
-4. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend staying until Attributes v1 lands, then planning the upgrade.
-5. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
-6. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
+1. **Merging.** All work is on `claude/quirky-mccarthy-nhaz58`. Open a pull request into `master` once you've playtested, or keep working on the branch?
+2. **PvP and attributes.** PvP is unchanged on purpose. Should PvP read attributes too (a balance decision)?
+3. **Total mitigation cap.** The design caps resist + armor + defense bar at 75% combined. The existing defense pipeline already allows ~82% with full armor and a full bar, so enforcing 75% would make well-armored players take more damage. Enforce it, or keep today's behaviour? (`attributes.yml limits.total-mitigation` is reserved and not enforced yet.)
+4. **Weapon Mastery stacking.** Weapon Mastery gives +1 Power per level to axes/maces/tridents/spears *and* +0.25 to every weapon, so at level 100 an axe hits x7.25 vs a level-100 mob's x5.95 HP. Keep (rewards the generalist skill) or drop the +0.25?
+5. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend planning the upgrade now that Attributes v1 is in.
+6. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
+7. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
