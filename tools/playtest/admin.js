@@ -1,0 +1,257 @@
+// In-game check of the Cerberus Control Center (admin panel). LOCAL SANDBOX servers only.
+// Usage: node admin.js <phase>
+//   main    - bot must be op: clicks through every section and edits/spawns/removes things
+//   nonop   - bot must NOT be op: /cerb panel and a forged panel item must both be refused
+//   deopmid - bot is op; opens the panel, prints READY, waits 6 s (deop it then), then clicks
+const mineflayer = require('mineflayer');
+const phase = process.argv[2] || 'main';
+const NAME = process.argv[3] || 'CerbSmoke';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Text of a chat component as mineflayer exposes it (NBT compound, JSON string, or JSON object).
+const plain = v => {
+  if (v == null) return '';
+  if (typeof v === 'string') { try { return plain(JSON.parse(v)); } catch { return v; } }
+  const s = JSON.stringify(v);
+  const nbt = [...s.matchAll(/"text":\{"type":"string","value":"([^"]*)"/g)].map(m => m[1]);
+  if (nbt.length) return nbt.join('');
+  return [...s.matchAll(/"text":"([^"]*)"/g)].map(m => m[1]).join('');
+};
+const chat = [];
+const results = [];
+const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
+const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
+bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
+
+let lastWindow = null;
+bot.on('windowOpen', w => { lastWindow = w; });
+const title = () => bot.currentWindow ? plain(bot.currentWindow.title) : '';
+const slotName = i => { const it = bot.currentWindow && bot.currentWindow.slots[i]; return it ? plain(it.customName) : ''; };
+const slotLore = i => { const it = bot.currentWindow && bot.currentWindow.slots[i]; return it && it.customLore ? it.customLore.map(plain).join(' | ') : ''; };
+const findSlotWith = (nameRe, loreRe) => { const w = bot.currentWindow; if (!w) return -1; for (let i = 0; i < w.inventoryStart; i++) if (w.slots[i] && nameRe.test(plain(w.slots[i].customName)) && loreRe.test(slotLore(i))) return i; return -1; };
+const findSlot = re => { const w = bot.currentWindow; if (!w) return -1; for (let i = 0; i < w.inventoryStart; i++) if (w.slots[i] && re.test(plain(w.slots[i].customName))) return i; return -1; };
+async function waitTitle(re, ms = 4000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (bot.currentWindow && re.test(title())) return true; await sleep(100); } return false; }
+async function click(i, wait = 700) { await bot.clickWindow(i, 0, 0); await sleep(wait); }
+async function cmd(c, wait = 1200) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
+const saw = (re, since) => chat.slice(since).some(m => re.test(m));
+
+async function main() {
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 1000); // start from a clean area
+  // Home
+  let at = await cmd('/cerb panel', 1500);
+  check('/cerb panel opens the Control Center', await waitTitle(/Control Center/), title());
+  const tiles = ['Players', 'Combat Lab', 'Progression Lab', 'Attributes', 'My Test Character', 'Server & Plugin', 'Maintenance'];
+  const missing = tiles.filter(t => findSlot(new RegExp('^' + t.replace(/[&]/g, '.') + '$')) < 0);
+  check('Home shows all 7 sections', missing.length === 0, missing.length ? 'missing ' + missing.join(', ') : '');
+  check('Home header shows plugin build', /build \d{4}-\d\d-\d\d/.test(slotLore(4)), slotLore(4).slice(0, 80));
+  check('Attributes tile is marked in development', /In development/.test(slotLore(findSlot(/^Attributes$/))));
+
+  // Players -> me -> skills -> Blade Mastery
+  await click(findSlot(/^Players$/));
+  check('Players list opens', await waitTitle(/Players/), title());
+  const me = findSlot(new RegExp('^' + NAME + '$'));
+  check('Players list contains me', me >= 0);
+  await click(me);
+  check('Player inspector opens', await waitTitle(new RegExp('Player: ' + NAME)), title());
+  check('Inspector shows custom HP', /Custom HP: [\d.]+ \/ [\d.]+/.test(slotLore(19)), slotLore(19).slice(0, 60));
+  await click(findSlot(/^Skills$/));
+  check('Skill list opens', await waitTitle(/Skills:/), title());
+  await click(findSlot(/^Blade Mastery$/));
+  check('Skill editor opens', await waitTitle(/Blade Mastery/), title());
+  const lvl = () => { const m = slotName(22).match(/Level (\d+)/); return m ? Number(m[1]) : NaN; };
+  // normalise to level 1 first (may need confirm)
+  await click(28, 900);
+  if (/Confirm/.test(title())) { await click(11, 900); }
+  await waitTitle(/Blade Mastery/);
+  const base = lvl();
+  check('Set level 1 preset works', base === 1, 'level ' + base);
+  at = chat.length;
+  await click(25, 900); // +10
+  check('+10 levels raises the level', lvl() === base + 10, base + ' -> ' + lvl());
+  check('Action reports success in chat', saw(/Blade Mastery 1 -> 11/, at), chat.slice(at).join(' / ').slice(0, 120));
+  await click(20, 900); // -1 -> confirm
+  check('Lowering a level asks for confirmation', await waitTitle(/Confirm/), title());
+  await click(15, 900); // cancel
+  check('Cancel keeps the level', (await waitTitle(/Blade Mastery/)) && lvl() === base + 10, 'level ' + lvl());
+  await click(20, 900);
+  await waitTitle(/Confirm/);
+  await click(11, 1000); // yes
+  check('Confirm applies the lower level', (await waitTitle(/Blade Mastery/)) && lvl() === base + 9, 'level ' + lvl());
+  at = chat.length;
+  await click(41, 1000); // +100,000 XP
+  check('XP grant goes through the award path (level-ups)', lvl() > base + 9 && saw(/reached level/, at), 'level ' + lvl());
+  await click(28, 900); if (/Confirm/.test(title())) await click(11, 900); // back to level 1
+
+  // Combat Lab: spawn a level-50 zombie punching bag
+  await click(49); // Home
+  await waitTitle(/Control Center/);
+  await click(findSlot(/^Combat Lab$/));
+  check('Combat Lab opens', await waitTitle(/Combat Lab/), title());
+  await click(20);
+  check('Mob picker opens', await waitTitle(/choose a mob/), title());
+  check('Wither is listed but refused (terrain)', /destroys terrain/.test(slotLore(findSlot(/^Wither$/))));
+  await click(findSlot(/^Zombie$/));
+  check('Spawn setup opens', await waitTitle(/Spawn Zombie/), title());
+  await click(32); // level 50 preset
+  check('Level preset updates the preview', /Level: 50 \//.test(slotLore(4)), slotLore(4).slice(0, 90));
+  at = chat.length;
+  await click(42, 2500); // spawn (stay)
+  check('Spawn reports success', saw(/Spawned 1 x Zombie \(Common\) at level 50/, at), chat.slice(at).join(' / '));
+  const labels = Object.values(bot.entities).filter(e => e.name === 'text_display' && e.position.distanceTo(bot.entity.position) < 8)
+      .map(e => plain(e.metadata));
+  check('Spawned zombie is labelled level 50', labels.some(l => /Zombie.*Lv50/.test(l)), labels.join(' | '));
+  await click(45); // back to picker
+  await click(45); // back to Combat Lab
+  await waitTitle(/Combat Lab/);
+  await click(22);
+  check('Nearby mobs opens', await waitTitle(/Nearby mobs/), title());
+  let zs = findSlotWith(/^Zombie$/, /Level 50/);
+  check('Nearby list shows the zombie at level 50', zs >= 0 && /Level 50/.test(slotLore(zs)), slotLore(zs).slice(0, 80));
+  await click(zs);
+  check('Mob inspector opens', await waitTitle(/Mob/), title());
+  await click(21, 1200); // set 10%
+  check('Set HP to 10% updates the pool', /\(10\.0%\)/.test(slotLore(4)), slotLore(4).slice(0, 100));
+  await click(24, 900); // highlight
+  check('Highlight toggles on', /Highlight: on/.test(slotName(24)), slotName(24));
+  at = chat.length;
+  await click(25, 1500); // remove (test spawn -> no confirm)
+  check('Remove test mob works without confirm', saw(/Removed\./, at) && /Nearby mobs/.test(title()), title());
+
+  // Spawn 3 more, then clean up via confirm
+  await click(45); await waitTitle(/Combat Lab/);
+  await click(20); await waitTitle(/choose a mob/);
+  await click(findSlot(/^Skeleton$/)); await waitTitle(/Spawn Skeleton/);
+  await click(38); // count 3
+  await click(42, 2500);
+  await click(45); await click(45); await waitTitle(/Combat Lab/);
+  await click(24); // cleanup -> confirm
+  check('Cleanup asks for confirmation', await waitTitle(/Confirm/), title());
+  at = chat.length;
+  await click(11, 1500);
+  check('Cleanup removes the 3 test mobs', saw(/Removed 3 test mob/, at), chat.slice(at).join(' / '));
+
+  // Server info + maintenance
+  await click(49); await waitTitle(/Control Center/);
+  await click(findSlot(/^Server & Plugin$/));
+  check('Server & Plugin opens', await waitTitle(/Server & Plugin/), title());
+  check('Server info shows Folia + Java', /Folia/.test(slotLore(20)) && /Java: \d+/.test(slotLore(20)), slotLore(20).slice(0, 80));
+  await click(49); await waitTitle(/Control Center/);
+  await click(findSlot(/^Maintenance$/));
+  await click(20); // reload -> confirm
+  check('Reload asks for confirmation', await waitTitle(/Confirm/), title());
+  at = chat.length;
+  await click(11, 1500);
+  check('Reload runs and reports', saw(/Configuration reloaded/, at), chat.slice(at).join(' / '));
+
+  // Progression lab + My Test Character render
+  await click(49); await waitTitle(/Control Center/);
+  await click(findSlot(/^Progression Lab$/));
+  check('Progression Lab shows the XP curve total', /Level 1 -> 100 in total: [\d,]+ XP/.test(slotLore(19)), '');
+  await click(49); await waitTitle(/Control Center/);
+  await click(findSlot(/^My Test Character$/));
+  check('My Test Character opens', await waitTitle(/My test character/), title());
+  await click(53, 800); // close
+  check('Close closes the menu', !bot.currentWindow, title());
+
+  // Panel item opens it too
+  const itemSlot = bot.inventory.slots.findIndex(it => it && /Admin Control Panel/.test(plain(it.customName)));
+  if (itemSlot >= 36 && itemSlot <= 44) {
+    bot.setQuickBarSlot(itemSlot - 36); await sleep(300);
+    bot.activateItem(); await sleep(1500);
+    check('Right-clicking the panel item opens it (op)', /Control Center/.test(title()), title());
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  } else {
+    check('Admin has the panel item in the hotbar', false, 'slot ' + itemSlot);
+  }
+}
+
+async function nonop() {
+  let at = await cmd('/cerb panel', 1500);
+  // Non-admins don't even see /cerb (plugin.yml permission), so the server answers "Unknown command".
+  check('Non-op: /cerb panel refused', !bot.currentWindow && saw(/lack permission|admins only|Unknown or incomplete command/, at), chat.slice(at).join(' / '));
+  await sleep(3000); // the harness gives a forged item from the console now
+  const forged = bot.inventory.slots.findIndex(it => it && it.name === 'ender_chest' && plain(it.customName) === 'Admin Control Panel');
+  if (forged >= 36 && forged <= 44) {
+    at = chat.length;
+    bot.setQuickBarSlot(forged - 36); await sleep(300);
+    bot.activateItem(); await sleep(1500);
+    check('Non-op: forged panel item opens nothing', !/Control Center/.test(title()) && saw(/admins only/, at), chat.slice(at).join(' / '));
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  } else {
+    check('Non-op: forged item in hotbar for the test', false, 'slot ' + forged + ' (give it from the console first)');
+  }
+}
+
+async function dupe() {
+  const count = () => bot.inventory.slots.slice(9, 45).filter(Boolean).reduce((n, it) => n + it.count, 0);
+  const menuItemsInInv = () => bot.inventory.slots.slice(9, 45).filter(it => it && /^(Players|Combat Lab|Close|Refresh)$/.test(plain(it.customName))).length;
+  const before = count();
+  await cmd('/cerb panel', 1500);
+  await waitTitle(/Control Center/);
+  const tile = findSlot(/^Players$/);
+  for (const [mode, button] of [[1, 0], [2, 0], [2, 3], [4, 0], [4, 1]]) { // shift, number keys, drop
+    try { await bot.clickWindow(tile, button, mode); } catch (e) { /* client may refuse; server is what matters */ }
+    await sleep(500);
+  }
+  try { await bot.clickWindow(53, 0, 1); } catch (e) {}
+  await sleep(800);
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await sleep(1000);
+  check('Shift/number-key/drop clicks never move menu items into the inventory', menuItemsInInv() === 0 && count() === before,
+      'items ' + before + ' -> ' + count() + ', menu items in inventory ' + menuItemsInInv());
+  const dropped = Object.values(bot.entities).filter(e => e.name === 'item' && e.position.distanceTo(bot.entity.position) < 6).length;
+  check('No item entities were dropped from the menu', dropped === 0, dropped + ' item entities nearby');
+}
+
+async function cross() {
+  // A second client joins; the admin edits that player's skill and restores them from the panel.
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const otherChat = [];
+  other.on('messagestr', (m, pos) => { if (pos !== 'game_info') otherChat.push(m); });
+  await new Promise(r => other.once('spawn', r));
+  await sleep(3000);
+  await cmd('/cerb panel', 1500);
+  await click(findSlot(/^Players$/));
+  const t = findSlot(/^CerbTarget$/);
+  check('Admin sees the other player in the list', t >= 0);
+  await click(t);
+  check('Inspector opens for the other player', await waitTitle(/Player: CerbTarget/), title());
+  await click(19, 1500); // full restore
+  check('Other player is told about the restore', otherChat.some(m => /CerbSmoke fully restored/.test(m)), otherChat.join(' / '));
+  await click(findSlot(/^Skills$/));
+  await click(findSlot(/^Blade Mastery$/));
+  await waitTitle(/Blade Mastery/);
+  await click(28, 900); if (/Confirm/.test(title())) await click(11, 900);
+  const at = chat.length;
+  await click(25, 1500); // +10
+  check('Admin edit of another player applies', saw(/CerbTarget: Blade Mastery 1 -> 11/, at), chat.slice(at).join(' / '));
+  check('The other player is notified of the change', otherChat.some(m => /set your Blade Mastery to level 11/.test(m)), otherChat.slice(-3).join(' / '));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  other.quit();
+  await sleep(1500);
+}
+
+async function deopmid() {
+  await cmd('/cerb panel', 1500);
+  check('Opened as op', await waitTitle(/Control Center/), title());
+  console.log('READY');
+  await sleep(6000); // the harness deops us now
+  const at = chat.length;
+  await click(findSlot(/^Players$/), 1200);
+  check('After deop: click is refused and the menu closes', !bot.currentWindow && saw(/don't have permission/, at), title() + ' / ' + chat.slice(at).join(' / '));
+}
+
+bot.once('spawn', async () => {
+  await sleep(2500);
+  try {
+    if (phase === 'main') await main();
+    else if (phase === 'nonop') await nonop();
+    else if (phase === 'deopmid') await deopmid();
+    else if (phase === 'dupe') await dupe();
+    else if (phase === 'cross') await cross();
+  } catch (e) { console.log('SCRIPT ERROR', e.stack); results.push(false); }
+  const failed = results.filter(r => !r).length;
+  console.log(`\n${results.length - failed}/${results.length} checks passed`);
+  bot.quit(); await sleep(400); process.exit(failed ? 1 : 0);
+});
+setTimeout(() => { console.log('TIMEOUT'); process.exit(3); }, 240000);
