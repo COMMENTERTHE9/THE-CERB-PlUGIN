@@ -26,6 +26,8 @@ public class MobRegistry {
     private final Logger log;
     private final NamespacedKey mobIdKey;
     private final NamespacedKey mobLevelKey;
+    private final NamespacedKey spawnLevelKey;   // requested level for a plugin spawn (consumed by scaling)
+    private final NamespacedKey testSpawnKey;    // marks mobs spawned for testing (safe to clean up)
 
     // Primary store: mobId → entry
     private volatile Map<String, MobEntry> entriesById = Map.of();
@@ -71,6 +73,8 @@ public class MobRegistry {
         public double getXpMultiplier() { return xpMultiplier; }
         public EntityType getEntityType() { return entityType; }
         public String getCustomNameExact() { return customNameExact; }
+        public String getCustomNamePattern() { return customNamePattern == null ? null : customNamePattern.pattern(); }
+        public boolean isMatchAll() { return matchAll; }
 
         /** Build the MobContext for this entry with the given match reason. */
         MobContext toContext(MatchReason reason) {
@@ -106,6 +110,8 @@ public class MobRegistry {
         this.log = plugin.getLogger();
         this.mobIdKey = new NamespacedKey(plugin, "cerb_mob_id");
         this.mobLevelKey = new NamespacedKey(plugin, "cerb_mob_level");
+        this.spawnLevelKey = new NamespacedKey(plugin, "cerb_spawn_level");
+        this.testSpawnKey = new NamespacedKey(plugin, "cerb_test_spawn");
         reload();
     }
 
@@ -223,6 +229,46 @@ public class MobRegistry {
         Integer level = entity.getPersistentDataContainer()
                 .get(mobLevelKey, PersistentDataType.INTEGER);
         return level != null ? Math.max(1, level) : 1;
+    }
+
+    /**
+     * Request a specific level for a mob that is about to spawn (call in the pre-spawn callback).
+     * {@code MobScalingListener} uses it instead of the distance-from-spawn level and then
+     * removes the request, so the mob goes through the normal scaling path at that level.
+     */
+    public void requestSpawnLevel(LivingEntity entity, int level) {
+        entity.getPersistentDataContainer().set(spawnLevelKey, PersistentDataType.INTEGER, Math.max(1, level));
+    }
+
+    /** Take (read and remove) a pending spawn-level request, or null if none. */
+    public Integer takeRequestedSpawnLevel(LivingEntity entity) {
+        Integer level = entity.getPersistentDataContainer().get(spawnLevelKey, PersistentDataType.INTEGER);
+        if (level != null) entity.getPersistentDataContainer().remove(spawnLevelKey);
+        return level;
+    }
+
+    /** Mark a mob as spawned for testing, so cleanup tools can remove it (and only it). */
+    public void markTestSpawn(LivingEntity entity) {
+        entity.getPersistentDataContainer().set(testSpawnKey, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    public boolean isTestSpawn(org.bukkit.entity.Entity entity) {
+        return entity.getPersistentDataContainer().has(testSpawnKey, PersistentDataType.BYTE);
+    }
+
+    /** The registry ID stamped on a plugin-spawned mob, or null. */
+    public String getTaggedMobId(org.bukkit.entity.Entity entity) {
+        return entity.getPersistentDataContainer().get(mobIdKey, PersistentDataType.STRING);
+    }
+
+    /** The entry matched purely by entity type (e.g. wither_skeleton), or null. */
+    public MobEntry getEntryByType(org.bukkit.entity.EntityType type) {
+        return byEntityType.get(type);
+    }
+
+    /** All entries, in mobs.yml order. */
+    public java.util.Collection<MobEntry> getEntries() {
+        return entriesById.values();
     }
 
     /** True if this mob has already been assigned a level by the spawn scaler. */

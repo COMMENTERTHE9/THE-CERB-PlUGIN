@@ -65,6 +65,14 @@ public final class MobVirtualHealthManager {
         return s.current <= 0.0;
     }
 
+    /** Set the pool to {@code fraction} of its max (clamped to [0,1]). No-op if untracked. */
+    public void setFraction(LivingEntity mob, double fraction) {
+        State s = mob == null ? null : states.get(mob.getUniqueId());
+        if (s == null) return;
+        double f = Double.isNaN(fraction) ? 1.0 : Math.max(0.0, Math.min(1.0, fraction));
+        s.current = s.max * f;
+    }
+
     public void remove(UUID uuid) { states.remove(uuid); }
     public void clear() { states.clear(); }
     public int size() { return states.size(); }

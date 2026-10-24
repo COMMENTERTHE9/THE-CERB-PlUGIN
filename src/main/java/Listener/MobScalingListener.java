@@ -94,9 +94,12 @@ public class MobScalingListener implements Listener {
         AttributeInstance maxHealthAttr = entity.getAttribute(Attribute.MAX_HEALTH);
         if (maxHealthAttr == null) return;
 
-        // Level: reuse the tag on reloaded mobs (their birth distance), derive it fresh otherwise.
+        // Level: reuse the tag on reloaded mobs; else an explicit spawn request (admin/test
+        // spawns, clamped to the configured range); else the normal distance-from-spawn level.
+        Integer requested = alreadyTagged ? null : registry.takeRequestedSpawnLevel(entity);
         int level = alreadyTagged ? registry.getLevel(entity)
-                                  : scaling.levelForDistance(distanceToSpawn(entity));
+                  : requested != null ? Math.max(1, Math.min(scaling.getMaxLevel(), requested))
+                  : scaling.levelForDistance(distanceToSpawn(entity));
         Tier tier = registry.resolve(entity).tier();
         double maxHealth = scaling.calculate(tier, level);
 
