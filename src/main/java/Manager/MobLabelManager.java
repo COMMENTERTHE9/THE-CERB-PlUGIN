@@ -189,12 +189,7 @@ public final class MobLabelManager implements Listener {
     }
 
     private static String compact(double v) {
-        if (v < 1000) return String.valueOf((long) v);
-        String[] u = {"K", "M", "B", "T", "Qa"};
-        int i = -1;
-        double x = v;
-        while (x >= 1000 && i < u.length - 1) { x /= 1000; i++; }
-        return String.format("%.1f%s", x, u[i]);
+        return Numbers.compact(Math.floor(v)); // whole HP on labels: "50", "3.2K", "1.7B"
     }
 
     private String prettify(String typeName) {

@@ -235,12 +235,12 @@ public class VirtualHealthListener implements Listener {
                     event.setDamage(hit.vanillaDamage());
                     afterPveHit(ctx, attackerPlayer, hit.dealt(), true);
                 } else {
-                    if (spellCtx != null && attackerPlayer != null && pveOffense != null && pveOffense.spellsEnabled()) {
+                    if (spellCtx != null && attackerPlayer != null && pveOffense != null) {
                         double before = dmg;
                         dmg = pveOffense.spellDamage(attackerPlayer, dmg); // Essence scales spells against mobs
                         if (plugin.isCombatDebugEnabled(attackerPlayer.getUniqueId())) {
                             attackerPlayer.sendMessage(String.format(java.util.Locale.ROOT,
-                                    "[Combat] Spell(%s, Essence x%.2f): %.1f -> %.1f", damageType.name(), dmg / before, before, dmg));
+                                    "[Combat] Spell(%s, realm and Essence x%.2f): %.1f -> %.1f", damageType.name(), dmg / before, before, dmg));
                         }
                     }
                     PoolHit hit = hitPool(entity, dmg);

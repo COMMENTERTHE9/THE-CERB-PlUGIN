@@ -340,9 +340,17 @@ async function deopmid() {
   check('After deop: click is refused and the menu closes', !bot.currentWindow && saw(/don't have permission/, at), title() + ' / ' + chat.slice(at).join(' / '));
 }
 
+// Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
+// inside a hillside suffocate mid-check.
+async function goHome() {
+  const s = bot.spawnPoint;
+  if (s) { bot.chat(`/tp @s ${s.x + 0.5} ${s.y} ${s.z + 0.5}`); await new Promise(r => setTimeout(r, 1200)); }
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
+    await goHome();
     if (phase === 'main') await main();
     else if (phase === 'nonop') await nonop();
     else if (phase === 'deopmid') await deopmid();

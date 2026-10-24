@@ -241,6 +241,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Attributes.AttributeService attributeService;
     private Manager.AttributeEffects attributeEffects;
     private Attributes.BuffSource attributeBuffs;
+    private Attributes.PlayerRealms playerRealms;
+
+    /** Each player's realm (default until Ascension exists; admins can set a temporary test realm). */
+    public Attributes.PlayerRealms getPlayerRealms() { return playerRealms; }
 
     /** Temporary attribute buffs (admin dev buffs); in memory only. */
     public Attributes.BuffSource getAttributeBuffs() { return attributeBuffs; }
@@ -349,13 +353,20 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         attributeService.addSource(new Attributes.SkillSource(skillManager));
         attributeBuffs = new Attributes.BuffSource();
         attributeService.addSource(attributeBuffs);
+        playerRealms = new Attributes.PlayerRealms(attributesConfig::defaultRealm);
+        attributeService.setRealms(id -> {
+            Manager.Realm r = playerRealms.realmOf(id);
+            return new Attributes.RealmContext(r, combatConfig.mobHealthScaling.realmMultiplier(r.tier()));
+        });
+        playerVirtualHealthManager.setRegenScale(id -> attributeService.get(id).realmMultiplier());
+        defenseBarManager.setRegenScale(id -> attributeService.get(id).realmMultiplier());
         playerDefenseManager.setAttributeService(attributeService);
         attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager,
                 playerManaManager);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
             @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
             @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }
-            @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); attributeBuffs.clear(p); }
+            @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); attributeBuffs.clear(p); playerRealms.clearTestRealm(p); }
         });
         sessionLogger = new SessionLogger(this);
 

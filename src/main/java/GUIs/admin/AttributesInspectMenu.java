@@ -55,9 +55,11 @@ final class AttributesInspectMenu extends AdminMenu {
         BuffSource buffs = plugin.getAttributeBuffs();
         int activeBuffs = buffs.active(targetId).size();
 
+        var realm = s.realm();
+        boolean testRealm = plugin.getPlayerRealms().hasTestRealm(targetId);
         v.set(MenuView.HEADER, Ui.head(t, ChatColor.AQUA + "" + ChatColor.BOLD + t.getName(), Ui.lore()
                 .stat("Loaded", svc.isTracked(targetId) ? "yes" : "no (neutral values)")
-                .stat("Realm", "Awakened (realms not built yet)")
+                .stat("Realm", realm.realm().displayName + " " + Fmt.mult(realm.multiplier()) + (testRealm ? " (test)" : ""))
                 .stat("Active dev buffs", String.valueOf(activeBuffs))
                 .gap().text("Same numbers as their Stats page").text("and the combat code.").build()));
 
@@ -72,7 +74,8 @@ final class AttributesInspectMenu extends AdminMenu {
             out.raw(ChatColor.WHITE + "  " + w.displayName + ": " + Fmt.mult(s.powerMultiplier(w))
                     + ChatColor.GRAY + " / " + Fmt.mult(s.expectedOffenseMultiplier(w)));
         }
-        out.stat("Crit", Fmt.pct(s.critChance()) + " for " + Fmt.mult(s.critMultiplier()))
+        out.stat("Realm magnitude", Fmt.mult(s.realmMultiplier()) + " on damage, health, bar, regen")
+                .stat("Crit", Fmt.pct(s.critChance()) + " for " + Fmt.mult(s.critMultiplier()))
                 .stat("Lifesteal", Fmt.pct(s.lifesteal()))
                 .stat("Max health / mana", Fmt.mult(s.maxHpMultiplier()) + " / " + Fmt.mult(s.maxManaMultiplier()))
                 .stat("Spell damage vs mobs", Fmt.mult(s.spellDamageMultiplier()));
@@ -87,6 +90,11 @@ final class AttributesInspectMenu extends AdminMenu {
                         .text("Temporary +attribute bonuses for").text("controlled tests. Never saved.")
                         .hint("Click to open").build()),
                 c -> open(c.player(), new DevBuffMenu(panel, targetId)));
+        v.button(35, Ui.item(Material.END_CRYSTAL, ChatColor.AQUA + "Test realm",
+                Ui.lore().stat("Now", realm.realm().displayName + (testRealm ? " (test)" : ""))
+                        .text("Put them in any realm temporarily to").text("test cross-realm numbers. Never saved.")
+                        .hint("Click to open").build()),
+                c -> open(c.player(), new RealmTestMenu(panel, targetId)));
         v.button(33, Ui.item(Material.REDSTONE, ChatColor.YELLOW + "Re-apply to character",
                 Ui.lore().text("Pushes max health, defense and mana").text("from these attributes again (also")
                         .text("happens on level-up and /cerb reload).").hint("Click to re-apply").build()),
@@ -105,6 +113,7 @@ final class AttributesInspectMenu extends AdminMenu {
                 .raw(onOff("  Vitality -> max health", sw.vitality()))
                 .raw(onOff("  Fortitude -> armor, bar, resist", sw.fortitude()))
                 .raw(onOff("  Essence -> mana, spell damage", sw.essence()))
+                .raw(onOff("  Realm magnitude", sw.realmMagnitude()))
                 .gap().text("Per point:")
                 .stat("  Power damage", "+" + Fmt.pct(d.powerDamage()))
                 .stat("  Vitality health", "+" + Fmt.pct(d.vitalityHp()))

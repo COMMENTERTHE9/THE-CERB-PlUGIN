@@ -35,9 +35,10 @@ public final class PveOffense {
         return attributes.rules().switches().essence();
     }
 
-    /** A player's spell hitting a mob: Essence's spell-damage multiplier. */
+    /** A player's spell hitting a mob: realm magnitude × Essence's spell-damage multiplier (when on). */
     public double spellDamage(Player caster, double raw) {
-        double d = raw * attributes.get(caster.getUniqueId()).spellDamageMultiplier();
+        AttributeSnapshot s = attributes.get(caster.getUniqueId());
+        double d = raw * s.realmMultiplier() * (spellsEnabled() ? s.spellDamageMultiplier() : 1.0);
         return Double.isFinite(d) && d >= 0 ? d : raw;
     }
 
@@ -49,7 +50,7 @@ public final class PveOffense {
                              boolean trace) {
         AttributeSnapshot s = attributes.get(attacker.getUniqueId());
         boolean crit = s.critChance() > 0 && ThreadLocalRandom.current().nextDouble() < s.critChance();
-        double damage = raw * s.offenseMultiplier(weapon, crit);
+        double damage = raw * s.hitMultiplier(weapon, crit); // realm magnitude × within-realm offense
         if (!Double.isFinite(damage) || damage < 0) damage = raw;
 
         CombatContext ctx = new CombatContext(attacker, mob, type, raw);
@@ -57,6 +58,9 @@ public final class PveOffense {
         ctx.attack().setCritical(crit);
         ctx.attack().setCritMultiplier(crit ? s.critMultiplier() : 1.0);
         if (!trace) return ctx;
+        double r = s.realmMultiplier();
+        if (r != 1.0) ctx.appendTrace("Realm", raw, raw * r, s.realm().realm().displayName + " x" + Numbers.compact(r));
+        raw *= r;
         double afterPower = raw * s.powerMultiplier(weapon);
         ctx.appendTrace("Power", raw, afterPower, String.format(Locale.ROOT, "%s, Power %.1f -> x%.2f",
                 weapon.displayName, s.power(weapon), s.powerMultiplier(weapon)));

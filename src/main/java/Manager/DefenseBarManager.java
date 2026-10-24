@@ -49,6 +49,18 @@ public class DefenseBarManager {
                 uuid -> new DefenseBar(player, baseMaxPoints));
     }
 
+    /** Regeneration scale per player (the realm magnitude): a bigger realm's bar refills at the same pace. */
+    private volatile java.util.function.ToDoubleFunction<UUID> regenScale = id -> 1.0;
+
+    public void setRegenScale(java.util.function.ToDoubleFunction<UUID> scale) {
+        this.regenScale = scale == null ? id -> 1.0 : scale;
+    }
+
+    double regenScale(UUID id) {
+        double s = regenScale.applyAsDouble(id);
+        return Double.isFinite(s) && s > 0 ? s : 1.0;
+    }
+
     /** Bar size before any skill or attribute bonus (combat.yml defense-bar.base-max-points). */
     public double getBaseMaxPoints() { return baseMaxPoints; }
 
@@ -90,10 +102,13 @@ public class DefenseBarManager {
     /** Set additional max points (e.g. from Heavy Armor Training skill). */
     public void setBonusMaxPoints(Player player, double bonus) {
         DefenseBar bar = getDefenseBar(player);
-        bar.maximum = baseMaxPoints + bonus;
-        if (bar.current > bar.maximum) {
-            bar.current = bar.maximum;
-        }
+        double oldMax = bar.maximum;
+        double newMax = baseMaxPoints + bonus;
+        if (!Double.isFinite(newMax) || newMax <= 0 || newMax == oldMax) return;
+        // Keep the same fill fraction when the bar grows or shrinks (a realm step can change
+        // its size by x8 or more; a full bar should stay full, a half bar half).
+        bar.current = oldMax > 0 ? Math.min(newMax, bar.current / oldMax * newMax) : newMax;
+        bar.maximum = newMax;
     }
 
     /** Fully restore a player's defense bar and clear any regen timing. */
@@ -159,7 +174,7 @@ public class DefenseBarManager {
 
                 // Regenerate: regenRate points per second, this runs every tick
                 double before = current;
-                current = Math.min(maximum, current + regenRate / 20.0);
+                current = Math.min(maximum, current + regenRate * regenScale(player.getUniqueId()) / 20.0);
 
                 if (current >= maximum) {
                     scheduledTask.cancel();

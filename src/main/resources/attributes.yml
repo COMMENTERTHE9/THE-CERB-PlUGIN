@@ -74,9 +74,17 @@ attributes:
     resist: 0.50            # each of fire / cold / drowning
     total-mitigation: 0.75  # RESERVED, not enforced yet: today's defense pipeline allows ~82%; enforcing is an owner decision
 
+  # Realm magnitude (docs/design/POWER_SCALING.md §2): a player's realm multiplies their damage,
+  # max health, defense bar, health/bar regeneration and spell damage by the realm curve in
+  # combat.yml (mob-health-scaling.tier-multiplier: x8 per realm, Awakened = x1) - the same curve
+  # mob health uses, so same-realm fights stay even at any magnitude.
+  realm:
+    default: AWAKENED       # everyone's realm until Ascension (breakthroughs) is built
+
   # Kill switches: false = that part of combat ignores attributes (behaves as before).
   integration:
     pve-offense: true       # Power / crit / lifesteal on player -> mob hits (PvP is unchanged)
     vitality: true          # max health
     fortitude: true         # armor, defense bar, resistances
     essence: true           # mana and spell damage
+    realm-magnitude: true   # realm multiplies damage, health, defense bar, regen (no effect at Awakened)

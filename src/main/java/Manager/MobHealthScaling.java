@@ -189,6 +189,17 @@ public final class MobHealthScaling {
         return Math.max(1.0, Math.min(raw, healthCap));
     }
 
+    /**
+     * Realm magnitude relative to Awakened (COMMON = ×1): the realm curve (tier-multiplier,
+     * ×8 per realm) that mob health uses, shared with players so same-realm fights stay even.
+     */
+    public double realmMultiplier(Tier tier) {
+        double common = tierMultipliers.getOrDefault(Tier.COMMON, 1.0);
+        double m = tierMultipliers.getOrDefault(tier == null ? Tier.COMMON : tier, 1.0);
+        double r = common > 0 ? m / common : m;
+        return Double.isFinite(r) && r > 0 ? r : 1.0;
+    }
+
     public boolean isEnabled() { return enabled; }
     public int getMaxLevel() { return maxLevel; }
     public String getApplyTo() { return applyTo; }

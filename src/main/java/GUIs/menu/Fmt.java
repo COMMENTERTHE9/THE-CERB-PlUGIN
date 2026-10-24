@@ -10,19 +10,9 @@ public final class Fmt {
 
     private Fmt() {}
 
-    private static final String[] UNITS = {"K", "M", "B", "T", "Qa", "Qi"};
-
-    /** 950 -> "950", 3200 -> "3.2K", 25_600_000 -> "25.6M". NaN/inf -> "?". */
+    /** 950 -> "950", 3200 -> "3.2K", 25_600_000 -> "25.6M". NaN/inf -> "?". Same as everywhere else in the plugin. */
     public static String compact(double v) {
-        if (Double.isNaN(v) || Double.isInfinite(v)) return "?";
-        String sign = v < 0 ? "-" : "";
-        double x = Math.abs(v);
-        if (x < 1000) {
-            return sign + (x == Math.rint(x) ? String.valueOf((long) x) : String.format(Locale.ROOT, "%.1f", x));
-        }
-        int i = -1;
-        while (x >= 999.95 && i < UNITS.length - 1) { x /= 1000.0; i++; }
-        return sign + String.format(Locale.ROOT, "%.1f", x) + UNITS[i];
+        return Manager.Numbers.compact(v);
     }
 
     /** 1234567 -> "1,234,567" (exact integers, for XP and levels). */

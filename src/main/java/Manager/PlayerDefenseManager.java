@@ -88,8 +88,9 @@ public class PlayerDefenseManager {
         // Push elemental resistances from Survival skill (+ Fortitude)
         applyElementalResistances(player, fort);
 
-        // Push defense bar bonus from Heavy Armor Training (+ Fortitude)
-        applyDefenseBarBonus(player, fort);
+        // Push defense bar bonus from Heavy Armor Training (+ Fortitude), scaled to the realm
+        double realm = attributes != null ? attributes.get(player.getUniqueId()).realmMultiplier() : 1.0;
+        applyDefenseBarBonus(player, fort, realm);
     }
 
     /** Sum per-piece armor reduction from equipped gear using CombatConfig values. */
@@ -145,14 +146,19 @@ public class PlayerDefenseManager {
         virtualHealthManager.setDrowningResistance(player, drowningResist);
     }
 
-    /** Heavy Armor Training grants bonus defense bar max points; Fortitude scales the base bar. */
-    private void applyDefenseBarBonus(Player player, @Nullable Attributes.AttributeSnapshot fort) {
+    /**
+     * Heavy Armor Training grants bonus defense bar max points; Fortitude scales the base bar; the
+     * realm multiplies the whole bar (it absorbs hits measured in the realm's magnitude).
+     */
+    private void applyDefenseBarBonus(Player player, @Nullable Attributes.AttributeSnapshot fort, double realm) {
         if (skillManager == null || combatConfig == null || defenseBarManager == null) return;
 
+        double base = defenseBarManager.getBaseMaxPoints();
         int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
-        double barBonus = hatLevel > 0 ? ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling) : 0.0;
-        if (fort != null) barBonus += defenseBarManager.getBaseMaxPoints() * (fort.defenseBarMultiplier() - 1.0);
-        defenseBarManager.setBonusMaxPoints(player, Math.max(0.0, barBonus));
+        double bar = base + (hatLevel > 0 ? ScalingFormula.compute(hatLevel, combatConfig.hatDefenseBarBonusScaling) : 0.0);
+        if (fort != null) bar += base * (fort.defenseBarMultiplier() - 1.0);
+        bar *= (Double.isFinite(realm) && realm > 0 ? realm : 1.0);
+        defenseBarManager.setBonusMaxPoints(player, Math.max(0.0, bar - base));
     }
 
     /** Get the current armor reduction for a player (0.0–cap). */

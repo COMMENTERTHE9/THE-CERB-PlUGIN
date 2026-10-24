@@ -162,6 +162,18 @@ public class PlayerVirtualHealthManager {
         return repaired;
     }
 
+    /** Regeneration scale per player (the realm magnitude): health and bar regen keep pace with realm-sized pools. */
+    private volatile java.util.function.ToDoubleFunction<UUID> regenScale = id -> 1.0;
+
+    public void setRegenScale(java.util.function.ToDoubleFunction<UUID> scale) {
+        this.regenScale = scale == null ? id -> 1.0 : scale;
+    }
+
+    private double regenScale(Player player) {
+        double s = regenScale.applyAsDouble(player.getUniqueId());
+        return Double.isFinite(s) && s > 0 ? s : 1.0;
+    }
+
     public void setPlayerVirtualHealth(Player player, double health) {
         lifecycleEngine.setCurrentHp(getOrCreateState(player), health);
     }
@@ -471,7 +483,8 @@ public class PlayerVirtualHealthManager {
             boolean inCombat = snapshot.lastDamageAt() != 0L
                     && (System.currentTimeMillis() - snapshot.lastDamageAt()) < combatTimeout;
 
-            double regenPerTick = (inCombat ? combatRate : baseRate) / 20.0;
+            double scale = regenScale(player);
+            double regenPerTick = (inCombat ? combatRate : baseRate) * scale / 20.0;
             if (regenPerTick > 0.0) {
                 heal(player, regenPerTick);
             }
@@ -479,7 +492,7 @@ public class PlayerVirtualHealthManager {
             if (!inCombat && defenseBarManager != null) {
                 DefenseBarManager.DefenseBar bar = defenseBarManager.getDefenseBar(player);
                 if (bar.getCurrent() < bar.getMaximum()) {
-                    double barRegen = combatConfig != null ? combatConfig.defBarRegenRate / 20.0 : 0.75;
+                    double barRegen = (combatConfig != null ? combatConfig.defBarRegenRate / 20.0 : 0.75) * scale;
                     bar.current = Math.min(bar.maximum, bar.current + barRegen);
                 }
             }

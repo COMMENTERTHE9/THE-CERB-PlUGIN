@@ -39,7 +39,8 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
                          String lifestealSkill, ScalingParams lifesteal) {}
 
     /** Kill switches: each integration can be turned off without touching the others. */
-    public record Switches(boolean pveOffense, boolean vitality, boolean fortitude, boolean essence) {}
+    public record Switches(boolean pveOffense, boolean vitality, boolean fortitude, boolean essence,
+                           boolean realmMagnitude) {}
 
     public AttributeRules {
         skillWeights = Map.copyOf(skillWeights);
@@ -97,7 +98,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
             new ScalingParams(1.5, 0.04, 0.10, 60, 1.5, 3.5),
             "Weapon Mastery",
             new ScalingParams(0.0, 0.03, 0.08, 50, 0.30, 0.40));
-    public static final Switches DEFAULT_SWITCHES = new Switches(true, true, true, true);
+    public static final Switches DEFAULT_SWITCHES = new Switches(true, true, true, true, true);
 
     public static final AttributeRules DEFAULTS = new AttributeRules(DEFAULT_SKILL_WEIGHTS, Map.of(),
             DEFAULT_DERIVED, DEFAULT_LIMITS, DEFAULT_CURVES, DEFAULT_SWITCHES);

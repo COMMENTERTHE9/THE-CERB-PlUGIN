@@ -62,15 +62,15 @@ public class PlayerHUDManager {
             DefenseBarManager.DefenseBar defenseBar = defenseBarManager.getDefenseBar(player);
             double defensePercentage = defenseBar.getPercentage();
             ChatColor defenseColor = getDefenseBarColor(defensePercentage);
-            hudBuilder.append(String.format("%s%.0f/%.0f⛨  ", 
-                defenseColor, defenseBar.getCurrent(), defenseBar.getMaximum()));
+            hudBuilder.append(defenseColor).append(Numbers.hud(defenseBar.getCurrent())).append('/')
+                    .append(Numbers.hud(defenseBar.getMaximum())).append("⛨  ");
         }
         
         // Add health, effectiveness, and mana
-        hudBuilder.append(String.format("%s%.0f/%.0f♥   %s%.2f%%★   %s%.2f/%.2f✎",
-                healthColor, health, maxHealth,
-                effectivenessColor, effectiveness * 100,
-                manaColor, mana, maxMana));
+        // Realm magnitudes reach billions: exact below 10,000, compact above (Numbers.hud).
+        hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ")
+                .append(String.format("%s%.2f%%★   ", effectivenessColor, effectiveness * 100))
+                .append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
 
         // Send the action bar message to the player
         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hudBuilder.toString()));

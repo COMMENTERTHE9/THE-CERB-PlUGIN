@@ -27,6 +27,7 @@ public final class AttributesConfig {
     private final Supplier<AttributeRules.Curves> curves;
     private volatile KillXp.Params killXp = KillXp.Params.DEFAULTS;
     private volatile AttributeRules rules = AttributeRules.DEFAULTS;
+    private volatile Manager.Realm defaultRealm = Manager.Realm.AWAKENED;
 
     /** @param curves crit / lifesteal curves (from combat.yml), read on every reload */
     public AttributesConfig(JavaPlugin plugin, Supplier<AttributeRules.Curves> curves) {
@@ -38,6 +39,9 @@ public final class AttributesConfig {
     public KillXp.Params killXp() { return killXp; }
 
     public AttributeRules rules() { return rules; }
+
+    /** Every player's realm until Ascension exists (attributes.realm.default). */
+    public Manager.Realm defaultRealm() { return defaultRealm; }
 
     public void reload() {
         try {
@@ -61,6 +65,10 @@ public final class AttributesConfig {
                         + " defaults. Delete attributes.yml and /cerb reload to get the full file with every setting.");
             }
             rules = parseRules(section(cfg, "attributes"), curves.get(), problems::add);
+            String realmName = cfg.getString("attributes.realm.default", "AWAKENED");
+            Manager.Realm realm = Manager.Realm.parse(realmName);
+            if (realm == null) problems.add("realm.default '" + realmName + "' is not a realm - using Awakened");
+            defaultRealm = realm != null ? realm : Manager.Realm.AWAKENED;
             problems.forEach(p -> plugin.getLogger().warning("[Attributes] attributes.yml: " + p));
             plugin.getLogger().info("[Attributes] Loaded attributes.yml (kill XP v2 " + (killXp.enabled() ? "on" : "off")
                     + ", " + rules.skillWeights().size() + " skills feed attributes, PvE offense "
@@ -139,7 +147,8 @@ public final class AttributesConfig {
                 s.getBoolean("integration.pve-offense", ds.pveOffense()),
                 s.getBoolean("integration.vitality", ds.vitality()),
                 s.getBoolean("integration.fortitude", ds.fortitude()),
-                s.getBoolean("integration.essence", ds.essence()));
+                s.getBoolean("integration.essence", ds.essence()),
+                s.getBoolean("integration.realm-magnitude", ds.realmMagnitude()));
 
         return new AttributeRules(weights, caps, derived, limits, curves, switches);
     }

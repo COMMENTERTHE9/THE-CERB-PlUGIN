@@ -49,8 +49,13 @@ public final class StatsMenu extends Menu {
 
         v.row(0, Material.PURPLE_STAINED_GLASS_PANE);
         v.row(5, Material.BLACK_STAINED_GLASS_PANE);
+        var realm = s.realm();
+        boolean testRealm = plugin.getPlayerRealms().hasTestRealm(id);
         v.set(MenuView.HEADER, Ui.head(p, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + p.getName(), Ui.lore()
-                .stat("Realm", "Awakened").raw(ChatColor.DARK_GRAY + "  (advancing realms is not built yet)")
+                .stat("Realm", realm.realm().color() + "R" + realm.realm().number + " " + realm.realm().displayName
+                        + ChatColor.GRAY + "  (" + realm.realm().epithet + ")")
+                .stat("Realm magnitude", Fmt.mult(realm.multiplier()) + (testRealm ? "  (test realm set by an admin)" : ""))
+                .raw(ChatColor.DARK_GRAY + "  Breakthroughs to higher realms are not built yet.")
                 .stat("Total skill level", String.valueOf(plugin.getSkillManager().getPlayerLevel(p)))
                 .gap().text("Your attributes grow by themselves").text("as your skills level up.").build()));
 
@@ -110,6 +115,7 @@ public final class StatsMenu extends Menu {
                 .stat("Crits", Fmt.pct(s.critChance()) + " for " + Fmt.mult(s.critMultiplier()))
                 .stat("Average per hit", Fmt.mult(s.expectedOffenseMultiplier(wc)))
                 .stat("Best possible hit", Fmt.mult(s.offenseMultiplier(wc, true)));
+        if (s.realmMultiplier() != 1.0) l.stat("Realm magnitude", "all of that " + Fmt.mult(s.realmMultiplier()));
         if (s.lifesteal() > 0) l.stat("Lifesteal", Fmt.pct(s.lifesteal()));
         int even = (int) Math.min(100, Math.floor(1 + power));
         l.gap().text("Keeps pace with level-" + even + " mobs:")

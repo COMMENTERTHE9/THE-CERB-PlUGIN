@@ -36,9 +36,17 @@ async function killNearest(names, maxSwings = 80) {
   return mobsNear(names, 5).length === 0;
 }
 
+// Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
+// inside a hillside suffocate mid-check.
+async function goHome() {
+  const s = bot.spawnPoint;
+  if (s) { bot.chat(`/tp @s ${s.x + 0.5} ${s.y} ${s.z + 0.5}`); await new Promise(r => setTimeout(r, 1200)); }
+}
+
 bot.once('spawn', async () => {
   try {
     await sleep(3000);
+    await goHome();
     // Mobs left over from other runs would hit us and block the /kill check (hit invulnerability).
     bot.chat('/kill @e[type=!player,type=!text_display,distance=..48]'); await sleep(800);
     check('HUD action bar shows health and mana', /(\d+)\/\1♥/.test(actionBar) && /✎/.test(actionBar), actionBar);

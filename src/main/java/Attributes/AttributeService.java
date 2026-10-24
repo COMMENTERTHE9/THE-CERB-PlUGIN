@@ -27,6 +27,7 @@ public final class AttributeService {
     private final Map<UUID, AttributeSnapshot> cache = new ConcurrentHashMap<>();
     private final LongAdder rebuilds = new LongAdder();
     private volatile AttributeSnapshot empty;
+    private volatile java.util.function.Function<UUID, RealmContext> realms = id -> RealmContext.NEUTRAL;
 
     public AttributeService(Supplier<AttributeRules> rules) {
         this.rules = rules;
@@ -38,6 +39,12 @@ public final class AttributeService {
     }
 
     public List<AttributeSource> sources() { return List.copyOf(sources); }
+
+    /** Where each player's realm comes from (thread-safe lookups only). Call markDirty after a realm changes. */
+    public void setRealms(java.util.function.Function<UUID, RealmContext> realms) {
+        this.realms = realms;
+        cache.clear();
+    }
 
     public AttributeRules rules() { return rules.get(); }
 
@@ -111,7 +118,8 @@ public final class AttributeService {
         List<Contribution> all = new ArrayList<>();
         for (AttributeSource src : sources) all.addAll(src.contributions(player, r));
         rebuilds.increment();
-        return AttributeCalculator.compute(edit.apply(all), r);
+        RealmContext realm = r.switches().realmMagnitude() ? realms.apply(player) : RealmContext.NEUTRAL;
+        return AttributeCalculator.compute(edit.apply(all), r, realm);
     }
 
     private AttributeSnapshot empty(AttributeRules r) {

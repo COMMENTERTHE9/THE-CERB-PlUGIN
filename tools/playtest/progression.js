@@ -6,6 +6,8 @@
 //   survive - same level-50 zombie hits at Survival/Heavy Armor Training/First Aid 1 vs 100 (Vitality, Fortitude)
 //   magic   - Essence: Intelligence/Mana Regeneration 1 vs 100 -> max mana, regen, Fireball damage vs a mob
 //   persist - PERSIST=set: set test levels and record Stats; restart the server; PERSIST=check: same Stats after restart
+//   realm   - admin test realm: Champion vs a Champion (RARE) elite takes the same swings as Awakened vs a common
+//             zombie; Primordial magnitudes (billions) display and compute cleanly; back to default
 //   perf    - 20 hits on a mob cause no attribute rebuilds (snapshot stays cached; only level-ups rebuild)
 //   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
 const mineflayer = require('mineflayer');
@@ -13,10 +15,11 @@ const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chat = [];
+let actionBar = '';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
 const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
-bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
+bot.on('messagestr', (m, pos) => { if (pos === 'game_info') actionBar = m; else chat.push(m); });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
 
 // Text of a chat component as mineflayer exposes it (NBT compound, JSON string, or JSON object).
@@ -50,10 +53,10 @@ async function equip(item) {
 }
 
 /** Spawn a no-AI mob at `level`, hit it until it dies (vanilla attack cooldown respected). */
-async function killOne(type, level) {
-  await cmd(`/kill @e[type=${type},distance=..10]`, 600);
+async function killOne(type, level, entity = type) {
+  await cmd(`/kill @e[type=${entity},distance=..10]`, 600);
   const at = await cmd(`/cerb spawn ${type} ${level} noai`, 1500);
-  const target = mobsNear(type, 5)[0];
+  const target = mobsNear(entity, 5)[0];
   if (!target) return { swings: 0, xp: NaN, msg: 'mob did not spawn' };
   let swings = 0;
   for (; swings < 400; swings++) {
@@ -292,9 +295,76 @@ async function perf() {
   await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
 }
 
+async function setTestRealm(slot) {
+  await cmd('/cerb panel', 1500);
+  const tile = Object.keys(bot.currentWindow ? bot.currentWindow.slots : {}).find(i => /^Attributes$/.test(slotName(+i)));
+  await click(+tile, 900); await click(10, 900); await click(35, 900);
+  const ok = /Test realm/.test(title());
+  await click(slot, 1200);
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await sleep(1200); // effects re-apply on the player's thread
+  return ok;
+}
+
+async function statsHeaderAndHealth() {
+  await cmd('/stats', 1500);
+  const v = { header: slotLore(4), health: (slotLore(31).match(/Max health: ([\d,.]+[KMBT]?)/) || [])[1] };
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  return v;
+}
+
+async function realm() {
+  await cmd('/gamemode creative');
+  await cmd('/time set night');
+  await equip('netherite_sword');
+  for (const sk of ['Blade_Mastery', 'Critical_Strike', 'Survival', 'Heavy_Armor_Training', 'First_Aid']) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 400);
+  await sleep(800);
+  let v = await statsHeaderAndHealth();
+  check('Default realm is Awakened at x1', /R2 Awakened/.test(v.header) && /Realm magnitude: x1\.00/.test(v.header), v.header);
+  bot.setQuickBarSlot(heldSlot);
+  const base = (await killOne('zombie', 1)).swings, base2 = (await killOne('zombie', 1)).swings;
+
+  check('Admin can open Test realm and pick Champion', await setTestRealm(22));
+  v = await statsHeaderAndHealth();
+  check('Champion: realm x64 shown, max health 102 -> 6,528', /R4 Champion/.test(v.header) && /x64\.00/.test(v.header) && v.health === '6,528',
+      v.header.slice(0, 120) + ' | ' + v.health);
+  bot.setQuickBarSlot(heldSlot);
+  const elite = (await killOne('elite_zombie', 1, 'zombie')).swings, elite2 = (await killOne('elite_zombie', 1, 'zombie')).swings;
+  console.log(`Awakened vs common zombie L1: ${base}, ${base2} swings; Champion vs Champion elite L1 (x64 HP): ${elite}, ${elite2} swings`);
+  check('Same-realm fights stay even across realms (Champion vs Rare elite ~ Awakened vs common)',
+      Math.abs((elite + elite2) / 2 - (base + base2) / 2) <= 2, `${(base + base2) / 2} vs ${(elite + elite2) / 2} swings`);
+
+  check('Primordial picked', await setTestRealm(31));
+  v = await statsHeaderAndHealth();
+  check('Primordial: x16.8M magnitude, max health in billions, shown compactly', /R10 Primordial/.test(v.header) && v.health === '1.7B', v.health);
+  await sleep(2500);
+  check('HUD shows billions compactly, no NaN; the defense bar kept its fill', /1\.7B\/1\.7B♥/.test(actionBar) && /5\.1B\/5\.1B⛨/.test(actionBar) && !/NaN|\?/.test(actionBar), actionBar);
+  await cmd('/cerb combatdebug', 500);
+  bot.setQuickBarSlot(heldSlot);
+  const at = chat.length;
+  const one = await killOne('zombie', 50);
+  await cmd('/cerb combatdebug', 500);
+  const trace = chat.slice(at).find(m => /\[Combat\] Realm/.test(m)) || '';
+  // The harness's first swing often doesn't register (same +1 seen in every swing count), so allow 2.
+  check('A Primordial hit kills a level-50 zombie at once; the trace shows the realm step', one.swings <= 2 && /Realm\(Primordial x16\.8M\)/.test(trace), one.swings + ' | ' + trace);
+  check('Kill XP is unchanged by realm (Common L50 = 334)', one.xp === 334, String(one.msg));
+
+  check('Back to default', await setTestRealm(40));
+  v = await statsHeaderAndHealth();
+  check('Default restored: Awakened, max health 102', /R2 Awakened/.test(v.header) && v.health === '102', v.health);
+}
+
+// Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
+// inside a hillside suffocate mid-check.
+async function goHome() {
+  const s = bot.spawnPoint;
+  if (s) { bot.chat(`/tp @s ${s.x + 0.5} ${s.y} ${s.z + 0.5}`); await new Promise(r => setTimeout(r, 1200)); }
+}
+
 bot.once('spawn', async () => {
   await sleep(2500);
   try {
+    await goHome();
     if (phase === 'killxp') await killxp();
     else if (phase === 'stats') await stats();
     else if (phase === 'survive') {
@@ -312,6 +382,7 @@ bot.once('spawn', async () => {
     }
     else if (phase === 'persist') await persist();
     else if (phase === 'perf') await perf();
+    else if (phase === 'realm') await realm();
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');
       await equip('netherite_sword');

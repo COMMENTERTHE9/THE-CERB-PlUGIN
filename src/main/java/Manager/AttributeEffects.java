@@ -76,8 +76,9 @@ public final class AttributeEffects {
 
     /** What this player's max health should be right now. */
     public double maxHealthFor(UUID playerId) {
-        double mult = attributes.rules().switches().vitality() ? attributes.get(playerId).maxHpMultiplier() : 1.0;
-        return BASE_MAX_HEALTH * mult;
+        var s = attributes.get(playerId);
+        double mult = attributes.rules().switches().vitality() ? s.maxHpMultiplier() : 1.0;
+        return BASE_MAX_HEALTH * s.realmMultiplier() * mult; // realm magnitude × Vitality
     }
 
     /**

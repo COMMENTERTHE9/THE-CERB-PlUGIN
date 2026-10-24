@@ -14,6 +14,10 @@ public final class AttributeCalculator {
     private AttributeCalculator() {}
 
     public static AttributeSnapshot compute(List<Contribution> input, AttributeRules rules) {
+        return compute(input, rules, RealmContext.NEUTRAL);
+    }
+
+    public static AttributeSnapshot compute(List<Contribution> input, AttributeRules rules, RealmContext realm) {
         int nAttr = Attribute.values().length, nClass = WeaponClass.values().length, nStat = Stat.values().length;
         double[] general = new double[nAttr];
         double[] classPower = new double[nClass];
@@ -71,7 +75,7 @@ public final class AttributeCalculator {
         double regen = floor(1.0 + d.essenceRegen() * ess + stat[Stat.MANA_REGEN.ordinal()]);
         double spell = floor(1.0 + d.essenceSpell() * ess + stat[Stat.SPELL_DAMAGE.ordinal()]);
 
-        return new AttributeSnapshot(rules, totals, power, damageBonus, critChance, critMult, lifesteal,
+        return new AttributeSnapshot(rules, realm, totals, power, damageBonus, critChance, critMult, lifesteal,
                 maxHp, armor, bar, resist, mana, regen, spell, kept, ignored);
     }
 

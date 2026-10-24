@@ -11,6 +11,7 @@ import java.util.List;
 public final class AttributeSnapshot {
 
     private final AttributeRules rules;
+    private final RealmContext realm;
     private final double[] totals;          // per Attribute, all-weapon part, capped
     private final double[] power;           // per WeaponClass: general + class Power, capped
     private final double[] damageBonus;     // per WeaponClass: DAMAGE stat (fraction)
@@ -20,12 +21,13 @@ public final class AttributeSnapshot {
     private final List<Contribution> contributions;
     private final int ignored;
 
-    AttributeSnapshot(AttributeRules rules, double[] totals, double[] power, double[] damageBonus,
+    AttributeSnapshot(AttributeRules rules, RealmContext realm, double[] totals, double[] power, double[] damageBonus,
                       double critChance, double critMultiplier, double lifesteal,
                       double maxHpMultiplier, double armorBonus, double defenseBarMultiplier, double resist,
                       double maxManaMultiplier, double manaRegenMultiplier, double spellDamageMultiplier,
                       List<Contribution> contributions, int ignored) {
         this.rules = rules;
+        this.realm = realm;
         this.totals = totals;
         this.power = power;
         this.damageBonus = damageBonus;
@@ -49,6 +51,11 @@ public final class AttributeSnapshot {
     }
 
     public AttributeRules rules() { return rules; }
+
+    /** The realm this snapshot was built for, and its magnitude (×1 for Awakened). */
+    public RealmContext realm() { return realm; }
+
+    public double realmMultiplier() { return realm.multiplier(); }
 
     /** Attribute total. For Power this is the all-weapon part; see {@link #power(WeaponClass)}. */
     public double get(Attribute a) { return totals[a.ordinal()]; }
@@ -84,6 +91,11 @@ public final class AttributeSnapshot {
     public double offenseMultiplier(WeaponClass c, boolean crit) {
         double extras = (1.0 + damageBonus(c)) * (crit ? critMultiplier : 1.0);
         return powerMultiplier(c) * Math.min(rules.limits().offenseBudget(), extras);
+    }
+
+    /** Everything that multiplies one hit: realm magnitude × the within-realm offense multiplier. */
+    public double hitMultiplier(WeaponClass c, boolean crit) {
+        return realm.multiplier() * offenseMultiplier(c, crit);
     }
 
     /** Average damage multiplier including crit odds (for display). */
