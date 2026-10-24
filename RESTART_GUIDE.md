@@ -58,6 +58,22 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 | `/testregen 50` | Health drops by 50, then regenerates about 4 per second. |
 | `/kill` | Instant respawn at full 100 HP. No death screen; this is intentional. |
 
+## Admin Control Panel (Cerberus Control Center)
+
+Operators open it with **`/cerb panel`** or by right-clicking the **Admin Control Panel** ender chest (operators get one on join). Non-operators can't open it; the item does nothing for them and is removed on join.
+
+| Section | What you can do |
+|---|---|
+| Players | Inspect anyone online (health, mana, defense, skills). Full restore, refill mana, teleport to them, set skill levels and grant XP. Lowering a level asks first; the player is told. |
+| Combat Lab | Spawn any `mobs.yml` entry or vanilla test mob at an exact level (1–100), count and AI mode. Inspect nearby mobs' tier, level and HP pool; set their HP, freeze, highlight, remove. Clean up test mobs. Combat stats, debug traces, tier table. |
+| Progression Lab | XP curve, kill-XP rules, XP sources, which skills affect play today. |
+| Attributes | The plan for the next milestone; marked *in development*. |
+| My Test Character | Full restore, test kit, menu head, game mode, teleport to spawn, skills, combat stats. |
+| Server & Plugin | Build time, versions, memory, worlds, config and registry state. |
+| Maintenance | Reload configs, save all players (both ask first where it matters). |
+
+Test mobs spawned from the panel are never saved into the world, and cleanup removes only them. Every change made through the panel is written to `latest.log` as `[Admin] …`.
+
 ## Where things are
 
 | What | Path |

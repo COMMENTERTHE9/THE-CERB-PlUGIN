@@ -2,6 +2,8 @@
 
 *Last updated 2026-10-24 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
+**Current milestone:** Admin Control Panel 2.0 is built and verified in-game (see RESTART_GUIDE.md); Attributes & Progression 2.0 is next (`docs/ATTRIBUTES_ENGINE.md`).
+
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
 ## Summary
@@ -19,6 +21,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Combat XP | Kill XP goes to the weapon's skill (sword → Blade Mastery, fist → Martial Expertise; `skills.yml`). Critical Strike XP per hit; Survival XP when hit. Level-up messages. |
 | Persistence | Skill levels and XP survive restarts; saves coalesce within 1 s; a failed database load disconnects the player instead of overwriting data. |
 | Menus | Player Menu head (slot 9) → Skills → Combat / Magic / Utility → per-skill detail page. Other menu buttons open *Coming Soon*. |
+| Admin Control Panel | `/cerb panel`: Players (inspect/edit), Combat Lab (spawn at level, mob inspector, cleanup), Progression Lab, My Test Character, Server & Plugin, Maintenance. Permission-checked on every click; verified with `tools/playtest/admin.js` (40 + 8 security checks). |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
 ## Incomplete (Read unless noted)
