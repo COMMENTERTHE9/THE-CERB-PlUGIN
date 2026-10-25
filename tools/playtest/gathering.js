@@ -752,10 +752,12 @@ async function custom() {
     // A machine's extraction through the same definitions: the drop, no XP; the wrong tool can't.
     await setblock(2, 0, 0, 'amethyst_block');
     before = await mining();
+    const inv0 = invCounts();
     a = await cmd('/cerb gather extract', 900);
     const ex = saw(/Extract amethyst_block/, a) || '';
     const ed = await drops(2, 0, 0);
-    check('A machine with the drill extracts it: Test Crystals, no XP', /done/.test(ex) && /test_crystal/.test(ex) && count(ed, 'amethyst_shard') >= 1 && (await mining()) === before, ex);
+    const got = count(ed, 'amethyst_shard') + Math.max(0, (invCounts().amethyst_shard || 0) - (inv0.amethyst_shard || 0)); // fallen or picked up
+    check('A machine with the drill extracts it: Test Crystals, no XP', /done/.test(ex) && /test_crystal/.test(ex) && got >= 1 && (await mining()) === before, `${ex}; ${got} found`);
     await setblock(2, 0, 0, 'amethyst_block');
     await give('netherite_pickaxe'); await hold('netherite_pickaxe');
     a = await cmd('/cerb gather extract', 900);
@@ -778,11 +780,12 @@ async function custom() {
     await hold('netherite_pickaxe');
     await dig(3, 0, 0);
     const xpLine = actionBar;
-    await dig(2, 0, 0);
-    await sleep(200);
+    await dig(2, 0, 0, true, 400); // one attempt (mineflayer's dig() keeps retrying a refused break, which re-shows the message)
+    await sleep(100);
     const during = actionBar;
-    await sleep(1700);
-    const afterMsg = actionBar;
+    // The message lasts 1.5 s; the HUD redraws once a second, so the XP line is back within about 2.5 s.
+    let afterMsg = actionBar;
+    for (let t = 0; t < 3000 && !/Mining/.test(afterMsg); t += 100) { await sleep(100); afterMsg = actionBar; }
     check('The XP line shows; a refusal message covers it; then the XP line is back', /\+1 Mining/.test(xpLine) && /needs a drill/.test(during) && /Mining/.test(afterMsg),
         `${xpLine} | ${during} | ${afterMsg}`);
   } finally {
