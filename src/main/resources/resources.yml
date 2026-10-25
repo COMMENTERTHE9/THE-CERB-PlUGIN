@@ -1,0 +1,64 @@
+# Gathering and forging (docs/design/GATHERING.md). Every resource, tool and item is data: a stable id
+# (never rename one; saved items and other configs refer to it), the blocks it is, the tool kind and tier
+# it needs, its level (for the weak-resource rule), its XP, and whether Fortune can add one extra drop.
+# A bad entry is refused on its own and logged; the rest still loads.
+#
+# Rules the code keeps whatever this file says (docs/design/GATHERING.md, "What can't be farmed"):
+#   - only blocks broken by a player in survival or adventure pay XP or a bonus;
+#   - a block a player placed, a generator formed or a piston moved pays nothing;
+#   - Silk Touch pays XP but no bonus; the bonus is at most one extra item, never on Silk Touch.
+
+resources:
+  stone:          { skill: Mining, blocks: [STONE, GRANITE, DIORITE, ANDESITE, TUFF, CALCITE], tool: pickaxe, level: 1, xp: 1 }
+  deepslate:      { skill: Mining, blocks: [DEEPSLATE], tool: pickaxe, level: 1, xp: 1 }
+  netherrack:     { skill: Mining, blocks: [NETHERRACK], tool: pickaxe, level: 1, xp: 0.25 }
+  blackstone:     { skill: Mining, blocks: [BLACKSTONE, BASALT], tool: pickaxe, level: 5, xp: 1 }
+  end_stone:      { skill: Mining, blocks: [END_STONE], tool: pickaxe, level: 20, xp: 1 }
+  coal_ore:       { skill: Mining, blocks: [COAL_ORE, DEEPSLATE_COAL_ORE], tool: pickaxe, level: 1, xp: 4, fortune: true }
+  copper_ore:     { skill: Mining, blocks: [COPPER_ORE, DEEPSLATE_COPPER_ORE], tool: pickaxe, level: 5, xp: 4, fortune: true }
+  iron_ore:       { skill: Mining, blocks: [IRON_ORE, DEEPSLATE_IRON_ORE], tool: pickaxe, level: 10, xp: 8, fortune: true }
+  lapis_ore:      { skill: Mining, blocks: [LAPIS_ORE, DEEPSLATE_LAPIS_ORE], tool: pickaxe, level: 15, xp: 10, fortune: true }
+  redstone_ore:   { skill: Mining, blocks: [REDSTONE_ORE, DEEPSLATE_REDSTONE_ORE], tool: pickaxe, level: 15, xp: 6, fortune: true }
+  gold_ore:       { skill: Mining, blocks: [GOLD_ORE, DEEPSLATE_GOLD_ORE], tool: pickaxe, level: 20, xp: 12, fortune: true }
+  nether_quartz:  { skill: Mining, blocks: [NETHER_QUARTZ_ORE], tool: pickaxe, level: 20, xp: 5, fortune: true }
+  nether_gold:    { skill: Mining, blocks: [NETHER_GOLD_ORE], tool: pickaxe, level: 20, xp: 4, fortune: true }
+  diamond_ore:    { skill: Mining, blocks: [DIAMOND_ORE, DEEPSLATE_DIAMOND_ORE], tool: pickaxe, level: 30, xp: 40, fortune: true }
+  emerald_ore:    { skill: Mining, blocks: [EMERALD_ORE, DEEPSLATE_EMERALD_ORE], tool: pickaxe, level: 30, xp: 50, fortune: true }
+  ancient_debris: { skill: Mining, blocks: [ANCIENT_DEBRIS], tool: pickaxe, level: 40, xp: 100 }
+
+# A resource pays a quarter of its XP to a player this many levels above it (like a weak mob's kill).
+weak-resources: { level-gap: 20, factor: 0.25 }
+
+# The Fortune attribute (Mining, Fishing, a forged tool's quality): the chance of one extra drop from a
+# resource marked "fortune: true", never multiplied by the Fortune enchantment.
+fortune: { chance-per-point: 0.005, max-chance: 0.5 }
+
+# Custom tools and items (future custom ores, drills, machines). A tool is an item carrying its id; a
+# resource can need one of its kinds ("drill") and its tier, and drop custom items instead of its own.
+tools: {}
+items: {}
+
+# XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
+smelting:
+  skill: Smithing
+  xp: { IRON_INGOT: 2, GOLD_INGOT: 3, COPPER_INGOT: 1, NETHERITE_SCRAP: 25 }
+
+# XP for crafting gear: per unit of metal its shape takes (a sword 2, a chestplate 8...); storage blocks,
+# nuggets and other reversible recipes pay nothing. "items:" sets one item's XP outright.
+forging:
+  skill: Smithing
+  per-unit: { iron: 5, gold: 5, copper: 3, diamond: 20 }
+  netherite-upgrade: 50
+  items: {}
+
+# Forged gear rolls a quality, better with Smithing (odds between level 1 and level 100). What each
+# quality adds goes through the attribute engine and its caps: Power for the weapon type in hand,
+# Fortitude per armor piece worn, Fortune with the tool in hand.
+quality:
+  skill: Smithing
+  odds:
+    at-level-1:   { common: 85, fine: 13, superior: 2, masterwork: 0 }
+    at-level-100: { common: 20, fine: 40, superior: 28, masterwork: 12 }
+  weapon-power:    { fine: 3, superior: 6, masterwork: 10 }
+  armor-fortitude: { fine: 1, superior: 2, masterwork: 4 }
+  tool-fortune:    { fine: 3, superior: 6, masterwork: 10 }
