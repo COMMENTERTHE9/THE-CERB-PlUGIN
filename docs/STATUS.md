@@ -9,8 +9,9 @@
 - **Step 3**, Player Menu 2.1: a short opening animation, a light sweeping the header between screens, page-turn sounds, the skill bar filling up, and "since you last looked" progress with one chime and one level-up flash. It stays within the performance budget, and an idle open menu costs nothing.
 
 - **Step 4**, the classes and abilities design: `docs/design/CLASSES.md`.
+- **Step 5**, the Warrior / Mage / Duelist prototype: learn several classes from your skills, unlock abilities by rank, mix them in three loadouts, cast with Sneak + a key. The six proofs were checked in game (91 checks), and an independent review's nine findings are fixed. Abilities are PvE-only until the PvP decision.
 
-The owner has playtested Player Menu 2.0; the remaining checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 5, the Warrior / Mage / Duelist prototype**, built on the design's recommendations until the owner decides.
+The owner has playtested Player Menu 2.0; the remaining checks, now including classes, are in `docs/PLAYTEST_CHECKLIST.md`. **Next:** your playtest and the decisions below, then Step 6 (more classes) or the gathering loop, in the order you choose.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -22,7 +23,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 
 | Area | What you can see |
 |---|---|
-| Startup / shutdown | Loads in ~30 s; 5 SQLite tables; `mobs.yml` (7 entries), 35 skills, `combat.yml` v3; `stop` saves and exits cleanly. |
+| Startup / shutdown | Loads in ~30 s; 6 SQLite tables; `mobs.yml` (7 entries), 35 skills, `combat.yml` v3, `classes.yml` + `abilities.yml` (3 classes, 21 abilities); `stop` saves and exits cleanly. |
 | Player health | 100-HP custom pool, 300-point defense bar, 1000 mana, action-bar HUD. Fall, lava, mob, and command damage all route through it. 250 ms hit invulnerability. |
 | Death | Lethal hit → instant respawn at full HP (no death screen, by design). |
 | Mob scaling | Every mob gets an HP pool (×8 per realm tier, +1 level per 150 blocks from spawn) and a live floating label (`Zombie 50❤ Lv1`). Kills are guaranteed when the pool empties. |
@@ -33,6 +34,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and the unit tests. |
 | Defense | Resistance → armor → defense bar; resistance and armor together capped at 75%, the bar a separate pool; PvP hits use the pre-attribute defense as the same share of health. Fire resistance covers flames, burning, campfires, magma and fire spells fully and lava at half (`combat.yml fire-resistance`). Checked by `progression.js defense`, `defense-cap`, `pvp` and `fire`; details in `docs/ATTRIBUTES_ENGINE.md`. |
 | Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
+| Classes (prototype) | Warrior, Mage and Duelist: opened by skills, ranks 1–50, 7 abilities each unlocking by rank, 3 loadouts (5 actives, 3 passives, keystone) mixing any classes, cast with Sneak + right-click / left-click / F / Q / scroll. Player Menu → Classes & Abilities, `/class`, `/cerb class <player> <class> rank <n>`. Abilities affect mobs only. Verified with `tools/playtest/classes.js` (91 checks). |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
 ## Incomplete (Read unless noted)
@@ -191,6 +193,66 @@ Checked in game: an animation interrupted by a fast click writes nothing into th
 
 **Not built:** special presentation for cultivation breakthroughs, which waits for realm advancement. The engine supports it: keyframes on any screen.
 
+## Done: classes prototype (Step 5, 2026-10-25)
+
+Warrior, Mage and Duelist on a data-driven ability engine (`docs/design/CLASSES.md`; status and deviations in its §11). Everything below was Played on the sandbox with `tools/playtest/classes.js` (91 checks) and a second test player for PvP. The other 22 classes are design only.
+
+**The six proofs:**
+
+| Proof | What was shown in game | Check |
+|---|---|---|
+| 1. Progress in more than one tree | Skills open classes by themselves (Blade Mastery 5 → Warrior, Intelligence 5 → Mage, Blade Mastery 10 + Critical Strike 5 → Duelist; never taken back). Cleave raised Warrior XP, Arcane Bolt raised Mage XP, in one session; three level-30 kills right after a Cleave gave Warrior 3 × 107 XP (half of each kill's skill XP) | `learn` 7/7, `trees` 8/8 |
+| 2. Progress kept when switching | Switching loadouts back and forth left every rank, XP and slot as it was | `trees` |
+| 3. Abilities from different trees together | One loadout: Riposte + Flurry + Precision (Duelist), Charge + War Cry + Battle-Hardened + Juggernaut (Warrior), Blink + Essence Flow (Mage). All cast; max health 100 → 120 from the Warrior passives; Blink waits for the movement lockout Charge started (shared across classes) | `mixed` 8/8 |
+| 4. Loadouts saved and switched | Three loadouts, switched from `/class` and from the menu; ranks, loadouts, the active one, its name and a running 30 s cooldown survive a relog and a server restart (also a change made 0.2 s before a stop, while online) | `exploits`, `persist` 5/5, `menu` 15/15 |
+| 5. Combat that feels different | Measured from the combat trace (table below) | `combat` 10/10 |
+| 6. No exploits | See "Exploit checks" | `exploits` 21/21, `keys` 17/17, unit tests |
+
+**How the three classes play (measured, netherite sword or blaze rod, against level-60 zombies):**
+
+| Class | Ability | Measured |
+|---|---|---|
+| Warrior | Cleave | one swing hit all 3 zombies in front, each at 1.6× a basic hit (12.8 before Power) |
+| Warrior | Execute | after a 3-zombie Cleave: 3 Momentum → 2.2× (17.7 before Power) |
+| Mage | Frost Nova | damaged and slowed all 3 zombies around |
+| Mage | Arcane Bolt | hit a zombie 7 blocks away: 8.4 → 9.7 with Essence (15 Essence) |
+| Duelist | Riposte | the zombie's hit negated (no damage taken), answered at 2.0× |
+| Duelist | Flurry | three strikes at 0.6× |
+| Duelist | Feint | the next normal hit: a guaranteed crit (shown in the trace), used up by that hit |
+
+**Exploit checks (all Played):**
+- three left-clicks within 100 ms cast once; pressing again shows the seconds left;
+- a cooldown follows the player into another loadout and across a relog (War Cry 13.7 s before, 6.9 s after);
+- War Cry can't be recast to stack (the bonus stays +15%) and ends the moment you switch to a loadout without it;
+- no switch during a fight (8 s after the last hit), 10 s between switches, no casting in the first second after a switch;
+- an ability can't be in two slots (equipping it again moves it); locked abilities and wrong slots are refused; a rank drop empties the slots it no longer allows, in every loadout;
+- a cast key never drops, swaps or moves the item: Sneak + Q keeps the sword, Sneak + F swaps nothing, Sneak + scroll keeps the slot;
+- one key casts one ability: the arm swing a client sends after Q, or after throwing an off-hand snowball, casts nothing (both used to fire active 2);
+- keys stay vanilla where they should: without Sneak, with a block (Q drops it), a bow (right-click draws), an empty slot (F swaps), the Fireball Wand (its own spell);
+- abilities never hit players: Cleave with a player in front hits only the zombie; the Fireball ability flies through a player (on the build before the review fix it hit the test player once and set it on fire); a Sneak-attack on a player is a normal PvP hit;
+- stored data is never trusted: a tampered document is repaired (ranks clamped, unknown abilities emptied, a damaged cooldown capped at 1 hour), and a class removed from `classes.yml` keeps its progress (unit tests).
+
+**Found and fixed while testing:**
+- In creative mode Paper reports the player's own inventory as CREATIVE, not CRAFTING, so the "no menu open" check refused every cast in creative.
+- After a rank drop, a stale slot in an inactive loadout blocked unrelated edits ("War Cry is not unlocked yet" when equipping something else). Rank changes now repair every loadout, and an edit repairs its loadout first.
+- Paper sends no left-click event when a mob is under the crosshair (the client sends an attack instead), so casting at a mob goes through the attack.
+
+**Performance:** being measured (the `combat` load on the build before classes and on this one, and the new `abilities` load); results go here and in `docs/PERFORMANCE.md`.
+
+**Independent review** (of the code, not the plan; it read the server's own code to check event behaviour). One high, four medium and four low findings, all fixed. The two input problems were reproduced in game first:
+- **High:** the Fireball ability used the old spell, whose blast damages and ignites anyone, players included. It now casts a mobs-only Fireball that flies through players, and its Essence is checked and paid before anything is spent. A failed cast used to still earn class XP; that is fixed by the same change.
+- **Medium:**
+  - The arm swing that a vanilla client sends after a drop or an item use counted as a left-click. Sneak + Q also tried active 2, and throwing an off-hand snowball while sneaking cast Cleave. Both were reproduced in game; now neither casts.
+  - A quick rejoin (for example "logged in from another location") could read the database before the quit save landed, then overwrite it. Loads and saves now share one ordered writer.
+  - A stored document that couldn't be read was replaced by an empty one on join. It is now left untouched and classes stay off for that player.
+- **Low:**
+  - A number where text was expected in `abilities.yml` stopped the plugin from starting properly. A bad value now refuses only its own entry.
+  - The power-cap check missed Momentum above 5 and unbounded Riposte windows.
+  - A config typo emptied loadout slots for good. Those slots are now kept, inert.
+  - The save document was rebuilt for every XP gain (about 0.07 ms each). Now there is at most one per player per second.
+
+The review also found that cast XP paid for hitting farm animals; it now needs a hostile mob. Grey (far lower-level) mobs still pay full cast XP, the same gap as skill hit XP today; it belongs with the anti-farm decision 8.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -224,4 +286,4 @@ Checked in game: an animation interrupted by a fast click writes nothing into th
     - the roster;
     - weapon display names.
 
-    The prototype uses the recommendations until you decide.
+    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5). Allowing them would change PvP, which you keep as a separate decision, so for now abilities never hit players. Now that it is playable, your feel for the cast keys (item 2) matters most.

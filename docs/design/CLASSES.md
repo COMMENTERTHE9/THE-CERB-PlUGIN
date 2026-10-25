@@ -327,7 +327,7 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 
 ## 11. Prototype status (Step 5, 2026-10-25)
 
-**Built and verified in game** (`tools/playtest/classes.js`, 85 checks on a Folia 1.21.11 sandbox; `docs/STATUS.md`):
+**Built and verified in game** (`tools/playtest/classes.js`, 91 checks on a Folia 1.21.11 sandbox; `docs/STATUS.md`):
 - Warrior, Mage and Duelist with the abilities in §9 (4 actives, 2 passives and a keystone each; `classes.yml`, `abilities.yml`);
 - the engine core: catalog with its power bounds (§8), loadouts and their rules, the caster, cooldowns with shared groups, the attribute source, persistence v1;
 - the five cast keys;
