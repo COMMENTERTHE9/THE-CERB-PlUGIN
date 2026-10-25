@@ -335,6 +335,8 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 
 The other 22 classes of the roster are design only.
 
+**Performance** (§5.10; `docs/PERFORMANCE.md`): players who don't cast pay nothing, a cast costs about what its hits cost (the same pipeline), class logic is about 0.02–0.04 ms per key press, and casts never rebuild attribute snapshots. The save document is built off the tick.
+
 **Settled while building.** These deviate from the text above; each takes the cautious side:
 - **PvP.** Abilities never hit players, and a Sneak-attack on a player stays a normal hit. Decision 5 recommends allowing abilities in PvP with PvP coefficients. That would change how PvP plays, which the owner keeps as a separate decision, so the prototype is PvE-only until then.
 - **Inputs.**

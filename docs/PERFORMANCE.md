@@ -120,6 +120,45 @@ New load mode `menuidle`: each bot opens the Player Menu once and leaves it open
 
 The animations cost about 0.02 ms per tick at 27 clicks per second, mostly the header sweep's slot updates. They stay within the budget, and the click itself only schedules them.
 
+## Step 5: classes and abilities (2026-10-25)
+
+New load mode `abilities`: the `combat` bots, as Warrior/Duelist with a loadout, press their cast keys on a rhythm while fighting (Sneak + attack = Cleave, Sneak + right-click = Execute, Sneak + F = Flurry, Sneak + Q = Feint, plain hits in between). Many presses land on a cooldown, as in play. Same setup as before: 9 bots, 60 s, warm server, a warm-up run first.
+
+**1. Players who don't cast pay nothing.** `combat` on the build before classes and on the classes build, same day, same work (106–110 hits per bot):
+
+| Workload | Before classes | With classes |
+|---|---|---|
+| Combat, Cerberus ms per tick | 0.159 / 0.133 | 0.148 / 0.134 |
+| Server MSPT | 7.1–7.3 | 7.0–7.3 |
+
+The difference is noise. Class code appears in 1 of ~4,200 samples per run: the cast keys, the combat marking and the counter and Feint checks cost nothing measurable.
+
+**2. Casting.** In the `abilities` load, 647 casts went off over two runs, about 5 per second server-wide. Class code was on the stack in 37–50 samples per run (each sample is about 1 ms of one thread):
+
+| Part | Samples per run | Note |
+|---|---|---|
+| Hit pipeline | 11–18 | The ability's strikes go through the same damage pipeline as a weapon hit: the mob's HP pool, its label, damage numbers. Same cost per hit. |
+| Building the save document | 14–20 | The largest class-specific cost, already limited to one save per player per second (review finding). |
+| Class logic | 12 | Keys, checks, targeting, cooldowns, class XP: about 0.04 ms per press, within the 0.05 ms budget. |
+
+Casting doesn't rebuild attribute snapshots: 132 rebuilds since the restart, from joins and passive equips, against 647 casts.
+
+**3. Fixed.**
+- The save document is now built on the class writer thread. The player's thread only copies the profile, a few small maps; this follows the project's snapshot, then asynchronous I/O rule.
+- The cooldown message ("Cleave: 2.1 s") no longer builds a `String.format` formatter. Pressing a key on cooldown is the most common failed press.
+
+**4. Measured again** (same `abilities` load, two runs, class samples split by thread):
+
+| | Class samples on region threads | ...building the save document there | Save document on the writer thread |
+|---|---|---|---|
+| Before the change | 47 / 35 | 20 / 14 | 0 |
+| After | 29 / 21 | 0 | 17 / 13 |
+
+Class work on the region threads fell by about 40%, because the document moved entirely off the tick. Class logic alone (keys, checks, targeting, cooldowns, XP) is about 0.02–0.04 ms of region time per key press. Cerberus's total for the load stays in the run-to-run noise (0.09–0.13 ms per tick; MSPT 6.5–7.6), dominated as before by mob labels and damage numbers.
+
+Within the budget: plain combat is unchanged, and casting costs about what the hits it deals cost.
+
 ## Budgets for the next milestones
 
-- **Step 4–5 (classes and abilities):** an ability use goes through the existing damage pipeline. The `combat` workload must stay within the Step 2 numbers plus noise, and equipping abilities or switching loadouts must not rebuild attribute snapshots more than once per change.
+- **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
+- **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

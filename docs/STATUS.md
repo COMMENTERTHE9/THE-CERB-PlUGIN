@@ -230,14 +230,20 @@ Warrior, Mage and Duelist on a data-driven ability engine (`docs/design/CLASSES.
 - one key casts one ability: the arm swing a client sends after Q, or after throwing an off-hand snowball, casts nothing (both used to fire active 2);
 - keys stay vanilla where they should: without Sneak, with a block (Q drops it), a bow (right-click draws), an empty slot (F swaps), the Fireball Wand (its own spell);
 - abilities never hit players: Cleave with a player in front hits only the zombie; the Fireball ability flies through a player (on the build before the review fix it hit the test player once and set it on fire); a Sneak-attack on a player is a normal PvP hit;
-- stored data is never trusted: a tampered document is repaired (ranks clamped, unknown abilities emptied, a damaged cooldown capped at 1 hour), and a class removed from `classes.yml` keeps its progress (unit tests).
+- stored data is never trusted: a tampered document is repaired (ranks clamped, illegal slots emptied, a damaged cooldown capped at 1 hour); an unreadable one is left untouched; an ability or class missing from the files keeps its slot or progress, inert (unit tests).
 
 **Found and fixed while testing:**
 - In creative mode Paper reports the player's own inventory as CREATIVE, not CRAFTING, so the "no menu open" check refused every cast in creative.
 - After a rank drop, a stale slot in an inactive loadout blocked unrelated edits ("War Cry is not unlocked yet" when equipping something else). Rank changes now repair every loadout, and an edit repairs its loadout first.
 - Paper sends no left-click event when a mob is under the crosshair (the client sends an attack instead), so casting at a mob goes through the attack.
 
-**Performance:** being measured (the `combat` load on the build before classes and on this one, and the new `abilities` load); results go here and in `docs/PERFORMANCE.md`.
+**Performance** (`docs/PERFORMANCE.md`; 9 bots, warm server, two runs each):
+- **Players who don't cast pay nothing.** The `combat` load costs 0.133–0.159 ms per tick on the build before classes and 0.134–0.148 with classes: noise.
+- **Casting.** In the new `abilities` load (about 5 casts per second), a cast costs about what the hits it deals cost: they use the same pipeline. Casting never rebuilds attribute snapshots.
+- **Found and fixed.**
+  - The save document was the largest class-specific cost on the tick. It is now built on the class writer thread, and class work on the region threads fell by about 40% (from 35–47 to 21–29 samples per run).
+  - The cooldown message no longer builds a formatter per press.
+- **Class logic** (keys, checks, targeting, cooldowns, XP) costs about 0.02–0.04 ms per key press, within the 0.05 ms budget.
 
 **Independent review** (of the code, not the plan; it read the server's own code to check event behaviour). One high, four medium and four low findings, all fixed. The two input problems were reproduced in game first:
 - **High:** the Fireball ability used the old spell, whose blast damages and ignites anyone, players included. It now casts a mobs-only Fireball that flies through players, and its Essence is checked and paid before anything is spent. A failed cast used to still earn class XP; that is fixed by the same change.
