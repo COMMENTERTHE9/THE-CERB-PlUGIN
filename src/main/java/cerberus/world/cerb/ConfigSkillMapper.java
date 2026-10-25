@@ -36,6 +36,12 @@ public class ConfigSkillMapper {
     private volatile boolean awardKillXpForSpellFocus = true;
     private volatile Set<String> magicSkillNames = Set.of();
 
+    /** describeKillItems per skill: the menus show it on every skill tile; rebuilt after each reload. */
+    private volatile Map<String, String> killItemText = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final Pattern ANY_SUFFIX = Pattern.compile("^\\.\\*_([A-Za-z]+)$");
+    private static final Pattern ANY_CONTAINS = Pattern.compile("^\\.\\*([A-Za-z]+)\\.\\*$");
+
     // ── Internal record ──────────────────────────────────────────
 
     record SkillTrigger(String skillName, int priority,
@@ -158,6 +164,7 @@ public class ConfigSkillMapper {
         this.awardKillXpForSpellFocus = cfg.getBoolean("magic.award-kill-xp-for-spell-focus", true);
         List<String> magicList = cfg.getStringList("magic.magic-skills");
         this.magicSkillNames = new HashSet<>(magicList);
+        this.killItemText = new java.util.concurrent.ConcurrentHashMap<>();
 
         log.info("[SkillMapper] Loaded " + triggers.size() + " trigger rules ("
                 + exactOnlyCount + " exact-only, " + regexCount + " with regex)");
@@ -234,6 +241,10 @@ public class ConfigSkillMapper {
      * focus items turned off). Read from the same rules {@link #resolve} uses.
      */
     public String describeKillItems(String skillName) {
+        return killItemText.computeIfAbsent(skillName, this::killItemsText);
+    }
+
+    private String killItemsText(String skillName) {
         if (isMagicSkill(skillName) && !awardKillXpForSpellFocus) return "";
         for (SkillTrigger t : triggers) {
             if (t.skillName().equals(skillName)) {
@@ -252,8 +263,8 @@ public class ConfigSkillMapper {
             parts.add(m.equals("AIR") ? "an empty hand" : m.toLowerCase(Locale.ROOT).replace('_', ' '));
         }
         for (String r : regexes) {
-            java.util.regex.Matcher suffix = Pattern.compile("^\\.\\*_([A-Za-z]+)$").matcher(r);
-            java.util.regex.Matcher contains = Pattern.compile("^\\.\\*([A-Za-z]+)\\.\\*$").matcher(r);
+            java.util.regex.Matcher suffix = ANY_SUFFIX.matcher(r);
+            java.util.regex.Matcher contains = ANY_CONTAINS.matcher(r);
             if (suffix.matches()) parts.add("any " + suffix.group(1).toLowerCase(Locale.ROOT));
             else if (contains.matches()) parts.add("any " + contains.group(1).toLowerCase(Locale.ROOT));
             else parts.add("items matching " + r);

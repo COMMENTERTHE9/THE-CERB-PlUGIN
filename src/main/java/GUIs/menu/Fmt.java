@@ -15,9 +15,12 @@ public final class Fmt {
         return Manager.Numbers.compact(v);
     }
 
-    /** 1234567 -> "1,234,567" (exact integers, for XP and levels). */
+    /**
+     * 1234567 -> "1,234,567" (exact integers, for XP and levels). Same text as
+     * {@code String.format("%,d")} without a formatter per call: menus format dozens per screen.
+     */
     public static String grouped(long v) {
-        return String.format(Locale.ROOT, "%,d", v);
+        return Manager.Numbers.grouped(v);
     }
 
     /** 0.4567 -> "45.7%". */
