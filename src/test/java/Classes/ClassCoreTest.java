@@ -133,19 +133,39 @@ class ClassCoreTest {
         Loadout mixed = Loadout.empty("Mixed").withActive(0, "cleave").withActive(1, "blink").withActive(2, "riposte")
                 .withPassive(0, "precision").withPassive(1, "battle_hardened").withKeystone("glass_cannon");
         assertEquals(List.of(), mixed.problems(ab, a -> true));
-        // Wrong kind, duplicates, locked, unknown:
+        // Wrong kind, duplicates, locked; an id the files don't have (anymore) is inert, not a problem:
         Loadout bad = Loadout.empty("Bad").withActive(0, "precision").withActive(1, "cleave").withActive(2, "cleave")
                 .withPassive(0, "nonsense").withKeystone("juggernaut");
         List<String> p = bad.problems(ab, a -> !a.id().equals("juggernaut"));
         assertTrue(p.contains("Precision can't go in an active slot"), p.toString());
         assertTrue(p.contains("Cleave is equipped twice"), p.toString());
-        assertTrue(p.contains("Unknown ability: nonsense"), p.toString());
         assertTrue(p.contains("Juggernaut is not unlocked yet"), p.toString());
+        assertEquals(3, p.size(), p.toString());
         // Slots are fixed in size; blanks are empty.
         Loadout l = new Loadout(" ", List.of("cleave", ""), null, null);
         assertEquals(Loadout.ACTIVE_SLOTS, l.actives().size());
         assertNull(l.actives().get(1));
         assertEquals("Loadout", l.name());
+    }
+
+    @Test
+    void badEntriesAreRefusedNeverThrown() throws Exception {
+        ClassCatalog cat = of("classes:\n  a: {}\n", """
+                abilities:
+                  odd_element: { class: a, kind: active, cooldown: 4s, effects: [ { damage: { element: 5 } } ] }
+                  odd_type: { class: a, kind: active, cooldown: [1, 2], effects: [ { empower: {} } ] }
+                  ten_stacks: { class: a, kind: active, cooldown: 8s, effects: [ { damage: { per-momentum: 0.4 } }, { resource: { kind: momentum, delta: 1, max: 10 } } ] }
+                  long_window: { class: a, kind: active, cooldown: 6s, effects: [ { counter: { window: 1h } } ] }
+                  slow_success: { class: a, kind: active, cooldown: 6s, effects: [ { counter: { success-cooldown: 30s } } ] }
+                  fine: { class: a, kind: active, cooldown: 4s, effects: [ { damage: { element: fire } } ] }
+                """);
+        assertEquals(java.util.Set.of("odd_element", "fine"), cat.abilities().keySet(), cat.problems().toString());
+        String all = String.join(" | ", cat.problems());
+        assertTrue(all.contains("odd_type"), all);
+        assertTrue(all.contains("resource max"), all);
+        assertTrue(all.contains("counter window"), all);
+        assertTrue(all.contains("success-cooldown longer than the cooldown"), all);
+        assertEquals("5", ((EffectSpec.Damage) cat.ability("odd_element").effects().get(0)).element(), "a number is read as text");
     }
 
     @Test
@@ -188,7 +208,7 @@ class ClassCoreTest {
         tampered = tampered.replaceFirst("classes:\n", "classes:\n  necromancer:\n    rank: 50\n    xp: 0\n");
         ClassProfile fixed = ClassProfile.fromYaml(tampered, cat, t + 2000, repairs);
         assertEquals(ClassRanks.MAX_RANK, fixed.rank("warrior"), "rank clamped to 50");
-        assertNull(fixed.activeLoadout().actives().get(0), "unknown ability emptied");
+        assertEquals("nuke", fixed.activeLoadout().actives().get(0), "an ability missing from the files stays in its slot, inert");
         assertNull(fixed.activeLoadout().passives().get(0), "an ability of an unlearned class (Duelist) can't stay equipped");
         assertFalse(fixed.knows("necromancer"), "a class missing from classes.yml is not usable...");
         assertTrue(fixed.toYaml(t + 2000).contains("necromancer"), "...but its saved progress is written back, never erased");
@@ -207,12 +227,23 @@ class ClassCoreTest {
         assertFalse(fixed.knows("mage"));
         assertTrue(fixed.toYaml(t).contains("mage:"), "mage's progress stays in the saved document");
 
-        // A document that doesn't parse starts fresh, with a note.
+        // A document that doesn't parse, or comes from a newer version, is not read at all (null):
+        // the caller leaves it as stored instead of starting empty and saving over it.
         repairs.clear();
-        ClassProfile fresh = ClassProfile.fromYaml("classes: [unclosed", cat, t, repairs);
+        assertNull(ClassProfile.fromYaml("classes: [unclosed", cat, t, repairs));
+        assertEquals(1, repairs.size(), repairs.toString());
+        repairs.clear();
+        assertNull(ClassProfile.fromYaml("version: 99\nclasses:\n  warrior:\n    rank: 3\n", cat, t, repairs));
+        assertTrue(repairs.get(0).contains("newer version"), repairs.toString());
+        // A new player (no document) starts with three empty loadouts.
+        ClassProfile fresh = ClassProfile.fromYaml(null, cat, t, repairs);
         assertTrue(fresh.classes().isEmpty());
-        assertEquals(1, repairs.size());
         assertEquals(ClassProfile.BASE_LOADOUTS, fresh.loadouts().size());
+        // Junk ids (far too long to be a renamed ability) are dropped.
+        String junk = "x".repeat(ClassProfile.MAX_ID_LENGTH + 1);
+        repairs.clear();
+        ClassProfile cleaned = ClassProfile.fromYaml(saved.replace("cleave", junk), cat, t + 2000, repairs);
+        assertNull(cleaned.activeLoadout().actives().get(0), repairs.toString());
     }
 
     @Test

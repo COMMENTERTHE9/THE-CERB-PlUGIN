@@ -66,7 +66,12 @@ async function sneak(on) { bot.setControlState('sneak', on); await sleep(250); }
 async function rightClick() { bot.activateItem(); await sleep(60); bot.deactivateItem(); await sleep(450); }
 async function leftClick() { bot.swingArm('right'); await sleep(500); }
 async function keyF() { bot._client.write('block_dig', { status: 6, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }); await sleep(500); }
-async function keyQ() { bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }); await sleep(500); }
+/** Q as a vanilla client sends it: "drop", then an arm swing when the hand held something (the client predicts the drop). */
+async function keyQ(swing = true) {
+  bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 });
+  if (swing) bot.swingArm('right');
+  await sleep(500);
+}
 async function scroll() { bot.setQuickBarSlot((bot.quickBarSlot + 1) % 8); await sleep(500); }
 async function press(key) { await ({ right: rightClick, left: leftClick, f: keyF, q: keyQ, scroll }[key])(); }
 
@@ -216,6 +221,7 @@ async function keys() {
   await sleep(500);
   check('Sneak + Q casts active 4 (Feint), and the sword is not dropped', went(t, 'Feint') && inHand() === 'netherite_sword' && itemsOnGround() === ground0,
     `${t.join(' / ')}; hand ${inHand()}, items on the ground ${ground0} -> ${itemsOnGround()}`);
+  check('...and the arm swing the client sends after Q does not also cast active 2 (Cleave)', !t.some(m => /Cleave/.test(m)), t.filter(m => !/♥/.test(m)).join(' / '));
   const slot0 = bot.quickBarSlot;
   const pos0 = bot.entity.position.clone();
   t = await cast('scroll');
@@ -248,26 +254,48 @@ async function keys() {
   await keyF(); await sleep(400); // swap back
   await equipSlot('1 a3 riposte');
 
+  // Using an off-hand item while sneaking (active 1 empty): the off-hand swing that follows casts nothing.
+  await equipSlot('1 a1 none');
+  await cmd('/clear @s snowball', 300);
+  await cmd('/give @s snowball 4', 600);
+  const snow = bot.inventory.slots.findIndex((it, s) => it && it.name === 'snowball' && s >= 9 && s <= 44);
+  if (snow >= 0) { await bot.moveSlotItem(snow, 45); await sleep(500); }
+  bot.setQuickBarSlot(sword); await sleep(300);
+  await sleep(4200); // Cleave's cooldown from above is over: a stray cast would go off
+  t = await (async () => {
+    const t0 = Date.now();
+    await sneak(true);
+    bot.activateItem(true); await sleep(60); bot.deactivateItem(); bot.swingArm('left');
+    await sleep(600);
+    await sneak(false);
+    return bars.filter(b => b.t >= t0).map(b => b.m);
+  })();
+  check('Throwing an off-hand snowball while sneaking casts nothing (its arm swing is not a left-click)', offHand() === 'snowball' && !t.some(m => /Cleave/.test(m)),
+    `off hand ${offHand()}; ${t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing'}`);
+  await cmd('/clear @s snowball', 300);
+  await equipSlot('1 a1 war_cry');
+
   // A spell item keeps its own right-click: the Fireball Wand casts Fireball, never active 1 (War Cry).
   await cmd('/clear @s blaze_rod', 300);
   await cmd('/givetestitem fireball', 800);
   const wand = bot.inventory.slots.findIndex((it, s) => it && it.name === 'blaze_rod' && s >= 36 && s <= 43);
   if (wand >= 0) { bot.setQuickBarSlot(wand - 36); await sleep(400); }
-  const mana = () => { const b = bars.filter(x => /✎/.test(x.m)).pop(); const m = b && b.m.match(/([\d,]+)\/[\d,]+✎/); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
-  const m0 = mana();
+  const wat = chat.length;
   t = await cast('right');
-  await sleep(800);
-  check('The Fireball Wand keeps its right-click: Fireball, not War Cry', wand >= 0 && !t.some(m => /War Cry/.test(m)) && mana() < m0,
-    `${t.filter(m => !/♥/.test(m)).join(' / ')}; mana ${m0} -> ${mana()}`);
+  await sleep(500);
+  check('The Fireball Wand keeps its right-click: Fireball, not War Cry', wand >= 0 && !t.some(m => /War Cry/.test(m)) && !!saw(/You cast Fireball/, wat),
+    `${t.filter(m => !/♥/.test(m)).join(' / ')}; ${chat.slice(wat).join(' / ')}`);
   // Q with an empty hand: the client still sends "drop", but the server fires no event for dropping nothing.
   await equipSlot('1 a4 blink');
   const empty = [2, 3, 4, 5, 6, 7].find(i => !bot.inventory.slots[36 + i]);
   bot.setQuickBarSlot(empty); await sleep(400);
-  t = await cast('q');
+  t = await (async () => { const t0 = Date.now(); await sneak(true); await keyQ(false); await sneak(false); return bars.filter(b => b.t >= t0).map(b => b.m); })();
   check('An empty hand can\'t cast with Q (the server gets no event for dropping nothing)', !t.some(m => /Blink/.test(m)),
     t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing');
-  t = await cast('right');
-  check('...while an empty hand still casts with the other keys (War Cry answers, here with its cooldown)', t.some(m => /War Cry/.test(m)),
+  // (a vanilla client sends nothing for a right-click in the air with an empty hand either; scroll, F and left-click work)
+  await equipSlot('1 a5 war_cry');
+  t = await cast('scroll');
+  check('...while an empty hand still casts with scroll (War Cry answers, here with its cooldown)', t.some(m => /War Cry/.test(m)),
     t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing');
   bot.setQuickBarSlot(sword); await sleep(300);
 }
@@ -600,6 +628,22 @@ async function exploits() {
   const pvp = traces(at).filter(x => /Incoming/.test(x));
   check('A Sneak-attack on a player is a normal PvP hit (Flurry is not cast)', !!tp && !barSince(/✦/, t0) && pvp.length === 1,
     `${bars.filter(b => b.t >= t0 && !/♥/.test(b.m)).map(b => b.m).join(' / ')}; ${pvp.join(' / ').slice(0, 140) || 'no PvP trace'}`);
+  // Fireball (the spell, cast as a Mage ability) must not hurt or ignite a player either.
+  await sleep(8500);
+  for (const s of ['a1 fireball', 'a2 none']) await equipSlot('3 ' + s);
+  await cmd('/kill @e[type=zombie,distance=..40]', 400);
+  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 4.5}`, 800);
+  await hold('blaze_rod');
+  await stand(0, 0);
+  await sleep(1000);
+  at = chat.length;
+  t = await cast('right');
+  await sleep(2500);
+  const tp2 = Object.values(bot.entities).find(e => e.username === 'CerbTarget');
+  const burning = tp2 && tp2.metadata && typeof tp2.metadata[0] === 'number' ? (tp2.metadata[0] & 0x01) !== 0 : false;
+  const fb = traces(at).filter(x => /Incoming/.test(x));
+  check('A Fireball ability never hurts or ignites a player in its path', went(t, 'Fireball') && fb.length === 0 && !burning,
+    `${t.filter(m => !/♥/.test(m)).join(' / ')}; ${fb.length} hits on the player; burning ${burning}`);
   target.quit();
   await debug(false);
 }

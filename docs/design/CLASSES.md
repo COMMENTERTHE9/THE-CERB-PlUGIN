@@ -343,19 +343,23 @@ The other 22 classes of the roster are design only.
   - With a mob under the crosshair the client sends an attack, not an air click, so the cast comes from the attack.
   - Spears stab with their own action: their hit is caught as damage and replaced by the cast.
   - Spell items (the Fireball Wand) keep their own right-click.
+  - The arm swing a client sends after dropping or using an item (a snowball from the off hand, a block) is not a left-click, so it never casts active 2.
+  - An empty hand can't cast with Q, and its right-click reaches the server only on a block or a mob. In both cases the vanilla client sends nothing the server can act on. Scroll, F and left-click work empty-handed.
 - **Arcane Bolt** is an instant bolt: a ray to the first enemy within 8 blocks, and walls block it. It is not a flying projectile.
-- **Fireball** casts the existing spell, with its own cost, instead of being rebuilt.
+- **Fireball** casts a mobs-only version of the existing spell. It flies through players, and its blast neither damages nor ignites them. Its 20 Essence is checked and paid by the ability engine before anything is spent.
 - **Class XP.**
-  - A cast earns 6 XP when it reaches an enemy, or when it is a self cast (buff, Blink, Feint) made during a fight.
+  - A cast earns 6 XP when it reaches a hostile mob (farm animals don't count), or when it is a self cast (buff, Blink, Feint) made during a fight.
   - Riposte earns it when it counters.
   - Casting into the air out of combat earns nothing.
   - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced.
 - **Essence abilities** have their cooldowns shortened by Spell cooldown recovery (capped, paused in PvP), never below 1 s.
 - **Config changes never cost progress.**
   - A class removed from `classes.yml` keeps its saved rank and XP, unused, and gets them back if it returns.
-  - A file that doesn't parse changes nothing. At startup classes stay off, and nothing is loaded or saved over.
+  - An ability missing from `abilities.yml` (a typo, a rename) stays in its slot, inert, and works again when it returns.
+  - A file that doesn't parse changes nothing. At startup classes stay off, and nothing is loaded or saved over. A wrong value refuses only its own entry, never the whole file.
   - A rank change empties only the slots it no longer allows, in every loadout.
 - **Saves.**
+  - Loads and saves go through one writer thread, in order, so a quick rejoin always reads the quit save.
   - Every snapshot carries an increasing stamp, and the database ignores an older one, so a late save can't overwrite newer progress.
-  - Quitting and shutting down write directly, not throttled.
-  - A failed load turns classes off for that session instead of starting empty.
+  - In play, at most one snapshot per player per second; quitting and shutting down write at once.
+  - A failed load, or a stored document that can't be read or comes from a newer version, turns classes off for that player's session. The stored data is left exactly as it was, never replaced by an empty profile.

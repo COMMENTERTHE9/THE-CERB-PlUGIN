@@ -141,6 +141,14 @@ final class ClassView {
     /** One loadout slot: the ability in it (or empty) and the key that casts it. */
     static ItemStack slotTile(ClassService svc, ClassProfile prof, String label, String key, String abilityId, String hint) {
         AbilityDef a = svc.catalog().ability(abilityId);
+        if (a == null && abilityId != null) {
+            Ui.Lore l = Ui.lore();
+            if (key != null) l.stat("Key", key);
+            l.text("\"" + abilityId + "\" is not in the ability files").text("right now, so it does nothing. It")
+                    .text("works again if it comes back.");
+            if (hint != null) l.hint(hint);
+            return Ui.item(Material.BARRIER, ChatColor.GRAY + label + ": unavailable", l.build());
+        }
         if (a == null) {
             Ui.Lore l = Ui.lore();
             if (key != null) l.stat("Key", key);

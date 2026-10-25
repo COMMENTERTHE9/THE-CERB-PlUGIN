@@ -53,7 +53,9 @@ public record Loadout(String name, List<String> actives, List<String> passives, 
     /**
      * Why this loadout can't be in use, in plain words (empty = fine). The whole rule list: each
      * slot holds the right kind, everything is unlocked, nothing twice, and at most one equipped
-     * ability per exclusive tag. Crossing class boundaries is never a rule.
+     * ability per exclusive tag. Crossing class boundaries is never a rule. An id that isn't in
+     * {@code abilities} (gone from abilities.yml for now) is inert, not a problem: it does nothing
+     * and is kept, so fixing the file brings it back.
      */
     public List<String> problems(Map<String, AbilityDef> abilities, Predicate<AbilityDef> unlocked) {
         List<String> out = new ArrayList<>();
@@ -70,7 +72,7 @@ public record Loadout(String name, List<String> actives, List<String> passives, 
         for (String id : ids) {
             if (id == null) continue;
             AbilityDef a = abilities.get(id);
-            if (a == null) { out.add("Unknown ability: " + id); continue; }
+            if (a == null) continue; // inert (see above)
             if (a.kind() != kind) out.add(a.displayName() + " can't go in " + where);
             if (!unlocked.test(a)) out.add(a.displayName() + " is not unlocked yet");
             if (!seen.add(id)) out.add(a.displayName() + " is equipped twice");

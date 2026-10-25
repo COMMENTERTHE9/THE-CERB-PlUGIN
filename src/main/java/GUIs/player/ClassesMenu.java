@@ -94,7 +94,8 @@ public final class ClassesMenu extends PlayerMenu {
     }
 
     private static String name(ClassService svc, String abilityId) {
+        if (abilityId == null) return ChatColor.DARK_GRAY + "-";
         var a = svc.catalog().ability(abilityId);
-        return a == null ? ChatColor.DARK_GRAY + "-" : a.displayName();
+        return a == null ? ChatColor.DARK_GRAY + abilityId + " (unavailable)" : a.displayName();
     }
 }

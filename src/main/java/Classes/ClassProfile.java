@@ -146,8 +146,9 @@ public final class ClassProfile {
 
     /**
      * Read a saved profile and repair it against {@code catalog} (each repair is added to
-     * {@code repairs}). A null or blank document is a new player. A document that doesn't parse
-     * is reported and treated as new.
+     * {@code repairs}). A null or blank document is a new player. Returns null, with the reason in
+     * {@code repairs}, for a document that doesn't parse or comes from a newer version: the caller
+     * must then leave it untouched (never save over it), because starting empty would erase it.
      */
     public static ClassProfile fromYaml(String data, ClassCatalog catalog, long now, List<String> repairs) {
         ClassProfile p = new ClassProfile();
@@ -155,11 +156,14 @@ public final class ClassProfile {
         YamlConfiguration y = new YamlConfiguration();
         try {
             y.loadFromString(data);
-        } catch (InvalidConfigurationException e) {
-            repairs.add("saved class data did not parse; starting fresh (" + e.getMessage() + ")");
-            return p;
+        } catch (InvalidConfigurationException | RuntimeException e) {
+            repairs.add("saved class data did not parse (" + e.getMessage() + ")");
+            return null;
         }
-        if (y.getInt("version", VERSION) > VERSION) repairs.add("saved class data is from a newer version " + y.getInt("version"));
+        if (y.getInt("version", VERSION) > VERSION) {
+            repairs.add("saved class data is from a newer version (" + y.getInt("version") + ")");
+            return null;
+        }
         ConfigurationSection cs = y.getConfigurationSection("classes");
         if (cs != null) {
             for (String id : cs.getKeys(false)) {
@@ -226,7 +230,11 @@ public final class ClassProfile {
         for (int i = 0; i < loadouts.size(); i++) loadouts.set(i, repair(loadouts.get(i), catalog, repairs));
     }
 
-    /** {@code l} with every slot that breaks the rules emptied (one repair note per emptied slot). */
+    /**
+     * {@code l} with every slot that breaks the rules emptied (one repair note per emptied slot). An
+     * ability the catalog doesn't know stays in its slot, inert: a typo in abilities.yml must not
+     * cost players their loadouts.
+     */
     Loadout repair(Loadout l, ClassCatalog catalog, List<String> repairs) {
         Loadout out = l;
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -246,9 +254,13 @@ public final class ClassProfile {
         return out;
     }
 
+    /** Longest id kept for an ability the catalog doesn't know (anything longer is junk, not a renamed ability). */
+    static final int MAX_ID_LENGTH = 64;
+
     private boolean fits(String id, AbilityDef.Kind kind, ClassCatalog catalog, java.util.Set<String> seen, java.util.Set<String> tags) {
         AbilityDef a = catalog.ability(id);
-        if (a == null || a.kind() != kind || !unlocked(a) || !seen.add(id)) return false;
+        if (a == null) return id.length() <= MAX_ID_LENGTH && seen.add(id); // not in abilities.yml now: kept, inert (fixing the file brings it back)
+        if (a.kind() != kind || !unlocked(a) || !seen.add(id)) return false;
         for (String t : a.exclusive()) if (!tags.add(t)) return false;
         return true;
     }

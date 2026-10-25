@@ -102,10 +102,11 @@ abilities:
     class: mage
     name: Fireball
     icon: FIRE_CHARGE
-    description: "The Fireball spell, cast from your loadout. Its own cost and damage apply."
+    description: "Launch a Fireball that bursts on the first enemy it meets and sets the blast alight. Flies through players."
     kind: active
     unlock-rank: 3
     weapons: [focus]
+    essence: 20
     cooldown: 2s
     effects:
       - spell: { name: Fireball }

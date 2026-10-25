@@ -75,11 +75,32 @@ public class FireballSpell extends Spell {
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.0f);
 
         // Self-rescheduling fireball — each tick runs on the region owning the current position
-        tickFireball(startLocation.clone(), direction, player, damage, 0, 50);
+        tickFireball(startLocation.clone(), direction, player, damage, 0, 50, false);
 
         player.sendMessage(net.kyori.adventure.text.Component.text("You cast Fireball!")
                 .color(net.kyori.adventure.text.format.NamedTextColor.RED));
         return true;
+    }
+
+    /**
+     * Fireball as a class ability ({@code Classes.AbilityCaster}). The ability engine has already
+     * checked and paid its Essence cost, so no mana is spent here. Abilities never hit players (PvP
+     * is an open owner decision), so this fireball flies through players and armor stands, and its
+     * blast neither damages nor ignites them.
+     */
+    public boolean castFromAbility(Player caster) {
+        effectManager.applyMagicSkillEffect(caster, "Elemental Mastery");
+        Vector direction = caster.getLocation().getDirection().normalize().multiply(0.5);
+        caster.getWorld().playSound(caster.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.0f);
+        tickFireball(caster.getEyeLocation(), direction, caster, baseDamage, 0, 50, true);
+        return true;
+    }
+
+    /** What this fireball may hit: any living thing but the caster, or only mobs ({@code mobsOnly}: no players, armor stands or the caster's pets). */
+    private static boolean canHit(Entity entity, Player caster, boolean mobsOnly) {
+        if (!(entity instanceof LivingEntity target) || entity.equals(caster)) return false;
+        if (!mobsOnly) return true;
+        return !(target instanceof Player) && !(target instanceof org.bukkit.entity.ArmorStand) && !isCastersPet(target, caster);
     }
 
     /**
@@ -88,7 +109,7 @@ public class FireballSpell extends Spell {
      * that owns the new position. This lets the fireball cross region boundaries safely.
      */
     private void tickFireball(Location loc, Vector direction, Player caster,
-                              double damage, int distance, int maxDistance) {
+                              double damage, int distance, int maxDistance, boolean mobsOnly) {
         // Schedule this tick on the region owning the fireball's current location
         Bukkit.getRegionScheduler().run(plugin, loc, task -> {
             if (distance >= maxDistance) return; // fizzle out
@@ -97,14 +118,14 @@ public class FireballSpell extends Spell {
 
             // Block collision
             if (loc.getBlock().getType().isSolid()) {
-                createExplosionEffect(loc, caster, damage);
+                createExplosionEffect(loc, caster, damage, mobsOnly);
                 return;
             }
 
             // Entity collision
             for (Entity entity : loc.getWorld().getNearbyEntities(loc, 1, 1, 1)) {
-                if (entity instanceof LivingEntity && !entity.equals(caster)) {
-                    createExplosionEffect(loc, caster, damage);
+                if (canHit(entity, caster, mobsOnly)) {
+                    createExplosionEffect(loc, caster, damage, mobsOnly);
                     return;
                 }
             }
@@ -115,7 +136,7 @@ public class FireballSpell extends Spell {
 
             // Schedule next tick (1 tick later) on whatever region owns the new position
             Bukkit.getRegionScheduler().runDelayed(plugin, loc, nextTask ->
-                    tickFireball(loc.clone(), direction, caster, damage, distance + 1, maxDistance), 1L);
+                    tickFireball(loc.clone(), direction, caster, damage, distance + 1, maxDistance, mobsOnly), 1L);
         });
     }
 
@@ -124,7 +145,7 @@ public class FireballSpell extends Spell {
      * Registers {@link SpellDamageContext} for each target BEFORE dealing damage,
      * so the damage event routes through the full custom pipeline.
      */
-    private void createExplosionEffect(Location location, Player caster, double damage) {
+    private void createExplosionEffect(Location location, Player caster, double damage, boolean mobsOnly) {
         location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
         location.getWorld().spawnParticle(Particle.EXPLOSION, location, 10, 0.2, 0.2, 0.2, 0.2);
 
@@ -133,7 +154,7 @@ public class FireballSpell extends Spell {
         List<Entity> nearbyEntities = (List<Entity>) location.getWorld()
                 .getNearbyEntities(location, explosionRadius, explosionRadius, explosionRadius);
         for (Entity entity : nearbyEntities) {
-            if (entity instanceof LivingEntity target && !entity.equals(caster)
+            if (entity instanceof LivingEntity target && canHit(entity, caster, mobsOnly)
                     && !isCastersPet(target, caster)) {
                 // Register spell context BEFORE dealing damage — the listener picks it up
                 if (listener != null) {

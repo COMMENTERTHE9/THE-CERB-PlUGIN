@@ -241,8 +241,9 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
     }
 
     private static String name(ClassService svc, String abilityId) {
+        if (abilityId == null) return "-";
         AbilityDef a = svc.catalog().ability(abilityId);
-        return a == null ? "-" : a.displayName();
+        return a == null ? abilityId + " (unavailable)" : a.displayName();
     }
 
     private static Integer loadoutNumber(String s, ClassProfile prof) {

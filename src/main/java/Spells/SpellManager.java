@@ -59,21 +59,38 @@ public class SpellManager {
 
             // Award magic XP only on a successful cast (a failed cast used to grant XP too,
             // so spamming with no mana still levelled the magic skills)
-            if (cast && skillManager != null) {
-                // Spell Weaving: XP for casting any spell
-                skillManager.addXpAndCheckLevelUp("Spell Weaving", SPELL_WEAVING_CAST_XP, player);
-
-                // Elemental Mastery: bonus XP for elemental spells
-                if (name.equals("Fireball")) {
-                    skillManager.addXpAndCheckLevelUp("Elemental Mastery", ELEMENTAL_MASTERY_FIREBALL_XP, player);
-                }
-
-                // Intelligence: small XP for any mana usage
-                skillManager.addXpAndCheckLevelUp("Intelligence", INTELLIGENCE_CAST_XP, player);
-            }
+            if (cast) awardCastXp(name, player);
         } else {
             player.sendMessage("Spell not found!");
         }
+    }
+
+    /** True when {@code name} can be cast as a class ability (it has a players-safe, engine-paid form: Fireball). */
+    public boolean canCastForAbility(String name) {
+        return getSpell(name) instanceof FireballSpell;
+    }
+
+    /**
+     * Cast a spell as a class ability: the ability engine has already checked and paid its cost,
+     * and the spell never hits players. Trains the magic skills like any successful cast.
+     */
+    public boolean castForAbility(String name, Player player) {
+        if (!(getSpell(name) instanceof FireballSpell fireball)) return false;
+        boolean cast = fireball.castFromAbility(player);
+        if (cast) awardCastXp(name, player);
+        return cast;
+    }
+
+    private void awardCastXp(String name, Player player) {
+        if (skillManager == null) return;
+        // Spell Weaving: XP for casting any spell
+        skillManager.addXpAndCheckLevelUp("Spell Weaving", SPELL_WEAVING_CAST_XP, player);
+        // Elemental Mastery: bonus XP for elemental spells
+        if (name.equals("Fireball")) {
+            skillManager.addXpAndCheckLevelUp("Elemental Mastery", ELEMENTAL_MASTERY_FIREBALL_XP, player);
+        }
+        // Intelligence: small XP for any mana usage
+        skillManager.addXpAndCheckLevelUp("Intelligence", INTELLIGENCE_CAST_XP, player);
     }
 
     public void addSpell(String name, Spell spell) {

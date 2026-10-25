@@ -4,7 +4,6 @@ import Attributes.AttributeRules;
 import Attributes.AttributeService;
 import Attributes.AttributeSource;
 import Attributes.Contribution;
-import Manager.AsyncSaveManager;
 import Manager.PvpTag;
 import Skills.SkillManager;
 import cerberus.world.cerb.DatabaseManager;
@@ -59,7 +58,6 @@ public final class ClassService implements AttributeSource {
 
     private final JavaPlugin plugin;
     private final DatabaseManager db;
-    private final AsyncSaveManager saver;
     private final SkillManager skills;
     private final AttributeService attributes;
     private final Supplier<PvpTag> pvp;
@@ -80,11 +78,10 @@ public final class ClassService implements AttributeSource {
     /** Pushes changed attributes into the game (max health, defense, mana, speeds). Player's thread. */
     private volatile java.util.function.Consumer<Player> attributesChanged = p -> { };
 
-    public ClassService(JavaPlugin plugin, DatabaseManager db, AsyncSaveManager saver, SkillManager skills,
+    public ClassService(JavaPlugin plugin, DatabaseManager db, SkillManager skills,
                         AttributeService attributes, Supplier<PvpTag> pvp, ClassCatalog catalog) {
         this.plugin = plugin;
         this.db = db;
-        this.saver = saver;
         this.skills = skills;
         this.attributes = attributes;
         this.pvp = pvp;
@@ -110,13 +107,20 @@ public final class ClassService implements AttributeSource {
     public void load(Player p) {
         if (catalog.classes().isEmpty()) return;
         UUID id = p.getUniqueId();
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                return Optional.ofNullable(db.loadClassData(id));
-            } catch (SQLException e) {
-                throw new CompletionException(e);
-            }
-        }).whenComplete((data, err) -> p.getScheduler().run(plugin, t -> {
+        CompletableFuture<Optional<DatabaseManager.ClassData>> read;
+        try {
+            // On the writer thread, behind any save still queued (a quick rejoin must read the quit save).
+            read = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return Optional.ofNullable(db.loadClassData(id));
+                } catch (SQLException e) {
+                    throw new CompletionException(e);
+                }
+            }, writer);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            return; // shutting down
+        }
+        read.whenComplete((data, err) -> p.getScheduler().run(plugin, t -> {
             if (!p.isOnline() || profiles.containsKey(id)) return; // left meanwhile, or already loaded
             if (err != null) {
                 // Never fall back to an empty profile: its first save would overwrite the stored one.
@@ -127,6 +131,12 @@ public final class ClassService implements AttributeSource {
             List<String> repairs = new ArrayList<>();
             DatabaseManager.ClassData row = data.orElse(null);
             ClassProfile prof = ClassProfile.fromYaml(row == null ? null : row.data(), catalog, System.currentTimeMillis(), repairs);
+            if (prof == null) {
+                // Unreadable, or written by a newer version: keep it exactly as stored and stay off.
+                plugin.getLogger().severe("[Classes] Could not read " + p.getName() + "'s saved classes (" + String.join("; ", repairs)
+                        + "). Classes stay off for this session; the stored data was not changed.");
+                return;
+            }
             if (row != null) prof.stampAfter(row.stamp());
             if (!repairs.isEmpty()) {
                 plugin.getLogger().warning("[Classes] Repaired " + p.getName() + "'s saved classes: " + String.join("; ", repairs));
@@ -144,10 +154,9 @@ public final class ClassService implements AttributeSource {
         ClassProfile prof = profiles.remove(id);
         if (prof != null) {
             long now = System.currentTimeMillis();
-            String data = prof.toYaml(now);
-            long stamp = prof.nextStamp(now);
-            writer.execute(() -> db.saveClassData(id, ClassProfile.VERSION, data, stamp));
+            write(id, prof.toYaml(now), prof.nextStamp(now));
         }
+        saveQueued.remove(id);
         forgetRuntime(id);
     }
 
@@ -218,15 +227,38 @@ public final class ClassService implements AttributeSource {
         }
     }
 
-    /** Snapshot the profile on this thread, write it off the tick (coalesced like skill saves). */
+    /**
+     * Save soon: at most one snapshot per player per second, taken on the player's thread (building
+     * the document costs about 0.07 ms, too much to repeat for every XP gain) and written on the
+     * same single writer thread as loads and quit saves, so the database sees them in order. Quit and
+     * shutdown write at once ({@link #unload}, {@link #shutdown}); a pending save of a player who
+     * left is dropped by the scheduler, after the quit save already wrote everything.
+     */
     public void save(Player p) {
-        ClassProfile prof = profiles.get(p.getUniqueId());
-        if (prof == null) return; // never loaded: nothing to write
-        long now = System.currentTimeMillis();
-        String data = prof.toYaml(now);
-        long stamp = prof.nextStamp(now);
         UUID id = p.getUniqueId();
-        saver.scheduleDbSave("classes:" + id, () -> db.saveClassData(id, ClassProfile.VERSION, data, stamp));
+        if (!profiles.containsKey(id) || !saveQueued.add(id)) return; // not loaded, or a save is already on its way
+        var task = p.getScheduler().runDelayed(plugin, t -> {
+            saveQueued.remove(id);
+            ClassProfile prof = profiles.get(id);
+            if (prof == null) return;
+            long now = System.currentTimeMillis();
+            String data = prof.toYaml(now);
+            long stamp = prof.nextStamp(now);
+            write(id, data, stamp);
+        }, () -> saveQueued.remove(id), SAVE_DELAY_TICKS);
+        if (task == null) saveQueued.remove(id); // leaving: the quit save covers it
+    }
+
+    /** One player's save waiting to be taken (see {@link #save}). */
+    private final java.util.Set<UUID> saveQueued = ConcurrentHashMap.newKeySet();
+    private static final long SAVE_DELAY_TICKS = 20;
+
+    private void write(UUID id, String data, long stamp) {
+        try {
+            writer.execute(() -> db.saveClassData(id, ClassProfile.VERSION, data, stamp));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            db.saveClassData(id, ClassProfile.VERSION, data, stamp); // shutting down: write here
+        }
     }
 
     // ── learning and ranks ──────────────────────────────────────
@@ -334,6 +366,7 @@ public final class ClassService implements AttributeSource {
         ClassProfile prof = profiles.get(p.getUniqueId());
         if (prof == null) return "Your classes are still loading.";
         if (index < 0 || index >= prof.loadouts().size()) return "No such loadout.";
+        if (abilityId != null && catalog.ability(abilityId) == null) return "Unknown ability: " + abilityId;
         if (index == prof.activeIndex() && inCombat(p.getUniqueId())) return "Not during a fight: wait until 8 s after the last hit.";
         // Slots that stopped being allowed (an unlock or catalog change) never block an unrelated edit.
         Loadout l = prof.repair(prof.loadouts().get(index), catalog, new ArrayList<>());

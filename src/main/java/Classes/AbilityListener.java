@@ -88,19 +88,29 @@ public final class AbilityListener implements Listener {
         Player p = e.getPlayer();
         if (e.getHand() == EquipmentSlot.OFF_HAND) {
             // The client follows a main-hand right-click with an off-hand one: part of the same press.
-            if (right && samePress(p, 0, true)) consume(e);
+            if (right && samePress(p, 0, true)) { consume(e); return; }
+            if (right) usedItem(p); // an off-hand item is used (thrown, eaten...): its arm swing is no left-click
             return;
         }
         WeaponFamily hand = castHand(p, p.getInventory().getItemInMainHand());
-        if (right && hand != null) {
-            if (hand == WeaponFamily.BOW || hand == WeaponFamily.CROSSBOW) return; // right-click shoots
-            Block b = e.getClickedBlock();
-            if (act == Action.RIGHT_CLICK_BLOCK && hand == WeaponFamily.UNARMED && b != null && b.getType().isInteractable()) {
-                return; // an empty hand still opens doors and chests
-            }
-        }
-        Boolean cast = press(p, right ? 0 : 1, hand, SAME_PRESS_MS);
-        if (cast != null && (right || cast)) consume(e);
+        Boolean cast = right && keepsRightClick(hand, act, e.getClickedBlock()) ? null : press(p, right ? 0 : 1, hand, SAME_PRESS_MS);
+        if (cast != null && (right || cast)) { consume(e); return; }
+        if (right) usedItem(p); // vanilla uses the item (a bow, a block, a door...): its arm swing is no left-click
+    }
+
+    /** Right-clicks that stay vanilla with this hand: a bow or crossbow shoots, an empty hand opens doors and chests. */
+    private static boolean keepsRightClick(WeaponFamily hand, Action act, Block clicked) {
+        if (hand == WeaponFamily.BOW || hand == WeaponFamily.CROSSBOW) return true;
+        return act == Action.RIGHT_CLICK_BLOCK && hand == WeaponFamily.UNARMED && clicked != null && clicked.getType().isInteractable();
+    }
+
+    /**
+     * A vanilla client swings its arm after using or dropping an item, and the server reports any
+     * swing that points at nothing as a main-hand left-click, whichever arm swung. So right after
+     * such a use, a left-click is not a cast (it would fire active 2 by accident).
+     */
+    private void usedItem(Player p) {
+        if (p.isSneaking()) seen(p, 1);
     }
 
     /** Right-click on a mob (active 1): with an empty hand no air click follows, so it is caught here. */
@@ -157,6 +167,7 @@ public final class AbilityListener implements Listener {
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent e) {
         Player p = e.getPlayer();
+        usedItem(p); // the client swings its arm after a drop: that swing is no left-click
         Presses s = presses.get(p.getUniqueId());
         if (s != null && System.currentTimeMillis() - s.inventoryAt < INVENTORY_GRACE_MS) return;
         if (!noContainerOpen(p)) return;

@@ -411,7 +411,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Classes and abilities (docs/design/CLASSES.md): one more attribute source (equipped passives,
         // running buffs), loaded per player on join. A broken catalog leaves classes off, touching nothing.
         Classes.ClassCatalog classCatalog = loadClassCatalog();
-        classService = new Classes.ClassService(this, databaseManager, asyncSaver, skillManager, attributeService,
+        classService = new Classes.ClassService(this, databaseManager, skillManager, attributeService,
                 () -> pvpTag, classCatalog != null ? classCatalog : Classes.ClassCatalog.empty());
         classService.setAttributesChanged(p -> attributeEffects.refresh(p));
         attributeService.addSource(classService);

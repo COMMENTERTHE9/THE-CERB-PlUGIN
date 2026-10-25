@@ -113,6 +113,11 @@ public final class AbilityCaster {
         if (now - prof.lastSwitchAt < ClassService.CAST_LOCK_AFTER_SWITCH_MS) return fail(p, "Switching loadouts...");
         if (p.isDead() || !p.isValid() || !canAct.test(p)) return false;
         if (!WeaponFamily.fits(a.weapons(), hand)) return fail(p, a.displayName() + " needs " + needs(a));
+        for (EffectSpec e : a.effects()) {
+            if (e instanceof EffectSpec.Spell s && !spells.get().canCastForAbility(s.name())) {
+                return fail(p, a.displayName() + " is not available (no spell " + s.name() + ")"); // a config error: nothing is spent
+            }
+        }
         long left = prof.cooldowns().remaining(a, now);
         if (left > 0) return fail(p, a.displayName() + ": " + String.format(Locale.ROOT, "%.1f s", left / 1000.0));
         if (a.essenceCost() > 0 && !mana.spendMana(p, ManaType.BASIC, a.essenceCost())) {
@@ -170,12 +175,12 @@ public final class AbilityCaster {
     /**
      * Perform the verbs from index {@code from}. A dash pauses the list until it lands, then the rest
      * runs (and the dash's stun lands on the first enemy in front). When the list is done, the cast
-     * earns class XP if it reached an enemy, or if it was a self cast (buff, blink, Feint...) made
-     * during a fight: casting into the air out of combat earns nothing (CLASSES.md §2.2). A Riposte
-     * earns its XP when it actually counters.
+     * earns class XP if it reached a hostile mob, or if it was a self cast (buff, blink, Feint...)
+     * made during a fight: casting into the air out of combat, or at farm animals, earns nothing
+     * (CLASSES.md §2.2). A Riposte earns its XP when it actually counters.
      */
     private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, boolean reached) {
-        if (landed != null && landed.stunSeconds() > 0) reached |= stunFirst(p, landed);
+        if (landed != null && landed.stunSeconds() > 0) reached |= stunFirst(p, landed) instanceof org.bukkit.entity.Enemy;
         List<EffectSpec> fx = a.effects();
         boolean self = false;
         int hit = 0;
@@ -191,14 +196,14 @@ public final class AbilityCaster {
                     }, null, 7L);
                     return;
                 }
-                case EffectSpec.Damage d -> { hit = damage(p, prof, d); reached |= hit > 0; }
+                case EffectSpec.Damage d -> { List<LivingEntity> hits = damage(p, prof, d); hit = hits.size(); reached |= anyHostile(hits); }
                 case EffectSpec.Blink b -> self |= blink(p, b);
-                case EffectSpec.Status s -> reached |= status(p, s) > 0;
+                case EffectSpec.Status s -> reached |= anyHostile(status(p, s));
                 case EffectSpec.Buff b -> { service.addBuff(p, a, b); self = true; }
                 case EffectSpec.Resource r -> resource(prof, r, hit);
                 case EffectSpec.Counter c -> service.openCounter(p.getUniqueId(), a, c);
                 case EffectSpec.Empower em -> { service.empower(p.getUniqueId(), em.seconds()); self = true; }
-                case EffectSpec.Spell s -> { spells.get().castSpell(s.name(), p); self = true; }
+                case EffectSpec.Spell s -> self |= spells.get().castForAbility(s.name(), p);
             }
         }
         if (reached || (self && service.inCombat(p.getUniqueId()))) service.awardXp(p, a.classId(), ClassService.CAST_XP);
@@ -206,9 +211,16 @@ public final class AbilityCaster {
 
     // ── verbs ───────────────────────────────────────────────────
 
-    private int damage(Player p, ClassProfile prof, EffectSpec.Damage d) {
+    /** True when one of {@code hit} is a hostile mob (cast XP is not paid for hitting farm animals). */
+    private static boolean anyHostile(List<LivingEntity> hit) {
+        for (LivingEntity e : hit) if (e instanceof org.bukkit.entity.Enemy) return true;
+        return false;
+    }
+
+    /** Deal the damage verb; returns the enemies it struck (strikes after the first land later, on the same targets). */
+    private List<LivingEntity> damage(Player p, ClassProfile prof, EffectSpec.Damage d) {
         List<LivingEntity> targets = targets(p, d.shape(), d.range(), d.angle(), d.maxTargets());
-        if (targets.isEmpty()) return 0;
+        if (targets.isEmpty()) return targets;
         double base = d.scale() == EffectSpec.Scale.POWER ? weaponBase(p) : SPELL_BASE;
         double amount = base * (d.coefficient() + d.perMomentum() * momentum(prof));
         for (int h = 0; h < d.hits(); h++) {
@@ -220,7 +232,7 @@ public final class AbilityCaster {
             Location at = p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(1.5));
             p.getWorld().spawnParticle(Particle.SWEEP_ATTACK, at, 3, 0.6, 0.2, 0.6, 0);
         }
-        return targets.size();
+        return targets;
     }
 
     /** One strike on each target, through the normal hit (POWER) or spell (ESSENCE) path. */
@@ -266,12 +278,12 @@ public final class AbilityCaster {
         p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 8, 0.3, 0.1, 0.3, 0.02);
     }
 
-    /** After a dash: the first enemy just in front can't move for the stun's length. True if one was stunned. */
-    private boolean stunFirst(Player p, EffectSpec.Dash d) {
+    /** After a dash: the first enemy just in front can't move for the stun's length. Returns it, or null. */
+    private LivingEntity stunFirst(Player p, EffectSpec.Dash d) {
         List<LivingEntity> near = targets(p, EffectSpec.Shape.CONE, 2.8, 120, 1);
-        if (near.isEmpty()) return false;
+        if (near.isEmpty()) return null;
         near.get(0).addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, (int) Math.round(d.stunSeconds() * 20), 9, false, true));
-        return true;
+        return near.get(0);
     }
 
     private boolean blink(Player p, EffectSpec.Blink b) {
@@ -293,18 +305,18 @@ public final class AbilityCaster {
         return true;
     }
 
-    private int status(Player p, EffectSpec.Status s) {
+    private List<LivingEntity> status(Player p, EffectSpec.Status s) {
         PotionEffectType type = Registry.EFFECT.get(NamespacedKey.minecraft(s.type().toLowerCase(Locale.ROOT)));
         if (type == null) {
             plugin.getLogger().warning("[Classes] Unknown status effect " + s.type());
-            return 0;
+            return List.of();
         }
         List<LivingEntity> targets = targets(p, s.shape(), s.range(), 360, s.maxTargets());
         for (LivingEntity t : targets) t.addPotionEffect(new PotionEffect(type, (int) Math.round(s.seconds() * 20), s.amplifier(), false, true));
         if (s.shape() == EffectSpec.Shape.CIRCLE) {
             p.getWorld().spawnParticle(Particle.SNOWFLAKE, p.getLocation().add(0, 0.5, 0), 30, s.range() / 2, 0.2, s.range() / 2, 0.02);
         }
-        return targets.size();
+        return targets;
     }
 
     private void resource(ClassProfile prof, EffectSpec.Resource r, int targets) {

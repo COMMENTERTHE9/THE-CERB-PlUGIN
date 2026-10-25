@@ -29,6 +29,8 @@ public final class ClassCatalog {
     public static final long LONG_COOLDOWN_MS = 20_000;
     /** No active may come back faster than this. */
     public static final long MIN_COOLDOWN_MS = 1_000;
+    /** Most stacks a class resource (Momentum) holds; the power check counts every damage bonus per stack at this many. */
+    public static final int MAX_STACKS = 5;
 
     private final Map<String, ClassDef> classes;
     private final Map<String, AbilityDef> abilities;
@@ -70,7 +72,15 @@ public final class ClassCatalog {
         List<String> problems = new ArrayList<>();
         Map<String, Long> groups = new LinkedHashMap<>();
         ConfigurationSection g = classesYml == null ? null : classesYml.getConfigurationSection("groups");
-        if (g != null) for (String k : g.getKeys(false)) groups.put(k, Math.max(0, millis(g.get(k), 0)));
+        if (g != null) {
+            for (String k : g.getKeys(false)) {
+                try {
+                    groups.put(k, Math.max(0, millis(g.get(k), 0)));
+                } catch (IllegalArgumentException ex) {
+                    problems.add("group " + k + ": " + ex.getMessage());
+                }
+            }
+        }
 
         Map<String, AbilityDef> abilities = new LinkedHashMap<>();
         Map<String, String> icons = new java.util.HashMap<>();
@@ -81,7 +91,13 @@ public final class ClassCatalog {
                 if (a == null) continue;
                 if (a.getString("icon") != null) icons.put(id, a.getString("icon"));
                 List<String> why = new ArrayList<>();
-                AbilityDef def = parseAbility(id, a, why);
+                AbilityDef def;
+                try {
+                    def = parseAbility(id, a, why);
+                } catch (RuntimeException ex) { // a wrong type anywhere in the entry: refuse it, never fail the whole load
+                    def = null;
+                    why.add("unreadable (" + ex.getMessage() + ")");
+                }
                 if (def != null && why.isEmpty()) abilities.put(id, def);
                 else problems.add("ability " + id + ": " + String.join("; ", why));
             }
@@ -144,8 +160,11 @@ public final class ClassCatalog {
             if (effects.isEmpty()) why.add("an active needs effects");
             if (cooldown < MIN_COOLDOWN_MS) why.add("cooldown under the " + MIN_COOLDOWN_MS + " ms floor");
             double total = 0;
-            for (EffectSpec e : effects) if (e instanceof EffectSpec.Damage d) total += d.coefficient() * d.hits() + d.perMomentum() * 5;
-            for (EffectSpec e : effects) if (e instanceof EffectSpec.Counter c) total += c.coefficient();
+            for (EffectSpec e : effects) if (e instanceof EffectSpec.Damage d) total += (d.coefficient() + d.perMomentum() * MAX_STACKS) * d.hits();
+            for (EffectSpec e : effects) if (e instanceof EffectSpec.Counter c) {
+                total += c.coefficient();
+                if (c.successCooldownMs() > cooldown) why.add("counter success-cooldown longer than the cooldown");
+            }
             double cap = cooldown >= LONG_COOLDOWN_MS ? MAX_COEFFICIENT_LONG : MAX_COEFFICIENT_SHORT;
             if (total > cap + 1e-9) why.add(String.format(Locale.ROOT, "damage %.2fx a hit over the %.1fx cap for its cooldown", total, cap));
         } else if (passives.isEmpty()) {
@@ -175,7 +194,7 @@ public final class ClassCatalog {
                     int hits = (int) bounded(num(p, "hits", 1), 1, 5, "hits", why);
                     int interval = (int) bounded(num(p, "interval-ticks", 0), 0, 10, "interval-ticks", why);
                     double perMomentum = bounded(num(p, "per-momentum", 0), 0, 0.5, "per-momentum", why);
-                    yield new EffectSpec.Damage(shape, range, angle, coef, scale, targets, hits, interval, (String) p.get("element"), perMomentum);
+                    yield new EffectSpec.Damage(shape, range, angle, coef, scale, targets, hits, interval, str(p, "element", null), perMomentum);
                 }
                 case "dash" -> new EffectSpec.Dash(bounded(num(p, "distance", 6), 1, 16, "dash distance", why),
                         bounded(num(p, "stun-seconds", 0), 0, 3, "stun-seconds", why));
@@ -195,15 +214,15 @@ public final class ClassCatalog {
                     yield new EffectSpec.Buff(attr, stat, amount, bounded(num(p, "seconds", 8), 1, 30, "buff seconds", why));
                 }
                 case "resource" -> new EffectSpec.Resource(str(p, "kind", "momentum"), (int) bounded(num(p, "delta", 1), -10, 10, "resource delta", why),
-                        (int) bounded(num(p, "max", 5), 1, 10, "resource max", why), bool(p, "per-target"), bool(p, "spend-all"));
-                case "counter" -> new EffectSpec.Counter(millis(p.get("window"), 600),
+                        (int) bounded(num(p, "max", MAX_STACKS), 1, MAX_STACKS, "resource max", why), bool(p, "per-target"), bool(p, "spend-all"));
+                case "counter" -> new EffectSpec.Counter((long) bounded(millis(p.get("window"), 600), 100, 2_000, "counter window (ms)", why),
                         bounded(num(p, "coefficient", 2.0), 0, MAX_COEFFICIENT_SHORT, "counter coefficient", why),
-                        millis(p.get("success-cooldown"), 1_500));
+                        (long) bounded(millis(p.get("success-cooldown"), 1_500), 0, 60_000, "counter success-cooldown (ms)", why));
                 case "empower" -> new EffectSpec.Empower(bounded(num(p, "seconds", 3), 0.5, 10, "empower seconds", why));
                 case "spell" -> new EffectSpec.Spell(str(p, "name", "Fireball"));
                 default -> { why.add("unknown verb " + verb); yield null; }
             };
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeException ex) { // a wrong type or value in the file: refuse this effect, never fail the whole load
             why.add("bad " + verb + ": " + ex.getMessage());
             return null;
         }
@@ -231,7 +250,11 @@ public final class ClassCatalog {
         try { return Attribute.valueOf(s.trim().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { return null; }
     }
 
-    /** "4s", "1500ms", "1.5s" or a number of milliseconds. */
+    /**
+     * "4s", "1500ms", "1.5s", "2m", "1h" or a number of milliseconds ({@code dflt} when absent).
+     * Anything else is refused with an IllegalArgumentException (reported as a problem), never
+     * silently replaced by the default.
+     */
     static long millis(Object v, long dflt) {
         if (v == null) return dflt;
         if (v instanceof Number n) return n.longValue();
@@ -239,9 +262,11 @@ public final class ClassCatalog {
         try {
             if (s.endsWith("ms")) return Math.round(Double.parseDouble(s.substring(0, s.length() - 2)));
             if (s.endsWith("s")) return Math.round(Double.parseDouble(s.substring(0, s.length() - 1)) * 1000);
+            if (s.endsWith("m")) return Math.round(Double.parseDouble(s.substring(0, s.length() - 1)) * 60_000);
+            if (s.endsWith("h")) return Math.round(Double.parseDouble(s.substring(0, s.length() - 1)) * 3_600_000);
             return Math.round(Double.parseDouble(s));
         } catch (NumberFormatException e) {
-            return dflt;
+            throw new IllegalArgumentException("not a duration: " + v);
         }
     }
 
