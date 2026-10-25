@@ -105,7 +105,9 @@ Requirements: several abilities fluently in a fight, no fighting Minecraft's own
 
 ## 5. Recommendation
 
-**Quick keys as the default, click combos as a per-player option.** Both are built, so the owner can compare them in the same playtest (`/class controls quick|combo`, or click the Controls tile). This is a player-controls decision, so it stays open until the owner has tried both.
+**Decided after the owner's playtest (2026-10-25):** both schemes stay permanently, as each player's choice. The owner prefers click combos; the server default stays quick keys until broader player feedback. Every player switches with `/class controls quick|combo` or the Controls tile. The choice is saved, and switching changes no progress or equipped ability.
+
+**The original recommendation:** quick keys as the default, click combos as a per-player option.
 
 - Quick keys are the closest to "natural during combat". The three most-used slots are one press each with no Sneak, so you keep sprinting. They read like any MMO's ability keys and like SkyBlock's right-click abilities. Players arrange their loadout so that the frequent abilities sit on right-click, F and Q.
 - The research (§3) points the same way. Wynncraft players install client mods to get one key per spell, which quick keys give without mods, and SkyBlock's dungeons already put an ability on Q.

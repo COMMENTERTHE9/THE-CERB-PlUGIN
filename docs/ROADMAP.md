@@ -50,7 +50,11 @@ The owner played the Warrior / Mage / Duelist prototype. **Feedback:** Sneak + l
 
 | Phase | What | State |
 |---|---|---|
-| 1 | **Ability controls.** Reproduce the playtest problems before fixing them. Research how Wynncraft and Hypixel SkyBlock activate abilities (their real controls; learn, don't copy). Design an original control scheme a vanilla 1.21.11 client supports (no client mods; a resource pack may only improve presentation). Clear feedback for success, cooldown, too little Essence, missing weapon or focus, invalid target or range, not unlocked or not equipped, and disabled here: action bar, sounds, light effects, no chat spam. The activation layer stays separate from the ability definitions; progress, ranks, loadouts and the PvP limits are kept. | Built 2026-10-25: quick keys (default) and click combos, feedback for every press, aim assist, an ability bar (`docs/design/ABILITY_CONTROLS.md`). **Waits for the owner's playtest**, which also picks the default scheme |
+| 1 | **Ability controls.** Reproduce the playtest problems before fixing them. Research how Wynncraft and Hypixel SkyBlock activate abilities (their real controls; learn, don't copy). Design an original control scheme a vanilla 1.21.11 client supports (no client mods; a resource pack may only improve presentation). Clear feedback for success, cooldown, too little Essence, missing weapon or focus, invalid target or range, not unlocked or not equipped, and disabled here: action bar, sounds, light effects, no chat spam. The activation layer stays separate from the ability definitions; progress, ranks, loadouts and the PvP limits are kept. | Done 2026-10-25: quick keys and click combos, feedback for every press, aim assist, an ability bar (`docs/design/ABILITY_CONTROLS.md`). **Owner's playtest:**
+- Both schemes stay, permanently, as each player's choice. Both are supported and tested.
+- The owner prefers click combos (R R R).
+- The server default stays quick keys until broader player feedback.
+- Remaining control bugs are fixed as found; no further redesign. |
 | 2 | **Audit all 21 abilities individually** (Warrior 7, Mage 7, Duelist 7): real behaviour verified in the world (damage, movement and landing, mitigation, buffs and durations, attribute contributions, keystones) in every relevant situation (still, moving, sneaking, jumping, switching items, right and wrong weapon, focus, empty hand, no Essence, cooldown, valid and invalid targets, one and many enemies, edge of range, loadout changes, relog, restart). Combinations across classes without cooldown resets, duplicate buffs, damage multiplication, bad refunds, XP farming, item loss or PvP bypass. A better harness: real input sequences, positive and negative controls, a clean predictable arena, bot limits told apart from plugin behaviour, manual checks where automation can't judge feel. | Done in the sandbox 2026-10-25: every ability verified on its own (`docs/ABILITY_AUDIT.md`, `tools/playtest/abilities.js`), with the regression suite and an independent review. Feel: owner's playtest |
 | 3 | **Polish Warrior, Mage and Duelist** into the quality standard: recognisable identities, clear visual and audio feedback, satisfying execution, distinct strengths and weaknesses, good cross-class combinations, predictable costs. Fix weak-mob class-XP farming (eligibility or reward scaling). Upgrades and advanced tiers stay on the roadmap, not rushed. | Started 2026-10-25:
 - **Class XP farming fixed:** only enemies pay, and grey mobs pay a quarter (eligibility and scaling).
@@ -58,8 +62,8 @@ The owner played the Warrior / Mage / Duelist prototype. **Feedback:** Sneak + l
 - **Keystones verified:** Glass Cannon and Blade Dancer by their values.
 
 More identity work follows the owner's playtest |
-| 4 | **Step 6: the next six classes**, one at a time: Knight (defense, counters, protection), Ranger (ranged mobility, precision, wilderness), Cleric (healing, support), Assassin (stealth, ambush, burst), Elementalist (elemental interactions), Summoner (allies and constructs). Each with real abilities, individual tests and a complete gameplay loop, on the shared engine, attributes, Essence and progression. The ~25-class roster stays the plan; nothing is deleted or finalised before its design review. | After 1–3 |
-| 5 | **Gameplay depth and systems completion.** A code-grounded audit of all 35 skills (how XP is earned, what works, what is disconnected, what to add, beginner-to-mastery path, links to other systems). Then real gathering and crafting loops, Mining, Woodcutting, Farming, Fishing, Smithing, Crafting and Alchemy first: resources, progression, rewards, recipes, equipment interactions, new capabilities as skills grow, not just percentages. **Future-proof:** registries, resource definitions, tool capabilities, reward rules and extension points, so a later custom ore, tree, plant, tool, drill or machine plugs in without rewriting the progression. No giant speculative frameworks: today's gameplay done properly, proven by small synthetic extension tests. | |
+| 4 | **Step 6: the next six classes**, one at a time: Knight (defense, counters, protection), Ranger (ranged mobility, precision, wilderness), Cleric (healing, support), Assassin (stealth, ambush, burst), Elementalist (elemental interactions), Summoner (allies and constructs). Each with real abilities, individual tests and a complete gameplay loop, on the shared engine, attributes, Essence and progression. The ~25-class roster stays the plan; nothing is deleted or finalised before its design review. | After the Gameplay Depth milestone (phase 5), by the owner's reordering of 2026-10-25. Not cancelled |
+| 5 | **Gameplay depth and systems completion.** A code-grounded audit of all 35 skills (how XP is earned, what works, what is disconnected, what to add, beginner-to-mastery path, links to other systems). Then real gathering and crafting loops, Mining, Woodcutting, Farming, Fishing, Smithing, Crafting and Alchemy first: resources, progression, rewards, recipes, equipment interactions, new capabilities as skills grow, not just percentages. **Future-proof:** registries, resource definitions, tool capabilities, reward rules and extension points, so a later custom ore, tree, plant, tool, drill or machine plugs in without rewriting the progression. No giant speculative frameworks: today's gameplay done properly, proven by small synthetic extension tests. | **Now** (moved ahead of phase 4 by the owner, 2026-10-25): see "Gameplay Depth & Systems Completion" below |
 | 6 | **Advanced mastery, level 100 → 150** for all 35 skills: a skill-specific mastery challenge at 100 unlocks 101–150, permanently per player and skill; real progression and milestone rewards, not 50 empty levels. **Heavy Armor Mastery first:** its high-level defense bar feels weak; look at capacity, regeneration, defensive techniques and breakthroughs, with the scaling math checked against realm magnitude and enemy damage before any per-level doubling. Caps migrate safely; no progress is lost. | |
 | 7 | **Review the skeletal systems:** equipment and weapon archetypes, techniques, cultivation, crafting and processing, mobs and Bestiary, exploration and regions, quests and collections, structures and procedural generation, living world, mounts. For each: functional, prototype, placeholder or plan. Complete loops that connect systems first. | |
 | 8 | **Playtest backlog** (below), placed into the phases above. | |
@@ -68,8 +72,60 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
+## Gameplay Depth & Systems Completion (owner, 2026-10-25, approved): the current milestone
+
+**Why.** The menus, combat engine, attributes and first three classes are in good shape, but much of the game is still skeletal. Many of the 35 skills have little or no gameplay: no XP source, unfinished effects, or effects that depend on systems not built yet. So depth and complete gameplay loops come before more classes. The six next classes and the 25-class vision stay on the roadmap; they wait.
+
+**In order:**
+1. **Class milestone wrap-up:**
+   - Both control schemes stay (above). Done.
+   - The trapped-mob class-XP loophole is closed: a mob pays cast XP only up to what its kill pays. Done.
+   - Movement comes back in 1.2 s at most (the owner's rule, below). Done.
+   - The passive-mob health-bar inconsistency is fixed as a focused issue. Done: rideable mobs were unlabelled on purpose (the label took their only seat); their label now steps aside for a rider.
+2. **A code-grounded audit of all 35 skills** (`docs/SKILL_AUDIT.md`). For each skill it records:
+   - XP sources, balance and exploits;
+   - effects, reachable or not;
+   - the attribute system;
+   - progression rewards;
+   - dependencies;
+   - what is missing;
+   - future interactions;
+   - what can be done now and what must wait.
+
+   Each skill is classed as functional, partial, disconnected, placeholder or design-only, with the highest-value missing loops named.
+3. **The first complete loop: Mining → Smithing → Equipment.** Find resources, mine them, earn Mining XP, process them, earn Smithing and Crafting XP, make useful equipment, and use it in combat.
+   - Vanilla resources first, on data-driven definitions with stable ids: resources, loot and XP, tool capabilities, extraction methods (manual or automated), and Fortune and rarity.
+   - A future custom ore, tool, drill or machine plugs in without a rewrite, proven by a synthetic custom resource and tool.
+   - Equipment feeds the existing attribute engine; there is no second item-stat engine.
+4. **Real-time XP display** (owner request, small): players see their progression without a cluttered screen.
+   - XP gains show briefly on the existing HUD: combat, exploration and new chunks, gathering, crafting and the other skills.
+   - Repeated gains merge into one clean notification ("+86 Mining XP" over a few seconds), never dozens of lines.
+   - Combat information and ability feedback always come first.
+   - A per-player setting: Compact, Detailed or Off.
+   - Lightweight and Folia-safe, built on the existing progression and HUD. Tested with several XP sources and measured. A polish item, not a UI overhaul; it lands as the new gathering and crafting XP arrives.
+5. **The same pattern next** for Woodcutting, Farming, Fishing, Alchemy and the rest, in the order the audit recommends.
+
+**Rules for this milestone:**
+- **Movement (owner rule, 2026-10-25, standing):** every movement ability, a dash or a blink, comes back in 1.2 s at most, and so does the lockout they share. Teleport-style movement may be as quick as the gap between casts (Blink 0.4 s). Enforced when `abilities.yml` loads (`ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS`). A movement ability's strike or stun may keep a slower pace of its own (`strike-cooldown`). The rule holds for every class to come.
+- **Performance first:** measure before and after, with realistic gathering and crafting loads.
+- **Exploit protection:** placed blocks, craft-and-dismantle loops, Fortune duplicating rewards, creative mode, automation, invalid definitions and item duplication.
+- **Balance:** proportional rewards that fit controlled hyperscaling, with no runaway multipliers.
+- **Folia correctness and small commits.**
+- **Verification:** in game in the sandbox, with positive and negative controls and an independent review. The owner's Windows world and database are never touched.
+
+**Not in this milestone:**
+- the next six classes, or all 25;
+- class Awakening;
+- level-150 mastery;
+- all future ores and machines;
+- a new world generator;
+- every weapon archetype;
+- a full economy, quests or NPC civilization.
+
+The discussions about Awakening, ability requirements, long-lasting effects and upgrades are design input, not tasks.
+
 **Playtest backlog** (to investigate, not assumed to be code defects):
-- **Passive mob health bars:** some passive animals (pigs, horses) showed no Cerberus health bar. Check the intended display rules and whether passive mobs are registered, tracked and updated.
+- ~~**Passive mob health bars:** some passive animals (pigs, horses) showed no Cerberus health bar.~~ Fixed: rideable mobs were left unlabelled because the label took their seat; it now steps aside for a rider (`docs/STATUS.md`).
 - **Weapon names:** the owner prefers **Furnace Hammer** (Cauldron-Hammer) and **Runeblade** (Talisman-Blade) as Western-fantasy display names; mechanics and internal ids stay. Settled when the weapons are built (see `docs/design/CLASSES.md` §4).
 - **Skill progression:** the level-100 cap and the weak-feeling Heavy Armor rewards: Phase 6.
 

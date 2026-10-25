@@ -83,7 +83,8 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 | 3 | Sword in hand, three zombies close in front. **Right-click.** | `✦ Cleave · 3 hit`. Right-click again at once: `Cleave 3.8 s` and a soft tick. |
 | 4 | **Sneak + right-click** at a zombie straight after the Cleave. | `✦ Execute · x2.2 · 3 Momentum`, a heavier impact. Again with no Momentum: `Execute needs 1 Momentum`, nothing spent. *(New: Execute is a finisher, so it no longer wastes its cooldown on a plain hit.)* |
 | 5 | **F**. | `✦ War Cry · +15% damage · 8 s` and a ring around you. **The sword stays in your hand.** |
-| 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits: `Blink 1.2 s`. Later, Sneak + F blinks you where you look: up to 6 blocks ahead, or onto the spot on the ground you look at. |
+| 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits for the movement lockout, 1.2 s at most (`Blink 0.9 s`). Then Sneak + F blinks you where you look: up to 6 blocks ahead, or onto the spot on the ground you look at. |
+| 6a | *(Your movement rule.)* Press **Q** at a zombie, then Q again and again. Then hold Sneak and press F repeatedly. | The first Charge stuns and strikes; the next ones, every 1.2 s, only move you and say `strike in 8.2 s` until the strike is back (every 10 s). Blink goes off about every 0.4 s, 20 Essence each, until the Essence runs out. Do they feel fast enough? |
 | 7 | Swap the sword for a **pickaxe, a block or food**. Press R, F, Q. | All vanilla: you mine, place, eat, swap and drop as usual. |
 | 8 | Sword in hand: right-click a **door, a chest, a villager, a horse**. | They open, trade or mount as usual. With Sneak, right-click casts instead (vanilla also skips them while sneaking). |
 | 8b | A **shield in the off hand**, then right-click; also try bread or a torch there. With an axe, right-click a log. | The shield blocks, the bread is eaten, the torch is placed: the off hand's own use wins, and the right-click abilities show dark on the bar. F and Q still cast. The axe strips the log. *(Your call: should shield fighters lose right-click abilities, or the shield's block?)* |
@@ -121,8 +122,11 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 | 25 | Cast War Cry, rejoin within 30 s, `/class`. | Loadouts, controls and War Cry's cooldown as you left them. |
 | 26 | Another player in front of you while you Cleave or Fireball; aim Execute at them. | Abilities never hit players (PvP for abilities is off for now). |
 | 27 | War Cry (F), then kill a cow with normal hits; `/class`. Then Cleave a zombie until it dies; `/class`. | **No class XP from the cow**, from casts or kills. The zombie pays 6 per Cleave and a share of its kill XP. Zombies 20 or more levels below your class's skills pay a quarter. |
+| 28 | Trap a zombie (or stand in a corner and let one hit you) and keep casting at it without killing it; watch `/class`. | Class XP stops after about 40 (a level-1 zombie: what its kill pays). Killing it still pays the usual share. |
+| 29 | Find a horse and a pig (your report: no health bar). Ride the horse (tame it first), get off; saddle the pig and ride it. | Both show the `Lv… Horse  …❤` bar like a cow. The bar steps aside while you ride and is back when you get off. |
 
 **What only you can judge, please tell me:**
+- Movement: are Blink (0.4 s), Charge and Lunge (1.2 s) quick enough? Should Charge and Lunge strike on every cast instead of every 10 s and 7 s (delete the two `strike-cooldown:` lines in `abilities.yml`)?
 - Which scheme feels better in a real fight: quick keys or click combos? Should the default change?
 - Is 1.5 s right for the messages? Does the boss bar help or get in the way?
 - Can you tell the refusal sounds apart (cooldown tick, Essence fizzle, low note, whiff)?

@@ -34,7 +34,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
   - **All 21 abilities audited** in game (`docs/ABILITY_AUDIT.md`, `tools/playtest/abilities.js`).
   - **Class XP only from real fights** (`ClassRanks.castXp`), and Execute needs Momentum.
   - **Usability waits for the owner's playtest** (`docs/PLAYTEST_CHECKLIST.md` §6).
-- ⬜ Next: the owner's playtest of the controls + the open decisions in `docs/STATUS.md`; then Phase 4 (Step 6, six classes one at a time), the 35-skill audit + gathering/crafting, mastery to level 150. Quality before class count
+- ✅ Class milestone wrap-up (2026-10-25, `docs/STATUS.md`): both control schemes stay (the owner prefers combos; default unchanged); per-mob cast-XP budget (`Classes/CastXpLedger`); movement ≤ 1.2 s (Blink 0.4 s; Charge/Lunge keep their strike pace via `strike-cooldown`); unedited shipped `abilities.yml`/`classes.yml` refreshed on older installs (`ShippedConfig`)
+- ⬜ Next: **Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`): passive-mob health bars, the 35-skill audit (`docs/SKILL_AUDIT.md`), then Mining → Smithing → Equipment, a real-time XP display; later Step 6 (six classes one at a time) and mastery to level 150. Quality before class count
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -55,6 +56,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 
 ## Conventions
 - **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches (`tools/playtest/load.js` + `tools/perf/profile.sh`, method in `docs/PERFORMANCE.md`), fixing confirmed bottlenecks, and measuring again. No speculative rewrites. Menus: change screens with `MenuManager.open/replace` (same-size screens redraw in place); never open raw inventories per click. A screen whose buttons change state at once returns `reuseWindow() = false` (all admin screens do) so stale clicks can't reach it.
+- **Movement abilities come back in 1.2 s at most** (owner rule, 2026-10-25, standing): every dash or blink and the lockout they share; teleport-style movement may be as quick as the 0.4 s cast gap. Enforced in `ClassCatalog` (`MOVEMENT_MAX_COOLDOWN_MS`); a strike or stun on a movement ability may keep a slower `strike-cooldown`.
+- **Shipped config on older installs:** `abilities.yml`/`classes.yml` written at install are refreshed only when unedited (`ShippedConfig`, old copy kept as `.old`). Changing one makes `ShippedConfigTest` fail until the old version's hash is recorded. Other config changes need a code default that old files fall back to.
 - **PvP is off for now, not permanently** (owner, 2026-10-25): every PvP limit (attributes, speed bonuses, abilities, class XP) is temporary, waiting for a PvP pass that turns it all on. Keep each one switchable and listed in `docs/ROADMAP.md` → PvP; never treat them as final design.
 - **Folia threading:** snapshot on the entity/region thread → async I/O → reschedule back. Never touch Bukkit entity/player APIs off-thread.
 - New content ships as **config** (mobs.yml / combat.yml / *.yml + a registry), not code.

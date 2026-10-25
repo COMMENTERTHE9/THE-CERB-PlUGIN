@@ -16,8 +16,9 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - new controls (quick keys by default, click combos as an option) with feedback for every press;
   - every one of the 21 abilities audited on its own;
   - class XP only from real fights; Execute as a real finisher.
-- **Now:** the owner's playtest of the new controls. Usability is not called verified before it.
-- **Then:** Step 6 (six more classes, one at a time), the skill and gathering work, and mastery to level 150 (`docs/ROADMAP.md` → After the class playtest).
+- **The owner has tried the new controls** and set the next milestone, **Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`). The class milestone's loose ends are closed first (section "Done: class milestone wrap-up" below): both control schemes stay, a mob kept alive can't pay cast XP forever, and movement abilities come back in 1.2 s at most.
+- **Now:** the 35-skill audit, then the first gathering-to-equipment loop (Mining → Smithing → Equipment).
+- **Later:** Step 6 (six more classes, one at a time) and mastery to level 150.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -350,6 +351,33 @@ The usability playtest continues.
   - Q right after closing an inventory dropped the weapon.
   - Fireball paid class XP fired into the sky.
 
+## Done: class milestone wrap-up (2026-10-25)
+
+After the owner tried the new controls. Played on the sandbox unless noted.
+- **Both control schemes stay** (decision below). Nothing to build: both were already saved per player and tested.
+- **A mob kept alive pays cast XP only up to its kill XP** (`Classes/CastXpLedger`, unit-tested). Before, a strong mob kept in a cage paid 6 XP per cast forever (item 13 below). Now each mob has a budget equal to what its kill pays. Casts at it, and self casts in a fight with it, draw from that budget; once it is spent, only the kill pays. In game, nine War Cries in a fight with one level-1 zombie paid 6 6 6 6 6 6 4 0 0 (40, its kill XP), and its kill still paid the usual share. A real fight ends long before the budget runs out, so it is unchanged. Found while testing: the cast that killed a mob paid again, because the death cleared the mob's record first. A dead mob's record now stays for 10 seconds.
+- **Movement comes back in 1.2 s at most** (owner rule, below; `ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS`, unit-tested):
+  - **Blink:** 0.4 s, the gap between any two casts. Essence is its limit (20 per Blink). Two Blinks half a second apart both go off.
+  - **Charge and Lunge:** 1.2 s. Their stun and strike keep their old pace, every 10 s and 7 s (`strike-cooldown` in `abilities.yml`). A Charge in between only moves you, and the HUD says when the strike is back ("✦ Charge · strike in 6.9 s"). Without this, Charge would stun the same mob 80% of the time and add a free hit every 1.2 s. This is a balance guard, not your rule, and easy to drop (below).
+  - **The shared movement lockout:** 1.2 s. It now holds the group's other abilities only, so Blink after Blink waits 0.4 s, and Blink after Charge waits 1.2 s.
+  - **Your server's files get the rule too.** A longer movement cooldown in a server's `abilities.yml` is lowered when it loads, and the log says so.
+- **Shipped config reaches older installs** (`cerberus/world/cerb/ShippedConfig`, unit-tested). `abilities.yml` and `classes.yml` are written once, at install, and an update never replaces them, so earlier tuning never reached your server. Now a copy nobody edited is replaced by the new version at startup, and the old one is kept as `abilities.yml.old` / `classes.yml.old`. A file with your own edits is never touched; the log says it was kept. On the sandbox both files were unedited Step 5 copies and were updated, with the old copies kept byte for byte. Your `run.bat` also backs up the plugin data before every start.
+- **Horses, pigs and other rideable mobs show their health bar** (your playtest report). They had none on purpose: the label rides on the mob as a passenger, these mobs have a single seat, and on 2026-10-24 a labelled horse couldn't be mounted or tamed, so rideable mobs were left unlabelled. Now they get the label like every mob. It steps out of the seat the moment a player right-clicks the mob (before the game seats them) and comes back as soon as nobody rides it, or at once if they only fed, saddled or leashed it. Cows, sheep and chickens were never affected.
+- **Test harness:** the arena now stops time and phantoms. The trapped-mob check puts the test bot back in place after each hit: nine knockbacks had pushed it off the platform. The item check now looks for a dropped sword, not any mob loot.
+
+Checks on the final build:
+
+| Phase | Checks |
+|---|---|
+| unit tests | 169 |
+| abilities.js warrior | 21 |
+| abilities.js mage | 24 |
+| abilities.js duelist | 15 |
+| abilities.js mixed | 18 of 20; the two misses were the check's own timing (it pressed Blink 1.2 s after Charge, exactly when the new lockout ends), rewritten and rerunning |
+| smoke | 13 of 14; the miss was the test bot (its "dismount" sends Jump, not Sneak, so it never got off the horse), fixed and rerunning |
+
+Nothing from the class milestone is left open.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -362,6 +390,13 @@ The usability playtest continues.
 - **Damage-reduction cap:** 75% kept, applied to resistance × armor (built).
 - **Weapon Mastery:** its all-weapon bonus stays (analysed).
 - **A–E** (speed in PvP, shelves, Survival fire, projectile XP, spears): decided and built (Step 2).
+
+**Made after the controls playtest (2026-10-25):**
+- **Both control schemes stay, permanently:** quick keys and click combos, each player's own choice. The choice is saved, switching never touches progress or equipped abilities, and both stay supported and tested.
+- **The owner prefers click combos** (R R R). The server default stays quick keys until broader player feedback (`classes.yml controls.default-scheme`).
+- **The next milestone is Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`): the 35-skill audit, then Mining → Smithing → Equipment. The six next classes wait, not cancelled.
+- **Movement: 1.2 s at most, from now on.** Every movement ability (a dash or a blink), and the lockout they share, comes back in 1.2 s or less; Blink well under half a second. Built (above). I added one guard to it: Charge's stun and strike, and Lunge's strike, keep their old 10 s and 7 s. To have them strike every 1.2 s, delete the two `strike-cooldown:` lines in `abilities.yml`.
+- **Real-time XP display** (requested): XP gains shown briefly on the HUD, repeated gains merged, combat and ability messages first, with Compact / Detailed / Off settings. A small task in this milestone (`docs/ROADMAP.md`).
 
 **Still yours:**
 1. **Big hits and the defense bar.** One hit larger than about 430 (for a 300-point bar) is still taken at the bar's full rate, so the bar absorbs more than it holds. Today only extreme hits reach that. Recommendation: limit the bar to its points when the first bosses with big telegraphed hits arrive (`ATTRIBUTES_ENGINE.md`).
@@ -384,6 +419,6 @@ The usability playtest continues.
     - weapon display names.
 
     The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5) are off for now. That is not permanent: PvP gets turned on later (`docs/ROADMAP.md` → PvP). How to cast (item 2) is now built as two schemes, see item 11.
-11. **The default control scheme.** Quick keys or click combos (`docs/design/ABILITY_CONTROLS.md` §4–5). Recommendation: quick keys. The three most-used abilities are one press each with no Sneak, so you keep sprinting, and they read like SkyBlock's right-click abilities and any MMO's keys. Click combos stay as an option. Both are built; please try both (`docs/PLAYTEST_CHECKLIST.md` §6). The server default is one line: `classes.yml controls.default-scheme`.
+11. ~~The default control scheme~~: decided (above).
 12. **Execute needs Momentum** (built, reversible). At 0 Momentum it was a plain hit that spent its 8 s cooldown, so it is now refused and spends nothing. To keep the old behaviour, set `needs: 0` on its resource effect.
-13. **Cast XP from a mob that never dies** (proposal, not built). The weak-mob rule stops farming trivial mobs. But a strong mob kept alive in a cage still pays 6 XP per cast forever: Arcane Bolt every 1.5 s is about 14,000 Mage XP an hour with an autoclicker, about 12 hours to rank 50. Recommendation: each mob pays cast XP only up to what its kill would pay, then only the kill pays. Real fights are unchanged, and a caged dummy runs dry after about 30 casts.
+13. ~~Cast XP from a mob that never dies~~: built as recommended (each mob pays cast XP only up to its kill XP; above).

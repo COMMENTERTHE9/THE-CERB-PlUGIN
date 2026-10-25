@@ -217,7 +217,7 @@ Only then are the effects applied and the cost and cooldown committed, in one st
 ### 5.4 Costs and cooldowns
 - **Essence** (the existing mana pool) for magic.
 - **Class resources** (Momentum, Fury, Focus): small per-player counters with decay.
-- **Cooldowns per ability, plus shared groups.** All blinks and dashes share a short `movement` lockout, so mobility can stack but not chain without limit.
+- **Cooldowns per ability, plus shared groups.** All blinks and dashes share a short `movement` lockout that holds the group's other abilities, so one can't follow another at once. Movement comes back in 1.2 s at most, the lockout included (owner rule, §11).
 - Cooldowns are **stored with the player**, not the loadout. The long ones survive relog.
 - Speed stats already reduce spell cooldowns (Spell Weaving). The same rule extends to abilities, with the existing caps and the PvP pause (decision A).
 
@@ -356,8 +356,14 @@ The other 22 classes of the roster are design only.
   - Mobs that can't be hurt (an invulnerable one, a Creaking bound to its heart) are not targets, so they pay nothing.
   - Casting into the air out of combat earns nothing.
   - **Weak mobs pay less, as kill XP does:** a foe 20 or more levels below the class's own skills (`kill-xp.anti-grind-gap`) pays a quarter (`anti-grind-factor`). `ClassRanks.castXp`, unit-tested.
+  - **A mob pays cast XP only up to what its kill pays** (`CastXpLedger`, unit-tested): casts at it and self casts in a fight with it draw from that budget, then only its kill pays. A real fight ends long before; a mob kept alive in a cage runs dry (a level-1 zombie after 40 XP). The budget is kept in memory per mob, for 10 s after its death (the killing cast still sees it) and 30 minutes when idle.
   - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced. **Only enemies count:** farm animals pay no kill share.
-- **Essence abilities** have their cooldowns shortened by Spell cooldown recovery (capped, paused in PvP), never below 1 s.
+- **Essence abilities** have their cooldowns shortened by Spell cooldown recovery (capped, paused in PvP), never below 1 s (or their own cooldown, if shorter).
+- **Movement: 1.2 s at most** (owner rule, 2026-10-25, for every class). An active that dashes or blinks comes back in 1.2 s or less, and may be as quick as the 0.4 s gap between casts (`ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS`):
+  - Blink 0.4 s (Essence is its limit); Charge and Lunge 1.2 s.
+  - Their stun and strike keep a slower pace of their own (`strike-cooldown`: Charge 10 s, Lunge 7 s), so a quick dash is never a quick stun-lock or a free hit. A cast in between only moves you, and says when the strike is back.
+  - A shared lockout (`groups`, movement 1.2 s) holds the group's *other* abilities; an ability's own cooldown covers itself.
+  - A server file with longer values (written before the rule) is lowered when it loads, the old cooldown becoming the strike's pace; the log lists each change.
 - **Config changes never cost progress.**
   - A class removed from `classes.yml` keeps its saved rank and XP, unused, and gets them back if it returns.
   - An ability missing from `abilities.yml` (a typo, a rename) stays in its slot, inert, and works again when it returns.
