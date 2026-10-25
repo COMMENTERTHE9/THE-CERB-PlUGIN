@@ -47,17 +47,18 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 | Do | You should see |
 |---|---|
 | Join | Action bar like `305/305⛨  102/102♥  0.00%★  1035.00/1035.00✎` (defense, health, luck, mana; they grow with your skills). A **Player Menu** head in hotbar slot 9. Operators also get an **Admin Control Panel** ender chest. |
-| Right-click the head → **Skills → Combat Skills** | Each skill with its level and XP bar. Click one for its detail page. Other main-menu buttons say *Coming Soon* (not built yet). |
+| Right-click the head (or type `/menu`) | The **Player Menu**: your realm, total skill level, health, Essence and attributes at the top; Skills, Stats & Attributes, Ascension, Equipment, Bestiary, World & Exploration and Guide open; Collections, Recipes, Quests and Unlocks say *In development* when clicked. Every screen has Back, Player Menu (home) and Close. |
+| Player Menu → **Skills → Combat Skills → Blade Mastery** | The skill page: level and XP strip, how to train it (kills with any sword, XP per mob level), what its levels give (Power, sword attack speed) and what that does now and next level, its own effects marked *Live* / *Against players only* / *Not active yet*, and the next milestones. The arrows at the bottom flip through the category. |
 | `/cerb healthstate` | `Custom HP: 102.00/102.00` (full), `Lifecycle: ALIVE`, `Session: ACTIVE` |
 | `/givetestitem kit` | Cerberus Blade, Styx Cleaver, Hydra's Reach, Fireball Wand, and Cerberus armor (fills your hotbar). |
 | Right-click the **Fireball Wand** | `You cast Fireball!`; mana drops by 20 and refills. |
 | `/summon minecraft:zombie`, then kill it with the Cerberus Blade | A floating label like `Zombie 50❤ Lv1` that drops as you hit. On the kill: `+40 Blade Mastery XP`. |
 | `/cerb spawn elite_zombie` | `Spawned elite_zombie (Rare)`; its label shows about `3.2K❤`. |
 | `/cerb combatdebug`, then let a zombie hit you | A chat trace `MobScaling → Incoming → DefenseBar → Final`. Run it again to turn it off. |
-| `/cerb skill YourName Blade_Mastery level 25` | `Blade Mastery is now level 25 (0 XP)`; the Skills menu shows it. Set it back the same way. |
+| `/cerb skill YourName Blade_Mastery level 25` | `Blade Mastery is now level 25 (0 XP)`; the Skills menu shows it. Set it back the same way. Renamed skills accept both names: `Pathfinding` or `Navigation`. |
 | `/testregen 50` | Health drops by 50, then regenerates about 4 per second. |
 | `/kill` | Instant respawn at full health. No death screen; this is intentional. |
-| Player Menu head → **Stats**, or `/stats` | Your six attributes (Power, Agility, Vitality, Fortitude, Essence, Fortune), what each does and which skills feed it; your weapon's damage and crits; health, armor, mana; what the next level gives; kill XP per mob level. |
+| Player Menu → **Stats & Attributes**, or `/stats` | Your six attributes, what each does and which skills feed it; your weapon's damage and crits (click the weapon tile to see other weapon types); **Speed & handling** (attacks per second, bow draw time, movement speed, Fireball cooldown); health, armor, mana; what the next level gives; kill XP per mob level. |
 
 ### Feel the progression (attributes)
 
@@ -65,11 +66,14 @@ All scripts live in the repo root and are double-clickable. They call `tools\cer
 |---|---|
 | `/cerb spawn zombie 50 noai`, hit it with a netherite sword at Blade Mastery 1, then `/cerb skill YourName Blade_Mastery level 100` and spawn another | About 20 swings at level 1, about 5 at level 100. Damage numbers float over the mob (crits marked `✯`). |
 | `/cerb combatdebug`, then hit a mob | `[Combat] Power(Swords, Power 50.0 -> x3.50): 28.0`, plus crit and lifesteal steps. |
-| Set Survival, Heavy Armor Training and First Aid to 100 | `/stats` → Survivability: max health about 300, armor bonus, bigger defense bar, 50% resistances. |
+| Set Survival, Heavy Armor Training (Heavy Armor Mastery) and First Aid (Field Medicine) to 100 | `/stats` → Survivability: max health about 300, armor bonus, bigger defense bar, 50% resistances. |
 | Set Intelligence and Mana Regeneration to 100 | Max mana about 3,000, regeneration about 150/s; Fireball does about x5 damage to mobs. |
 | Kill a mob far below your weapon skill (20+ levels) | Reduced XP and the message `(Low-level mob: reduced XP...)`. |
+| Hold a sword: Blade Mastery 1, then 100 | `/stats` → Speed & handling: about 1.61 → 1.88 attacks per second (a full swing every 0.62 s → 0.53 s). The attack-cooldown indicator under your crosshair refills visibly faster. |
+| Bow: Ranged Precision 1, then 100 | A bow released after about 0.8 s already shoots a full-power critical arrow (sparkle trail); at level 1 it needs the full second. The pull animation itself stays vanilla. |
+| Pathfinding (Navigation) 100 | You walk and sprint about 9% faster. |
 
-Turn any part off in `plugins/CerberusPlugin/attributes.yml` (`attributes.integration`), then `/cerb reload`. PvP is unchanged.
+Turn any part off in `plugins/CerberusPlugin/attributes.yml` (`attributes.integration`, and `attributes.secondary.stats` for the speed stats), then `/cerb reload`. PvP is unchanged: the speed bonuses pause for 15 seconds whenever you hit or are hit by a player (`attributes.secondary.in-pvp`). An `attributes.yml` from before 2026-10-25 has no `secondary` section; the built-in defaults then apply. To change them, copy that section from the new file in the jar (or rename your file and `/cerb reload` to get a fresh one, then copy your own changes back).
 
 ## Admin Control Panel (Cerberus Control Center)
 

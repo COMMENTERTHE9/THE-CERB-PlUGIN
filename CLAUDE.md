@@ -13,7 +13,7 @@ Minecraft RPG plugin — cultivation / xianxia-flavored but **Western-named** �
 ## Design (read this first)
 The full game design lives in **`docs/design/`** — start at **`docs/design/README.md`** (index + build-readiness status). Doctrine: **controlled hyperscaling** (cultivation-scale numbers into the billions/trillions, realm suppression) + **Western-forward naming** (`NAMING.md`: Mortal…Primordial realms layered over the 10-tier `Tier` enum). Everything new is a **data-driven registry** (mirrors `MobRegistry`): config, not code.
 
-## Build status — Step 0 in progress (master realm-base LOCKED at ×8)
+## Build status (master realm-base LOCKED at ×8; current state and owner decisions in `docs/STATUS.md`)
 - ✅ XP-curve overflow fixed (`SkillManager.xpForLevel`, polynomial, unit-tested)
 - ✅ Mob virtual-HP pool + ×8 realm health curve (`MobVirtualHealthManager`; mobs hold billions+; vanilla MAX_HEALTH is cosmetic only)
 - ✅ First Aid runaway capped
@@ -21,7 +21,9 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Playtest-readiness pass (2026-10-24): fresh-clone build, launcher scripts, kill-XP overflow + level cap, hotbar slot-9 item loss, rideable-mob labels, registry-mob spawn tier, particle cap, save coalescing, failed-load protection — each verified on a real Folia 1.21.11 server
 - ✅ Admin Control Panel 2.0 (`GUIs/menu` framework + `GUIs/admin`; permission re-checked per click; `tools/playtest/admin.js`)
 - ✅ Attributes & Progression 2.0, increments 1–7 (`docs/ATTRIBUTES_ENGINE.md`): kill XP v2, attribute engine + `attributes.yml`, Stats page, PvE offense, Vitality/Fortitude/Essence, admin inspector/simulator/dev buffs (`tools/playtest/progression.js`)
-- ⬜ Next: increment 8 (persistence + load check on the owner's server), then the gathering/crafting loop (`docs/STATUS.md`)
+- ✅ Player Menu 2.0 (2026-10-25): hub + Skills / Stats / Ascension / Equipment / Bestiary / World / Guide on the shared menu framework (`GUIs/player/`, `tools/playtest/menu.js`); honest skill catalog (`GUIs/SkillDefinitions.java`); 4 display-name renames (`Skills/SkillNames.java`; internal names = DB keys, unchanged)
+- ✅ Speed stats, attribute expansion increment 1 (2026-10-25): attack / bow draw / movement speed + spell cooldown in the engine, paused during PvP (`docs/design/ATTRIBUTE_EXPANSION.md`, `progression.js speed`)
+- ⬜ Next: the owner's playtest + decisions in `docs/STATUS.md`, then the gathering/crafting loop
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -29,7 +31,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - `Manager/Tier.java` — the unified 10-tier ladder (= realms)
 - `Manager/MobHealthScaling.java` · `Listener/MobScalingListener.java` · `Manager/MobVirtualHealthManager.java` — mob level/HP scaling
 - `Manager/CombatConfig.java` + `src/main/resources/combat.yml` — combat tuning (mob-health-scaling, mob-damage-scaling, tiers)
-- `Listener/VirtualHealthListener.java` — damage pipeline (player + mob virtual HP); `Manager/PveOffense.java` — attributes on player→mob hits
+- `Listener/VirtualHealthListener.java` — damage pipeline (player + mob virtual HP); `Manager/PveOffense.java` — attributes on player→mob hits; `Manager/SecondaryEffects.java` + `Manager/PvpTag.java` — speed stats
+- `GUIs/PlayerMenuGUI.java` — hotbar head, `/menu`, hub sections (a new destination = one `PlayerMenuSections.Section`); screens extend `GUIs/player/PlayerMenu`
 - `Attributes/*` — attribute engine (pure calculator, cached per-player `AttributeService`, sources); `Manager/AttributeEffects.java` pushes Vitality/Fortitude/Essence into health/defense/mana
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
