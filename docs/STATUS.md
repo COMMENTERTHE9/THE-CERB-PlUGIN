@@ -17,8 +17,8 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - every one of the 21 abilities audited on its own;
   - class XP only from real fights; Execute as a real finisher.
 - **The owner has tried the new controls** and set the next milestone, **Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`). The class milestone's loose ends are closed first (section "Done: class milestone wrap-up" below): both control schemes stay, a mob kept alive can't pay cast XP forever, and movement abilities come back in 1.2 s at most.
-- **Now:** the 35-skill audit, then the first gathering-to-equipment loop (Mining → Smithing → Equipment).
-- **Later:** Step 6 (six more classes, one at a time) and mastery to level 150.
+- **Done since:** the 35-skill audit, then the first gathering-to-equipment loop, **Mining → Smithing → Equipment**, with the real-time XP display (section "Done: Mining → Smithing → Equipment" below).
+- **Next:** your playtest of mining and forging; then closing the live XP exploits the audit found, the same loop for the next skills, then Step 6 (six more classes, one at a time) and mastery to level 150.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -38,9 +38,12 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Persistence | Skill levels and XP survive restarts; saves coalesce within 1 s; a failed database load disconnects the player instead of overwriting data. |
 | Player Menu | Head in slot 9 or `/menu`. Hub with the character at a glance and every destination marked *Available* or *In development*. Skills → category → skill pages (training sources, attribute and speed gains, effects with status, next milestones); Stats & Attributes; Ascension (realm ladder); Equipment; Bestiary; World & Exploration; Guide. Verified with `tools/playtest/menu.js` (nav 63 as op / 61 as non-op, safety 18 with controls, perf 2: no database access and no snapshot rebuilds while browsing). Four skills shown under new names (`NAMING.md`). |
 | Admin Control Panel | `/cerb panel`: Players (inspect/edit), Combat Lab (spawn at level, mob inspector, cleanup of your own test mobs), Progression Lab, Attributes (inspector, simulator, dev buffs), My Test Character, Server & Plugin, Maintenance. Permission-checked on every click; verified with `tools/playtest/admin.js` (main 40, attrs 14, owners 5, cross 5, security 6). An independent review found no security or item-duplication hole; its correctness findings are fixed. |
-| Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and the unit tests. |
+| Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (the extra-ore chance), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, gathering speed, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and the unit tests. |
 | Defense | Resistance → armor → defense bar; resistance and armor together capped at 75%, the bar a separate pool; PvP hits use the pre-attribute defense as the same share of health. Fire resistance covers flames, burning, campfires, magma and fire spells fully and lava at half (`combat.yml fire-resistance`). Checked by `progression.js defense`, `defense-cap`, `pvp` and `fire`; details in `docs/ATTRIBUTES_ENGINE.md`. |
 | Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
+| Gathering | Mining XP for natural stone and ore broken by hand (stone 1 … ancient debris 100; a quarter 20+ levels above a resource). Mining raises gathering speed and Fortune, a chance of one extra ore. Placed, generator-made and piston-moved blocks, creative mode, explosions and machines pay nothing. Everything is data in `resources.yml`, custom ores, tools and drops included. Verified with `tools/playtest/gathering.js`. |
+| Smithing | XP for taking metal out of a furnace, forging tools, weapons and armor, and the netherite upgrade; paid once per item really made. Forged gear rolls a quality (Common, Fine, Superior, Masterwork; better with Smithing) that adds Power, Fortitude or Fortune through the attribute engine. |
+| XP display | Every XP gain shows briefly on the HUD, merged per skill ("+86 Mining"), below ability messages. `/xpdisplay compact|detailed|off`, saved per player. Kill XP no longer goes to chat; level-ups still do. |
 | Classes (prototype) | Warrior, Mage and Duelist: opened by skills, ranks 1–50, 7 abilities each unlocking by rank, 3 loadouts (5 actives, 3 passives, keystone) mixing any classes, cast with quick keys (right-click / F / Q, Sneak + right-click / Sneak + F) or click combos, chosen per player, with a HUD message and sound for every press and an ability bar. Player Menu → Classes & Abilities, `/class`, `/cerb class <player> <class> rank <n>`. Abilities affect mobs only. Verified with `tools/playtest/classes.js` and `abilities.js` (every ability on its own, `docs/ABILITY_AUDIT.md`). |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
@@ -48,11 +51,11 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 
 | Area | State |
 |---|---|
-| **Skill effects** | Through attributes (vs mobs): weapon skills, crit skills, defensive skills and magic skills now matter, and weapon/bow/movement/spell skills also make the action faster (Played). PvP still uses the old per-skill bonuses (a design decision for later). Fortune and the gathering/crafting skills feed nothing yet. Each skill page lists what is live, PvP-only or not active. Most old per-skill `applyEffect` code is still never called. |
-| **XP sources** | Only combat, spells, damage taken, and new-chunk discovery grant XP. Mining, Woodcutting, Farming, Fishing, Crafting, Smithing, Alchemy, Enchanting, Herbalism, Cooking and 9 more have **no XP source**. |
+| **Skill effects** | Through attributes (vs mobs): weapon skills, crit skills, defensive skills and magic skills now matter, and weapon/bow/movement/spell skills also make the action faster (Played). Mining (gathering speed, Fortune) and Smithing (forged quality) matter too. PvP still uses the old per-skill bonuses (a design decision for later). The other gathering and crafting skills feed nothing yet. Each skill page lists what is live, PvP-only or not active. Most old per-skill `applyEffect` code is still never called. |
+| **XP sources** | Combat, spells, damage taken, new-chunk discovery, mining, smelting and forging grant XP. Woodcutting, Farming, Fishing, Crafting, Alchemy, Enchanting, Herbalism, Cooking and 13 more have **no XP source**. |
 | Realms | Every player is Awakened; realm advancement (and its attribute bonuses) is not built. |
 | Old stat managers | Strength / Luck / Magic Find / Yield managers exist but nothing reachable calls them (Fortune will replace Luck / Magic Find). |
-| Crafting & traps | About 2,860 lines of quality-crafting, item-buff and trap code, unreachable and unsafe if wired (duplication, unbounded multipliers, "[Broken]" items): `docs/SKILL_AUDIT.md`. Replaced, not wired, by the gathering loop. |
+| Crafting & traps | About 2,860 lines of quality-crafting, item-buff and trap code, unreachable and unsafe if wired (duplication, unbounded multipliers, "[Broken]" items): `docs/SKILL_AUDIT.md`. Replaced, not wired, by the gathering loop; still in the code, for a later clean-up. |
 | Spells | Fireball only. It damages other players caught in the blast (PvP rules are not designed yet); it now spares the caster's own pets. |
 | Elements / knockback | Elemental bonuses are computed but never applied; the `knockback:` config is never read. |
 | Defensive Magic | Disabled (needed ProtocolLib, which Folia can't use). |
@@ -421,6 +424,62 @@ The highest-value loops, in order:
 5. Fishing.
 6. Woodcutting and Farming.
 
+## Done: Mining → Smithing → Equipment (2026-10-25)
+
+The first complete gathering loop: find stone and ore → mine it (**Mining XP**) → smelt it and forge gear (**Smithing XP**) → the gear's quality feeds the attribute engine → a better pickaxe finds more ore, a better sword hits harder. Design and the counting rules: `docs/design/GATHERING.md`. Everything is data in `resources.yml` (a new file, refreshed at startup while unedited, like `abilities.yml`).
+
+**What a level does now:**
+
+| Skill | Before | Now |
+|---|---|---|
+| Mining | nothing | XP per natural block; **gathering speed** +0.2% per level toward a 25% cap (Mining 100: +13.8%); **Fortune** +0.5 per level |
+| Smithing | nothing | XP for smelting and forging; better **quality** odds (level 1: 2% Superior or better; level 100: 40%, 12% Masterwork) |
+| Fortune (attribute) | shown only | a chance of one extra ore, 0.5% per point, at most 50% |
+
+**Forged quality**, by gear kind, through the attribute engine and its caps (PvE only, like every attribute):
+
+| Quality | Weapon in hand: Power for that weapon | Each armor piece worn: Fortitude | Tool in hand: Fortune |
+|---|---|---|---|
+| Fine | +3 | +1 | +3 |
+| Superior | +6 | +2 | +6 |
+| Masterwork | +10 | +4 | +10 |
+
+**What can't be farmed** (each checked in game with a positive control next to it):
+
+| Way to farm | Result |
+|---|---|
+| Place and break (stone or ore) | no XP |
+| Silk Touch an ore, place it, break it again | XP the first time only; Silk Touch never gets the bonus |
+| A lava-and-water generator | the stone it makes pays nothing |
+| A piston pushing an ore | the pushed ore pays nothing |
+| TNT, creative mode, a machine | no XP |
+| Fortune on top of Fortune | at most one extra item per block (40 ores at the 50% cap: 56 raw iron; 1 or 2 from each); with Fortune III, never above vanilla's 4 plus one |
+| A furnace that smelted two kinds of input | one take pays once (the game fires its extract event once per kind) |
+| A hopper under a furnace | pays nobody |
+| A click on a crafting result that makes nothing (full cursor; a number key onto an occupied hotbar slot) | pays nothing |
+| Storage blocks both ways, nuggets, the repair recipe, armor trims | pay nothing |
+| Re-crafting to fish for a quality | a shift-click batch shares one roll; each roll costs the materials |
+
+**Equipment:** Power counts only with that weapon in the main hand (not in the off hand), Fortitude per armor piece worn (not held), Fortune with the tool in hand. Scrolling between plain items rebuilds nothing; to and from a forged item rebuilds once per change.
+
+**The real-time XP display** (your request): every XP gain shows for 2.5 s in the middle of the HUD bar, gains of a skill within 4 s merged ("+86 Mining"); an ability or refusal message covers it, and it comes back afterwards with the time it had left. `/xpdisplay compact` (default), `detailed` ("+8 Mining XP · 13/115 · Lv 1") or `off`, stored on the player. Kill XP left chat; level-ups stay. The "low-level mob" hint now shows at most once a minute.
+
+**Proving the extension points:** a test-only `resources.yml` adds a custom ore (an amethyst block "test vein" that needs a drill of tier 5, level 50, 75 XP), its own drop (a "Test Crystal") and the drill. With no code change, in game: a netherite pickaxe is refused with "test vein needs a drill (tier 5)" and the block stays; the drill gathers it for 75 XP and Test Crystals; a machine's extraction (`/cerb gather extract`) gives the crystals and no XP; with a pickaxe the machine can't; a placed one gives its own block back and nothing else.
+
+**Your older `attributes.yml`** gets Mining's entries either way: an unedited copy is refreshed at startup (the old one kept as `attributes.yml.old`; on the sandbox it was the Kill XP v2 copy), and a skill your file doesn't mention takes the shipped entry. `Skill: []` turns one off.
+
+**Checks:**
+
+| Suite | Checks |
+|---|---|
+| unit tests | 189 (11 new: the rule table, the XP line, gear contributions, config delivery) |
+| gathering.js: mine, farm, fortune, smelt, forge, upgrade | 13, 11, 6, 3, 12, 3 |
+| gathering.js: gear, custom, xpdisplay, persistence across a restart | 8, 9, 3, 1 + 4 |
+
+Every miss along the way was in the test, not the plugin: the arena was filled before its chunks loaded, the bot picked up drops before they were counted, `/item replace` doesn't run on this Folia build, and this mineflayer maps the 1.21 smithing table as the old 3-slot one.
+
+**Regression, performance, review:** (being filled in).
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -444,7 +503,7 @@ The highest-value loops, in order:
 **Still yours:**
 1. **Big hits and the defense bar.** One hit larger than about 430 (for a 300-point bar) is still taken at the bar's full rate, so the bar absorbs more than it holds. Today only extreme hits reach that. Recommendation: limit the bar to its points when the first bosses with big telegraphed hits arrive (`ATTRIBUTES_ENGINE.md`).
 2. **Weapon Mastery's double role.** Recommendation: split it at the weapons and classes design step (Step 4), so every weapon needs two skills for 125 Power (`ATTRIBUTES_ENGINE.md`).
-3. **Where gathering and crafting go** in the new order (`ROADMAP.md`).
+3. ~~Where gathering and crafting go~~: decided (Gameplay Depth first) and the first loop is built.
 4. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend planning the upgrade now that Attributes v1 is in.
 5. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
 6. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
@@ -468,3 +527,6 @@ The highest-value loops, in order:
 14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`). Today only an admin can open the Mage. Recommendation: let Spell Weaving 5 open it (kills with a stick or blaze rod already train Spell Weaving), together with magic skill XP paid on hits instead of casts.
 15. **Lifesteal for everyone from level 1.** Weapon Mastery gives every player 2.7% lifesteal on mob hits from the start, the only healing in a fight. Keep it, or start it at 0 and let it grow with the skill?
 16. **Blink chaining.** At 0.4 s and 20 Essence, Blink costs exactly the base Essence regeneration, so it can chain indefinitely at about 15 blocks a second (like a teleport item limited only by mana). Keep it, or raise its Essence cost so a chain runs dry after a few seconds?
+17. **Gathering numbers** (`resources.yml`, all yours to tune): Mining XP per block, the weak-resource quarter, Fortune's 0.5% per point and 50% cap, the quality odds and bonuses. At level 1, strip mining pays about 8,000 Mining XP an hour (level 10 in about 2 hours), the same order as fighting.
+18. **Gathering speed applies to every block,** dirt and wood included, as one block-breaking stat. Woodcutting and Excavation could get their own later; for now Mining drives it alone.
+19. **Iron and gold farms and Smithing.** Forging pays for the metal whatever its source, so an iron golem farm (a few hundred to a few thousand ingots an hour) makes Smithing XP renewable: 5 XP per ingot forged, about 2,000 XP an hour from a modest farm, without mining. Smelting XP can't be farmed this way (it needs mined ore). Recommendation: keep it for now (the ingots are the cost, and the gear is real gear); if farms dominate Smithing, move part of forging's XP to smelting, which only mined ore pays.

@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 6, the ability controls (about 30 minutes).** Sections 1–5 are from earlier milestones.*
+*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 7, mining, smelting, forging and the XP display (about 20 minutes).** Section 6 (the ability controls) is from the last round; sections 1–5 from earlier milestones.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -132,6 +132,31 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 - Can you tell the refusal sounds apart (cooldown tick, Essence fizzle, low note, whiff)?
 - Do the three classes feel different, and does each ability feel worth pressing?
 
-## 7. Afterwards
+## 7. Mining, smelting, forging and the XP display
+
+Use a survival world spot with stone and ore (or make some with `/fill`: blocks made by commands count as natural). Note your Mining and Smithing levels first; set them back at the end.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | In survival, mine stone, coal, iron and a diamond ore with an iron pickaxe. | The HUD's middle shows `+1 Mining`, then the gains adding up into one line (`+53 Mining`) for a few seconds. Stone 1, coal 4, iron 8, diamond 40. No chat lines. |
+| 2 | `/xpdisplay detailed`, mine an ore; then `/xpdisplay off`, mine one; then `/xpdisplay compact`. | Detailed: `+8 Mining XP · 120/115... · Lv 2`. Off: no XP line (level-ups still in chat). Your choice is still there after a rejoin. |
+| 3 | Place a stone or an ore and break it again. Make stone with lava and water and break it. | No XP for either. |
+| 4 | Mine an ore with a wooden pickaxe where vanilla drops nothing (iron ore). | No drop and no XP. |
+| 5 | `/cerb skill YourName Mining level 100`, `/stats` → Speed & handling. Mine stone. | Gathering speed +13.8%: stone breaks a little faster. Mining's page shows Fortune +50 and an extra-ore chance of 25%. |
+| 6 | Mine 20 iron ores at Mining 100. | About one ore in four drops 2 raw iron instead of 1, never more than 2 (a soft chime when it happens). With Silk Touch: never. |
+| 7 | Smelt raw iron in a furnace and take the ingots. | `+2 Smithing` per ingot. A hopper taking them out pays nobody. |
+| 8 | Craft an iron sword, then shift-click a batch of iron pickaxes. | `+10 Smithing` for the sword; `+15` for each pickaxe. Each item's lore shows a quality (Common, Fine, Superior or Masterwork); a shift-click batch shares one. |
+| 9 | Hold a Fine or better sword; `/stats` → the weapon tile. Put on a Fine or better armor piece. | Power for swords +3 (Fine), +6, +10; Fortitude +1, +2, +4 per piece. `/cerb gather quality masterwork` sets the held item's quality for a quick test. |
+| 10 | 9 iron ingots into an iron block and back; repair two worn swords in the crafting grid. | No Smithing XP for any of these. |
+| 11 | Upgrade a diamond sword with a quality at a smithing table. | `+50 Smithing`; the netherite sword keeps its quality. |
+| 12 | Kill a zombie, then use an ability that is on cooldown right after. | Kill XP shows on the HUD (`+40 Blade Mastery`), not in chat. The cooldown message covers it, and the XP line comes back afterwards. |
+
+**What only you can judge, please tell me:**
+- Does mining feel rewarding at level 1, and does the extra ore feel noticeable but not silly at Mining 100?
+- Are the XP numbers right (strip mining about 8,000 Mining XP an hour at level 1)?
+- Is the XP line easy to read without being in the way? Compact or Detailed by default?
+- Do the quality bonuses feel worth forging for?
+
+## 8. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

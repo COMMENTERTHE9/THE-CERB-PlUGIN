@@ -183,7 +183,8 @@ async function stats() {
   check('Power is marked active against mobs', /Active \(fighting mobs\)/.test(slotLore(10)), slotLore(10));
   check('Vitality is marked active', /● Active/.test(slotLore(12)), slotLore(12));
   check('Essence is marked active', /● Active/.test(slotLore(15)), slotLore(15));
-  check('Fortune is honest about not being used yet', /not used in combat yet/.test(slotLore(16)), slotLore(16));
+  // Since the gathering loop (2026-10-25) Fortune is live: the extra-ore chance, shown with its cap.
+  check('Fortune shows its real effect, the extra-ore chance', /Extra ore when mining: [\d.]+% \(max 50\.0%\)/.test(slotLore(16)) && /Active/.test(slotLore(16)), slotLore(16));
   // Stats is opened from the Player Menu, so the held item there is the head; check with the sword in hand.
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`);
   if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(300); }

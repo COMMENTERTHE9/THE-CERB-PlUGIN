@@ -1,6 +1,6 @@
 # Gathering → processing → equipment: the first complete loop
 
-*Gameplay Depth & Systems Completion, item 3 (`docs/ROADMAP.md`). Built on the skill audit's findings (`docs/SKILL_AUDIT.md`): no gathering, crafting or furnace event is handled today, and the old yield and quality code is unsafe to wire. Status: being built; each part is marked as it lands in `docs/STATUS.md`.*
+*Gameplay Depth & Systems Completion, item 3 (`docs/ROADMAP.md`). Built on the skill audit's findings (`docs/SKILL_AUDIT.md`): before this, no gathering, crafting or furnace event was handled, and the old yield and quality code was unsafe to wire (it stays unwired). Status: **built and verified in game, 2026-10-25** (`docs/STATUS.md` → Done: Mining → Smithing → Equipment; `tools/playtest/gathering.js`).*
 
 ## The loop
 
@@ -69,7 +69,7 @@ resources:
 ## Smithing and crafting
 
 - **Smelting:** XP when a player takes metal from a furnace or blast furnace: iron 2, gold 3, copper 1, netherite scrap 25 per item.
-- **Forging:** XP for crafting metal and diamond gear (tools, weapons, armor), by material and size (an iron sword 10, an iron chestplate 30); for the netherite upgrade at a smithing table, 50. A shift-click pays for every item it made.
+- **Forging:** XP for crafting metal and diamond gear (tools, weapons, armor), by material and size (an iron sword 10, an iron chestplate 40); for the netherite upgrade at a smithing table, 50. A shift-click pays for every item it made.
 - **Quality:** forged gear rolls a quality when taken from the crafting grid: Common, Fine, Superior or Masterwork. Better Smithing moves the odds toward Masterwork, and a shift-click rolls once for the whole batch, so re-crafting can't fish for a roll. The quality is stored in the item (a Cerberus id, not its name) and shown in its lore.
 
 ## Equipment in the attribute engine (no second item-stat engine)
@@ -110,6 +110,30 @@ Unit tests cover parsing and the rules; the sandbox covers the same in game.
 - No database work per block: XP rides the existing coalesced skill saves, and placed blocks live in chunk data.
 - Folia-safe: every check runs on the region thread that owns the block or player.
 - **Measured before and after** with `load.js gather` and `load.js craft` (9 bots, 60 s, two runs and a warm-up, JFR), by the method in `docs/PERFORMANCE.md`.
+
+## How it is counted (as built)
+
+- **Mining XP** is paid at the end of the break (`BlockBreakEvent`, MONITOR, after nothing can cancel it). The rule table is one pure function, `GatherRules.decide`, unit-tested row by row.
+- **The bonus** adds one to the amount of the first item vanilla drops (`BlockDropItemEvent`), never the block itself; a custom resource's own drops get it the same way. A quiet chime says it happened.
+- **Placed blocks** live in each chunk's data (`cerberus:placed_resources`, a sorted array of packed positions), cached while the chunk is loaded. Only resource blocks are remembered; a block's mark is forgotten when it is broken or blown up.
+- **Smelting and forging** are counted by the game's own "items crafted" statistic, which rises once per item really made:
+  - a click on a crafting result that makes nothing (a full cursor, a number key onto an occupied hotbar slot) pays nothing;
+  - a shift-click or Ctrl+Q batch pays every item, however many fit;
+  - a furnace that smelted two kinds of input (raw iron and iron ore) fires its extract event once per kind for one take, and still pays once.
+  The click arms the payment for 100 ms; the statistic pays it.
+- **Quality** is rolled when the result slot is clicked. In a batch, each next result gets the same quality as the grid makes it, and a result left in the grid afterwards loses it, so the next take rolls its own.
+- **The equipment source** keeps, per player, the qualities in hand and worn (`EquipmentSource.Worn`), read when equipment changes, and rebuilds the snapshot only when that changes.
+- **The XP display** hooks the single award path (`SkillManager.applyAward`), so every XP source shows without each one knowing about it: kills, hits, spells, chunks, mining, smelting, forging and admin grants. The line is shown on the player's thread (`Skills.XpDisplay`), merged per skill for 4 s (`Skills.XpLine`) and shown for 2.5 s. An ability or refusal message covers it; the XP line keeps its remaining time for afterwards.
+
+## Admin and test tools
+
+- `/cerb gather info`: the block you look at as the rules see it (resource, placed, tool fit, the XP and bonus chance breaking it would give), the item in hand and your Power, Fortitude and Fortune.
+- `/cerb gather tool <id>` and `/cerb gather item <id> [n]`: custom tools and items from resources.yml.
+- `/cerb gather quality <q|none>`: set the held gear's quality (the same data forging writes).
+- `/cerb gather extract`: a machine's extraction of the block you look at, with the item in hand as the machine's tool.
+- `/cerb gather stats`: paying blocks, bonuses, refusals, smelted/forged/upgraded counts, placed-block cache, XP display updates, attribute rebuilds.
+- `/cerb combatdebug` adds a `[Forge]` line per forging step.
+- `tools/playtest/gathering.js`: phases `mine`, `farm`, `fortune`, `smelt`, `forge`, `upgrade`, `gear`, `custom` (needs `SERVER_DIR`), `xpdisplay`, `persist-set`/`persist-check`.
 
 ## Built in order (each verified in game, then committed)
 

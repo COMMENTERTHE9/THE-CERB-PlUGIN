@@ -2,6 +2,8 @@
 
 *The first task of the Gameplay Depth & Systems Completion milestone (`docs/ROADMAP.md`). Each skill was read from the source, not from its menu page: "Do not treat a skill as complete simply because its icon, description, or level exists."*
 
+> **Update, later on 2026-10-25:** the first loop is built (`docs/design/GATHERING.md`, `docs/STATUS.md`). **Mining** and **Smithing** are now **functional** (their rows and blocks below are updated), and **Fortune** does something: a chance of one extra ore, which also gives Fishing, Scavenging, Trading and Lockpicking their first effect. The counts, therefore: 6 functional, 10 partial, 9 disconnected, 10 placeholder. The rest of this audit is as written.
+
 ## Method
 
 - **Reachable only.** A behaviour counts when a runtime path reaches it: a registered listener, a command or a scheduled task actually calls it. Code that nothing calls is reported as disconnected, however complete it looks.
@@ -155,8 +157,8 @@ Ranked by value to players against effort.
 | Spell Weaving | Magic | Partial | 15 per cast; kills holding a focus | Essence (half rate), spell cooldown recovery |
 | Mana Regeneration (Essence Regeneration) | Magic | Disconnected | None | Nothing earnable (would copy Intelligence) |
 | Defensive Magic | Magic | Disconnected | None | Nothing earnable (Fortitude at admin levels) |
-| Mining | Gathering | Disconnected | None | Nothing |
-| Smithing | Production | Disconnected | None | Nothing |
+| Mining | Gathering | **Functional** (since the loop) | Natural stone and ore broken by hand (`resources.yml`) | Gathering speed, Fortune (extra ore) |
+| Smithing | Production | **Functional** (since the loop) | Smelting metal, forging gear, the netherite upgrade | Forged gear quality odds |
 | Crafting | Production | Disconnected | None | Nothing |
 | Woodcutting | Gathering | Disconnected | None | Nothing |
 | Farming | Gathering | Disconnected | None | Nothing |
@@ -362,7 +364,7 @@ The ten questions, short. **XP** = 1–2, **Effects** = 3, **Not working** = 4, 
 
 ### Gathering and production
 
-**Mining: disconnected.**
+**Mining: disconnected** (as audited; **functional since the Mining → Smithing → Equipment loop**: XP per natural block from `resources.yml`, gathering speed, Fortune, placed-block tracking, custom resources and tools; `docs/design/GATHERING.md`).
 - **XP:** none. No block-break handler exists. A pickaxe kill trains nothing, or Heavy Armor through the fallback.
 - **Effects:** none.
 - **Not working:** `MiningSkill` and `ResourceYieldManager` are unreachable and unsafe:
@@ -376,7 +378,7 @@ The ten questions, short. **XP** = 1–2, **Effects** = 3, **Not working** = 4, 
 - **Future:** drills, custom ores, distance-tiered nodes.
 - **Now / later:** the Mining → Smithing → Equipment loop now (`docs/design/GATHERING.md`).
 
-**Smithing: disconnected.**
+**Smithing: disconnected** (as audited; **functional since the loop**: smelting, forging and netherite-upgrade XP, counted per item made; forged quality through the attribute engine).
 - **XP:** none: no furnace, smithing-table or anvil handler.
 - **Effects:** none.
 - **Not working:** the smithing code in `CraftingManager` can never receive an item. If it could, it would apply unsafe Sharpness and a name-only "infusion".

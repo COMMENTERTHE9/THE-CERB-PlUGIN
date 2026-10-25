@@ -36,7 +36,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
   - **Usability waits for the owner's playtest** (`docs/PLAYTEST_CHECKLIST.md` §6).
 - ✅ Class milestone wrap-up (2026-10-25, `docs/STATUS.md`): both control schemes stay (the owner prefers combos; default unchanged); per-mob cast-XP budget (`Classes/CastXpLedger`); movement ≤ 1.2 s (Blink 0.4 s; Charge/Lunge keep their strike pace via `strike-cooldown`); unedited shipped `abilities.yml`/`classes.yml` refreshed on older installs (`ShippedConfig`); rideable mobs labelled (the label steps aside for a rider)
 - ✅ The 35-skill audit (`docs/SKILL_AUDIT.md`, evidence in `audit/skills-2026-10-25/`): 4 functional, 10 partial, 11 disconnected, 10 placeholder; every skill's own `applyEffect` code is unreachable and unsafe to wire (skills act only through the attribute engine)
-- ⬜ Next: **Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`): Mining → Smithing → Equipment with the real-time XP display (`docs/design/GATHERING.md`), then the audit's XP-exploit fixes; later Step 6 (six classes one at a time) and mastery to level 150. Quality before class count
+- ✅ Mining → Smithing → Equipment (2026-10-25, `docs/design/GATHERING.md`, `docs/STATUS.md`): Mining XP for natural blocks, gathering speed and Fortune (extra ore) from Mining; placed/formed/piston-moved blocks in chunk data pay nothing; smelting/forging/netherite-upgrade Smithing XP counted per item made (CRAFT_ITEM statistic); forged quality → Power/Fortitude/Fortune through an `EquipmentSource`; custom resources, tools, drops and machine extraction are data (`resources.yml`), proven by a synthetic drill and ore; real-time XP display (`/xpdisplay`, HUD slot below ability messages). `tools/playtest/gathering.js`
+- ⬜ Next: the owner's playtest of mining and forging (`docs/PLAYTEST_CHECKLIST.md` §7); then the audit's XP-exploit fixes and the same loop for the next skills; later Step 6 (six classes one at a time) and mastery to level 150. Quality before class count
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -53,6 +54,11 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
   - **Saved data:** `ClassProfile` (the saved document, incl. `controls:`/`bar:`, repaired on load).
   - **Menus:** `GUIs/player/Classes*`, `LoadoutMenu`, `AbilityPickerMenu`.
   - **Test tools:** `/cerb mana <p> [n|full|empty]`, `/cerb class <p> cooldowns`, `/cerb mobs [radius]`.
+- `Gathering/*` — gathering and forging (`docs/design/GATHERING.md`):
+  - **Data:** `GatheringCatalog` (`resources.yml` → resources by block, custom tools/items, smelting/forging XP, quality); `GatherRules` (pure: the rule table `decide`, XP, tool fit, bonus chance); `Quality`; `PlacedIndex` (pure packing).
+  - **Runtime:** `GatheringService` (evaluate a break, pay XP with fractions carried, custom drops, `extract` for machines); `GatheringListener` (breaks, the Fortune bonus); `PlacedBlocks` (chunk-data record, cached per loaded chunk); `ForgeListener` (smelting, forging, netherite upgrade, quality); `EquipmentSource` (forged quality → attributes); `GearItems` (item ids and lore).
+  - **Admin:** `/cerb gather info|tool|item|quality|extract|stats` (`Commands/GatherCommand`).
+- `Skills/XpDisplay.java` + `Skills/XpLine.java` — the real-time XP display; `Manager/PlayerHUDManager.xp` is its HUD slot (below `flash`)
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions
@@ -65,6 +71,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (any JDK >= 21).
 - Verify gameplay changes on a running server, not just the build. In a cloud/Linux session, `tools/cerb.sh` can download Folia and run a local test server (see RESTART_GUIDE.md).
 - Commit working increments; keep the tree clean.
+- **Shipped config files** (`abilities.yml`, `classes.yml`, `attributes.yml`, `resources.yml`) are refreshed at startup when unedited (`ShippedConfig`): when you change one, add its old hash to `ShippedConfig.EARLIER` and the new one to `ShippedConfigTest` (the test says so).
+- **Anything that pays XP for an action** counts what really happened (the game's statistics, the final event state at MONITOR), never the click or the attempt; and it has a negative and a positive control in a harness.
 
 ## History / audits
 - `audit/AUDIT_2026-06-08.md` — latest codebase audit.

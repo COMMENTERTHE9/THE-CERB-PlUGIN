@@ -181,6 +181,27 @@ Plain hits fall in between. The `combat` load shows what players who don't cast 
 - **The new parts cost nothing measurable.** The cast feedback, the HUD message slot and the ability bar appear in 0 samples under the `abilities` load, and the bar in 3 under `combat`. While shown, the bar redraws twice a second per player; hidden, it runs no task.
 - **A refused cast is cheaper than a cast.** The checks run before anything is spent, so a refusal costs the checks and one message.
 
+## Gameplay Depth: gathering, crafting and the XP display (2026-10-25)
+
+**Method, corrected.** 9 bots, an 80 s load, a warm-up run first, then two measured runs per load. Each measured run records 60 s of JFR **starting 10 s after the load phase begins** ("LOAD START": the bots have all joined by then), and Folia's `tps` is read halfway through (`$SP/perf-gd.sh` in the session; the same steps by hand: start `load.js`, wait for "LOAD START", wait 10 s, `tools/perf/profile.sh 60`). Two new loads in `load.js`:
+- `gather`: each bot strip-mines its own block of stone with coal, iron, copper and gold ore in survival (a netherite pickaxe and Haste II: about 1.7 blocks a second per bot, picking up its drops), refilled when mined out;
+- `craft`: each bot crafts iron pickaxes at its own crafting table as fast as a hurried player (about 1.4 a second).
+
+**Two corrections to earlier sections:**
+- **The Phase 1–3 recordings above mostly measured bots joining.** Their JFR started 8 s after `load.js` was launched, but the bots take about 40 s to join, so most of each 50 s recording was joins and only the last seconds were load. Their "0.024–0.053 ms per tick" for `abilities` and "0.041–0.042" for `combat` are therefore too low, and their before/after comparison says nothing. Re-measured correctly on 2026-10-25 (the same build, before the gathering code), `abilities` costs 0.113–0.122 ms per tick and `combat` 0.122, in line with Step 5's 0.09–0.13 and 0.13–0.16. Nothing was over budget: class code on the region threads is 23–25 samples per run, of which 8–12 are ability strikes going through the hit pipeline (a hit costs the same as a weapon hit) and 5–6 the ability bar; class logic itself comes to about 0.04 ms per key press, inside the 0.05 ms budget. (Phase 1–3's "0.016 ms per press" was taken from the flawed recordings.)
+- **`tools/perf/jfr_summary.py` didn't count class code.** Its package list lacked `Classes.`, so a cast key handled directly by `Classes.AbilityListener` wasn't counted as Cerberus time. It now includes `Classes.` and `Gathering.`, prints a per-package line for the region threads, and every number in this section comes from the corrected script (the saved baseline recordings were summarised again).
+
+**Before** (the build before the gathering code, a47ca6e; TPS 20.00 on every region in every run):
+
+| Load | Cerberus, ms per tick (two runs) | Work per bot |
+|---|---|---|
+| `gather` | 0.037 / 0.035 | 137 blocks in 80 s (127 stone, 10 ore) |
+| `craft` | 0.047 / 0.055 | 104–118 iron pickaxes in 80 s |
+| `abilities` | 0.122 / 0.113 | 50 key presses, 49 hits |
+| `combat` | 0.122 / 0.122 | 107–110 hits |
+
+**After:** (being measured).
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.

@@ -213,7 +213,7 @@ async function systems() {
 
   await click(42);
   check('Guide opens', await waitTitle(SCREEN('Guide')), title());
-  check('Guide: live numbers and honest notes', /every [\d,]+ blocks adds a level/.test(flat(19)) && /Fortune: not used in the game yet/.test(flat(23)) && /not built yet/.test(flat(29)), flat(19) + ' || ' + flat(29));
+  check('Guide: live numbers and honest notes', /every [\d,]+ blocks adds a level/.test(flat(19)) && /Fortune: a chance of one extra ore when mining/.test(flat(23)) && /not built yet/.test(flat(29)), flat(19) + ' || ' + flat(29));
   await click(45); await waitTitle(SCREEN('Player Menu'));
 }
 

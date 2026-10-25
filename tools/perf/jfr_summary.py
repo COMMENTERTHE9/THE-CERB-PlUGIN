@@ -12,8 +12,10 @@ Usage: jfr_summary.py <recording.jfr> [seconds] [sample-period-ms]
 """
 import collections, json, subprocess, sys
 
-PKGS = ("Attributes.", "Commands.", "CustomEntities.", "CustomItems.", "CustomTags.", "DefensiveMagic.",
-        "GUIs.", "Listener.", "Manager.", "Skills.", "Spells.", "Traps.", "cerberus.")
+PKGS = ("Attributes.", "Classes.", "Commands.", "CustomEntities.", "CustomItems.", "CustomTags.", "DefensiveMagic.",
+        "GUIs.", "Gathering.", "Listener.", "Manager.", "Skills.", "Spells.", "Traps.", "cerberus.")
+# Before 2026-10-25 this list lacked Classes. and Gathering.: class code on the stack under no other Cerberus
+# package (a cast key handled straight by Classes.AbilityListener) was not counted as Cerberus time.
 PERIOD_MS = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 
 
@@ -55,6 +57,7 @@ def main():
     ours_group = collections.Counter()
     inner = collections.Counter()
     entry = collections.Counter()
+    by_pkg = collections.Counter()  # region threads: package of the innermost Cerberus frame
     for ev in cpu:
         th = ((ev["values"].get("sampledThread") or {}).get("javaName")) or "?"
         g = group(th)
@@ -65,12 +68,16 @@ def main():
             ours_group[g] += 1
             inner[mine[0]] += 1
             entry[mine[-1]] += 1
+            if g == "region threads":
+                by_pkg[mine[0].split(".")[0]] += 1
     print(f"CPU samples: {len(cpu)} ({PERIOD_MS:.0f} ms each per running thread)" + (f" over {secs:.0f} s" if secs else ""))
     for g, n in per_group.most_common():
         line = f"  {g:15s} {n:7d} samples, Cerberus on the stack in {ours_group[g]:6d} ({100.0 * ours_group[g] / max(1, n):.1f}%)"
         if secs and g == "region threads":
             line += f"  = ~{ours_group[g] * PERIOD_MS / (secs * 20):.3f} ms of region-thread time per tick"
         print(line)
+    if by_pkg:
+        print("  region threads by package (innermost Cerberus frame): " + ", ".join(f"{k} {v}" for k, v in by_pkg.most_common()))
     print("\nTop Cerberus frames nearest the top of the stack (self + what they call outside Cerberus):")
     for name, n in inner.most_common(25):
         print(f"  {n:6d}  {name}")
