@@ -116,6 +116,9 @@ async function swings() {
   await cmd('/gamemode creative');
   await equip('netherite_sword');
   await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
+  // Weapon Mastery adds 0.25 Power per level to every weapon; pin it (level 1, the lowest settable) so the
+  // traced multiplier is exact whatever earlier phases left behind.
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 1`);
   const rows = [];
   for (const bm of [1, 50, 100]) {
     await cmd(`/cerb skill ${NAME} Blade_Mastery level ${bm}`);
@@ -1078,7 +1081,7 @@ bot.once('spawn', async () => {
       const at = (bm, lvl) => rows.find(r => r.bm === bm && r.lvl === lvl).swings;
       console.log('\nSwings to kill (avg of 2)   zombie L1   zombie L50');
       for (const bm of [1, 50, 100]) console.log(`  Blade Mastery ${String(bm).padEnd(3)}            ${String(at(bm, 1)).padEnd(10)}  ${at(bm, 50)}`);
-      check('The server applied Power to the hit (trace: Swords, Power 50 -> x3.50)', /Power\(Swords, Power 50\.0 -> x3\.50\)/.test(trace), trace);
+      check('The server applied Power to the hit (trace: Swords, Power 50.3 -> x3.51: Blade Mastery 50 + Weapon Mastery 1 x 0.25)', /Power\(Swords, Power 50\.3 -> x3\.51\)/.test(trace), trace);
       check('Blade Mastery 100 kills a level-1 zombie in far fewer swings than Blade Mastery 1', at(100, 1) <= at(1, 1) / 2, `BM1 ${at(1, 1)} vs BM100 ${at(100, 1)}`);
       check('Blade Mastery 100 kills a level-50 zombie in far fewer swings than Blade Mastery 1', at(100, 50) <= at(1, 50) / 3, `BM1 ${at(1, 50)} vs BM100 ${at(100, 50)}`);
       check('Equal-level fights take about the same swings (BM1 vs L1, BM50 vs L50)', Math.abs(at(50, 50) - at(1, 1)) <= 2, `${at(1, 1)} vs ${at(50, 50)}`);
