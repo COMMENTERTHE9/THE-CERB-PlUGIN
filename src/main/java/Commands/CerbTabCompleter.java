@@ -26,7 +26,7 @@ public class CerbTabCompleter implements TabCompleter {
     private static final List<String> SUBCOMMANDS = List.of(
             "reload", "backup", "debug", "combatdebug",
             "scalingpreview", "log", "healthstate", "status",
-            "panel", "heal", "mana", "skill", "resetdata",
+            "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
             "speed", "spawn"
@@ -64,6 +64,9 @@ public class CerbTabCompleter implements TabCompleter {
 
             // skill <player> <skillName> <level|xp> <value>
             case "skill" -> completeSkill(args);
+
+            // arg1 = player, arg2 = class | info, arg3 = rank
+            case "class" -> plugin.getClassCommand() != null ? plugin.getClassCommand().adminComplete(args) : List.of();
 
             // scalingpreview <all | param-key>
             case "scalingpreview" -> completeScalingPreview(args);

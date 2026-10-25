@@ -1,8 +1,10 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes prototype
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 35 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
+*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 50 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
+
+**Classes (section 6) are saved too.** A class opens by itself once your skills meet its entry and then stays learned (there is no "unlearn", by design). Ranks you set with `/cerb class` are kept; set them back with the same command (rank 1 is the lowest).
 
 ## 1. Admin Control Panel
 
@@ -64,6 +66,27 @@
 | 5 | Close the menu, kill a few mobs (or `/cerb skill YourName Blade_Mastery level <current + 2>`), open it again | The Skills tile shows a **2** in its corner and "▲ +2 levels since you last looked", with one soft chime. Skills → Combat shows the same on the category and on Blade Mastery. Opening Blade Mastery flashes its bar gold once, with a quiet level-up sound. Open it again: it just fills. |
 | 6 | Leave the menu open for a while, then close it | Nothing flickers or keeps moving. Closing is silent. |
 
-## 6. Afterwards
+## 6. Classes & Abilities (Step 5 prototype: Warrior, Mage, Duelist)
+
+Only these three classes exist; the rest of the roster is design only.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Player Menu → **Classes & Abilities** (the star, bottom row) | Three class tiles: your rank and XP, or what each still needs ("Blade Mastery 10 (you: 3)…"); three loadouts; "How to cast". |
+| 2 | `/cerb skill YourName Blade_Mastery level 10`, `… Critical_Strike level 5`, `… Intelligence level 5` (skip what you already have) | "✦ New class: Warrior", then Duelist and Mage, each once. |
+| 3 | `/cerb class YourName warrior rank 12`, `… mage rank 8`, `… duelist rank 12` | "✦ Warrior rank 12" and the abilities it unlocks. A class tile → its abilities: unlocked in colour, the rest with the rank that opens them. |
+| 4 | Loadout 1 → click Active 1 → Cleave; Active 2 → Execute; Active 3 → War Cry; Passive 1 → Battle-Hardened; Keystone → Juggernaut | Each pick says where it went and returns to the loadout. The Bonuses tile lists +8 and +12 Vitality, +6 Fortitude, −6% attack speed; once the loadout is in use, max health on the HUD goes up. |
+| 5 | Sword in hand, a few zombies close in front: hold **Sneak** and right-click, then Sneak + left-click one zombie, then Sneak + F | Cleave hits every zombie in front ("✦ Cleave"); Execute hits harder after a Cleave on several (Momentum); War Cry gives +15% damage for 8 s. Pressing again too soon shows the seconds left. |
+| 6 | Loadout 2 → Riposte (A1), Flurry (A2), Feint (A3), Precision (P1); "Use this loadout" (out of combat) | Riposte just before a zombie hits you: no damage, it is struck back ("✦ Riposte!"). Flurry: three quick hits. Feint, then a normal hit: a critical hit. |
+| 7 | Loadout 3 → Arcane Bolt (A1), Frost Nova (A2), Blink (A3); blaze rod in hand | Arcane Bolt hits a zombie up to 8 blocks away and costs 15 Essence; Frost Nova slows everything around you; Blink jumps you 6 blocks forward, never into blocks. With a sword these say "needs a focus". |
+| 8 | Keys stay normal: no Sneak; or a pickaxe, block or food in hand; or a bow (right-click) | Everything works as before: no casts, drops drop, bows shoot. |
+| 9 | With abilities on Q, F and scroll: Sneak + Q, Sneak + F, Sneak + scroll | The ability goes off; the sword stays in your hand, nothing is dropped or swapped, the selected slot doesn't move. |
+| 10 | Hit a zombie, then `/class loadout 2` straight away; wait 8 s and switch twice in a row | Refused during the fight ("Not during a fight…"); after a switch, a second one waits 10 s. Cooldowns follow you into the other loadout. |
+| 11 | Cast War Cry, rejoin within 30 s, `/class` | Ranks, loadouts and the active loadout are as you left them; War Cry still shows its cooldown. |
+| 12 | Another player in front of you while you Cleave; Sneak + left-click that player | Abilities never hit players; a Sneak-attack on a player is a normal PvP hit. |
+
+`/class` shows the same in chat (`/class abilities`, `/class equip 1 a1 cleave`, `/class loadout 2`).
+
+## 7. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

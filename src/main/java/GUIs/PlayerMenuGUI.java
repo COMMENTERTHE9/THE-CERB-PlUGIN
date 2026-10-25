@@ -158,9 +158,10 @@ public class PlayerMenuGUI {
         sections.register(new Section("quests", 38, Material.WRITABLE_BOOK, "Quests",
                 List.of("Tasks, stories and rewards."),
                 null, p -> Availability.inDevelopment("Quests are not built yet."), null));
-        sections.register(new Section("unlocks", 40, Material.TRIPWIRE_HOOK, "Unlocks",
-                List.of("Abilities and features you", "unlock as you progress."),
-                null, p -> Availability.inDevelopment("Nothing unlocks yet."), null));
+        // Step 5: the class prototype (Warrior, Mage, Duelist) took over the "Unlocks" placeholder tile.
+        sections.register(new Section("classes", 40, Material.NETHER_STAR, "Classes & Abilities",
+                List.of("Learn classes, unlock abilities,", "and mix them in your loadouts."),
+                PlayerMenuGUI::classesLive, p -> Availability.available("Prototype: 3 of the planned classes."), GUIs.player.ClassesMenu::new));
         sections.register(new Section("guide", 42, Material.BOOK, "Guide",
                 List.of("How Cerberus works, in short", "topics."),
                 null, p -> Availability.available(), GuideMenu::new));
@@ -173,6 +174,14 @@ public class PlayerMenuGUI {
         int chunks = plugin.getChunkDiscoveryManager() == null ? -1 : plugin.getChunkDiscoveryManager().discoveredCount(p.getUniqueId());
         return List.of(ChatColor.GRAY + "Creature level here: " + ChatColor.WHITE + level,
                 ChatColor.GRAY + "Chunks discovered: " + ChatColor.WHITE + (chunks < 0 ? "loading..." : String.format(java.util.Locale.ROOT, "%,d", chunks)));
+    }
+
+    private static List<String> classesLive(CerberusPlugin plugin, Player p) {
+        Classes.ClassService svc = plugin.getClassService();
+        Classes.ClassProfile prof = svc == null ? null : svc.profile(p.getUniqueId());
+        if (prof == null) return List.of();
+        return List.of(ChatColor.GRAY + "Classes learned: " + ChatColor.WHITE + prof.classes().size() + ChatColor.DARK_GRAY + " / " + svc.catalog().classes().size(),
+                ChatColor.GRAY + "In use: " + ChatColor.WHITE + "Loadout " + (prof.activeIndex() + 1) + " (" + prof.activeLoadout().name() + ")");
     }
 
     private static List<String> skillsLive(CerberusPlugin plugin, Player p) {

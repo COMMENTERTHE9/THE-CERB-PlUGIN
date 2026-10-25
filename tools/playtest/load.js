@@ -9,6 +9,10 @@
 //   mixed  - the bots split across the three
 //   idle   - the bots just stand there (per-player background cost: HUD, regen, saves)
 //   menuidle - each bot opens the Player Menu once and leaves it open (an open menu must cost nothing extra)
+//   abilities - like combat, but each bot is a Warrior/Duelist (Step 5 classes; the controller sets its skills and
+//            ranks) and presses its cast keys on a rhythm while fighting: Sneak + attack (Cleave), Sneak +
+//            right-click (Execute), Sneak + F (Flurry), Sneak + Q (Feint), with plain hits in between. Many presses
+//            land on a cooldown, as in play
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -52,6 +56,41 @@ async function combat(b, deadline) {
     if (!z) { b.chat('/cerb spawn zombie 50 noai'); bump(b.username, 'spawns'); await sleep(900); continue; }
     await b.lookAt(z.position.offset(0, z.height * 0.6, 0), true);
     b.attack(z); bump(b.username, 'hits');
+    await sleep(650);
+  }
+}
+
+async function abilities(b, deadline, controller) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Blade_Mastery level 10`); await sleep(500);
+  controller.chat(`/cerb skill ${n} Critical_Strike level 5`); await sleep(1500);
+  controller.chat(`/cerb class ${n} warrior rank 12`); await sleep(500);
+  controller.chat(`/cerb class ${n} duelist rank 12`); await sleep(800);
+  for (const e of ['a1 execute', 'a2 cleave', 'a3 flurry', 'a4 feint', 'a5 none', 'p1 battle_hardened', 'p2 precision', 'k juggernaut']) {
+    b.chat('/class equip 1 ' + e); await sleep(300);
+  }
+  b.chat('/class loadout 1'); await sleep(300);
+  b.chat('/gamemode creative'); await sleep(400);
+  b.chat('/clear @s netherite_sword'); await sleep(300);
+  b.chat('/give @s netherite_sword'); await sleep(800);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_sword' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const key = status => b._client.write('block_dig', { status, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 });
+  let k = 0, f = 0;
+  while (Date.now() < deadline) {
+    const z = Object.values(b.entities).find(e => e.name === 'zombie' && e.position.distanceTo(b.entity.position) < 3.5);
+    if (!z) { b.chat('/cerb spawn zombie 50 noai'); bump(n, 'spawns'); await sleep(900); continue; }
+    await b.lookAt(z.position.offset(0, z.height * 0.6, 0), true);
+    const step = k++ % 6;
+    if (step === 1 || step === 3 || step === 5) { b.attack(z); bump(n, 'hits'); }
+    else {
+      b.setControlState('sneak', true); await sleep(60);
+      if (step === 0) b.attack(z);                                            // Cleave (A2)
+      else if (step === 2) { b.activateItem(); await sleep(50); b.deactivateItem(); } // Execute (A1)
+      else key(f++ % 2 === 0 ? 6 : 4);                                         // Flurry (F), then Feint (Q)
+      bump(n, 'presses');
+      await sleep(60); b.setControlState('sneak', false);
+    }
     await sleep(650);
   }
 }
@@ -119,7 +158,7 @@ async function menuidle(b, deadline) {
   console.log(`LOAD START ${new Date().toISOString()} bots=${bots.length} seconds=${SECONDS} mode=${MODE}`);
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
-    const run = m === 'combat' ? combat(b, deadline) : m === 'hurt' ? hurt(b, deadline, controller)
+    const run = m === 'combat' ? combat(b, deadline) : m === 'abilities' ? abilities(b, deadline, controller) : m === 'hurt' ? hurt(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));

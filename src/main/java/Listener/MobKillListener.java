@@ -88,6 +88,9 @@ public class MobKillListener implements Listener {
         }
         skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
         player.sendMessage(ChatColor.GREEN + "+" + (long) Math.floor(xpGained) + " " + Skills.SkillNames.display(skillName) + " XP");
+        // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
+        Classes.ClassService classes = plugin.getClassService();
+        if (classes != null && !(mob instanceof Player)) classes.onKill(player, xpGained);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

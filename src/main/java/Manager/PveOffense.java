@@ -20,9 +20,16 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class PveOffense {
 
     private final AttributeService attributes;
+    /** Melee hits that crit whatever the roll (Feint): asked once per melee hit, and may use itself up. */
+    private volatile java.util.function.Predicate<java.util.UUID> forcedCrit = id -> false;
 
     public PveOffense(AttributeService attributes) {
         this.attributes = attributes;
+    }
+
+    /** Who has a guaranteed crit on their next melee hit (classes: Feint). Must be thread-safe. */
+    public void setForcedCrit(java.util.function.Predicate<java.util.UUID> forcedCrit) {
+        this.forcedCrit = forcedCrit == null ? id -> false : forcedCrit;
     }
 
     /** True when attributes.yml has PvE offense switched on. */
@@ -48,8 +55,20 @@ public final class PveOffense {
      */
     public CombatContext hit(Player attacker, LivingEntity mob, CustomDamageType type, double raw, WeaponClass weapon,
                              boolean trace) {
+        return hit(attacker, mob, type, raw, weapon, trace, false);
+    }
+
+    /** A melee hit: as {@link #hit}, and a guaranteed crit (Feint) is used up here. */
+    public CombatContext meleeHit(Player attacker, LivingEntity mob, CustomDamageType type, double raw, WeaponClass weapon,
+                                  boolean trace) {
+        return hit(attacker, mob, type, raw, weapon, trace, true);
+    }
+
+    private CombatContext hit(Player attacker, LivingEntity mob, CustomDamageType type, double raw, WeaponClass weapon,
+                              boolean trace, boolean melee) {
         AttributeSnapshot s = attributes.get(attacker.getUniqueId());
-        boolean crit = s.critChance() > 0 && ThreadLocalRandom.current().nextDouble() < s.critChance();
+        boolean forced = melee && forcedCrit.test(attacker.getUniqueId());
+        boolean crit = forced || (s.critChance() > 0 && ThreadLocalRandom.current().nextDouble() < s.critChance());
         double damage = raw * s.hitMultiplier(weapon, crit); // realm magnitude × within-realm offense
         if (!Double.isFinite(damage) || damage < 0) damage = raw;
 
@@ -66,7 +85,8 @@ public final class PveOffense {
                 weapon.displayName, s.power(weapon), s.powerMultiplier(weapon)));
         if (damage != afterPower) {
             ctx.appendTrace(crit ? "Crit" : "Bonus", afterPower, damage, crit
-                    ? String.format(Locale.ROOT, "x%.2f (%.1f%% chance)", s.critMultiplier(), s.critChance() * 100)
+                    ? (forced ? String.format(Locale.ROOT, "x%.2f (guaranteed: Feint)", s.critMultiplier())
+                              : String.format(Locale.ROOT, "x%.2f (%.1f%% chance)", s.critMultiplier(), s.critChance() * 100))
                     : null);
         }
         return ctx;

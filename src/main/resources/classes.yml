@@ -1,0 +1,30 @@
+# Classes (docs/design/CLASSES.md). A class is a specialization tree, not a lock: anyone whose skills
+# meet its entry can learn it, a player can learn every class, and earned progress is never lost.
+# Its abilities (abilities.yml) unlock with its rank (1-50) and stay unlocked; a loadout decides what
+# is in use. PROTOTYPE (Step 5): Warrior, Mage and Duelist. Skill names are internal names.
+
+# icon: the item a class's menu tile shows (a material name); abilities can have one too.
+
+# Shared cooldown groups: every ability in a group locks the whole group for this long.
+groups:
+  movement: 2s   # every dash and blink: mobility can stack, but can't chain without limit
+
+classes:
+  warrior:
+    name: Warrior
+    icon: IRON_SWORD
+    role: Balanced melee
+    signature: Momentum (hits build stacks, finishers spend them)
+    entry-any: { Blade Mastery: 5, Weapon Mastery: 5 }
+  mage:
+    name: Mage
+    icon: BLAZE_ROD
+    role: General offensive magic
+    signature: Essence (spells cost it, Essence makes them stronger)
+    entry: { Intelligence: 5 }
+  duelist:
+    name: Duelist
+    icon: GOLDEN_SWORD
+    role: Precision counters and chained strikes
+    signature: Riposte (read the attack, answer it)
+    entry: { Blade Mastery: 10, Critical Strike: 5 }

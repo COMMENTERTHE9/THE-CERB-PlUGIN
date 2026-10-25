@@ -82,7 +82,7 @@ async function nav() {
   const expect = { 19: ['Skills', 'Available'], 21: ['Stats & Attributes', 'Available'], 23: ['Ascension', 'Available'],
     25: ['Equipment', 'Available'], 28: ['Bestiary', 'Available'], 30: ['World & Exploration', 'Available'],
     32: ['Collections', 'In development'], 34: ['Recipes', 'In development'], 38: ['Quests', 'In development'],
-    40: ['Unlocks', 'In development'], 42: ['Guide', 'Available'] };
+    40: ['Classes & Abilities', 'Available'], 42: ['Guide', 'Available'] };
   const wrong = Object.entries(expect).filter(([s, [n, st]]) => slotName(+s) !== n || !slotLore(+s).includes(st)).map(([s]) => s + ':' + slotName(+s));
   check('Every hub destination is there with an honest state', wrong.length === 0, wrong.join(', '));
   check('Hub has Close but no Back/Home', slotName(53) === 'Close' && slotName(45) === '' && slotName(49) === '', [slotName(45), slotName(49), slotName(53)].join('/'));

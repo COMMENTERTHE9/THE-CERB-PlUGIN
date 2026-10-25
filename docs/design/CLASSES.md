@@ -324,3 +324,38 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 | 6 | **Class entry** | Skill requirements, never another class: open and readable. |
 | 7 | **Roster** | Keep all 25 with the §3 refinements (Scout as mobility support; Arcanist as the advanced magic class). Confirm Warrior, Mage and Duelist for the prototype. |
 | 8 | **Weapon display names** | The §4 table (Straight Sword, Saber, Quarterstaff, Warhammer, Sigil Blade, Furnace Hammer, Essence Repeater…). |
+
+## 11. Prototype status (Step 5, 2026-10-25)
+
+**Built and verified in game** (`tools/playtest/classes.js`, 85 checks on a Folia 1.21.11 sandbox; `docs/STATUS.md`):
+- Warrior, Mage and Duelist with the abilities in §9 (4 actives, 2 passives and a keystone each; `classes.yml`, `abilities.yml`);
+- the engine core: catalog with its power bounds (§8), loadouts and their rules, the caster, cooldowns with shared groups, the attribute source, persistence v1;
+- the five cast keys;
+- Player Menu → Classes & Abilities (classes, a class's abilities, loadouts, an ability picker), `/class`, and the admin `/cerb class <player> <class> rank <n> | info`.
+
+The other 22 classes of the roster are design only.
+
+**Settled while building.** These deviate from the text above; each takes the cautious side:
+- **PvP.** Abilities never hit players, and a Sneak-attack on a player stays a normal hit. Decision 5 recommends allowing abilities in PvP with PvP coefficients. That would change how PvP plays, which the owner keeps as a separate decision, so the prototype is PvE-only until then.
+- **Inputs.**
+  - A bow or crossbow keeps Sneak + right-click, because it shoots with it.
+  - A left-click whose cast doesn't go off (cooldown, Essence) is still a normal attack.
+  - With a mob under the crosshair the client sends an attack, not an air click, so the cast comes from the attack.
+  - Spears stab with their own action: their hit is caught as damage and replaced by the cast.
+  - Spell items (the Fireball Wand) keep their own right-click.
+- **Arcane Bolt** is an instant bolt: a ray to the first enemy within 8 blocks, and walls block it. It is not a flying projectile.
+- **Fireball** casts the existing spell, with its own cost, instead of being rebuilt.
+- **Class XP.**
+  - A cast earns 6 XP when it reaches an enemy, or when it is a self cast (buff, Blink, Feint) made during a fight.
+  - Riposte earns it when it counters.
+  - Casting into the air out of combat earns nothing.
+  - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced.
+- **Essence abilities** have their cooldowns shortened by Spell cooldown recovery (capped, paused in PvP), never below 1 s.
+- **Config changes never cost progress.**
+  - A class removed from `classes.yml` keeps its saved rank and XP, unused, and gets them back if it returns.
+  - A file that doesn't parse changes nothing. At startup classes stay off, and nothing is loaded or saved over.
+  - A rank change empties only the slots it no longer allows, in every loadout.
+- **Saves.**
+  - Every snapshot carries an increasing stamp, and the database ignores an older one, so a late save can't overwrite newer progress.
+  - Quitting and shutting down write directly, not throttled.
+  - A failed load turns classes off for that session instead of starting empty.

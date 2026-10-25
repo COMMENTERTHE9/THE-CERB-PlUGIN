@@ -177,6 +177,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
         // Centralized player cleanup + async skill save
         if (playerSessionManager != null) playerSessionManager.shutdown();
+        if (classService != null) classService.shutdown(); // writes every loaded class profile now
 
         if (damageDisplayListener != null) damageDisplayListener.shutdown();
         if (seaMonsterManager != null) seaMonsterManager.clearSeaMonsters();
@@ -259,6 +260,38 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public Attributes.AttributeService getAttributeService() { return attributeService; }
 
     public Attributes.AttributesConfig getAttributesConfig() { return attributesConfig; }
+
+    private Classes.ClassService classService;
+    private Classes.AbilityCaster abilityCaster;
+
+    /** Classes and abilities (docs/design/CLASSES.md): profiles, loadouts, class XP. */
+    public Classes.ClassService getClassService() { return classService; }
+    public Classes.AbilityCaster getAbilityCaster() { return abilityCaster; }
+
+    /**
+     * classes.yml + abilities.yml (written on first install). Null when a file can't be read or
+     * parsed: the caller then keeps what it had, so a typo never touches anyone's classes.
+     */
+    private Classes.ClassCatalog loadClassCatalog() {
+        File classesFile = new File(getDataFolder(), "classes.yml");
+        File abilitiesFile = new File(getDataFolder(), "abilities.yml");
+        if (!classesFile.exists()) saveResource("classes.yml", false);
+        if (!abilitiesFile.exists()) saveResource("abilities.yml", false);
+        YamlConfiguration classesYml = new YamlConfiguration();
+        YamlConfiguration abilitiesYml = new YamlConfiguration();
+        try {
+            classesYml.load(classesFile);
+            abilitiesYml.load(abilitiesFile);
+        } catch (Exception e) {
+            getLogger().severe("[Classes] classes.yml / abilities.yml could not be read (" + e.getMessage()
+                    + "). Nothing was changed; fix the file and run /cerb reload.");
+            return null;
+        }
+        Classes.ClassCatalog catalog = Classes.ClassCatalog.from(classesYml, abilitiesYml);
+        for (String problem : catalog.problems()) getLogger().warning("[Classes] " + problem);
+        getLogger().info("[Classes] " + catalog.classes().size() + " classes and " + catalog.abilities().size() + " abilities loaded");
+        return catalog;
+    }
 
     /** combat.yml's crit / lifesteal curves for the attribute engine (defaults until it is loaded). */
     private Attributes.AttributeRules.Curves attributeCurves() {
@@ -375,9 +408,16 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         secondaryEffects.setPvpTag(pvpTag);
         secondaryEffects.setDebug(this::isCombatDebugEnabled);
         attributeEffects.setSecondaryEffects(secondaryEffects);
+        // Classes and abilities (docs/design/CLASSES.md): one more attribute source (equipped passives,
+        // running buffs), loaded per player on join. A broken catalog leaves classes off, touching nothing.
+        Classes.ClassCatalog classCatalog = loadClassCatalog();
+        classService = new Classes.ClassService(this, databaseManager, asyncSaver, skillManager, attributeService,
+                () -> pvpTag, classCatalog != null ? classCatalog : Classes.ClassCatalog.empty());
+        classService.setAttributesChanged(p -> attributeEffects.refresh(p));
+        attributeService.addSource(classService);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
-            @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
-            @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }
+            @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); classService.skillsChanged(p); }
+            @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); classService.skillsChanged(p); }
             @Override public void unloaded(java.util.UUID p) { attributeService.untrack(p); attributeBuffs.clear(p); playerRealms.clearTestRealm(p); }
         });
         sessionLogger = new SessionLogger(this);
@@ -434,7 +474,16 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var cerbCmd = Objects.requireNonNull(getCommand("cerb"));
         cerbCmd.setExecutor(new CerbCommand(this));
         cerbCmd.setTabCompleter(new Commands.CerbTabCompleter(this));
+        classCommand = new Commands.ClassCommand(this);
+        var classCmd = Objects.requireNonNull(getCommand("class"));
+        classCmd.setExecutor(classCommand);
+        classCmd.setTabCompleter(classCommand);
     }
+
+    private Commands.ClassCommand classCommand;
+
+    /** /class, and the admin /cerb class subcommand. */
+    public Commands.ClassCommand getClassCommand() { return classCommand; }
 
     private void initListeners() {
         PluginManager pm = getServer().getPluginManager();
@@ -467,11 +516,23 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(new DefenseUpdateListener(playerHUDManager), this);
         pm.registerEvents(new CustomArmorListener(playerDefenseManager, playerHUDManager, this), this);
 
+        // ── Classes: cast keys and combat hooks. Registered BEFORE the damage pipeline: at the same
+        // priority, listeners run in registration order, and a spear stab replaced by a cast must
+        // be cancelled before the pipeline drains the mob's HP pool.
+        abilityCaster = new Classes.AbilityCaster(this, classService, playerManaManager, () -> spellManager, () -> virtualHealthListener);
+        abilityCaster.setCanAct(p -> Classes.AbilityListener.noContainerOpen(p)
+                && !playerVirtualHealthManager.isRespawning(p) && !playerVirtualHealthManager.hasPendingCustomDeath(p));
+        abilityCaster.setSpellCooldown((id, ms) -> secondaryEffects.cooldownMs(id, ms));
+        pm.registerEvents(new Classes.AbilityListener(classService, abilityCaster), this);
+
         // ── Virtual health (damage interception, regen block) ──
         this.virtualHealthListener = new VirtualHealthListener(playerVirtualHealthManager,
                 new FirstAidSkill("First Aid", playerVirtualHealthManager, craftingManager), this);
         virtualHealthListener.setCombatSkillProcessor(combatSkillProcessor);
-        virtualHealthListener.setPveOffense(new Manager.PveOffense(attributeService));
+        Manager.PveOffense pveOffense = new Manager.PveOffense(attributeService);
+        pveOffense.setForcedCrit(classService::consumeEmpower); // Feint: the next melee hit crits
+        virtualHealthListener.setPveOffense(pveOffense);
+        virtualHealthListener.setCounterHook(abilityCaster::tryCounter); // Riposte
         spellManager.setVirtualHealthListener(virtualHealthListener);
         spellManager.setSkillManager(skillManager);
         pm.registerEvents(virtualHealthListener, this);
@@ -512,6 +573,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         }
         if (attributeEffects != null) {
             attributeEffects.refreshAll(); // new weights/limits: re-apply max health and defense
+        }
+        if (classService != null) {
+            Classes.ClassCatalog next = loadClassCatalog();
+            if (next != null) classService.setCatalog(next); // a file that doesn't parse keeps the old catalog
         }
         if (defenseBarManager != null && combatConfig != null) {
             defenseBarManager.applyCombatConfig(combatConfig);
@@ -715,6 +780,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 + ChatColor.GRAY + " (started since start: " + ChatColor.WHITE + menuManager.animator().startedCount() + ChatColor.GRAY + ")");
         sender.sendMessage(ChatColor.GRAY + "Players with a menu open: " + ChatColor.WHITE + menuManager.activeViewers());
         sender.sendMessage(ChatColor.GRAY + "Mob HP pools tracked: " + ChatColor.WHITE + mobVirtualHealthManager.size());
+        if (classService != null && abilityCaster != null) {
+            sender.sendMessage(ChatColor.GRAY + "Class profiles loaded: " + ChatColor.WHITE + classService.loadedCount()
+                    + ChatColor.GRAY + " (casts since start: " + ChatColor.WHITE + abilityCaster.castCount()
+                    + ChatColor.GRAY + ", counters: " + ChatColor.WHITE + abilityCaster.counterCount() + ChatColor.GRAY + ")");
+        }
     }
 
     // ---------------------------

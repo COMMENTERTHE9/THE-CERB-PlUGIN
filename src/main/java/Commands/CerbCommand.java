@@ -21,10 +21,10 @@ import java.util.Map;
 public class CerbCommand implements CommandExecutor {
 
     private static final java.util.List<String> CONSOLE_SAFE =
-            java.util.List.of("reload", "status", "backup", "skill", "heal", "log");
+            java.util.List.of("reload", "status", "backup", "skill", "heal", "log", "class");
 
     private static final String USAGE =
-            ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|resetdata|"
+            ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
                     + "timings|profiler|listentities|showqueues>";
     private final CerberusPlugin plugin;
@@ -128,6 +128,10 @@ public class CerbCommand implements CommandExecutor {
 
             case "skill":
                 plugin.adjustSkill(sender, args);              // <<< FIXED
+                break;
+
+            case "class":
+                plugin.getClassCommand().admin(sender, args);  // /cerb class <player> <class> rank <n> | info
                 break;
 
             case "resetdata":

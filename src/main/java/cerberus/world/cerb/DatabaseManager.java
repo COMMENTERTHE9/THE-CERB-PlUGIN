@@ -108,14 +108,23 @@ public class DatabaseManager {
             stmt.execute(
                 "CREATE INDEX IF NOT EXISTS idx_visited_chunks_player ON visited_chunks(player_uuid)");
 
+            // Classes and abilities (docs/design/CLASSES.md §5.9): one versioned document per player.
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS player_classes (
+                    player_uuid TEXT PRIMARY KEY,
+                    version     INTEGER NOT NULL,
+                    data        TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL
+                )""");
+
             // Verify tables exist
             int tableCount = 0;
             try (ResultSet rs = stmt.executeQuery(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name IN " +
-                    "('player_custom_ids','player_skills','skill_effects','player_magic_find','visited_chunks')")) {
+                    "('player_custom_ids','player_skills','skill_effects','player_magic_find','visited_chunks','player_classes')")) {
                 while (rs.next()) tableCount++;
             }
-            plugin.getLogger().info("[Database] Initialized — " + tableCount + "/5 tables verified at " + url);
+            plugin.getLogger().info("[Database] Initialized — " + tableCount + "/6 tables verified at " + url);
 
         } catch (SQLException ex) {
             plugin.getLogger().severe("[Database] Failed to initialize tables! " + ex.getMessage());
@@ -483,6 +492,47 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return 0.0; // Default to 0 if no record found
+    }
+
+    // ── Classes ──────────────────────────────────────────────────
+
+    /** A stored classes document and the stamp of the snapshot it came from. */
+    public record ClassData(String data, long stamp) {}
+
+    /**
+     * One player's classes document (docs/design/CLASSES.md §5.9), or null when none is stored.
+     * Throws when the read fails, so a failed load never looks like a new player (whose empty
+     * document would then overwrite the stored one).
+     */
+    public ClassData loadClassData(UUID playerUUID) throws SQLException {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT data, updated_at FROM player_classes WHERE player_uuid = ?")) {
+            ps.setString(1, playerUUID.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? new ClassData(rs.getString("data"), rs.getLong("updated_at")) : null;
+            }
+        }
+    }
+
+    /**
+     * Store a player's classes document. {@code stamp} orders the snapshots (it only ever grows
+     * per player): a write carrying an older stamp than the stored one changes nothing, so a
+     * delayed save can never overwrite newer progress, whichever thread finishes first.
+     */
+    public void saveClassData(UUID playerUUID, int version, String data, long stamp) {
+        String sql = "INSERT INTO player_classes(player_uuid, version, data, updated_at) VALUES(?,?,?,?) "
+                + "ON CONFLICT(player_uuid) DO UPDATE SET version = excluded.version, data = excluded.data, "
+                + "updated_at = excluded.updated_at WHERE excluded.updated_at >= player_classes.updated_at";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, playerUUID.toString());
+            ps.setInt(2, version);
+            ps.setString(3, data);
+            ps.setLong(4, stamp);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            plugin.getLogger().severe("Failed to save classes for " + playerUUID + ": " + ex.getMessage());
+        }
     }
 
     // ── Chunk Discovery ──────────────────────────────────────────

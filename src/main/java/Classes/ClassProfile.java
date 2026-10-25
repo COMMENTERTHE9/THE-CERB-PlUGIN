@@ -1,0 +1,263 @@
+package Classes;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * One player's classes as saved (docs/design/CLASSES.md §5.9): learned classes with rank and XP,
+ * loadouts, which one is active, and long cooldowns. Stored as a small YAML document in
+ * {@code player_classes.data}. Every load re-validates it against the current catalog (stored
+ * data is never trusted): unknown classes and abilities are dropped, ranks and XP clamped, illegal
+ * slots emptied. Each repair is reported so it can be logged.
+ *
+ * <p>Owned by the player's region thread. Runtime-only fields (Momentum, counter window...) are
+ * never saved.
+ */
+public final class ClassProfile {
+
+    public static final int VERSION = 1;
+    public static final int BASE_LOADOUTS = 3;
+
+    /** A learned class: rank 1-50 and the XP into it. */
+    public record Progress(int rank, long xp) {}
+
+    private final Map<String, Progress> classes = new LinkedHashMap<>();
+    /**
+     * Saved progress in classes the current catalog doesn't have (renamed or removed in
+     * classes.yml): never used, but written back unchanged, so a config change can't erase it.
+     */
+    private final Map<String, Progress> dormant = new LinkedHashMap<>();
+    private final List<Loadout> loadouts = new ArrayList<>();
+    private int active;
+    private final CooldownBook cooldowns = new CooldownBook();
+
+    // ── runtime only ────────────────────────────────────────────
+    int momentum;
+    long momentumAt;
+    long counterUntil;
+    double counterCoefficient;
+    String counterAbility;
+    long counterSuccessMs;
+    long empowerUntil;
+    long lastSwitchAt;
+    /** class id -> when its abilities were last used (kill XP goes to the classes you fought with). */
+    final Map<String, Long> lastUse = new HashMap<>();
+    /** Stamp of the last snapshot taken for saving; only grows (see {@link #nextStamp}). */
+    private long saveStamp;
+
+    public ClassProfile() {
+        for (int i = 0; i < BASE_LOADOUTS; i++) loadouts.add(Loadout.empty("Loadout " + (i + 1)));
+    }
+
+    // ── progress ────────────────────────────────────────────────
+
+    public Map<String, Progress> classes() { return Collections.unmodifiableMap(classes); }
+
+    public boolean knows(String classId) { return classes.containsKey(classId); }
+
+    public int rank(String classId) {
+        Progress p = classes.get(classId);
+        return p == null ? 0 : p.rank();
+    }
+
+    /** Learn a class at rank 1 (no-op if already learned). Returns true if it was new. */
+    public boolean learn(String classId) {
+        return classes.putIfAbsent(classId, new Progress(1, 0)) == null;
+    }
+
+    /** Add class XP; returns the result (ranks gained) or null when the class isn't learned. */
+    public ClassRanks.Result award(String classId, double xp) {
+        Progress p = classes.get(classId);
+        if (p == null) return null;
+        ClassRanks.Result r = ClassRanks.award(p.rank(), p.xp(), xp);
+        classes.put(classId, new Progress(r.rank(), r.xp()));
+        return r;
+    }
+
+    /** Admin/test helper: an exact rank with 0 XP into it. */
+    public void setRank(String classId, int rank) {
+        classes.put(classId, new Progress(Math.max(1, Math.min(ClassRanks.MAX_RANK, rank)), 0));
+    }
+
+    /** True when the ability's class is learned at its unlock rank or above. */
+    public boolean unlocked(AbilityDef a) {
+        return a != null && rank(a.classId()) >= a.unlockRank();
+    }
+
+    // ── loadouts ────────────────────────────────────────────────
+
+    public List<Loadout> loadouts() { return Collections.unmodifiableList(loadouts); }
+
+    public int activeIndex() { return active; }
+
+    public Loadout activeLoadout() { return loadouts.get(active); }
+
+    void setLoadout(int index, Loadout l) { loadouts.set(index, l); }
+
+    void setActive(int index) { active = index; }
+
+    public CooldownBook cooldowns() { return cooldowns; }
+
+    // ── saving ──────────────────────────────────────────────────
+
+    /**
+     * The stamp for a new snapshot: the clock, but always above the last one and above what was
+     * stored when the profile loaded ({@link #stampAfter}), so later snapshots always win in the
+     * database even if the clock steps back.
+     */
+    public long nextStamp(long now) {
+        saveStamp = Math.max(now, saveStamp + 1);
+        return saveStamp;
+    }
+
+    /** The stored document carried {@code stored}: every later snapshot must be stamped above it. */
+    public void stampAfter(long stored) { saveStamp = Math.max(saveStamp, stored); }
+
+    /** The saved form (YAML). {@code now} decides which cooldowns are long enough to keep. */
+    public String toYaml(long now) {
+        YamlConfiguration y = new YamlConfiguration();
+        y.set("version", VERSION);
+        Map<String, Progress> all = new LinkedHashMap<>(dormant);
+        all.putAll(classes);
+        for (Map.Entry<String, Progress> e : all.entrySet()) {
+            y.set("classes." + e.getKey() + ".rank", e.getValue().rank());
+            y.set("classes." + e.getKey() + ".xp", e.getValue().xp());
+        }
+        for (int i = 0; i < loadouts.size(); i++) {
+            Loadout l = loadouts.get(i);
+            String k = "loadouts." + i + ".";
+            y.set(k + "name", l.name());
+            y.set(k + "actives", blanks(l.actives()));
+            y.set(k + "passives", blanks(l.passives()));
+            y.set(k + "keystone", l.keystone() == null ? "" : l.keystone());
+        }
+        y.set("active", active);
+        cooldowns.saved(now, 3_000).forEach((key, end) -> y.set("cooldowns." + key.replace(':', '~'), end));
+        return y.saveToString();
+    }
+
+    /**
+     * Read a saved profile and repair it against {@code catalog} (each repair is added to
+     * {@code repairs}). A null or blank document is a new player. A document that doesn't parse
+     * is reported and treated as new.
+     */
+    public static ClassProfile fromYaml(String data, ClassCatalog catalog, long now, List<String> repairs) {
+        ClassProfile p = new ClassProfile();
+        if (data == null || data.isBlank()) return p;
+        YamlConfiguration y = new YamlConfiguration();
+        try {
+            y.loadFromString(data);
+        } catch (InvalidConfigurationException e) {
+            repairs.add("saved class data did not parse; starting fresh (" + e.getMessage() + ")");
+            return p;
+        }
+        if (y.getInt("version", VERSION) > VERSION) repairs.add("saved class data is from a newer version " + y.getInt("version"));
+        ConfigurationSection cs = y.getConfigurationSection("classes");
+        if (cs != null) {
+            for (String id : cs.getKeys(false)) {
+                int rank = cs.getInt(id + ".rank", 1);
+                long xp = cs.getLong(id + ".xp", 0);
+                if (catalog.classDef(id) == null) {
+                    // Not in classes.yml now: kept as stored (not used), never erased by a config change.
+                    p.dormant.put(id, new Progress(rank, xp));
+                    repairs.add("kept progress in unknown class " + id + " (not in classes.yml; unused until it returns)");
+                    continue;
+                }
+                int r = Math.max(1, Math.min(ClassRanks.MAX_RANK, rank));
+                long x = r >= ClassRanks.MAX_RANK ? 0 : Math.max(0, Math.min(xp, ClassRanks.xpForRank(r) - 1));
+                if (r != rank || x != xp) repairs.add("clamped " + id + " rank " + rank + " xp " + xp);
+                p.classes.put(id, new Progress(r, x));
+            }
+        }
+        ConfigurationSection ls = y.getConfigurationSection("loadouts");
+        if (ls != null) {
+            for (String key : ls.getKeys(false)) {
+                int i;
+                try { i = Integer.parseInt(key); } catch (NumberFormatException e) { repairs.add("dropped loadout " + key); continue; }
+                if (i < 0 || i >= p.loadouts.size()) { repairs.add("dropped loadout " + key + " (no such slot)"); continue; }
+                ConfigurationSection l = ls.getConfigurationSection(key);
+                if (l == null) continue;
+                Loadout raw = new Loadout(l.getString("name"), l.getStringList("actives"), l.getStringList("passives"),
+                        blankToNull(l.getString("keystone")));
+                p.loadouts.set(i, p.repair(raw, catalog, repairs));
+            }
+        }
+        int act = y.getInt("active", 0);
+        p.active = act >= 0 && act < p.loadouts.size() ? act : 0;
+        ConfigurationSection cd = y.getConfigurationSection("cooldowns");
+        if (cd != null) {
+            Map<String, Long> saved = new HashMap<>();
+            for (String k : cd.getKeys(false)) saved.put(k.replace('~', ':'), cd.getLong(k));
+            p.cooldowns.restore(saved, now);
+        }
+        return p;
+    }
+
+    /**
+     * After the catalog changed (reload): classes it no longer has go dormant (kept, unused), and
+     * dormant ones it has again come back. Then every loadout is re-checked.
+     */
+    void reconcile(ClassCatalog catalog, List<String> repairs) {
+        for (var it = classes.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, Progress> e = it.next();
+            if (catalog.classDef(e.getKey()) != null) continue;
+            dormant.put(e.getKey(), e.getValue());
+            it.remove();
+            repairs.add("class " + e.getKey() + " is no longer in classes.yml; its progress is kept, unused");
+        }
+        for (var it = dormant.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, Progress> e = it.next();
+            if (catalog.classDef(e.getKey()) == null) continue;
+            Progress d = e.getValue();
+            int r = Math.max(1, Math.min(ClassRanks.MAX_RANK, d.rank()));
+            long x = r >= ClassRanks.MAX_RANK ? 0 : Math.max(0, Math.min(d.xp(), ClassRanks.xpForRank(r) - 1));
+            classes.put(e.getKey(), new Progress(r, x));
+            it.remove();
+            repairs.add("class " + e.getKey() + " is back; its progress was kept");
+        }
+        for (int i = 0; i < loadouts.size(); i++) loadouts.set(i, repair(loadouts.get(i), catalog, repairs));
+    }
+
+    /** {@code l} with every slot that breaks the rules emptied (one repair note per emptied slot). */
+    Loadout repair(Loadout l, ClassCatalog catalog, List<String> repairs) {
+        Loadout out = l;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Set<String> tags = new java.util.HashSet<>();
+        for (int s = 0; s < Loadout.ACTIVE_SLOTS; s++) {
+            String id = out.actives().get(s);
+            if (id != null && !fits(id, AbilityDef.Kind.ACTIVE, catalog, seen, tags)) { repairs.add("emptied active slot " + (s + 1) + " (" + id + ")"); out = out.withActive(s, null); }
+        }
+        for (int s = 0; s < Loadout.PASSIVE_SLOTS; s++) {
+            String id = out.passives().get(s);
+            if (id != null && !fits(id, AbilityDef.Kind.PASSIVE, catalog, seen, tags)) { repairs.add("emptied passive slot " + (s + 1) + " (" + id + ")"); out = out.withPassive(s, null); }
+        }
+        if (out.keystone() != null && !fits(out.keystone(), AbilityDef.Kind.KEYSTONE, catalog, seen, tags)) {
+            repairs.add("emptied keystone (" + out.keystone() + ")");
+            out = out.withKeystone(null);
+        }
+        return out;
+    }
+
+    private boolean fits(String id, AbilityDef.Kind kind, ClassCatalog catalog, java.util.Set<String> seen, java.util.Set<String> tags) {
+        AbilityDef a = catalog.ability(id);
+        if (a == null || a.kind() != kind || !unlocked(a) || !seen.add(id)) return false;
+        for (String t : a.exclusive()) if (!tags.add(t)) return false;
+        return true;
+    }
+
+    private static List<String> blanks(List<String> ids) {
+        List<String> out = new ArrayList<>(ids.size());
+        for (String s : ids) out.add(s == null ? "" : s);
+        return out;
+    }
+
+    private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }
+}

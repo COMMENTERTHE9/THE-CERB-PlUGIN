@@ -1,0 +1,247 @@
+package Classes;
+
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.junit.jupiter.api.Test;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/** The ability engine's pure core (docs/design/CLASSES.md): catalog and its bounds, ranks, loadout rules, cooldowns. */
+class ClassCoreTest {
+
+    private static final String SHIPPED_CLASSES = read("src/main/resources/classes.yml");
+    private static final String SHIPPED_ABILITIES = read("src/main/resources/abilities.yml");
+
+    private static String read(String path) {
+        try {
+            return java.nio.file.Files.readString(new File(path).toPath());
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** The shipped files, read exactly as the server does (a YAML error fails the test with its message). */
+    private static ClassCatalog shipped() {
+        try {
+            return of(SHIPPED_CLASSES, SHIPPED_ABILITIES);
+        } catch (Exception e) {
+            throw new AssertionError("shipped classes.yml / abilities.yml don't parse: " + e.getMessage(), e);
+        }
+    }
+
+    private static ClassCatalog of(String classesYml, String abilitiesYml) throws Exception {
+        YamlConfiguration c = new YamlConfiguration(), a = new YamlConfiguration();
+        c.loadFromString(classesYml);
+        a.loadFromString(abilitiesYml);
+        return ClassCatalog.from(c, a);
+    }
+
+    private static final String ONE_CLASS = "classes:\n  warrior:\n    name: Warrior\ngroups:\n  movement: 2s\n";
+
+    @Test
+    void shippedPrototypeLoadsCleanly() {
+        ClassCatalog cat = shipped();
+        assertEquals(List.of(), cat.problems(), "the shipped files load without refusals");
+        assertEquals(Set.of("warrior", "mage", "duelist"), cat.classes().keySet());
+        for (ClassDef c : cat.classes().values()) {
+            long actives = c.abilities().stream().filter(id -> cat.ability(id).kind() == AbilityDef.Kind.ACTIVE).count();
+            long passives = c.abilities().stream().filter(id -> cat.ability(id).kind() == AbilityDef.Kind.PASSIVE).count();
+            long keystones = c.abilities().stream().filter(id -> cat.ability(id).kind() == AbilityDef.Kind.KEYSTONE).count();
+            assertEquals(4, actives, c.id() + " actives");
+            assertEquals(2, passives, c.id() + " passives");
+            assertEquals(1, keystones, c.id() + " keystone");
+        }
+        assertEquals(2000L, cat.groupMs().get("movement"));
+        assertEquals(Set.of("movement"), cat.ability("blink").groups());
+        assertEquals(Set.of(WeaponFamily.FOCUS), cat.ability("arcane_bolt").weapons());
+    }
+
+    @Test
+    void classEntryNeedsSkillsNeverAnotherClass() {
+        ClassCatalog cat = shipped();
+        ClassDef warrior = cat.classDef("warrior"), duelist = cat.classDef("duelist");
+        assertTrue(warrior.canLearn(s -> s.equals("Weapon Mastery") ? 5 : 1), "any one of Blade/Weapon Mastery 5");
+        assertFalse(warrior.canLearn(s -> 4));
+        assertFalse(duelist.canLearn(s -> s.equals("Blade Mastery") ? 10 : 1), "Duelist needs Critical Strike too");
+        assertTrue(duelist.canLearn(s -> s.equals("Blade Mastery") ? 10 : 5));
+    }
+
+    @Test
+    void boundsRefuseLimitBreakingAbilities() throws Exception {
+        ClassCatalog cat = of(ONE_CLASS, """
+                abilities:
+                  ok:       { class: warrior, kind: active, cooldown: 4s, effects: [ { damage: { coefficient: 2.5 } } ] }
+                  greedy:   { class: warrior, kind: active, cooldown: 4s, effects: [ { damage: { coefficient: 1.2, hits: 3 } } ] }
+                  big:      { class: warrior, kind: active, cooldown: 25s, effects: [ { damage: { coefficient: 1.5, hits: 3 } } ] }
+                  spammy:   { class: warrior, kind: active, cooldown: 200ms, effects: [ { damage: { coefficient: 1.0 } } ] }
+                  typo:     { class: warrior, kind: active, cooldown: 4s, effects: [ { damgae: { coefficient: 1.0 } } ] }
+                  badhand:  { class: warrior, kind: active, cooldown: 4s, weapons: [lightsaber], effects: [ { damage: {} } ] }
+                  orphan:   { class: necromancer, kind: active, cooldown: 4s, effects: [ { damage: {} } ] }
+                  farblink: { class: warrior, kind: active, cooldown: 4s, effects: [ { blink: { distance: 100 } } ] }
+                  hollow:   { class: warrior, kind: passive }
+                """);
+        assertEquals(Set.of("ok", "big"), cat.abilities().keySet(), String.join("\n", cat.problems()));
+        String all = String.join("\n", cat.problems());
+        assertTrue(all.contains("greedy") && all.contains("over the 3.0x cap"), all);
+        assertTrue(all.contains("spammy") && all.contains("floor"), all);
+        assertTrue(all.contains("unknown verb damgae"), all);
+        assertTrue(all.contains("unknown weapon family lightsaber"), all);
+        assertTrue(all.contains("unknown class necromancer"), all);
+        assertTrue(all.contains("blink distance"), all);
+        assertTrue(all.contains("hollow") && all.contains("needs passives"), all);
+    }
+
+    @Test
+    void weaponFamiliesFromVanillaItems() {
+        assertEquals(WeaponFamily.BLADE, WeaponFamily.ofMaterial("NETHERITE_SWORD"));
+        assertEquals(WeaponFamily.AXE, WeaponFamily.ofMaterial("IRON_AXE"));
+        assertEquals(WeaponFamily.OTHER, WeaponFamily.ofMaterial("IRON_PICKAXE"));
+        assertEquals(WeaponFamily.POLEARM, WeaponFamily.ofMaterial("IRON_SPEAR"));
+        assertEquals(WeaponFamily.POLEARM, WeaponFamily.ofMaterial("TRIDENT"));
+        assertEquals(WeaponFamily.BLUNT, WeaponFamily.ofMaterial("MACE"));
+        assertEquals(WeaponFamily.FOCUS, WeaponFamily.ofMaterial("BLAZE_ROD"));
+        assertEquals(WeaponFamily.UNARMED, WeaponFamily.ofMaterial("AIR"));
+        assertTrue(WeaponFamily.fits(Set.of(), WeaponFamily.OTHER), "no requirement: anything");
+        assertTrue(WeaponFamily.fits(Set.of(WeaponFamily.BLADE, WeaponFamily.AXE), WeaponFamily.AXE));
+        assertFalse(WeaponFamily.fits(Set.of(WeaponFamily.FOCUS), WeaponFamily.BLADE));
+        assertEquals("an axe", WeaponFamily.AXE.withArticle());
+    }
+
+    @Test
+    void ranksAreBoundedAndOverflowSafe() {
+        assertEquals(105, ClassRanks.xpForRank(1));
+        assertEquals(3205, ClassRanks.xpForRank(25));
+        long total = ClassRanks.totalTo(50);
+        assertTrue(total > 150_000 && total < 200_000, "about 172k XP to master a class: " + total);
+        ClassRanks.Result r = ClassRanks.award(1, 0, 105);
+        assertEquals(2, r.rank());
+        assertEquals(0, r.xp());
+        assertEquals(new ClassRanks.Result(ClassRanks.MAX_RANK, 0, 49), ClassRanks.award(1, 0, Double.MAX_VALUE));
+        assertEquals(new ClassRanks.Result(3, 10, 0), ClassRanks.award(3, 10, Double.NaN));
+        assertEquals(new ClassRanks.Result(3, 10, 0), ClassRanks.award(3, 10, -500));
+    }
+
+    @Test
+    void loadoutRulesAreFewAndCrossClassIsFine() {
+        ClassCatalog cat = shipped();
+        Map<String, AbilityDef> ab = cat.abilities();
+        // A Warrior strike, a Mage blink and a Duelist counter together: allowed.
+        Loadout mixed = Loadout.empty("Mixed").withActive(0, "cleave").withActive(1, "blink").withActive(2, "riposte")
+                .withPassive(0, "precision").withPassive(1, "battle_hardened").withKeystone("glass_cannon");
+        assertEquals(List.of(), mixed.problems(ab, a -> true));
+        // Wrong kind, duplicates, locked, unknown:
+        Loadout bad = Loadout.empty("Bad").withActive(0, "precision").withActive(1, "cleave").withActive(2, "cleave")
+                .withPassive(0, "nonsense").withKeystone("juggernaut");
+        List<String> p = bad.problems(ab, a -> !a.id().equals("juggernaut"));
+        assertTrue(p.contains("Precision can't go in an active slot"), p.toString());
+        assertTrue(p.contains("Cleave is equipped twice"), p.toString());
+        assertTrue(p.contains("Unknown ability: nonsense"), p.toString());
+        assertTrue(p.contains("Juggernaut is not unlocked yet"), p.toString());
+        // Slots are fixed in size; blanks are empty.
+        Loadout l = new Loadout(" ", List.of("cleave", ""), null, null);
+        assertEquals(Loadout.ACTIVE_SLOTS, l.actives().size());
+        assertNull(l.actives().get(1));
+        assertEquals("Loadout", l.name());
+    }
+
+    @Test
+    void exclusiveTagsAllowOnlyOnePerTag() throws Exception {
+        ClassCatalog cat = of("classes:\n  a: {}\n  b: {}\n", """
+                abilities:
+                  stance1: { class: a, kind: active, cooldown: 2s, exclusive: [stance], effects: [ { empower: {} } ] }
+                  stance2: { class: b, kind: active, cooldown: 2s, exclusive: [stance], effects: [ { empower: {} } ] }
+                """);
+        Loadout l = Loadout.empty("x").withActive(0, "stance1").withActive(1, "stance2");
+        assertEquals(List.of("Only one stance at a time: stance1 and stance2"), l.problems(cat.abilities(), a -> true));
+    }
+
+    @Test
+    void profilesRoundTripAndStoredDataIsNeverTrusted() throws Exception {
+        ClassCatalog cat = shipped();
+        long t = 5_000_000;
+        ClassProfile p = new ClassProfile();
+        p.learn("warrior"); p.learn("mage");
+        p.setRank("warrior", 12); p.setRank("mage", 8);
+        p.award("mage", 30);
+        Loadout l = Loadout.empty("Mixed").withActive(0, "cleave").withActive(1, "blink").withPassive(0, "battle_hardened").withKeystone("juggernaut");
+        p.setLoadout(1, l);
+        p.setActive(1);
+        p.cooldowns().commit(cat.ability("war_cry"), 30_000, cat.groupMs(), t);
+        String saved = p.toYaml(t + 1000);
+
+        List<String> repairs = new java.util.ArrayList<>();
+        ClassProfile back = ClassProfile.fromYaml(saved, cat, t + 2000, repairs);
+        assertEquals(List.of(), repairs);
+        assertEquals(12, back.rank("warrior"));
+        assertEquals(new ClassProfile.Progress(8, 30), back.classes().get("mage"));
+        assertEquals(1, back.activeIndex());
+        assertEquals(l, back.activeLoadout());
+        assertEquals(28_000, back.cooldowns().remaining(cat.ability("war_cry"), t + 2000), "a long cooldown survives a relog");
+
+        // A tampered or outdated document is repaired, never trusted.
+        String tampered = saved.replace("rank: 12", "rank: 999").replace("cleave", "nuke").replace("battle_hardened", "precision");
+        repairs.clear();
+        tampered = tampered.replaceFirst("classes:\n", "classes:\n  necromancer:\n    rank: 50\n    xp: 0\n");
+        ClassProfile fixed = ClassProfile.fromYaml(tampered, cat, t + 2000, repairs);
+        assertEquals(ClassRanks.MAX_RANK, fixed.rank("warrior"), "rank clamped to 50");
+        assertNull(fixed.activeLoadout().actives().get(0), "unknown ability emptied");
+        assertNull(fixed.activeLoadout().passives().get(0), "an ability of an unlearned class (Duelist) can't stay equipped");
+        assertFalse(fixed.knows("necromancer"), "a class missing from classes.yml is not usable...");
+        assertTrue(fixed.toYaml(t + 2000).contains("necromancer"), "...but its saved progress is written back, never erased");
+        assertTrue(repairs.size() >= 3, repairs.toString());
+
+        // A reload that adds the class back restores that progress; one that drops a class keeps it dormant.
+        ClassCatalog withNecro = of(SHIPPED_CLASSES.replace("classes:\n",
+                "classes:\n  necromancer:\n    name: Necromancer\n    role: Test\n    signature: Test\n    entry: { Intelligence: 1 }\n"), SHIPPED_ABILITIES);
+        repairs.clear();
+        fixed.reconcile(withNecro, repairs);
+        assertEquals(ClassRanks.MAX_RANK, fixed.rank("necromancer"), repairs.toString());
+        ClassCatalog noMage = of(SHIPPED_CLASSES.replaceAll("(?s)  mage:.*?(?=  duelist:)", ""), SHIPPED_ABILITIES);
+        fixed.learn("mage");
+        repairs.clear();
+        fixed.reconcile(noMage, repairs);
+        assertFalse(fixed.knows("mage"));
+        assertTrue(fixed.toYaml(t).contains("mage:"), "mage's progress stays in the saved document");
+
+        // A document that doesn't parse starts fresh, with a note.
+        repairs.clear();
+        ClassProfile fresh = ClassProfile.fromYaml("classes: [unclosed", cat, t, repairs);
+        assertTrue(fresh.classes().isEmpty());
+        assertEquals(1, repairs.size());
+        assertEquals(ClassProfile.BASE_LOADOUTS, fresh.loadouts().size());
+    }
+
+    @Test
+    void cooldownsBelongToThePlayerAndSurviveSwitchesAndRelogs() {
+        ClassCatalog cat = shipped();
+        AbilityDef blink = cat.ability("blink"), lunge = cat.ability("lunge"), bolt = cat.ability("arcane_bolt");
+        CooldownBook book = new CooldownBook();
+        long t = 1_000_000;
+        book.commit(blink, blink.cooldownMs(), cat.groupMs(), t);
+        assertEquals(CooldownBook.GLOBAL_MS, book.remaining(bolt, t), "a short global gap after any cast");
+        assertEquals(0, book.remaining(bolt, t + CooldownBook.GLOBAL_MS));
+        assertEquals(2000, book.remaining(lunge, t), "Lunge shares the movement lockout with Blink");
+        assertEquals(6000, book.remaining(blink, t));
+        // A "switch" does nothing to the book; a relog restores the long ones.
+        Map<String, Long> saved = book.saved(t + 1000, 3000);
+        assertEquals(Set.of("ability:blink"), saved.keySet(), "only cooldowns with 3 s or more left are saved");
+        CooldownBook after = new CooldownBook();
+        after.restore(saved, t + 1500);
+        assertEquals(4500, after.remaining(blink, t + 1500));
+        after.restore(Map.of("ability:x", t - 5, "junk", t + 99_999), t + 1500);
+        assertEquals(0, after.remaining(bolt, t + 1500), "expired or unknown entries are ignored");
+        after.restore(Map.of("ability:arcane_bolt", t + 1000L * 3600_000L), t);
+        assertEquals(CooldownBook.MAX_RESTORED_MS, after.remaining(bolt, t), "a damaged save can't lock an ability for good");
+        // A successful counter brings Riposte back sooner, never later.
+        AbilityDef riposte = cat.ability("riposte");
+        book.commit(riposte, riposte.cooldownMs(), cat.groupMs(), t);
+        book.shorten(riposte, 1500, t + 100);
+        assertEquals(1500, book.remaining(riposte, t + 100));
+        book.shorten(riposte, 9000, t + 100);
+        assertEquals(1500, book.remaining(riposte, t + 100));
+    }
+}

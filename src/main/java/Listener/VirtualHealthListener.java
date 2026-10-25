@@ -76,6 +76,16 @@ public class VirtualHealthListener implements Listener {
     }
 
     /**
+     * Asked when a mob's melee hit is about to land on a player: true = the hit is negated (a class
+     * counter such as Riposte answered it), and the event is cancelled before anything else happens.
+     */
+    private volatile @Nullable java.util.function.BiPredicate<Player, LivingEntity> counterHook;
+
+    public void setCounterHook(java.util.function.BiPredicate<Player, LivingEntity> counterHook) {
+        this.counterHook = counterHook;
+    }
+
+    /**
      * Register a spell damage context before the spell deals damage.
      * The entry is consumed (removed) when the damage event fires.
      * Entity IDs get reused — always clean immediately after reading.
@@ -150,6 +160,12 @@ public class VirtualHealthListener implements Listener {
 
             if (entity instanceof Player player) {
                 // ── Player is the TARGET (mob/player hitting the player) ──
+                var counter = counterHook;
+                if (counter != null && spellCtx == null && damager instanceof LivingEntity mobAttacker && !(damager instanceof Player)
+                        && event.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK && counter.test(player, mobAttacker)) {
+                    event.setCancelled(true); // countered: no damage, no knockback, no defensive XP
+                    return;
+                }
                 CombatContext ctx = new CombatContext(attackerPlayer, entity, damageType, dmg);
                 if (!ctx.isPvp() && causedByAnotherPlayer(event, damager, player)) ctx.markPvp();
 
@@ -231,7 +247,7 @@ public class VirtualHealthListener implements Listener {
                             || event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK);
                 if (weaponHit && pveOffense != null && pveOffense.enabled()) {
                     // Attributes scale the hit before it drains the pool (the Blade Mastery fix).
-                    CombatContext ctx = pveOffense.hit(attackerPlayer, entity, damageType, dmg,
+                    CombatContext ctx = pveOffense.meleeHit(attackerPlayer, entity, damageType, dmg,
                             Manager.PveOffense.meleeWeapon(attackerPlayer), plugin.isCombatDebugEnabled(attackerPlayer.getUniqueId()));
                     PoolHit hit = hitPool(entity, ctx.attack().getModifiedDamage());
                     event.setDamage(hit.vanillaDamage());

@@ -1,0 +1,241 @@
+# Abilities (docs/design/CLASSES.md §5). Every ability is data: a class, a kind (active, passive,
+# keystone), the rank that unlocks it, what it needs in hand, its cost and cooldown, and either
+# effects (actives) or passives (bonuses through the attribute engine, inside its caps).
+# Bounds are enforced when the file loads: an active deals at most 3.0x a basic hit per cast
+# (6.0x with a cooldown of 20 s or more) and comes back no faster than 1 s. Effect verbs: damage,
+# dash, blink, status, buff, resource, counter, empower, spell. PROTOTYPE numbers, for tuning in game.
+# icon: the item its menu tile shows (a material name; optional).
+
+abilities:
+  # ── Warrior: Momentum ────────────────────────────────────────
+  cleave:
+    class: warrior
+    name: Cleave
+    icon: IRON_AXE
+    description: "A wide swing at everything in front of you. Builds Momentum per enemy hit."
+    kind: active
+    unlock-rank: 1
+    weapons: [blade, axe, polearm, blunt]
+    cooldown: 4s
+    effects:
+      - damage: { shape: cone, range: 3.5, angle: 100, coefficient: 1.6, scale: power, max-targets: 6 }
+      - resource: { kind: momentum, delta: 1, max: 5, per-target: true }
+  charge:
+    class: warrior
+    name: Charge
+    icon: LEATHER_BOOTS
+    description: "Rush forward; the first enemy in your path is stunned for a second."
+    kind: active
+    unlock-rank: 3
+    weapons: [blade, axe, polearm, blunt, unarmed]
+    cooldown: 10s
+    groups: [movement]
+    effects:
+      - dash: { distance: 8, stun-seconds: 1.0 }
+      - damage: { shape: strike, range: 2.5, coefficient: 1.0, scale: power }
+  execute:
+    class: warrior
+    name: Execute
+    icon: NETHERITE_AXE
+    description: "A finishing blow that spends all your Momentum, +40% per stack."
+    kind: active
+    unlock-rank: 6
+    weapons: [blade, axe, polearm, blunt]
+    cooldown: 8s
+    effects:
+      - damage: { shape: strike, range: 3.5, coefficient: 1.0, scale: power, per-momentum: 0.4 }
+      - resource: { kind: momentum, delta: -5, max: 5, spend-all: true }
+  war_cry:
+    class: warrior
+    name: War Cry
+    icon: GOAT_HORN
+    description: "Steel yourself: +15% damage for 8 seconds."
+    kind: active
+    unlock-rank: 10
+    cooldown: 30s
+    effects:
+      - buff: { stat: damage, amount: 0.15, seconds: 8 }
+  battle_hardened:
+    class: warrior
+    name: Battle-Hardened
+    icon: IRON_CHESTPLATE
+    description: "+8 Vitality while equipped."
+    kind: passive
+    unlock-rank: 2
+    passives:
+      - { attribute: vitality, amount: 8 }
+  weapon_discipline:
+    class: warrior
+    name: Weapon Discipline
+    icon: GRINDSTONE
+    description: "+5% attack speed while equipped (inside the speed caps)."
+    kind: passive
+    unlock-rank: 8
+    passives:
+      - { stat: attack_speed, amount: 0.05 }
+  juggernaut:
+    class: warrior
+    name: Juggernaut
+    icon: ANVIL
+    description: "Keystone: +12 Vitality and +6 Fortitude, but 6% slower attacks."
+    kind: keystone
+    unlock-rank: 12
+    passives:
+      - { attribute: vitality, amount: 12 }
+      - { attribute: fortitude, amount: 6 }
+      - { stat: attack_speed, amount: -0.06 }
+
+  # ── Mage: Essence ────────────────────────────────────────────
+  arcane_bolt:
+    class: mage
+    name: Arcane Bolt
+    icon: AMETHYST_SHARD
+    description: "An instant bolt at the enemy you look at (up to 8 blocks). Cheap; scales with Essence."
+    kind: active
+    unlock-rank: 1
+    weapons: [focus]
+    essence: 15
+    cooldown: 1.5s
+    effects:
+      - damage: { shape: strike, range: 8, coefficient: 1.4, scale: essence, element: arcane }
+  fireball:
+    class: mage
+    name: Fireball
+    icon: FIRE_CHARGE
+    description: "The Fireball spell, cast from your loadout. Its own cost and damage apply."
+    kind: active
+    unlock-rank: 3
+    weapons: [focus]
+    cooldown: 2s
+    effects:
+      - spell: { name: Fireball }
+  frost_nova:
+    class: mage
+    name: Frost Nova
+    icon: BLUE_ICE
+    description: "A burst of cold around you that damages and slows nearby enemies."
+    kind: active
+    unlock-rank: 5
+    weapons: [focus]
+    essence: 30
+    cooldown: 8s
+    effects:
+      - damage: { shape: circle, range: 4, coefficient: 0.8, scale: essence, max-targets: 8, element: ice }
+      - status: { type: slowness, seconds: 3, amplifier: 1, shape: circle, range: 4, max-targets: 8 }
+  blink:
+    class: mage
+    name: Blink
+    icon: ENDER_PEARL
+    description: "Teleport up to 6 blocks where you look. Shares the movement lockout with dashes."
+    kind: active
+    unlock-rank: 8
+    essence: 20
+    cooldown: 6s
+    groups: [movement]
+    effects:
+      - blink: { distance: 6 }
+  essence_flow:
+    class: mage
+    name: Essence Flow
+    icon: LAPIS_LAZULI
+    description: "+15% Essence regeneration while equipped."
+    kind: passive
+    unlock-rank: 2
+    passives:
+      - { stat: mana_regen, amount: 0.15 }
+  spell_focus:
+    class: mage
+    name: Spell Focus
+    icon: ENCHANTED_BOOK
+    description: "+8 Essence while equipped."
+    kind: passive
+    unlock-rank: 6
+    passives:
+      - { attribute: essence, amount: 8 }
+  glass_cannon:
+    class: mage
+    name: Glass Cannon
+    icon: GLASS
+    description: "Keystone: +25% spell damage, but 15% less max health."
+    kind: keystone
+    unlock-rank: 12
+    passives:
+      - { stat: spell_damage, amount: 0.25 }
+      - { stat: max_hp, amount: -0.15 }
+
+  # ── Duelist: Riposte ─────────────────────────────────────────
+  riposte:
+    class: duelist
+    name: Riposte
+    icon: SHIELD
+    description: "For 0.6 s the next melee hit you take is negated and answered at 2x. A success brings it back sooner."
+    kind: active
+    unlock-rank: 1
+    weapons: [blade]
+    cooldown: 6s
+    exclusive: [stance]
+    effects:
+      - counter: { window: 600ms, coefficient: 2.0, success-cooldown: 1.5s }
+  lunge:
+    class: duelist
+    name: Lunge
+    icon: TRIDENT
+    description: "Close the distance and strike."
+    kind: active
+    unlock-rank: 3
+    weapons: [blade, polearm]
+    cooldown: 7s
+    groups: [movement]
+    effects:
+      - dash: { distance: 5 }
+      - damage: { shape: strike, range: 2.5, coefficient: 1.5, scale: power }
+  flurry:
+    class: duelist
+    name: Flurry
+    icon: FEATHER
+    description: "Three quick strikes at the enemy in front of you."
+    kind: active
+    unlock-rank: 6
+    weapons: [blade]
+    cooldown: 8s
+    effects:
+      - damage: { shape: strike, range: 3.5, coefficient: 0.6, scale: power, hits: 3, interval-ticks: 4 }
+  feint:
+    class: duelist
+    name: Feint
+    icon: PHANTOM_MEMBRANE
+    description: "Your next weapon hit within 3 seconds is a critical hit."
+    kind: active
+    unlock-rank: 9
+    weapons: [blade]
+    cooldown: 10s
+    effects:
+      - empower: { seconds: 3 }
+  precision:
+    class: duelist
+    name: Precision
+    icon: SPECTRAL_ARROW
+    description: "+5% critical hit chance while equipped."
+    kind: passive
+    unlock-rank: 2
+    passives:
+      - { stat: crit_chance, amount: 0.05 }
+  footwork:
+    class: duelist
+    name: Footwork
+    icon: RABBIT_FOOT
+    description: "+4% movement speed while equipped (inside the speed caps)."
+    kind: passive
+    unlock-rank: 5
+    passives:
+      - { stat: move_speed, amount: 0.04 }
+  blade_dancer:
+    class: duelist
+    name: Blade Dancer
+    icon: NETHER_STAR
+    description: "Keystone: +15% critical damage, but 6 less Fortitude."
+    kind: keystone
+    unlock-rank: 12
+    passives:
+      - { stat: crit_multiplier, amount: 0.15 }
+      - { attribute: fortitude, amount: -6 }
