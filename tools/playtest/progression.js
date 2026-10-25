@@ -240,6 +240,9 @@ async function magic() {
   if (wandItem) await bot.equip(wandItem, 'hand'); // works even when the hotbar is full
   await sleep(400);
   const out = {};
+  // Three more skills feed Essence (attributes.yml): hold them at 1, so this measures Intelligence and Mana Regeneration
+  // alone (ability tests on the same character raise Spell Weaving and Elemental Mastery with every Fireball).
+  for (const sk of ['Spell_Weaving', 'Elemental_Mastery', 'Arcane_Knowledge']) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 400);
   for (const lv of [1, 100]) {
     for (const sk of ['Intelligence', 'Mana_Regeneration']) await cmd(`/cerb skill ${NAME} ${sk} level ${lv}`, 500);
     await sleep(800);
@@ -779,7 +782,9 @@ async function mastery() {
     const pm = t.match(/Power\((\w+), Power ([\d.]+) -> x([\d.]+)\)/);
     r.power = pm ? Number(pm[2]) : NaN; r.mult = pm ? Number(pm[3]) : NaN;
     const kills = [first.swings];
-    for (let i = 0; i < 2; i++) kills.push((await killOne('zombie', 100, 'zombie', r.delay)).swings);
+    // Five kills each: crits make one kill take a swing more or less, and three samples were too few to
+    // show the 21% reliably (7.0 -> 7.0 once; 8.0 -> 5.7 and 7.3 -> 7.0 in the next two runs).
+    for (let i = 0; i < 4; i++) kills.push((await killOne('zombie', 100, 'zombie', r.delay)).swings);
     r.swings = kills; r.avg = kills.reduce((a, b) => a + b, 0) / kills.length;
     console.log(`  ${r.label}: Power ${r.power} -> x${r.mult}, swings to kill a level-100 zombie ${kills.join(' / ')} (avg ${r.avg.toFixed(1)})`);
   }

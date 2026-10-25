@@ -73,10 +73,11 @@ public class SpellManager {
     /**
      * Cast a spell as a class ability: the ability engine has already checked and paid its cost,
      * and the spell never hits players. Trains the magic skills like any successful cast.
+     * {@code onHit} gets what the spell hit when it bursts (on that region's thread), or nothing.
      */
-    public boolean castForAbility(String name, Player player) {
+    public boolean castForAbility(String name, Player player, java.util.function.Consumer<java.util.List<org.bukkit.entity.LivingEntity>> onHit) {
         if (!(getSpell(name) instanceof FireballSpell fireball)) return false;
-        boolean cast = fireball.castFromAbility(player);
+        boolean cast = fireball.castFromAbility(player, onHit);
         if (cast) awardCastXp(name, player);
         return cast;
     }

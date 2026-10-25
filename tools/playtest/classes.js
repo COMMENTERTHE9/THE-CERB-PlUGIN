@@ -358,14 +358,13 @@ async function combat() {
   await stand(0, 0);
   await cmd('/gamemode survival', 600);
   const c0 = await castCount();
-  // The window is 0.6 s: the zombie's hit has to follow the press at once.
+  // The window is 0.6 s: the zombie's hit has to follow the press at once. Riposte is active 1: right-click
+  // (quick keys decide one tick after the press, so the hit comes two ticks later, well inside the window).
   let t0 = Date.now();
-  await sneak(true);
   at = chat.length;
-  bot.activateItem(); await sleep(60); bot.deactivateItem();
+  bot.activateItem(); await sleep(60); bot.deactivateItem(); await sleep(60);
   bot.chat(`/damage ${NAME} 4 minecraft:mob_attack by @e[type=zombie,limit=1,sort=nearest]`);
   await sleep(900);
-  await sneak(false);
   t = bars.filter(b => b.t >= t0).map(b => b.m);
   const c1 = await castCount();
   const incoming = traces(at).filter(x => /Incoming/.test(x));
@@ -416,14 +415,13 @@ async function exploits() {
   await hold('netherite_sword');
   await debug(true);
 
-  // Rapid presses cast once; a cooldown says how long it has left.
+  // Rapid presses cast once; a cooldown says how long it has left. Cleave is active 2: F with quick keys.
   let c0 = await castCount();
-  await sneak(true);
-  bot.swingArm('right'); await sleep(40); bot.swingArm('right'); await sleep(40); bot.swingArm('right');
+  const f = () => bot._client.write('block_dig', { status: 6, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 });
+  f(); await sleep(40); f(); await sleep(40); f();
   await sleep(600);
-  await sneak(false);
   let c1 = await castCount();
-  check('Three left-clicks within 100 ms cast Cleave once', c1.casts - c0.casts === 1, `${c0.casts} -> ${c1.casts}`);
+  check('Three presses of F within 100 ms cast Cleave once', c1.casts - c0.casts === 1, `${c0.casts} -> ${c1.casts}`);
   await sleep(300);
   let t = await cast('left');
   check('Pressed again: Cleave is on cooldown and says for how long', t.some(m => /Cleave \d\.\d s/.test(m)), t.join(' / '));
@@ -583,7 +581,7 @@ async function menu() {
   check('Class tiles show rank, XP bar and unlock progress', /^Warrior · rank 12$/.test(slotName(20)) && /Rank: 12 \/ 50/.test(flat(20))
     && /Abilities unlocked: 7 \/ 7/.test(flat(20)) && /^Mage · rank 8$/.test(slotName(22)) && /Next: Spell Focus at rank 6|Next: .* at rank \d+/.test(flat(22) + 'Next: x at rank 1'),
     `${slotName(20)} | ${flat(20).slice(0, 160)}`);
-  check('"How to cast" lists the five keys', /right-click active 1.*left-click active 2.*F active 3 · Q active 4.*scroll active 5/.test(flat(31)), flat(31));
+  check('The Controls tile lists the five keys (quick keys)', /Right-click active 1 F active 2 Q active 3 Sneak \+ right-click active 4 Sneak \+ F active 5/.test(flat(31)), flat(31));
   check('Three loadout tiles; Loadout 1 marked in use', /^Loadout 1/.test(slotName(38)) && /▶ In use/.test(flat(38)) && /^Loadout 2/.test(slotName(40)) && /^Loadout 3/.test(slotName(42)),
     `${slotName(38)} | ${slotName(40)} | ${slotName(42)}`);
   await click(22);
@@ -593,7 +591,7 @@ async function menu() {
   await waitTitle(/^✦ Classes & Abilities$/);
   await click(40); // Loadout 2
   check('A loadout screen: five actives with their keys, passives, keystone', await waitTitle(/^✦ Loadout 2$/)
-    && /^Active 1: empty$/.test(slotName(20)) && /Key: Sneak \+ right-click/.test(flat(20)) && /^Active 5: empty$/.test(slotName(24))
+    && /^Active 1: empty$/.test(slotName(20)) && /Key: Right-click/.test(flat(20)) && /^Active 5: empty$/.test(slotName(24))
     && /^Passive 1: empty$/.test(slotName(29)) && /^Keystone: empty$/.test(slotName(33)), `${title()} | ${slotName(20)} | ${flat(20)}`);
   await click(20); // A1
   check('Clicking a slot opens the picker for it', await waitTitle(/^✦ Choose: Active 1$/), title());

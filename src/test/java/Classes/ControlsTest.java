@@ -95,6 +95,56 @@ class ControlsTest {
     }
 
     @Test
+    void anUnquotedOnOrOffInTheFileStillWorks() throws Exception {
+        // YAML reads an unquoted on/off as true/false: a hand-edited classes.yml says them that way.
+        for (String[] c : new String[][]{{"off", "OFF"}, {"on", "ON"}, {"'off'", "OFF"}, {"auto", "AUTO"}, {"no", "OFF"}}) {
+            YamlConfiguration y = new YamlConfiguration();
+            y.loadFromString("controls:\n  ability-bar: " + c[0] + "\n");
+            assertEquals(Controls.BarMode.valueOf(c[1]), Controls.Settings.from(y.getConfigurationSection("controls")).defaultBar(), c[0]);
+        }
+    }
+
+    @Test
+    void theOffHandsOwnUseAndTheAxesWinRightClick() {
+        // The registry facts (food, block, worn slot) are passed in: the server isn't running in a unit test.
+        org.bukkit.inventory.EquipmentSlot hand = org.bukkit.inventory.EquipmentSlot.HAND;
+        // Used wherever you aim: right-click stays vanilla (a shield blocks, food is eaten, armor is put on).
+        assertEquals(VanillaUse.OffHand.ALWAYS, VanillaUse.offHand(org.bukkit.Material.SHIELD, false, false, org.bukkit.inventory.EquipmentSlot.OFF_HAND));
+        assertEquals(VanillaUse.OffHand.ALWAYS, VanillaUse.offHand(org.bukkit.Material.BREAD, true, false, hand));
+        assertEquals(VanillaUse.OffHand.ALWAYS, VanillaUse.offHand(org.bukkit.Material.IRON_HELMET, false, false, org.bukkit.inventory.EquipmentSlot.HEAD));
+        for (org.bukkit.Material m : new org.bukkit.Material[]{org.bukkit.Material.POTION, org.bukkit.Material.ENDER_PEARL,
+                org.bukkit.Material.FIREWORK_ROCKET, org.bukkit.Material.BOW, org.bukkit.Material.MILK_BUCKET,
+                org.bukkit.Material.WIND_CHARGE, org.bukkit.Material.BUNDLE, org.bukkit.Material.BLUE_EGG}) {
+            assertEquals(VanillaUse.OffHand.ALWAYS, VanillaUse.offHand(m, false, false, hand), m.name());
+        }
+        // Used on the block you click: vanilla there, an ability key in the air.
+        assertEquals(VanillaUse.OffHand.ON_BLOCK, VanillaUse.offHand(org.bukkit.Material.TORCH, false, true, hand));
+        assertEquals(VanillaUse.OffHand.ON_BLOCK, VanillaUse.offHand(org.bukkit.Material.COBBLESTONE, false, true, hand));
+        assertEquals(VanillaUse.OffHand.ON_BLOCK, VanillaUse.offHand(org.bukkit.Material.DRAGON_EGG, false, true, hand), "a block, not a throw");
+        for (org.bukkit.Material m : new org.bukkit.Material[]{org.bukkit.Material.WATER_BUCKET, org.bukkit.Material.FLINT_AND_STEEL,
+                org.bukkit.Material.ZOMBIE_SPAWN_EGG, org.bukkit.Material.IRON_SHOVEL, org.bukkit.Material.OAK_BOAT, org.bukkit.Material.RED_DYE}) {
+            assertEquals(VanillaUse.OffHand.ON_BLOCK, VanillaUse.offHand(m, false, false, hand), m.name());
+        }
+        // No use of its own: right-click stays an ability key.
+        for (org.bukkit.Material m : new org.bukkit.Material[]{org.bukkit.Material.AIR, org.bukkit.Material.TOTEM_OF_UNDYING,
+                org.bukkit.Material.ARROW, org.bukkit.Material.FILLED_MAP, org.bukkit.Material.DIAMOND, org.bukkit.Material.IRON_SWORD}) {
+            assertEquals(VanillaUse.OffHand.NONE, VanillaUse.offHand(m, false, false, hand), m.name());
+        }
+        assertEquals(VanillaUse.OffHand.NONE, VanillaUse.offHand(null, false, false, hand));
+        // An axe strips logs and wood, scrapes and unwaxes copper; elsewhere its right-click is an ability key.
+        assertTrue(VanillaUse.axeWorks(org.bukkit.Material.OAK_LOG));
+        assertTrue(VanillaUse.axeWorks(org.bukkit.Material.CRIMSON_STEM));
+        assertTrue(VanillaUse.axeWorks(org.bukkit.Material.BAMBOO_BLOCK));
+        assertTrue(VanillaUse.axeWorks(org.bukkit.Material.WAXED_CUT_COPPER_SLAB));
+        assertTrue(VanillaUse.axeWorks(org.bukkit.Material.OXIDIZED_COPPER));
+        assertFalse(VanillaUse.axeWorks(org.bukkit.Material.STRIPPED_OAK_LOG));
+        assertFalse(VanillaUse.axeWorks(org.bukkit.Material.COPPER_BLOCK));
+        assertFalse(VanillaUse.axeWorks(org.bukkit.Material.COPPER_ORE));
+        assertFalse(VanillaUse.axeWorks(org.bukkit.Material.STONE));
+        assertFalse(VanillaUse.axeWorks(null));
+    }
+
+    @Test
     void theShippedClassesFileSetsQuickKeysAndTheAutoBar() throws Exception {
         YamlConfiguration y = new YamlConfiguration();
         y.loadFromString(java.nio.file.Files.readString(new File("src/main/resources/classes.yml").toPath()).replace("\r\n", "\n"));

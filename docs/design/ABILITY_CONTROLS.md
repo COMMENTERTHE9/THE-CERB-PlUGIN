@@ -129,8 +129,22 @@ Reversible: the scheme lives in one class (`Classes/Controls`), separate from th
 | 5 | Sneak + F | Sneak + F |
 
 - F and Q never swap or drop a weapon or focus while armed. An empty F or Q says so ("Nothing on F"). A weapon can still be dropped from the inventory screen. With an empty main hand and an item in the off hand, F stays a swap: that is how you take the item into your hand.
-- Right-click stays vanilla on a usable block (door, chest, lever...), on a mob that isn't an enemy (trade, mount, feed), when nothing is on right-click (actives 1 and 4 empty), and with an item that has a right-click of its own when no right-click ability fits it: a spear or trident (its charge or throw), a spell item such as the Fireball Wand (its spell). Sneaking turns the first two into casts, as vanilla does with an item in hand.
-- Sneak + key: the decision waits one tick, so Sneak pressed together with the key counts.
+- **Right-click stays vanilla:**
+  - On a usable block (door, chest, lever...).
+  - On a mob that isn't an enemy (trade, mount, feed).
+  - With an axe on a block it strips, scrapes or unwaxes (logs, wood, copper).
+  - When nothing is on right-click (actives 1 and 4 empty).
+  - With an item that has a right-click of its own, when no right-click ability fits it: a spear or trident (its charge or throw), a spell item such as the Fireball Wand (its spell).
+
+  Sneaking turns the first three into casts, as vanilla does with an item in hand.
+- **The off hand's own use keeps right-click**, with or without Sneak:
+  - A shield blocks.
+  - Food, potions, throwables, a bow or armor are used.
+  - A block or torch is placed when you click a block. In the air, right-click is still an ability key.
+
+  The right-click abilities show dark on the ability bar meanwhile. A totem, arrows or a map in the off hand change nothing. (`Classes/VanillaUse`, unit-tested.)
+- **Sneak + key:** the decision waits one tick. Sneak held at the press, or pressed in the same tick, counts.
+- **Q casts a tick later.** While the drop event runs, the item is out of the hand. The ability waits until the weapon is back, so its strikes use that weapon's Power and a kill pays that weapon's skill.
 
 **Click combos.** The combos are R R R, R L R, R L L and R R L for actives 1–4. F is active 5 and Q stays a drop. Each click may follow the previous one by at most 0.7 s (`combo-gap-ms`). The HUD shows the clicks so far and what the next click casts. Clicks inside a combo don't attack. A lone right-click expires and casts nothing. A bow's combos start with left-click, since R and L swap. A left-click on a player is always a plain hit and ends the combo.
 
@@ -191,4 +205,5 @@ A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities 
 - **Empty hand:** a vanilla client sends nothing for right-click in the air or for Q. Unarmed builds cast with F and Sneak + F, and with right-click on a mob or block. Gauntlets as a held item would fix this when weapons are built.
 - **Q briefly hides the held item** (the client predicts the drop until the server puts it back). F and right-click don't flicker.
 - **Spear or trident:** right-click casts only when the right-click abilities fit a polearm. Otherwise the vanilla charge or throw stays.
+- **A shield in the off hand takes right-click** (it blocks), so actives 1 and 4 can't be cast while it is there, nor click combos, which all start with right-click. Shield fighters put their abilities on F, Q and Sneak + F. This keeps vanilla blocking, which most players rely on. It is open for the owner's playtest: the alternative would trade blocking for the right-click abilities.
 - **Presentation:** a resource pack could later add ability icons and cooldown sweeps. Nothing depends on one.

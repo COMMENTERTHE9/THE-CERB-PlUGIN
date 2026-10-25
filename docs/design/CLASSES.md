@@ -345,12 +345,15 @@ The other 22 classes of the roster are design only.
   - Spears and tridents keep their own right-click unless the right-click abilities fit a polearm.
   - Spell items (the Fireball Wand) cast the right-click abilities that fit a focus, and their own spell otherwise.
   - An empty hand can't cast with right-click in the air or with Q: the vanilla client sends nothing the server can act on. F and Sneak + F work empty-handed.
+  - The off hand's own use keeps right-click: a shield blocks, food is eaten, a torch is placed on a block. An axe still strips logs.
 - **Arcane Bolt** is an instant bolt: a ray to the first enemy within 8 blocks, and walls block it. It is not a flying projectile.
 - **Fireball** casts a mobs-only version of the existing spell. It flies through players, and its blast neither damages nor ignites them. Its 20 Essence is checked and paid by the ability engine before anything is spent.
 - **Class XP** (Phase 3 rules, against farming):
   - A cast earns 6 XP when it reaches a hostile mob (farm animals don't count), or when it is a self cast (buff, Blink, Feint) made in a fight with an enemy.
   - Hitting a cow or an armor stand, or a PvP tag, starts a "fight" for the loadout lock but pays no class XP.
-  - Riposte earns it when it counters.
+  - Riposte earns it when it counters an enemy (not a wolf or golem).
+  - Fireball earns it when it bursts on an enemy, not when it is fired.
+  - Mobs that can't be hurt (an invulnerable one, a Creaking bound to its heart) are not targets, so they pay nothing.
   - Casting into the air out of combat earns nothing.
   - **Weak mobs pay less, as kill XP does:** a foe 20 or more levels below the class's own skills (`kill-xp.anti-grind-gap`) pays a quarter (`anti-grind-factor`). `ClassRanks.castXp`, unit-tested.
   - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced. **Only enemies count:** farm animals pay no kill share.

@@ -109,6 +109,7 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
         }
         p.sendMessage(ChatColor.DARK_GRAY + "  With a bow or crossbow, right and left swap. "
                 + (scheme == Classes.Controls.Scheme.QUICK ? "Q never drops a weapon then." : "Q still drops."));
+        p.sendMessage(ChatColor.DARK_GRAY + "  A shield, food or another usable item in the off hand keeps right-click for itself.");
         Classes.Controls.Scheme other = scheme == Classes.Controls.Scheme.QUICK ? Classes.Controls.Scheme.COMBO : Classes.Controls.Scheme.QUICK;
         p.sendMessage(ChatColor.GRAY + "  Try " + other.displayName + ": /class controls " + other.id());
     }

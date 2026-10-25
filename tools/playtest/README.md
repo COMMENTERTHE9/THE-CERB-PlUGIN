@@ -50,7 +50,8 @@ node smoke.js                             # PASS/FAIL per check, non-zero exit o
 | `abilities.js warrior` / `mage` / `duelist` | The per-ability audit (`docs/ABILITY_AUDIT.md`): every ability on its own, its weapons, targeting and range, effects measured in the world (damage traces, positions, `/cerb mobs` effects, Essence read from the HUD at the cast), refusals that spend nothing, passives and keystones by their values |
 | `abilities.js mixed` | Three classes in one loadout, Feint + War Cry on one hit, the shared movement lockout, rapid presses, cooldowns across loadouts, class XP only from real fights (positive controls: a zombie pays), items never dropped or duplicated, abilities never hit players (spawns `CerbTarget`, op it first) |
 | `abilities.js persist` | `PERSIST=set`, restart the server at once, `PERSIST=check`: the control scheme, the bar setting, the loadout in use and a running War Cry cooldown survive |
-| `abilities.js neutral` | Clean-up (every phase ends with it): loadout 1 in use with no class passive or keystone, so menu.js and admin.js see the character's plain attributes |
+| `abilities.js fixes` | The independent review's findings, each with a positive control: Q strikes with the weapon back in hand; Q right after closing the inventory; a shield, food or torch in the off hand and an axe on a log keep right-click; Sneak let go with the key; another player's wolf and invulnerable mobs are never targets; Fireball pays class XP on its hit |
+| `abilities.js neutral` | Clean-up (every phase ends with it): loadout 1 in use and empty, so menu.js, admin.js and progression.js see the character's plain attributes and keys |
 | `progression.js offswitch` | With `attributes.integration.pve-offense: false` + `/cerb reload`, old swing counts return |
 
 Never point these at a server with real players or online-mode=true.

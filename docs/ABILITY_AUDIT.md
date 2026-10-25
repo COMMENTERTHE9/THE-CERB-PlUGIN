@@ -29,7 +29,7 @@
 
 Key = the default control scheme (quick keys) in the loadout each phase uses. With a bow, right and left swap.
 
-**In numbers**, on the final build: `controls` 26, `combos` 13, `warrior` 20, `mage` 20, `duelist` 14, `mixed` 17, `persist` 4. That makes 114 checks, all passing.
+**In numbers**, on the final build: `controls` 26, `combos` 13, `warrior` 20, `mage` 20, `duelist` 14, `mixed` 17, `fixes` 20 (the review's findings), `persist` 4. That makes 134 checks, all passing.
 
 ### Warrior
 
@@ -112,6 +112,21 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 
    Now only enemies count, with the kill-XP grey-mob share (`ClassRanks.castXp`, unit-tested).
 9. **A negative bonus read "+-4.6%"**: a keystone's slower attacks on the Skill, Stats and admin pages (found by the regression suite). Signed bonuses now show one sign.
+
+## Independent review
+
+A reviewer read the code from scratch, without my conclusions, and reported 3 medium and 5 low findings. Each was checked against the code (and the server's own drop handling) before fixing. All are fixed and checked in game by `abilities.js fixes`:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | **Q cast while the weapon was out of the hand** (medium). The server takes the item out before the drop event and puts it back after, so a damage ability on Q struck bare-handed and a kill paid Martial Expertise. | Q casts a tick later, with the weapon back. Flurry on Q: all three strikes use sword Power. |
+| 2 | **Class XP for hits that can't land** (medium). A heart-bound Creaking or an invulnerable mob counted as an enemy reached: endless free XP. Riposte paid for any attacker. | Such mobs are not targets. Riposte pays for enemies only. |
+| 3 | **Right-click took the off hand's own use** (medium): a shield never blocked, an off-hand torch or food did nothing, an axe couldn't strip a log. | The off hand's use and the axe's block uses stay vanilla (`VanillaUse`, unit-tested). The bar shows the right-click abilities dark. |
+| 4 | Sneak let go together with the key cast the plain slot (low). | Sneak held at the press counts. |
+| 5 | `ability-bar: off` unquoted in `classes.yml` read as a YAML boolean and was ignored (low). | on/off (true/false) are understood; unit-tested by loading the YAML. |
+| 6 | Abilities could hit another player's pet or a mount a player rides (low; PvP is off). | Never targets; Riposte doesn't counter them. |
+| 7 | Q within 100 ms of closing an inventory dropped the weapon (low). | The hand is compared with how it was at the close. |
+| 8 | Fireball paid class XP as a self cast, even fired into the sky (low). | It pays when it bursts on an enemy. |
 
 ## Not verifiable by a bot (needs the owner)
 

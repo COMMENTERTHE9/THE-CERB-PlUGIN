@@ -53,7 +53,11 @@ public final class Controls {
 
         public static BarMode parse(String s) {
             if (s == null) return null;
-            try { return valueOf(s.trim().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { return null; }
+            String v = s.trim().toLowerCase(Locale.ROOT);
+            // YAML reads an unquoted on/off (or yes/no) as true/false, so a hand-edited file says those.
+            if (v.equals("true")) return ON;
+            if (v.equals("false")) return OFF;
+            try { return valueOf(v.toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { return null; }
         }
 
         public String id() { return name().toLowerCase(Locale.ROOT); }

@@ -14,8 +14,11 @@
 //              refusals that spend nothing, moving / jumping / sneaking (see AUDIT notes per check)
 //   mixed    - abilities from three classes in one loadout, rapid presses, shared lockouts, no duplicate buffs, PvP safety
 //   persist  - PERSIST=set: scheme, bar, loadout, a long cooldown; restart; PERSIST=check: the same
-//   neutral  - only the clean-up every phase ends with: loadout 1 in use, no class passive or keystone (other scripts
-//              such as menu.js and admin.js expect the character's plain attributes)
+//   fixes    - the independent review's findings: Q strikes with the weapon back in hand; Q right after closing the
+//              inventory; the off hand's own use (shield, food, torch) and an axe on a log keep right-click; Sneak let go
+//              with the key; another player's wolf and invulnerable mobs are never targets; Fireball pays on its hit
+//   neutral  - only the clean-up every phase ends with: loadout 1 in use and empty (other scripts such as menu.js,
+//              admin.js and progression.js expect the character's plain attributes and keys)
 // Bot limits handled here (each told apart from plugin behaviour): the 1.21.9+ motion packet (applied as the client does),
 // item-use rotation in degrees (the server aims with it), no client-side prediction of a Q drop (counted on the ground).
 // Every "nothing happens" check has a positive control (the same input doing something when it should), so a check can't
@@ -280,11 +283,12 @@ async function use(n) {
   }
 }
 /**
- * Leave the character as the other scripts expect it: loadout 1 in use, with no class passive or
- * keystone (they would change max health, attack speed and crits in menu.js, admin.js...).
+ * Leave the character as the other scripts expect it: loadout 1 in use and empty. A class passive or
+ * keystone would change max health, attack speed and crits in menu.js and admin.js, and an ability
+ * on right-click would take the test wand's click in progression.js.
  */
 async function neutral() {
-  for (const s of ['p1', 'p2', 'p3', 'k']) await equip(`1 ${s} none`);
+  for (const s of ['a1', 'a2', 'a3', 'a4', 'a5', 'p1', 'p2', 'p3', 'k']) await equip(`1 ${s} none`);
   await use(1);
 }
 async function fresh() {
@@ -893,6 +897,136 @@ async function duelist() {
   await clearMobs();
 }
 
+// ════════════════════════════════════════════════════════════════
+// fixes: the independent review's findings (2026-10-25), each with its positive control
+// ════════════════════════════════════════════════════════════════
+/** A player's offline-mode UUID as the [I; ...] int array NBT takes (to make a pet theirs). */
+function offlineUuidInts(name) {
+  const h = require('crypto').createHash('md5').update('OfflinePlayer:' + name).digest();
+  h[6] = (h[6] & 0x0f) | 0x30; h[8] = (h[8] & 0x3f) | 0x80;
+  return [0, 4, 8, 12].map(i => h.readInt32BE(i));
+}
+async function fixes() {
+  await arena();
+  await setup('quick');
+  await debug(true);
+  await loadout(1, { a1: 'cleave', a2: 'war_cry', a3: 'flurry', a4: 'feint' });
+  await hold('iron_sword');
+  // Folia has no /item command: give the item and move it to the off hand through the inventory, as a player would.
+  const offhand = async item => {
+    if (bot.inventory.slots[45]) { await bot.unequip('off-hand').catch(() => {}); await sleep(300); }
+    if (item === 'air') return;
+    await cmd(`/give @s ${item} 1`, 600);
+    const it = bot.inventory.items().find(i => i.name === item);
+    if (it) await bot.equip(it, 'off-hand').catch(() => {});
+    await sleep(400);
+  };
+  const inOff = () => (bot.inventory.slots[45] ? bot.inventory.slots[45].name : 'air');
+  const press = async fn => { const c0 = (await casts()).casts; const t = Date.now(); await fn(); await sleep(700); return { n: (await casts()).casts - c0, f: flashes(t) }; };
+
+  // 1. Q: the item is out of the hand while its drop event runs. The cast now waits a tick, so Flurry's strikes
+  //    use the sword's Power (before: the first strike was bare-handed, and a kill paid Martial Expertise).
+  await clearMobs(); await zombie(0, 2, 50); await stand(0, 0); await fresh(); await lookAt(zombies()[0]);
+  let at = chat.length;
+  keyQ(); await sleep(1300);
+  const tr = traces(at).filter(l => /Power\(/.test(l));
+  check('Q (Flurry): all three strikes use the sword\'s Power, none bare-handed', tr.length === 3 && tr.every(l => /Power\(Swords/.test(l)),
+    tr.map(l => (l.match(/Power\([A-Za-z]+/) || [''])[0]).join(' | '));
+  check('...and the sword is back in hand, nothing on the ground', inHand() === 'iron_sword' && itemsAround() === 0, `${inHand()}, ${itemsAround()} items`);
+  // 2. Q right after closing the inventory is still the key (the cursor-item grace only covers a drop that left the hand alone).
+  await fresh(); await lookAt(zombies()[0]);
+  let t = Date.now();
+  bot._client.write('close_window', { windowId: 0 }); keyQ(); await sleep(900);
+  check('Q within 100 ms of closing the inventory casts (Flurry) and keeps the sword', !!flashed(t, /Flurry/) && inHand() === 'iron_sword' && itemsAround() === 0,
+    `${JSON.stringify(flashes(t))}; ${inHand()}, ${itemsAround()} items`);
+
+  // 3. The off hand's own use keeps right-click: a shield or food always, a torch on a block.
+  await clearMobs(); await stand(0, 0); await face(SOUTH, 0); await fresh();
+  let r = await press(rclick);
+  check('Positive control: with a free off hand, right-click casts Cleave', r.n === 1 && r.f.some(f => /✦ Cleave/.test(f.m)), JSON.stringify(r.f));
+  await offhand('shield'); await fresh();
+  r = await press(rclick);
+  check('A shield in the off hand: right-click is the shield\'s (no cast, no message)', inOff() === 'shield' && r.n === 0 && !r.f.some(f => /Cleave/.test(f.m)), `off hand ${inOff()}; ${JSON.stringify(r.f)}`);
+  r = await press(async () => sneaking(rclick));
+  check('...Sneak + right-click too (Feint not cast)', r.n === 0, JSON.stringify(r.f));
+  r = await press(async () => keyF());
+  check('...while F still casts (War Cry)', r.n === 1 && r.f.some(f => /✦ War Cry/.test(f.m)), JSON.stringify(r.f));
+  await offhand('bread'); await fresh();
+  r = await press(rclick);
+  check('Bread in the off hand: right-click eats, no cast', inOff() === 'bread' && r.n === 0, `off hand ${inOff()}; ${JSON.stringify(r.f)}`);
+  await offhand('totem_of_undying'); await fresh();
+  r = await press(rclick);
+  check('A totem in the off hand (no use of its own): right-click casts Cleave', inOff() === 'totem_of_undying' && r.n === 1, `off hand ${inOff()}; ${JSON.stringify(r.f)}`);
+  await offhand('torch'); await fresh();
+  r = await press(rclick); // in the air
+  check('A torch in the off hand, right-click in the air: Cleave', inOff() === 'torch' && r.n === 1, `off hand ${inOff()}; ${JSON.stringify(r.f)}`);
+  await fresh();
+  r = await press(() => rclickBlock({ x: X, y: Y - 1, z: Z + 2 })); // on the floor: the torch's place
+  check('...right-click on a block: vanilla (the torch is placed), no cast', r.n === 0, JSON.stringify(r.f));
+  await offhand('air');
+  await cmd(`/fill ${X - 2} ${Y} ${Z + 1} ${X + 2} ${Y + 2} ${Z + 3} air`, 400); // anything the torch left
+
+  // 4. An axe keeps its own use on a block: stripping a log.
+  await hold('iron_axe'); await fresh();
+  await cmd(`/setblock ${X} ${Y} ${Z + 2} oak_log`, 400);
+  await cmd(`/setblock ${X + 1} ${Y} ${Z + 2} stone`, 400);
+  r = await press(() => rclickBlock({ x: X, y: Y, z: Z + 2 }));
+  const log = bot.blockAt(new (require('vec3'))(X, Y, Z + 2));
+  check('An axe on an oak log strips it (vanilla), no cast', r.n === 0 && log && log.name === 'stripped_oak_log', `${log && log.name}; ${JSON.stringify(r.f)}`);
+  await fresh();
+  r = await press(() => rclickBlock({ x: X + 1, y: Y, z: Z + 2 }));
+  check('Positive control: the same axe on stone casts Cleave', r.n === 1 && r.f.some(f => /✦ Cleave/.test(f.m)), JSON.stringify(r.f));
+  await cmd(`/fill ${X - 2} ${Y} ${Z + 1} ${X + 2} ${Y + 2} ${Z + 3} air`, 400);
+
+  // 5. Sneak let go together with the key: still the Sneak slot (Feint, not Cleave). Timing-dependent: when the
+  //    release arrives after the decision, the old code passed too.
+  await hold('iron_sword'); await fresh(); await stand(0, 0); await face(SOUTH, 0);
+  bot.setControlState('sneak', true); await sleep(300);
+  t = Date.now();
+  await rclick(); bot.setControlState('sneak', false);
+  await sleep(700);
+  check('Sneak released with the right-click: Sneak + right-click (Feint), not right-click (Cleave)', !!flashed(t, /Feint/) && !flashed(t, /Cleave/), JSON.stringify(flashes(t)));
+
+  // 6. Nothing that belongs to a player: another player's wolf. And nothing that can't be hurt (no XP for it).
+  await clearMobs(); await fresh(); await face(SOUTH, 0);
+  await cmd(`/summon wolf ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b,Owner:[I;${offlineUuidInts('CerbTarget').join(',')}]}`, 600);
+  t = Date.now(); await rclick(); await sleep(600);
+  check('Cleave with only another player\'s wolf in front: "no one hit"', !!flashed(t, /✦ Cleave · no one hit/), JSON.stringify(flashes(t)));
+  await clearMobs(); await fresh(); await face(SOUTH, 0);
+  await cmd(`/summon wolf ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b}`, 600);
+  t = Date.now(); await rclick(); await sleep(600);
+  check('Positive control: a wild wolf in front is hit', !!flashed(t, /✦ Cleave · 1 hit/), JSON.stringify(flashes(t)));
+  await clearMobs(); await sleep(8600); await fresh(); await face(SOUTH, 0); // out of the fight
+  await cmd(`/summon zombie ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b,Invulnerable:1b}`, 600);
+  let xp0 = await classXp('Warrior');
+  t = Date.now(); await rclick(); await sleep(600);
+  let xp1 = await classXp('Warrior');
+  check('An invulnerable zombie isn\'t a target: "no one hit", no class XP', !!flashed(t, /no one hit/) && xp1 === xp0, `${JSON.stringify(flashes(t))}; Warrior XP ${xp0} -> ${xp1}`);
+  await clearMobs(); await zombie(0, 2); await fresh(); await face(SOUTH, 0);
+  xp0 = await classXp('Warrior');
+  t = Date.now(); await rclick(); await sleep(600);
+  xp1 = await classXp('Warrior');
+  check('Positive control: a normal zombie is hit and pays 6', !!flashed(t, /1 hit/) && xp1 - xp0 === 6, `Warrior XP ${xp0} -> ${xp1}`);
+
+  // 7. Fireball pays class XP when it bursts on an enemy, not as a self cast (before: 6 even into the sky).
+  await loadout(2, { a1: 'arcane_bolt', a3: 'fireball' });
+  await hold('blaze_rod');
+  await clearMobs(); await zombie(0, 4, 50); await stand(0, 0); await fresh();
+  await lookAt(zombies()[0]); lclick(); await sleep(400);             // a fight with an enemy
+  xp0 = await classXp('Mage');
+  await face(SOUTH, Math.PI / 2); keyQ(); await sleep(1500);          // straight up
+  xp1 = await classXp('Mage');
+  check('Fireball into the sky during a fight: no class XP', xp1 === xp0, `Mage XP ${xp0} -> ${xp1}`);
+  await fresh(); await lookAt(zombies()[0]);
+  xp0 = await classXp('Mage');
+  keyQ(); await sleep(1800);                                          // it flies, then bursts on the zombie
+  xp1 = await classXp('Mage');
+  check('Fireball bursting on the zombie: +6 class XP', xp1 - xp0 === 6, `Mage XP ${xp0} -> ${xp1}`);
+  await use(1);
+  await debug(false);
+  await clearMobs();
+}
+
 /** Values from Player Menu -> Stats (max health, max mana, crit chance), as the player sees them. */
 const plain = v => {
   if (v == null) return '';
@@ -1086,6 +1220,7 @@ async function persist() {
     else if (phase === 'duelist') await duelist();
     else if (phase === 'mixed') await mixed();
     else if (phase === 'persist') await persist();
+    else if (phase === 'fixes') await fixes();
     else if (phase !== 'neutral') console.log('unknown phase ' + phase);
     if (!(phase === 'persist' && process.env.PERSIST === 'set')) await neutral(); // the restart check needs loadout 2
   } catch (e) {

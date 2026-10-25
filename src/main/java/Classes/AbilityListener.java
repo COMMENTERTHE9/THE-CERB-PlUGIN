@@ -52,9 +52,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * the loadout in use has an active ability. Then every press shows what happened (it went off, or
  * why not: {@link CastFeedback}), and F and Q never swap or drop (a weapon can still be dropped
  * from the inventory screen). Right-click stays vanilla when no right-click slot holds anything,
- * on a door, chest or other usable block, on a tame or friendly mob, and with a spear or trident
- * whose abilities don't fit it (its charge or throw). With a tool, a block, food or any other item
- * every key is vanilla, so building and using items never change.
+ * on a door, chest or other usable block, on a tame or friendly mob, with an axe on a block it
+ * strips or scrapes, with a spear, trident or spell item whose abilities don't fit it (its charge,
+ * throw or spell), and whenever the off hand's item has a use of its own there (a shield, food, a
+ * torch on a block: {@link VanillaUse}). With a tool, a block, food or any other item in the main
+ * hand every key is vanilla, so building and using items never change.
  *
  * <p><b>Sneak + key.</b> A vanilla client sends a click or F before the Sneak key's new state when
  * both change in the same tick, so a player pressing them together would read as "no Sneak" and
@@ -96,6 +98,10 @@ public final class AbilityListener implements Listener {
         boolean rightUsed, leftUsed;
         long swingIgnoreUntil;
         long inventoryAt;
+        /** When an inventory screen last closed, and the main hand then (the cursor item drops as it closes). */
+        long closeAt;
+        org.bukkit.Material handAtClose;
+        int handAmountAtClose;
         final List<Controls.Click> combo = new ArrayList<>(Controls.COMBO_LENGTH);
         long comboAt;
         boolean comboBow;
@@ -193,7 +199,9 @@ public final class AbilityListener implements Listener {
         State s = state(p);
         long now = System.currentTimeMillis();
         s.swingIgnoreUntil = now + SWING_AFTER_USE_MS; // the client swings its arm after a drop: no left-click
-        if (now - s.inventoryAt < INVENTORY_GRACE_MS || !noContainerOpen(p)) return;
+        if (now - s.inventoryAt < INVENTORY_GRACE_MS || !noContainerOpen(p)) return; // dropped from an inventory screen
+        // Just after a screen closed: the cursor item dropping leaves the hand as it was; a Q press has emptied it.
+        if (now - s.closeAt < INVENTORY_GRACE_MS && handUnchangedSinceClose(p, s)) return;
         if (keyQ(p, family(e.getItemDrop().getItemStack()))) e.setCancelled(true);
     }
 
@@ -212,7 +220,17 @@ public final class AbilityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onInventoryClose(InventoryCloseEvent e) {
-        if (e.getPlayer() instanceof Player p) state(p).inventoryAt = System.currentTimeMillis();
+        if (!(e.getPlayer() instanceof Player p)) return;
+        State s = state(p);
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        s.closeAt = System.currentTimeMillis();
+        s.handAtClose = hand.getType();
+        s.handAmountAtClose = hand.getAmount();
+    }
+
+    private static boolean handUnchangedSinceClose(Player p, State s) {
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        return hand.getType() == s.handAtClose && hand.getAmount() == s.handAmountAtClose;
     }
 
     // ── what a key means ────────────────────────────────────────
@@ -295,7 +313,11 @@ public final class AbilityListener implements Listener {
         long now = System.currentTimeMillis();
         if (now - s.qAt < SAME_PRESS_MS) return true;
         s.qAt = now;
-        castNow(p, Controls.QUICK_Q, dropped, Controls.Scheme.QUICK);
+        // While the drop event runs the item is out of the hand (the server puts it back after the event).
+        // Cast next tick, with the weapon back in hand, so its strikes and kills count for that weapon.
+        p.getScheduler().run(plugin, t -> {
+            if (p.isOnline()) castNow(p, Controls.QUICK_Q, family(p.getInventory().getItemInMainHand()), Controls.Scheme.QUICK);
+        }, null);
         return true;
     }
 
@@ -304,9 +326,10 @@ public final class AbilityListener implements Listener {
      * on Sneak, whose state may still be on its way (same tick), so decide next tick.
      */
     private void decideNextTick(Player p, WeaponFamily hand, boolean primary) {
+        boolean sneakAtPress = p.isSneaking(); // a quick tap may let go of Sneak before the decision
         p.getScheduler().runDelayed(plugin, t -> {
             if (!p.isOnline()) return;
-            boolean sneak = p.isSneaking();
+            boolean sneak = sneakAtPress || p.isSneaking();
             int slot = primary ? Controls.quickPrimary(sneak) : Controls.quickF(sneak);
             castNow(p, slot, hand, Controls.Scheme.QUICK);
         }, null, 1L);
@@ -408,7 +431,11 @@ public final class AbilityListener implements Listener {
      */
     private boolean keepsVanillaRight(Player p, ClassProfile prof, WeaponFamily hand, Block block, Entity entity, boolean quick) {
         boolean sneaking = p.isSneaking();
+        // The off hand's own use wins (a shield blocks, food is eaten, a torch is placed), with or without Sneak.
+        VanillaUse.OffHand off = VanillaUse.offHand(p.getInventory().getItemInOffHand().getType());
+        if (off == VanillaUse.OffHand.ALWAYS || (off == VanillaUse.OffHand.ON_BLOCK && block != null)) return true;
         if (!sneaking && block != null && block.getType().isInteractable()) return true;
+        if (!sneaking && block != null && hand == WeaponFamily.AXE && VanillaUse.axeWorks(block.getType())) return true; // strip, scrape, unwax
         if (!sneaking && entity != null && !(entity instanceof Enemy)) return true;
         int[] slots = quick ? new int[]{0, 3} : new int[]{0, 1, 2, 3};
         if (!hasAny(prof, slots)) return true;

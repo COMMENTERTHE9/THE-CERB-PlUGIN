@@ -20,7 +20,6 @@ import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Tameable;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -192,6 +191,8 @@ public final class AbilityCaster {
      * negated (the caller cancels it) and answered. Player's thread (the damaged entity's).
      */
     public boolean tryCounter(Player p, LivingEntity attacker) {
+        // A player's pet or mount is part of a PvP fight: abilities stay out of it (the window stays open).
+        if (Bukkit.isOwnedByCurrentRegion(attacker) && Manager.AbilityTargets.belongsToAPlayer(attacker)) return false;
         ClassService.CounterWindow w = service.takeCounter(p.getUniqueId());
         if (w == null) return false;
         ClassProfile prof = service.profile(p.getUniqueId());
@@ -204,8 +205,10 @@ public final class AbilityCaster {
         counterStrike(p, attacker, w.coefficient());
         CastFeedback fb = feedback;
         if (fb != null) fb.event(p, "§6✦ " + a.displayName() + "! §7· §fcountered");
-        // Paid for the attacker's level (a weak one pays the kill-XP share); any mob that fights back is a fight.
-        service.awardCastXp(p, a.classId(), Bukkit.isOwnedByCurrentRegion(attacker) ? service.levelOf(attacker) : 0);
+        // Paid like a cast that reached it: enemies only, by their level (a weak one pays the kill-XP share).
+        if (attacker instanceof org.bukkit.entity.Enemy && Bukkit.isOwnedByCurrentRegion(attacker)) {
+            service.awardCastXp(p, a.classId(), service.levelOf(attacker));
+        }
         return true;
     }
 
@@ -271,7 +274,7 @@ public final class AbilityCaster {
                     note(detail, "next hit crits");
                     p.getWorld().spawnParticle(Particle.WITCH, p.getLocation().add(0, 1.2, 0), 10, 0.35, 0.4, 0.35, 0.02);
                 }
-                case EffectSpec.Spell s -> self |= spells.get().castForAbility(s.name(), p);
+                case EffectSpec.Spell s -> spells.get().castForAbility(s.name(), p, burst -> spellHit(p, a, burst)); // XP on its hit
             }
         }
         if (foe == 0 && self) foe = service.fightFoeLevel(p.getUniqueId());
@@ -300,6 +303,15 @@ public final class AbilityCaster {
 
     // ── verbs ───────────────────────────────────────────────────
 
+    /**
+     * A spell cast as an ability (Fireball) burst on {@code hit}, on the region thread that owns
+     * them: class XP as for a cast that reached the strongest enemy among them, on the caster's thread.
+     */
+    private void spellHit(Player p, AbilityDef a, List<LivingEntity> hit) {
+        int foe = strongest(hit);
+        if (foe > 0) p.getScheduler().run(plugin, t -> service.awardCastXp(p, a.classId(), foe), null);
+    }
+
     /** The level of the strongest hostile mob in {@code hit}, or 0 when none is hostile (no cast XP for farm animals). */
     private int strongest(List<LivingEntity> hit) {
         int best = 0;
@@ -308,7 +320,8 @@ public final class AbilityCaster {
     }
 
     private int strongest(LivingEntity e) {
-        return e instanceof org.bukkit.entity.Enemy ? service.levelOf(e) : 0;
+        return e instanceof org.bukkit.entity.Enemy && Bukkit.isOwnedByCurrentRegion(e) && !Manager.AbilityTargets.unhurtable(e)
+                ? service.levelOf(e) : 0;
     }
 
     /**
@@ -568,11 +581,15 @@ public final class AbilityCaster {
         return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
     }
 
-    /** Mobs only (PROTOTYPE: no players), never your own pets, armor stands or the dead. */
+    /**
+     * Mobs only, while PvP is off: never a player, anyone's pet or a mount a player rides, armor
+     * stands, the dead, or a mob that can't be hurt (an invulnerable one, a heart-bound Creaking:
+     * hits that never land must not pay class XP).
+     */
     private static boolean valid(Player p, Entity e) {
-        if (!(e instanceof LivingEntity) || e == p || e instanceof Player || e instanceof ArmorStand || e.isDead()) return false;
-        if (e instanceof Tameable tm && tm.isTamed() && p.getUniqueId().equals(tm.getOwnerUniqueId())) return false;
-        return Bukkit.isOwnedByCurrentRegion(e);
+        if (!(e instanceof LivingEntity) || e == p || e instanceof Player || e instanceof ArmorStand) return false;
+        if (!Bukkit.isOwnedByCurrentRegion(e) || e.isDead()) return false;
+        return !Manager.AbilityTargets.belongsToAPlayer(e) && !Manager.AbilityTargets.unhurtable(e);
     }
 
     /** The held weapon's basic hit (its attack damage; 1 bare-handed). */

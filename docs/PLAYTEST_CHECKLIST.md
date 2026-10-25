@@ -86,6 +86,7 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 | 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits: `Blink 1.2 s`. Later, Sneak + F blinks you 6 blocks. |
 | 7 | Swap the sword for a **pickaxe, a block or food**. Press R, F, Q. | All vanilla: you mine, place, eat, swap and drop as usual. |
 | 8 | Sword in hand: right-click a **door, a chest, a villager, a horse**. | They open, trade or mount as usual. With Sneak, right-click casts instead (vanilla also skips them while sneaking). |
+| 8b | A **shield in the off hand**, then right-click; also try bread or a torch there. With an axe, right-click a log. | The shield blocks, the bread is eaten, the torch is placed: the off hand's own use wins, and the right-click abilities show dark on the bar. F and Q still cast. The axe strips the log. *(Your call: should shield fighters lose right-click abilities, or the shield's block?)* |
 | 9 | Empty a slot (A2 → none). Press **F**. | `Nothing on F · set it in Classes & Abilities`. No swap. |
 
 ### 6b. The Mage and the focus (your earlier report)

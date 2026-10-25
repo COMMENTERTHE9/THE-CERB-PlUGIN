@@ -94,6 +94,8 @@ public final class ClassesMenu extends PlayerMenu {
         lore.gap().text("With a bow, right and left swap.");
         lore.text(scheme == Controls.Scheme.QUICK ? "F and Q never swap or drop a weapon." : "Q still drops; F never swaps.");
         lore.text("A tool, block or food: keys as usual.");
+        lore.text("A shield or food in the off hand keeps");
+        lore.text("right-click for itself (a totem doesn't).");
         lore.gap().stat("Ability bar", svc.barMode(id).id());
         Controls.Scheme other = scheme == Controls.Scheme.QUICK ? Controls.Scheme.COMBO : Controls.Scheme.QUICK;
         lore.hint("Click: switch to " + other.displayName);

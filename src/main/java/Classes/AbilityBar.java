@@ -125,6 +125,8 @@ public final class AbilityBar {
         boolean bow = hand == WeaponFamily.BOW || hand == WeaponFamily.CROSSBOW;
         double essence = mana == null ? Double.MAX_VALUE : mana.getCurrentMana(p);
         List<String> actives = prof.activeLoadout().actives();
+        // A shield, food or another item with a use of its own in the off hand keeps right-click for itself.
+        boolean offHandUse = !bow && VanillaUse.offHand(p.getInventory().getItemInOffHand().getType()) == VanillaUse.OffHand.ALWAYS;
         StringBuilder b = new StringBuilder();
         boolean any = false, momentum = false;
         for (int slot = 0; slot < Loadout.ACTIVE_SLOTS; slot++) {
@@ -135,7 +137,8 @@ public final class AbilityBar {
             if (!b.isEmpty()) b.append("  ");
             b.append("§8[§e").append(Controls.keyShort(scheme, slot, bow)).append("§8] ");
             long left = prof.cooldowns().remaining(a, now);
-            if (!prof.unlocked(a) || !WeaponFamily.fits(a.weapons(), hand)) b.append("§8").append(a.displayName());
+            boolean rightKey = scheme == Controls.Scheme.QUICK ? slot == 0 || slot == 3 : slot < Controls.COMBO_F;
+            if (!prof.unlocked(a) || !WeaponFamily.fits(a.weapons(), hand) || (offHandUse && rightKey)) b.append("§8").append(a.displayName());
             else if (left > 0) b.append("§7").append(a.displayName()).append(" §f").append((left + 999) / 1000);
             else if (a.essenceCost() > essence) b.append("§9").append(a.displayName());
             else if (AbilityCaster.momentum(prof) < AbilityCaster.momentumNeeded(a)) b.append("§6").append(a.displayName());
