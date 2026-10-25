@@ -16,12 +16,20 @@ class ClassCoreTest {
     private static final String SHIPPED_CLASSES = read("src/main/resources/classes.yml");
     private static final String SHIPPED_ABILITIES = read("src/main/resources/abilities.yml");
 
+    /** The file with "\n" line ends, whatever the checkout uses (Git on Windows writes "\r\n"). */
     private static String read(String path) {
         try {
-            return java.nio.file.Files.readString(new File(path).toPath());
+            return java.nio.file.Files.readString(new File(path).toPath()).replace("\r\n", "\n");
         } catch (java.io.IOException e) {
             throw new AssertionError(e);
         }
+    }
+
+    /** {@code text} with {@code regex} replaced; fails when nothing matched, so a test edit can't silently do nothing. */
+    private static String edit(String text, String regex, String replacement) {
+        String out = text.replaceAll(regex, replacement);
+        assertNotEquals(text, out, "the test's edit found nothing to change: " + regex);
+        return out;
     }
 
     /** The shipped files, read exactly as the server does (a YAML error fails the test with its message). */
@@ -240,12 +248,12 @@ class ClassCoreTest {
         assertTrue(repairs.size() >= 3, repairs.toString());
 
         // A reload that adds the class back restores that progress; one that drops a class keeps it dormant.
-        ClassCatalog withNecro = of(SHIPPED_CLASSES.replace("classes:\n",
+        ClassCatalog withNecro = of(edit(SHIPPED_CLASSES, "(?m)^classes:\n",
                 "classes:\n  necromancer:\n    name: Necromancer\n    role: Test\n    signature: Test\n    entry: { Intelligence: 1 }\n"), SHIPPED_ABILITIES);
         repairs.clear();
         fixed.reconcile(withNecro, repairs);
         assertEquals(ClassRanks.MAX_RANK, fixed.rank("necromancer"), repairs.toString());
-        ClassCatalog noMage = of(SHIPPED_CLASSES.replaceAll("(?s)  mage:.*?(?=  duelist:)", ""), SHIPPED_ABILITIES);
+        ClassCatalog noMage = of(edit(SHIPPED_CLASSES, "(?s)  mage:.*?(?=  duelist:)", ""), SHIPPED_ABILITIES);
         fixed.learn("mage");
         repairs.clear();
         fixed.reconcile(noMage, repairs);
