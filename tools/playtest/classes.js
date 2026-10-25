@@ -276,9 +276,8 @@ async function mixed() {
   let t = await cast('f');
   check('War Cry (Warrior) casts from the mixed loadout', went(t, 'War Cry'), t.join(' / '));
   await sleep(500);
-  t = await cast('left');
-  await sleep(300);
-  const t2 = await cast('q');
+  t = await cast('left');      // F: Charge (cast() returns about 0.65 s after the press)
+  const t2 = await cast('q');  // Sneak + right-click: Blink about 0.95 s after Charge, inside the 1.2 s lockout
   check('Charge (Warrior) then Blink (Mage): Blink waits for the shared movement lockout', went(t, 'Charge') && t2.some(m => /Blink \d\.\d s/.test(m)),
     `${t.join(' / ')} || ${t2.join(' / ')}`);
   await stand(0, 0);
