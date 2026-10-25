@@ -15,10 +15,12 @@ node smoke.js                             # PASS/FAIL per check, non-zero exit o
 | `smoke.js` | Join, HUD, Player Menu, kill XP, elite spawns, horse riding, instant respawn |
 | `admin.js main` | Every Control Center section, edits, spawns, mob inspector |
 | `admin.js attrs` / `buffexpire` | Attributes section: inspector, simulator (changes nothing), dev buffs, buff expiry (5 min) |
+| `admin.js staleclick` | A lagging admin's double-click: a click aimed at the skill list that arrives after the skill editor opened must not press the editor's button in that slot (+10 levels); with a control click on the editor itself |
 | `admin.js nonop` / `deopmid` / `dupe` / `cross` / `owners` | Security: non-admins refused (also with a forged panel item), deop mid-session, no item can be taken, editing another player, cleanup removes only your own test mobs. `nonop` needs the bot de-opped and a forged item given from the console; `cross`/`owners` need `CerbTarget` (op for `owners`). |
 | `menu.js nav` | Player Menu 2.0: head and `/menu` open the hub, every tile's state, Skills → category → skill pages (training, attributes, effects, next levels), browsing, Back/Home/Close, renamed skills; Ascension, Equipment (with a worn iron chestplate when op), Bestiary, World and Guide screens. Run it non-op too: `OP=0 node menu.js nav CerbPlayer` |
 | `menu.js names` | Renamed skills in chat: level-up message, `/cerb skill` with either name |
-| `menu.js safety` | With the menu open no click type moves anything (checked by rejoining); the head can't be dropped, swapped, placed, framed or put on an armor stand (with controls proving the bot's interaction reaches the server); one head after rejoin and respawn |
+| `menu.js safety` | With the menu open no click type moves anything (checked by rejoining); the head can't be dropped, swapped, placed, framed or put on an armor stand (with controls proving the bot's interaction reaches the server); a powered shelf swaps hotbar slots 7–8 but not the head; one head after rejoin and respawn |
+| `menu.js shelves` | Decision B: three chained powered shelves swap the whole hotbar except the head and the admin chest; the shelf items meant for those two slots stay on the shelves; server view after rejoin and the shelves' contents (counted after breaking them) show nothing lost or duplicated |
 | `menu.js perf` | Browsing every screen three times opens no database connection and rebuilds no attribute snapshot (`/cerb showqueues` counters) |
 | `progression.js killxp` | Kill XP v2 by mob level, anti-grind |
 | `progression.js swings` | Swings to kill a level 1 / 50 zombie at Blade Mastery 1 / 50 / 100 |

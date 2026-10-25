@@ -18,7 +18,7 @@ public class PlayerHUDManager {
     /** Per player: the last bar sent and when, and the last luck figure with its text. */
     private static final class Sent {
         String text = "";
-        long at;
+        long at; // System.nanoTime()
         double effectiveness = Double.NaN;
         String effectivenessText = "";
     }
@@ -98,8 +98,8 @@ public class PlayerHUDManager {
                 .append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
 
         String text = hudBuilder.toString();
-        long now = System.currentTimeMillis();
-        if (text.equals(last.text) && now - last.at < RESEND_MS) return;
+        long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
+        if (text.equals(last.text) && now - last.at < RESEND_MS * 1_000_000L) return;
         last.text = text;
         last.at = now;
         // Adventure straight to the client (the old Spigot path round-tripped the text through JSON).

@@ -29,8 +29,14 @@ import java.util.logging.Level;
  * <ul>
  *   <li>Every click in a menu is cancelled before anything else, so items never move in or out
  *       (no duplication, no theft) - including shift-clicks, number keys and drags.</li>
- *   <li>Actions are bound server-side to slots of the specific inventory that was rendered;
- *       nothing is read from item data, so copied or forged items do nothing.</li>
+ *   <li>Actions are bound server-side to the slots of the screen currently drawn; nothing is read
+ *       from item data, so copied or forged items do nothing.</li>
+ *   <li>A click aimed at the previous screen never reaches a button that changes something:
+ *       such screens ({@link Menu#reuseWindow()} false: admin and confirm screens) always get a
+ *       fresh window, and the server drops clicks for a window that is no longer open. Read-only
+ *       screens of the same size share one window (fast); there a click arriving within the
+ *       player's round trip after a switch is ignored, as it was aimed at the screen before.
+ *       (A screen's own {@code refresh} never had this protection: it redraws the same buttons.)</li>
  *   <li>The clicker must be the viewer the menu was rendered for.</li>
  *   <li>{@link Menu#permission()} is checked on open AND on every click; losing the permission
  *       mid-session closes the menu.</li>
@@ -41,6 +47,8 @@ import java.util.logging.Level;
 public final class MenuManager implements Listener {
 
     private static final long CLICK_DEBOUNCE_MS = 120;
+    /** After an in-place switch, clicks are ignored for about one round trip: ping + this, within the bounds below. */
+    private static final long SWITCH_GUARD_EXTRA_MS = 150, SWITCH_GUARD_MIN_MS = 250, SWITCH_GUARD_MAX_MS = 1000;
 
     private final JavaPlugin plugin;
     private final Map<UUID, Deque<Menu>> stacks = new ConcurrentHashMap<>();
@@ -177,8 +185,8 @@ public final class MenuManager implements Listener {
         // menu click's server time (docs/PERFORMANCE.md).
         InventoryView view = player.getOpenInventory();
         Inventory top = view.getTopInventory();
-        if (top.getHolder() instanceof MenuHolder open && open.viewerId().equals(player.getUniqueId())
-                && top.getSize() == size) {
+        if (menu.reuseWindow() && top.getHolder() instanceof MenuHolder open
+                && open.viewerId().equals(player.getUniqueId()) && top.getSize() == size) {
             boolean retitle = open.switchTo(menu);
             render(player, menu, top, open);
             if (retitle) view.setTitle(menu.title());
@@ -236,12 +244,13 @@ public final class MenuManager implements Listener {
             return;
         }
 
-        long now = System.currentTimeMillis();
         // Just switched screens in this window: a click arriving within the player's round trip
-        // was aimed at the previous screen (a new window used to drop it by window id).
-        if (now - holder.switchedAt() < Math.max(CLICK_DEBOUNCE_MS, player.getPing() + 50L)) return;
+        // (plus up to a tick each way and a client frame) was aimed at the previous screen.
+        long guard = Math.min(SWITCH_GUARD_MAX_MS, Math.max(SWITCH_GUARD_MIN_MS, player.getPing() + SWITCH_GUARD_EXTRA_MS));
+        if (holder.msSinceSwitch() < guard) return;
+        long now = System.nanoTime();
         Long prev = lastClick.put(player.getUniqueId(), now);
-        if (prev != null && now - prev < CLICK_DEBOUNCE_MS) return; // accidental double-fire
+        if (prev != null && now - prev < CLICK_DEBOUNCE_MS * 1_000_000L) return; // accidental double-fire
 
         Ui.click(player);
         try {

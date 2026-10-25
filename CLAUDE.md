@@ -39,7 +39,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions
-- **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches (`tools/playtest/load.js` + `tools/perf/profile.sh`, method in `docs/PERFORMANCE.md`), fixing confirmed bottlenecks, and measuring again. No speculative rewrites. Menus: change screens with `MenuManager.open/replace` (same-size screens redraw in place); never open raw inventories per click.
+- **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches (`tools/playtest/load.js` + `tools/perf/profile.sh`, method in `docs/PERFORMANCE.md`), fixing confirmed bottlenecks, and measuring again. No speculative rewrites. Menus: change screens with `MenuManager.open/replace` (same-size screens redraw in place); never open raw inventories per click. A screen whose buttons change state at once returns `reuseWindow() = false` (all admin screens do) so stale clicks can't reach it.
 - **Folia threading:** snapshot on the entity/region thread → async I/O → reschedule back. Never touch Bukkit entity/player APIs off-thread.
 - New content ships as **config** (mobs.yml / combat.yml / *.yml + a registry), not code.
 - Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (any JDK >= 21).

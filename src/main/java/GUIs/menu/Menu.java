@@ -27,6 +27,14 @@ public abstract class Menu {
      */
     public String permission() { return null; }
 
+    /**
+     * Whether moving here from another screen may redraw the open window in place (fast). A screen
+     * whose buttons change something at once returns false: it always gets a fresh window, so a
+     * click the player aimed at the previous screen can never reach one of its buttons (the
+     * server drops clicks for a window that is no longer open).
+     */
+    public boolean reuseWindow() { return true; }
+
     /** Render. Runs on the viewer's region thread; may be called again to refresh in place. */
     protected abstract void build(MenuView view);
 }

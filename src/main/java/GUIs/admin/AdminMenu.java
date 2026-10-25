@@ -32,6 +32,9 @@ abstract class AdminMenu extends Menu {
 
     @Override public String permission() { return AdminPanel.PERMISSION; }
 
+    /** Admin buttons change levels, mobs and buffs at once: every admin screen gets its own window. */
+    @Override public boolean reuseWindow() { return false; }
+
     /** Header row, navigation row, Back / Home / Close. */
     protected void frame(MenuView v) {
         v.frame(HEADER_GLASS, true, true);

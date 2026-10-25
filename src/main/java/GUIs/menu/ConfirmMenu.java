@@ -32,6 +32,9 @@ public final class ConfirmMenu extends Menu {
     @Override public int rows() { return 3; }
     @Override public String permission() { return permission; }
 
+    /** Confirm acts at once: always its own window, never a redraw of the previous one. */
+    @Override public boolean reuseWindow() { return false; }
+
     @Override
     protected void build(MenuView v) {
         Ui.Lore lore = Ui.lore();

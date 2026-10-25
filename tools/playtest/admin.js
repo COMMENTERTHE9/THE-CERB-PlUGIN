@@ -6,6 +6,8 @@
 //   owners  - bot and CerbTarget must be op: cleanup removes only the clicking admin's test mobs
 //   attrs   - bot must be op: Attributes section, inspector, simulator (changes nothing), dev buffs
 //   buffexpire - bot must be op: a dev buff ends by itself after 5 minutes (max health returns)
+//   staleclick - bot must be op: a laggy double-click (the second click aimed at the skill list, arriving after the
+//                skill editor opened) must not press the editor's button in that slot (+10 levels)
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'main';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -348,6 +350,43 @@ async function deopmid() {
 
 // Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
 // inside a hillside suffocate mid-check.
+async function staleclick() {
+  const level = async () => { const at = await cmd(`/cerb skill ${NAME} Blade_Mastery xp 0`, 900); const m = (chat.slice(at).find(x => /is now level \d+/.test(x)) || '').match(/level (\d+)/); return m ? Number(m[1]) : NaN; };
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 900);
+  await cmd('/cerb panel', 1500);
+  await waitTitle(/Control Center/);
+  await click(findSlot(/^Players$/)); await waitTitle(/Players/);
+  await click(findSlot(new RegExp('^' + NAME + '$'))); await waitTitle(new RegExp('Player: ' + NAME));
+  await click(findSlot(/^Skills$/));
+  check('Skill list opens', await waitTitle(/Skills:/), title());
+  for (const delay of [130, 180, 240, 320]) {
+    const list = bot.currentWindow;
+    const tile = findSlot(/^Blade Mastery$/);
+    bot.clickWindow(tile, 0, 0);
+    await sleep(delay);
+    // What a client with lag sends: a click on the skill list's window, after the server already moved on.
+    const cur = bot.currentWindow;
+    bot.currentWindow = list;
+    try { bot.clickWindow(25, 0, 0); } catch (e) {}
+    bot.currentWindow = cur;
+    await sleep(900);
+    const lv = await level();
+    check(`A click aimed at the skill list ${delay} ms after the editor opened does not press +10 levels`, lv === 1, 'level ' + lv);
+    await waitTitle(/Blade Mastery/);
+    await click(45, 900); // Back
+    await waitTitle(/Skills:/);
+  }
+  // Control: a click made on the editor itself does press +10 (the slot and the clicks are right).
+  const before = await level();
+  await click(findSlot(/^Blade Mastery$/), 900);
+  await waitTitle(/Blade Mastery/);
+  await click(25, 900);
+  const lv = await level();
+  check('Control: +10 levels clicked on the editor itself works', lv === before + 10, before + ' -> ' + lv);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 600);
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+}
+
 async function goHome() {
   const s = bot.spawnPoint;
   if (s) { bot.chat(`/tp @s ${s.x + 0.5} ${s.y} ${s.z + 0.5}`); await new Promise(r => setTimeout(r, 1200)); }
@@ -365,6 +404,7 @@ bot.once('spawn', async () => {
     else if (phase === 'owners') await owners();
     else if (phase === 'attrs') await attrs();
     else if (phase === 'buffexpire') await buffexpire();
+    else if (phase === 'staleclick') await staleclick();
   } catch (e) { console.log('SCRIPT ERROR', e.stack); results.push(false); }
   const failed = results.filter(r => !r).length;
   console.log(`\n${results.length - failed}/${results.length} checks passed`);

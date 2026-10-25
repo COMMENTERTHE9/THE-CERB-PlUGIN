@@ -188,7 +188,8 @@ public class DamageDisplayListener implements Listener {
      * transformation updates per number instead of a teleport every tick plus visibility
      * blinking (docs/PERFORMANCE.md). Crits rise higher and sway.
      */
-    private void animateDisplay(TextDisplay display, boolean isCritical, int displayTime) {
+    private void animateDisplay(TextDisplay display, boolean isCritical, int ticks) {
+        int displayTime = Math.max(3, ticks); // a 0 or negative combat.yml value must not break hits (Folia refuses delay 0)
         int up = Math.max(2, displayTime / 2);
         int down = Math.max(1, displayTime - up);
         float peak = isCritical ? 0.8f : 0.5f;
