@@ -6,8 +6,6 @@ import Manager.ManaType;
 import Manager.PlayerManaManager;
 import Manager.SpellDamageContext;
 import Spells.SpellManager;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
@@ -54,6 +52,11 @@ public final class AbilityCaster {
     static final double SPELL_BASE = 6.0;
     /** Momentum stacks fade this long after the last gain. */
     static final long MOMENTUM_DECAY_MS = 6_000;
+    /**
+     * Aim allowance of a single-target ability, in blocks past the target's hitbox: a near miss
+     * still finds the enemy you were clearly aiming at (it must be in range and in sight).
+     */
+    static final double AIM_ASSIST_BLOCKS = 0.75;
 
     /** Set while an ability's own strike is dealt, so it is never read as a new key press. */
     static final ThreadLocal<Boolean> IN_ABILITY = ThreadLocal.withInitial(() -> Boolean.FALSE);
@@ -93,36 +96,54 @@ public final class AbilityCaster {
     public static boolean inAbility() { return IN_ABILITY.get(); }
 
     /**
-     * Cast active slot {@code slot} (0-4) of the player's loadout. Player's thread. Every check is
-     * made here, then cost and cooldown are committed together and the verbs run. Returns true if
-     * it went off.
+     * Cast active slot {@code slot} (0-4) of the player's loadout with what is in the main hand.
+     * Player's thread.
      */
-    public boolean cast(Player p, int slot) {
+    public CastResult cast(Player p, int slot) {
         return cast(p, slot, WeaponFamily.ofMaterial(p.getInventory().getItemInMainHand().getType().name()));
     }
 
     /**
-     * Cast with {@code hand} as the family in hand (the drop key has already taken the item out of
-     * the hand when the event fires, so the caller passes the dropped item's family).
+     * Cast active slot {@code slot} with {@code hand} as the family in hand (the drop key has
+     * already taken the item out of the hand when its event fires, so that caller passes the
+     * dropped item's family). Player's thread. Every check is made first, including that a
+     * single-target ability has a target and a Blink has room: a refused cast spends nothing
+     * (no Essence, no cooldown, no Momentum). Then cost and cooldown are committed together and
+     * the verbs run. The caller shows the result ({@link CastFeedback}).
      */
-    public boolean cast(Player p, int slot, WeaponFamily hand) {
+    public CastResult cast(Player p, int slot, WeaponFamily hand) {
         ClassProfile prof = service.profile(p.getUniqueId());
+        if (prof == null || p.isDead() || !p.isValid() || !canAct.test(p)) return CastResult.silent();
         AbilityDef a = equippedActive(p, slot);
-        if (prof == null || a == null) return false;
+        if (a == null) return CastResult.refuse(CastResult.Outcome.EMPTY, null, "");
         long now = System.currentTimeMillis();
-        if (!prof.unlocked(a)) return fail(p, a.displayName() + " is not unlocked yet");
-        if (now - prof.lastSwitchAt < ClassService.CAST_LOCK_AFTER_SWITCH_MS) return fail(p, "Switching loadouts...");
-        if (p.isDead() || !p.isValid() || !canAct.test(p)) return false;
-        if (!WeaponFamily.fits(a.weapons(), hand)) return fail(p, a.displayName() + " needs " + needs(a));
+        if (!prof.unlocked(a)) {
+            ClassDef c = service.catalog().classes().get(a.classId());
+            return CastResult.refuse(CastResult.Outcome.NOT_UNLOCKED, a, (c == null ? a.classId() : c.displayName()) + " rank " + a.unlockRank());
+        }
+        if (now - prof.lastSwitchAt < ClassService.CAST_LOCK_AFTER_SWITCH_MS) return CastResult.refuse(CastResult.Outcome.SWITCHING, a, "");
+        if (!WeaponFamily.fits(a.weapons(), hand)) return CastResult.refuse(CastResult.Outcome.WRONG_ITEM, a, needs(a));
         for (EffectSpec e : a.effects()) {
             if (e instanceof EffectSpec.Spell s && !spells.get().canCastForAbility(s.name())) {
-                return fail(p, a.displayName() + " is not available (no spell " + s.name() + ")"); // a config error: nothing is spent
+                return CastResult.refuse(CastResult.Outcome.UNAVAILABLE, a, "no spell " + s.name()); // a config error: nothing is spent
             }
         }
         long left = prof.cooldowns().remaining(a, now);
-        if (left > 0) return fail(p, a.displayName() + ": " + seconds(left));
+        if (left > 0) return CastResult.cooldown(a, left);
+        // What the ability needs in the world, checked before anything is spent.
+        LivingEntity aimed = null;
+        EffectSpec first = a.effects().isEmpty() ? null : a.effects().get(0);
+        if (first instanceof EffectSpec.Damage d && d.shape() == EffectSpec.Shape.STRIKE) {
+            aimed = aimed(p, d.range());
+            if (aimed == null) return CastResult.refuse(CastResult.Outcome.NO_TARGET, a, rangeText(d.range()));
+        }
+        Location blinkTo = null;
+        if (first instanceof EffectSpec.Blink b) {
+            blinkTo = blinkDestination(p, b);
+            if (blinkTo == null) return CastResult.refuse(CastResult.Outcome.BLOCKED, a, "");
+        }
         if (a.essenceCost() > 0 && !mana.spendMana(p, ManaType.BASIC, a.essenceCost())) {
-            return fail(p, a.displayName() + ": not enough Essence (" + Math.round(a.essenceCost()) + ")");
+            return CastResult.refuse(CastResult.Outcome.NO_ESSENCE, a, String.valueOf(Math.round(a.essenceCost())));
         }
         long cooldown = a.essenceCost() > 0
                 ? Math.max(Math.min(a.cooldownMs(), ClassCatalog.MIN_COOLDOWN_MS), spellCooldown.applyAsLong(p.getUniqueId(), a.cooldownMs()))
@@ -130,10 +151,15 @@ public final class AbilityCaster {
         prof.cooldowns().commit(a, cooldown, service.catalog().groupMs(), now);
         prof.lastUse.put(a.classId(), now);
         casts.incrementAndGet();
-        p.sendActionBar(Component.text("✦ " + a.displayName(), NamedTextColor.GOLD));
         sound(p, a);
-        run(p, prof, a, 0, null, false);
-        return true;
+        StringBuilder detail = new StringBuilder();
+        run(p, prof, a, 0, null, false, aimed, blinkTo, detail);
+        return CastResult.cast(a, detail.toString());
+    }
+
+    /** "8 blocks", "3.5 blocks". */
+    static String rangeText(double range) {
+        return (range == Math.rint(range) ? String.valueOf((long) range) : String.valueOf(range)) + " blocks";
     }
 
     /** "2.1 s" for 2,050 ms (rounded to tenths). Pressing a key on cooldown is common: no Formatter for it. */
@@ -174,10 +200,16 @@ public final class AbilityCaster {
         prof.lastUse.put(a.classId(), now);
         counters.incrementAndGet();
         counterStrike(p, attacker, w.coefficient());
-        p.sendActionBar(Component.text("✦ " + a.displayName() + "!", NamedTextColor.GOLD));
+        CastFeedback fb = feedback;
+        if (fb != null) fb.event(p, "§6✦ " + a.displayName() + "! §7· §fcountered");
         service.awardXp(p, a.classId(), ClassService.CAST_XP);
         return true;
     }
+
+    private volatile CastFeedback feedback;
+
+    /** Where an ability that goes off later (a Riposte's counter) reports itself. */
+    public void setFeedback(CastFeedback feedback) { this.feedback = feedback; }
 
     /**
      * Perform the verbs from index {@code from}. A dash pauses the list until it lands, then the rest
@@ -185,35 +217,79 @@ public final class AbilityCaster {
      * earns class XP if it reached a hostile mob, or if it was a self cast (buff, blink, Feint...)
      * made during a fight: casting into the air out of combat, or at farm animals, earns nothing
      * (CLASSES.md §2.2). A Riposte earns its XP when it actually counters.
+     *
+     * <p>{@code aimed} is the target the leading strike was checked against (it is the one hit),
+     * {@code blinkTo} the leading Blink's checked landing spot; {@code detail} collects what the
+     * first part did ("3 hit", "x2.2 · 3 Momentum") for the cast message (null after a dash).
      */
-    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, boolean reached) {
+    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, boolean reached,
+                     LivingEntity aimed, Location blinkTo, StringBuilder detail) {
         if (landed != null && landed.stunSeconds() > 0) reached |= stunFirst(p, landed) instanceof org.bukkit.entity.Enemy;
         List<EffectSpec> fx = a.effects();
         boolean self = false;
         int hit = 0;
         for (int i = from; i < fx.size(); i++) {
             EffectSpec e = fx.get(i);
+            boolean leading = i == 0;
             switch (e) {
                 case EffectSpec.Dash d -> {
                     dash(p, d);
                     int next = i + 1;
                     boolean soFar = reached;
                     p.getScheduler().runDelayed(plugin, t -> {
-                        if (p.isValid() && !p.isDead()) run(p, prof, a, next, d, soFar);
+                        if (p.isValid() && !p.isDead()) run(p, prof, a, next, d, soFar, null, null, null);
                     }, null, 7L);
                     return;
                 }
-                case EffectSpec.Damage d -> { List<LivingEntity> hits = damage(p, prof, d); hit = hits.size(); reached |= anyHostile(hits); }
-                case EffectSpec.Blink b -> self |= blink(p, b);
+                case EffectSpec.Damage d -> {
+                    List<LivingEntity> hits = damage(p, prof, d, leading ? aimed : null, detail);
+                    hit = hits.size();
+                    reached |= anyHostile(hits);
+                }
+                case EffectSpec.Blink b -> self |= blink(p, b, leading ? blinkTo : null);
                 case EffectSpec.Status s -> reached |= anyHostile(status(p, s));
-                case EffectSpec.Buff b -> { service.addBuff(p, a, b); self = true; }
+                case EffectSpec.Buff b -> {
+                    service.addBuff(p, a, b);
+                    self = true;
+                    note(detail, buffText(b));
+                    ring(p, Particle.CRIT, 1.2);
+                }
                 case EffectSpec.Resource r -> resource(prof, r, hit);
-                case EffectSpec.Counter c -> service.openCounter(p.getUniqueId(), a, c);
-                case EffectSpec.Empower em -> { service.empower(p.getUniqueId(), em.seconds()); self = true; }
+                case EffectSpec.Counter c -> {
+                    service.openCounter(p.getUniqueId(), a, c);
+                    note(detail, "guard " + seconds(c.windowMs()));
+                    p.getWorld().spawnParticle(Particle.ENCHANTED_HIT, p.getLocation().add(0, 1.1, 0), 14, 0.45, 0.5, 0.45, 0.05);
+                }
+                case EffectSpec.Empower em -> {
+                    service.empower(p.getUniqueId(), em.seconds());
+                    self = true;
+                    note(detail, "next hit crits");
+                    p.getWorld().spawnParticle(Particle.WITCH, p.getLocation().add(0, 1.2, 0), 10, 0.35, 0.4, 0.35, 0.02);
+                }
                 case EffectSpec.Spell s -> self |= spells.get().castForAbility(s.name(), p);
             }
         }
         if (reached || (self && service.inCombat(p.getUniqueId()))) service.awardXp(p, a.classId(), ClassService.CAST_XP);
+    }
+
+    /** Add a part to the cast message ("3 hit"); a null builder (after a dash) takes nothing. */
+    private static void note(StringBuilder detail, String part) {
+        if (detail == null || part == null || part.isEmpty()) return;
+        if (!detail.isEmpty()) detail.append(" · ");
+        detail.append(part);
+    }
+
+    /** "+15% damage · 8 s". */
+    static String buffText(EffectSpec.Buff b) {
+        String what = b.attribute() != null ? b.attribute().displayName : b.stat().displayName.toLowerCase(Locale.ROOT);
+        String amount = b.attribute() != null ? "+" + oneDecimal(b.amount()) : "+" + Math.round(b.amount() * 100) + "%";
+        return amount + " " + what + " · " + oneDecimal(b.seconds()) + " s";
+    }
+
+    /** 2.2 / 3 (no trailing ".0"). */
+    static String oneDecimal(double v) {
+        long tenths = Math.round(v * 10);
+        return tenths % 10 == 0 ? String.valueOf(tenths / 10) : tenths / 10 + "." + Math.abs(tenths % 10);
     }
 
     // ── verbs ───────────────────────────────────────────────────
@@ -224,26 +300,41 @@ public final class AbilityCaster {
         return false;
     }
 
-    /** Deal the damage verb; returns the enemies it struck (strikes after the first land later, on the same targets). */
-    private List<LivingEntity> damage(Player p, ClassProfile prof, EffectSpec.Damage d) {
-        List<LivingEntity> targets = targets(p, d.shape(), d.range(), d.angle(), d.maxTargets());
-        if (targets.isEmpty()) return targets;
-        double base = d.scale() == EffectSpec.Scale.POWER ? weaponBase(p) : SPELL_BASE;
-        double amount = base * (d.coefficient() + d.perMomentum() * momentum(prof));
-        for (int h = 0; h < d.hits(); h++) {
-            long delay = (long) h * d.intervalTicks();
-            if (delay == 0) strike(p, targets, amount, d);
-            else p.getScheduler().runDelayed(plugin, t -> { if (p.isValid() && !p.isDead()) strike(p, targets, amount, d); }, null, delay);
+    /**
+     * Deal the damage verb; returns the enemies it struck (strikes after the first land later, on
+     * the same targets). A strike hits {@code aimed} when the cast already checked one.
+     */
+    private List<LivingEntity> damage(Player p, ClassProfile prof, EffectSpec.Damage d, LivingEntity aimed, StringBuilder detail) {
+        List<LivingEntity> targets;
+        if (d.shape() == EffectSpec.Shape.STRIKE) {
+            LivingEntity t = aimed != null && aimed.isValid() && !aimed.isDead() ? aimed : aimed(p, d.range());
+            targets = t == null ? List.of() : List.of(t);
+        } else {
+            targets = targets(p, d.shape(), d.range(), d.angle(), d.maxTargets());
         }
+        int stacks = d.perMomentum() > 0 ? momentum(prof) : 0;
+        double multiplier = d.coefficient() + d.perMomentum() * stacks;
+        if (d.perMomentum() > 0) note(detail, stacks > 0 ? "x" + oneDecimal(multiplier) + " · " + stacks + " Momentum" : "no Momentum");
+        else if (d.shape() != EffectSpec.Shape.STRIKE) note(detail, targets.isEmpty() ? "no one hit" : targets.size() + " hit");
         if (d.shape() == EffectSpec.Shape.CONE) {
             Location at = p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(1.5));
             p.getWorld().spawnParticle(Particle.SWEEP_ATTACK, at, 3, 0.6, 0.2, 0.6, 0);
         }
+        if (targets.isEmpty()) return targets;
+        if (d.shape() == EffectSpec.Shape.STRIKE && d.scale() == EffectSpec.Scale.ESSENCE) beam(p, targets.get(0), d.element());
+        double base = d.scale() == EffectSpec.Scale.POWER ? weaponBase(p) : SPELL_BASE;
+        double amount = base * multiplier;
+        for (int h = 0; h < d.hits(); h++) {
+            long delay = (long) h * d.intervalTicks();
+            int n = h;
+            if (delay == 0) strike(p, targets, amount, d, n, stacks);
+            else p.getScheduler().runDelayed(plugin, t -> { if (p.isValid() && !p.isDead()) strike(p, targets, amount, d, n, stacks); }, null, delay);
+        }
         return targets;
     }
 
-    /** One strike on each target, through the normal hit (POWER) or spell (ESSENCE) path. */
-    private void strike(Player p, List<LivingEntity> targets, double amount, EffectSpec.Damage d) {
+    /** One strike on each target, through the normal hit (POWER) or spell (ESSENCE) path; {@code n} counts a multi-hit's strikes. */
+    private void strike(Player p, List<LivingEntity> targets, double amount, EffectSpec.Damage d, int n, int momentumSpent) {
         VirtualHealthListener vh = health.get();
         IN_ABILITY.set(Boolean.TRUE);
         try {
@@ -254,10 +345,65 @@ public final class AbilityCaster {
                     vh.registerSpellDamage(t.getEntityId(), new SpellDamageContext(elementType(d.element()), 0.0, d.element(), false));
                 }
                 t.damage(amount, p);
+                if (d.shape() == EffectSpec.Shape.STRIKE && d.scale() == EffectSpec.Scale.POWER) impact(p, t, d, n, momentumSpent);
             }
         } finally {
             IN_ABILITY.set(Boolean.FALSE);
         }
+    }
+
+    // ── what a cast looks like (one-off particles and sounds; nothing keeps running) ──
+
+    /** A single-target spell's bolt: a line of coloured dust from the caster's hand to the target, and a burst on it. */
+    private void beam(Player p, LivingEntity target, String element) {
+        Location from = p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(0.6)).add(0, -0.25, 0);
+        Location to = target.getLocation().add(0, target.getHeight() * 0.55, 0);
+        Vector step = to.toVector().subtract(from.toVector());
+        double length = step.length();
+        if (length < 1.0e-3) return;
+        step.multiply(0.35 / length);
+        Particle.DustOptions dust = new Particle.DustOptions(elementColor(element), 0.9f);
+        Location at = from.clone();
+        for (double s = 0; s <= length; s += 0.35) {
+            p.getWorld().spawnParticle(Particle.DUST, at, 1, 0, 0, 0, 0, dust);
+            at.add(step);
+        }
+        p.getWorld().spawnParticle(Particle.WITCH, to, 8, 0.25, 0.3, 0.25, 0.02);
+        p.getWorld().playSound(to, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.9f, 1.4f);
+    }
+
+    /** A weapon strike landing: crits, a heavier hit for Momentum spent, a rising sweep for each strike of a flurry. */
+    private void impact(Player p, LivingEntity t, EffectSpec.Damage d, int n, int momentumSpent) {
+        Location at = t.getLocation().add(0, t.getHeight() * 0.6, 0);
+        p.getWorld().spawnParticle(Particle.CRIT, at, 10, 0.3, 0.3, 0.3, 0.25);
+        if (d.hits() > 1) {
+            p.getWorld().spawnParticle(Particle.SWEEP_ATTACK, at, 1, 0, 0, 0, 0);
+            p.getWorld().playSound(at, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.7f, 1.15f + 0.15f * n);
+        } else if (momentumSpent > 0) {
+            p.getWorld().spawnParticle(Particle.ENCHANTED_HIT, at, 8 + 4 * momentumSpent, 0.35, 0.35, 0.35, 0.3);
+            p.getWorld().playSound(at, momentumSpent >= 3 ? Sound.ITEM_MACE_SMASH_GROUND : Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.8f, 1.0f);
+        }
+    }
+
+    /** A ring of {@code particle} around the caster's feet (buffs). */
+    private static void ring(Player p, Particle particle, double radius) {
+        Location c = p.getLocation().add(0, 0.2, 0);
+        for (int k = 0; k < 16; k++) {
+            double ang = Math.PI * 2 * k / 16;
+            p.getWorld().spawnParticle(particle, c.clone().add(Math.cos(ang) * radius, 0, Math.sin(ang) * radius), 1, 0, 0.05, 0, 0);
+        }
+    }
+
+    private static org.bukkit.Color elementColor(String element) {
+        if (element == null) return org.bukkit.Color.fromRGB(170, 90, 255);
+        return switch (element.toLowerCase(Locale.ROOT)) {
+            case "fire" -> org.bukkit.Color.fromRGB(255, 120, 40);
+            case "ice", "frost" -> org.bukkit.Color.fromRGB(140, 220, 255);
+            case "lightning" -> org.bukkit.Color.fromRGB(255, 240, 120);
+            case "earth" -> org.bukkit.Color.fromRGB(150, 110, 60);
+            case "dark", "void" -> org.bukkit.Color.fromRGB(70, 20, 90);
+            default -> org.bukkit.Color.fromRGB(170, 90, 255); // arcane
+        };
     }
 
     /** A counter-strike for a successful Riposte, next tick on the defender's thread. */
@@ -293,7 +439,11 @@ public final class AbilityCaster {
         return near.get(0);
     }
 
-    private boolean blink(Player p, EffectSpec.Blink b) {
+    /**
+     * Where a Blink lands: as far as its distance toward where you look, stopping before the first
+     * block (never into one) and inside the caster's region. Null when there is no room at all.
+     */
+    private static Location blinkDestination(Player p, EffectSpec.Blink b) {
         Location start = p.getLocation();
         Vector dir = p.getEyeLocation().getDirection().normalize();
         Location best = null;
@@ -304,11 +454,18 @@ public final class AbilityCaster {
             if (!f.isPassable() || !f.getRelative(BlockFace.UP).isPassable()) break; // never into blocks
             best = feet;
         }
-        if (best == null) return false;
+        if (best == null) return null;
         best.setYaw(start.getYaw());
         best.setPitch(start.getPitch());
-        p.getWorld().spawnParticle(Particle.PORTAL, start.clone().add(0, 1, 0), 20, 0.3, 0.6, 0.3, 0.2);
-        p.teleportAsync(best);
+        return best;
+    }
+
+    private boolean blink(Player p, EffectSpec.Blink b, Location checked) {
+        Location to = checked != null ? checked : blinkDestination(p, b);
+        if (to == null) return false;
+        p.getWorld().spawnParticle(Particle.PORTAL, p.getLocation().add(0, 1, 0), 20, 0.3, 0.6, 0.3, 0.2);
+        p.getWorld().spawnParticle(Particle.REVERSE_PORTAL, to.clone().add(0, 1, 0), 16, 0.3, 0.6, 0.3, 0.02); // owned: checked above
+        p.teleportAsync(to);
         return true;
     }
 
@@ -343,13 +500,41 @@ public final class AbilityCaster {
 
     // ── targeting ───────────────────────────────────────────────
 
-    /** Enemies for a shape: STRIKE = the first one you look at (walls block it); CONE / CIRCLE = nearest first. */
+    /**
+     * The enemy a single-target ability aims at: the one under the crosshair (walls block it),
+     * else the one closest to the aim line within {@link #AIM_ASSIST_BLOCKS} of its hitbox, in
+     * range and in sight. Null when there is none.
+     */
+    LivingEntity aimed(Player p, double range) {
+        Location eye = p.getEyeLocation();
+        Vector dir = eye.getDirection().normalize();
+        RayTraceResult r = p.getWorld().rayTrace(eye, dir, range, FluidCollisionMode.NEVER, true, 0.2, e -> valid(p, e));
+        if (r != null && r.getHitEntity() instanceof LivingEntity le) return le;
+        double reach = r != null && r.getHitBlock() != null ? Math.min(range, r.getHitPosition().distance(eye.toVector())) : range;
+        Vector start = eye.toVector();
+        LivingEntity best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Entity e : p.getNearbyEntities(range + 1, range + 1, range + 1)) {
+            if (!(e instanceof LivingEntity le) || !valid(p, e)) continue;
+            org.bukkit.util.BoundingBox padded = le.getBoundingBox().expand(AIM_ASSIST_BLOCKS);
+            // The aim line passes within the allowance of its hitbox, before the wall you aim at.
+            if (!padded.contains(start) && padded.rayTrace(start, dir, reach) == null) continue;
+            Vector to = le.getBoundingBox().getCenter().subtract(start);
+            double along = to.dot(dir);
+            if (along <= 0 || !p.hasLineOfSight(le)) continue;
+            double score = Math.sqrt(Math.max(0, to.lengthSquared() - along * along)) / along; // the smallest angle off the aim wins
+            if (score < bestScore) { bestScore = score; best = le; }
+        }
+        return best;
+    }
+
+    /** Enemies for a shape: STRIKE = the one you aim at ({@link #aimed}); CONE / CIRCLE = nearest first. */
     private List<LivingEntity> targets(Player p, EffectSpec.Shape shape, double range, double angle, int max) {
         Location eye = p.getEyeLocation();
         Vector dir = eye.getDirection();
         if (shape == EffectSpec.Shape.STRIKE) {
-            RayTraceResult r = p.getWorld().rayTrace(eye, dir, range, FluidCollisionMode.NEVER, true, 0.4, e -> valid(p, e));
-            return r != null && r.getHitEntity() instanceof LivingEntity le ? List.of(le) : List.of();
+            LivingEntity t = aimed(p, range);
+            return t == null ? List.of() : List.of(t);
         }
         List<LivingEntity> out = new ArrayList<>();
         for (Entity e : p.getNearbyEntities(range, range, range)) {
@@ -402,10 +587,5 @@ public final class AbilityCaster {
             case null, default -> null;
         };
         if (s != null) p.getWorld().playSound(p.getLocation(), s, 0.7f, 1.1f);
-    }
-
-    private static boolean fail(Player p, String why) {
-        p.sendActionBar(Component.text(why, NamedTextColor.RED));
-        return false;
     }
 }

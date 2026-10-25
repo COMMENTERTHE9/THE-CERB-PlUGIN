@@ -29,7 +29,7 @@ import java.util.UUID;
  */
 public final class ClassCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBS = List.of("info", "abilities", "equip", "loadout", "name");
+    private static final List<String> SUBS = List.of("info", "abilities", "equip", "loadout", "name", "controls", "bar");
     private static final List<String> SLOTS = List.of("a1", "a2", "a3", "a4", "a5", "p1", "p2", "p3", "k");
 
     private final CerberusPlugin plugin;
@@ -73,17 +73,55 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
                 p.sendMessage(why == null ? ChatColor.GREEN + "Loadout " + (n + 1) + " is now called " + prof.loadouts().get(n).name() + "."
                         : ChatColor.RED + why);
             }
+            case "controls", "keys" -> {
+                Classes.Controls.Scheme scheme = args.length == 2 ? Classes.Controls.Scheme.parse(args[1]) : null;
+                if (args.length == 2 && scheme == null) { p.sendMessage(ChatColor.RED + "Use: /class controls [quick|combo]"); return true; }
+                if (scheme != null) svc.setScheme(p, scheme);
+                controls(p, svc);
+            }
+            case "bar" -> {
+                Classes.Controls.BarMode mode = args.length == 2 ? Classes.Controls.BarMode.parse(args[1]) : null;
+                if (mode == null) {
+                    p.sendMessage(ChatColor.YELLOW + "Ability bar: " + svc.barMode(p.getUniqueId()).id()
+                            + ChatColor.GRAY + "  (/class bar auto|on|off - auto: in a fight and just after a press)");
+                    return true;
+                }
+                svc.setBarMode(p, mode);
+                p.sendMessage(ChatColor.GREEN + "Ability bar: " + mode.id() + ".");
+            }
             default -> p.sendMessage(ChatColor.YELLOW + "Use: /class [info] | abilities [class] | equip [loadout] <a1-a5|p1-p3|k> <ability|none>"
-                    + " | loadout <n> | name <n> <name>");
+                    + " | loadout <n> | name <n> <name> | controls [quick|combo] | bar [auto|on|off]");
         }
         return true;
     }
 
     // ── screens (chat) ──────────────────────────────────────────
 
+    /** The player's control scheme and every key, with the other scheme to switch to. */
+    private void controls(Player p, ClassService svc) {
+        Classes.Controls.Scheme scheme = svc.scheme(p.getUniqueId());
+        p.sendMessage(ChatColor.GOLD + "✦ Controls: " + scheme.displayName + ChatColor.GRAY + " (with a weapon, a focus or an empty hand)");
+        ClassProfile prof = svc.profile(p.getUniqueId());
+        for (int i = 0; i < Loadout.ACTIVE_SLOTS; i++) {
+            AbilityDef a = prof == null ? null : svc.catalog().ability(prof.activeLoadout().actives().get(i));
+            p.sendMessage(ChatColor.WHITE + "  " + Classes.Controls.keyLabel(scheme, i, false) + ChatColor.GRAY + "  active " + (i + 1)
+                    + (a == null ? "" : ChatColor.DARK_GRAY + " (" + a.displayName() + ")"));
+        }
+        p.sendMessage(ChatColor.DARK_GRAY + "  With a bow or crossbow, right and left swap. "
+                + (scheme == Classes.Controls.Scheme.QUICK ? "Q never drops a weapon then." : "Q still drops."));
+        Classes.Controls.Scheme other = scheme == Classes.Controls.Scheme.QUICK ? Classes.Controls.Scheme.COMBO : Classes.Controls.Scheme.QUICK;
+        p.sendMessage(ChatColor.GRAY + "  Try " + other.displayName + ": /class controls " + other.id());
+    }
+
     /** Classes with rank and XP (or what's missing), the loadout in use and running cooldowns. Owner's thread. */
     void info(CommandSender to, UUID owner, ClassService svc, ClassProfile prof) {
-        to.sendMessage(ChatColor.GOLD + "✦ Classes " + ChatColor.DARK_GRAY + "(hold Sneak: right-click A1, left-click A2, F A3, Q A4, scroll A5)");
+        Classes.Controls.Scheme scheme = svc.scheme(owner);
+        StringBuilder keys = new StringBuilder();
+        for (int i = 0; i < Loadout.ACTIVE_SLOTS; i++) {
+            if (i > 0) keys.append(", ");
+            keys.append(Classes.Controls.keyLabel(scheme, i, false)).append(" A").append(i + 1);
+        }
+        to.sendMessage(ChatColor.GOLD + "✦ Classes " + ChatColor.DARK_GRAY + "(" + scheme.displayName + ": " + keys + "; /class controls)");
         for (ClassDef c : svc.catalog().classes().values()) {
             ClassProfile.Progress pr = prof.classes().get(c.id());
             if (pr != null) {
@@ -188,7 +226,7 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
     // ── admin: /cerb class <player> <class> rank <n> | /cerb class <player> info ──
 
     public void admin(CommandSender sender, String[] args) {
-        String usage = ChatColor.RED + "Use: /cerb class <player> <class> rank <1-" + ClassRanks.MAX_RANK + ">  or  /cerb class <player> info";
+        String usage = ChatColor.RED + "Use: /cerb class <player> <class> rank <1-" + ClassRanks.MAX_RANK + ">  or  /cerb class <player> info|cooldowns";
         ClassService svc = plugin.getClassService();
         if (svc == null) { sender.sendMessage(ChatColor.RED + "Classes are not running."); return; }
         if (args.length < 3) { sender.sendMessage(usage); return; }
@@ -200,6 +238,16 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
                 if (prof == null) { sender.sendMessage(ChatColor.RED + target.getName() + "'s classes are not loaded."); return; }
                 sender.sendMessage(ChatColor.GOLD + target.getName() + ":");
                 info(sender, target.getUniqueId(), svc, prof);
+            }, null);
+            return;
+        }
+        if (args.length == 3 && args[2].equalsIgnoreCase("cooldowns")) {
+            // Test tool: every ability is ready again (cooldowns only; nothing else changes).
+            target.getScheduler().run(plugin, t -> {
+                ClassProfile prof = svc.profile(target.getUniqueId());
+                if (prof == null) { sender.sendMessage(ChatColor.RED + target.getName() + "'s classes are not loaded."); return; }
+                prof.cooldowns().clear();
+                sender.sendMessage(ChatColor.GREEN + target.getName() + "'s ability cooldowns are reset.");
             }, null);
             return;
         }
@@ -225,8 +273,8 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
         if (svc == null) return List.of();
         return switch (args.length) {
             case 2 -> filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
-            case 3 -> { List<String> o = new ArrayList<>(svc.catalog().classes().keySet()); o.add("info"); yield filter(o, args[2]); }
-            case 4 -> args[2].equalsIgnoreCase("info") ? List.of() : filter(List.of("rank"), args[3]);
+            case 3 -> { List<String> o = new ArrayList<>(svc.catalog().classes().keySet()); o.add("info"); o.add("cooldowns"); yield filter(o, args[2]); }
+            case 4 -> args[2].equalsIgnoreCase("info") || args[2].equalsIgnoreCase("cooldowns") ? List.of() : filter(List.of("rank"), args[3]);
             default -> List.of();
         };
     }
@@ -287,6 +335,8 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
         return switch (sub) {
             case "abilities", "tree" -> args.length == 2 ? filter(new ArrayList<>(svc.catalog().classes().keySet()), args[1]) : List.of();
             case "loadout", "use", "name", "rename" -> args.length == 2 ? filter(loadouts, args[1]) : List.of();
+            case "controls", "keys" -> args.length == 2 ? filter(List.of("quick", "combo"), args[1]) : List.of();
+            case "bar" -> args.length == 2 ? filter(List.of("auto", "on", "off"), args[1]) : List.of();
             case "equip" -> {
                 boolean withLoadout = args.length >= 2 && args[1].matches("\\d+");
                 int slotIdx = withLoadout ? 2 : 1;

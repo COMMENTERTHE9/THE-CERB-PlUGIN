@@ -70,7 +70,7 @@ public final class AbilityPickerMenu extends PlayerMenu {
             case KEYSTONE -> AbilityDef.Kind.KEYSTONE;
         };
         Ui.Lore head = Ui.lore().stat("Loadout", (index + 1) + " (" + l.name() + ")");
-        if (slot == ClassService.Slot.ACTIVE) head.stat("Key", ClassView.KEYS[pos]);
+        if (slot == ClassService.Slot.ACTIVE) head.stat("Key", ClassView.key(svc, v.viewer().getUniqueId(), pos));
         head.gap().text("Any unlocked ability fits, from").text("any class you have learned.");
         v.set(MenuView.HEADER, Ui.item(Material.WRITABLE_BOOK, ChatColor.GOLD + "" + ChatColor.BOLD + "Choose for " + label(), head.build()));
 

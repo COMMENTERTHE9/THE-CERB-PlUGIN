@@ -26,7 +26,7 @@ public class CerbCommand implements CommandExecutor {
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
-                    + "timings|profiler|listentities|showqueues>";
+                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs>";
     private final CerberusPlugin plugin;
 
     public CerbCommand(CerberusPlugin plugin) {
@@ -182,6 +182,11 @@ public class CerbCommand implements CommandExecutor {
                 plugin.showQueues(sender);
                 break;
 
+            case "mobs":
+                if (!(sender instanceof Player mp)) { sender.sendMessage(ChatColor.RED + "Run /cerb mobs in-game."); break; }
+                handleMobsDiag(mp, args);
+                break;
+
             case "speed":
                 if (!(sender instanceof Player sp)) { sender.sendMessage(ChatColor.RED + "Run /cerb speed in-game."); break; }
                 handleSpeedDiag(sp, args);
@@ -278,6 +283,41 @@ public class CerbCommand implements CommandExecutor {
      * /cerb speed [player] — dump movement speed diagnostics.
      * Shows base value, final value, every modifier, and relevant skill levels.
      */
+    /**
+     * /cerb mobs [radius]: the living mobs near you, nearest first, with their health pool and active
+     * effects (an admin diagnostic; also how playtests read a stun or a slow on a mob, which the
+     * client is never told). Read-only. The player's own region thread runs it, and only mobs that
+     * thread owns are listed.
+     */
+    private void handleMobsDiag(Player sender, String[] args) {
+        double r = 12;
+        if (args.length >= 2) {
+            try { r = Math.max(1, Math.min(48, Double.parseDouble(args[1]))); } catch (NumberFormatException e) { sender.sendMessage(ChatColor.RED + "Use: /cerb mobs [radius 1-48]"); return; }
+        }
+        Manager.MobVirtualHealthManager pools = plugin.getMobVirtualHealthManager();
+        java.util.List<org.bukkit.entity.LivingEntity> mobs = new java.util.ArrayList<>();
+        for (org.bukkit.entity.Entity e : sender.getNearbyEntities(r, r, r)) {
+            if (e instanceof org.bukkit.entity.LivingEntity le && !(e instanceof Player) && Bukkit.isOwnedByCurrentRegion(e)) mobs.add(le);
+        }
+        mobs.sort(java.util.Comparator.comparingDouble(le -> le.getLocation().distanceSquared(sender.getLocation())));
+        sender.sendMessage(ChatColor.GOLD + "Mobs within " + Math.round(r) + " blocks: " + mobs.size());
+        for (int i = 0; i < mobs.size() && i < 12; i++) {
+            org.bukkit.entity.LivingEntity le = mobs.get(i);
+            StringBuilder line = new StringBuilder();
+            line.append(ChatColor.YELLOW).append(le.getType().getKey().getKey()).append(ChatColor.GRAY)
+                    .append(String.format(java.util.Locale.ROOT, " %.1fm", le.getLocation().distance(sender.getLocation())));
+            if (pools != null && pools.has(le)) {
+                line.append(String.format(java.util.Locale.ROOT, " hp %.1f/%.1f", pools.getCurrent(le), pools.getMax(le)));
+            }
+            java.util.List<String> fx = new java.util.ArrayList<>();
+            for (org.bukkit.potion.PotionEffect pe : le.getActivePotionEffects()) {
+                fx.add(pe.getType().getKey().getKey() + " " + (pe.getAmplifier() + 1) + " " + String.format(java.util.Locale.ROOT, "%.1fs", pe.getDuration() / 20.0));
+            }
+            line.append(ChatColor.WHITE).append(fx.isEmpty() ? " no effects" : " effects: " + String.join(", ", fx));
+            sender.sendMessage(line.toString());
+        }
+    }
+
     private void handleSpeedDiag(Player sender, String[] args) {
         Player target = sender;
         if (args.length >= 2) {

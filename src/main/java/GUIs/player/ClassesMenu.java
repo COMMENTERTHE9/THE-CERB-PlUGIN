@@ -3,6 +3,7 @@ package GUIs.player;
 import Classes.ClassDef;
 import Classes.ClassProfile;
 import Classes.ClassService;
+import Classes.Controls;
 import Classes.Loadout;
 import GUIs.menu.MenuView;
 import GUIs.menu.Ui;
@@ -13,6 +14,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Player Menu → Classes & Abilities (docs/design/CLASSES.md §7): every class (learned with rank and
@@ -29,6 +31,9 @@ public final class ClassesMenu extends PlayerMenu {
     }
 
     @Override public String title() { return PlayerTheme.title("Classes & Abilities"); }
+
+    /** The Controls tile changes a setting at once: a stale click must never reach a reused window. */
+    @Override public boolean reuseWindow() { return false; }
 
     @Override
     protected void content(MenuView v) {
@@ -61,22 +66,39 @@ public final class ClassesMenu extends PlayerMenu {
                     k -> menus.open(k.player(), new ClassTreeMenu(plugin, c.id())));
         }
 
-        v.set(31, Ui.item(Material.LIGHT, ChatColor.YELLOW + "How to cast", Ui.lore()
-                .text("Hold Sneak, then press:")
-                .raw(ChatColor.WHITE + "  right-click" + ChatColor.GRAY + " active 1")
-                .raw(ChatColor.WHITE + "  left-click" + ChatColor.GRAY + " active 2")
-                .raw(ChatColor.WHITE + "  F" + ChatColor.GRAY + " active 3 · " + ChatColor.WHITE + "Q" + ChatColor.GRAY + " active 4")
-                .raw(ChatColor.WHITE + "  scroll" + ChatColor.GRAY + " active 5")
-                .gap().text("With a weapon, a focus (blaze rod)")
-                .text("or an empty hand. With a tool or")
-                .text("a block, keys work as usual.")
-                .gap().text("Loadouts change only out of combat.")
-                .build()));
+        v.button(31, controlsTile(svc, p), k -> {
+            UUID id = k.player().getUniqueId();
+            if (k.isRight()) {
+                Controls.BarMode m = svc.barMode(id);
+                svc.setBarMode(k.player(), m == Controls.BarMode.AUTO ? Controls.BarMode.ON : m == Controls.BarMode.ON ? Controls.BarMode.OFF : Controls.BarMode.AUTO);
+            } else {
+                svc.setScheme(k.player(), svc.scheme(id) == Controls.Scheme.QUICK ? Controls.Scheme.COMBO : Controls.Scheme.QUICK);
+            }
+            menus.open(k.player(), new ClassesMenu(plugin));
+        });
 
         for (int i = 0; i < prof.loadouts().size() && i < LOADOUT_SLOTS.length; i++) {
             int index = i;
             v.button(LOADOUT_SLOTS[i], loadoutTile(svc, prof, i), k -> menus.open(k.player(), new LoadoutMenu(plugin, index)));
         }
+    }
+
+    /** How to cast with this player's scheme; click switches the scheme, right-click the ability bar. */
+    private static org.bukkit.inventory.ItemStack controlsTile(ClassService svc, Player p) {
+        UUID id = p.getUniqueId();
+        Controls.Scheme scheme = svc.scheme(id);
+        Ui.Lore lore = Ui.lore().text("With a weapon, a focus (blaze rod)").text("or an empty hand:");
+        for (int s = 0; s < Loadout.ACTIVE_SLOTS; s++) {
+            lore.raw(ChatColor.WHITE + "  " + Controls.keyLabel(scheme, s, false) + ChatColor.GRAY + "  active " + (s + 1));
+        }
+        lore.gap().text("With a bow, right and left swap.");
+        lore.text(scheme == Controls.Scheme.QUICK ? "F and Q never swap or drop a weapon." : "Q still drops; F never swaps.");
+        lore.text("A tool, block or food: keys as usual.");
+        lore.gap().stat("Ability bar", svc.barMode(id).id());
+        Controls.Scheme other = scheme == Controls.Scheme.QUICK ? Controls.Scheme.COMBO : Controls.Scheme.QUICK;
+        lore.hint("Click: switch to " + other.displayName);
+        lore.hint("Right-click: ability bar auto / on / off");
+        return Ui.item(Material.LIGHT, ChatColor.YELLOW + "Controls: " + scheme.displayName, lore.build());
     }
 
     private org.bukkit.inventory.ItemStack loadoutTile(ClassService svc, ClassProfile prof, int i) {

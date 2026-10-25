@@ -15,12 +15,14 @@ public class PlayerHUDManager {
      */
     private static final long RESEND_MS = 900;
 
-    /** Per player: the last bar sent and when, and the last luck figure with its text. */
+    /** Per player: the last bar sent and when, the last luck figure with its text, and a message shown in the bar. */
     private static final class Sent {
         String text = "";
         long at; // System.nanoTime()
         double effectiveness = Double.NaN;
         String effectivenessText = "";
+        String flash;       // legacy-coloured text shown in the middle of the bar, or null
+        long flashUntil;    // System.nanoTime()
     }
 
     private final Map<UUID, Sent> sent = new ConcurrentHashMap<>();
@@ -91,19 +93,42 @@ public class PlayerHUDManager {
                     .append(Numbers.hud(defenseBar.getMaximum())).append("⛨  ");
         }
         
-        // Add health, effectiveness, and mana
+        // Add health, effectiveness (or a message in its place), and mana
         // Realm magnitudes reach billions: exact below 10,000, compact above (Numbers.hud).
-        hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ")
-                .append(effectivenessColor).append(last.effectivenessText)
-                .append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
+        long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
+        if (last.flash != null && now - last.flashUntil >= 0) last.flash = null;
+        hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ");
+        if (last.flash != null) hudBuilder.append(last.flash).append("   ");
+        else hudBuilder.append(effectivenessColor).append(last.effectivenessText);
+        hudBuilder.append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
 
         String text = hudBuilder.toString();
-        long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
         if (text.equals(last.text) && now - last.at < RESEND_MS * 1_000_000L) return;
         last.text = text;
         last.at = now;
         // Adventure straight to the client (the old Spigot path round-tripped the text through JSON).
         player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(text));
+    }
+
+    /**
+     * Show {@code legacyText} (section-sign colours) in the middle of the HUD bar for {@code ms}: an
+     * ability's result or why a cast was refused. Health and Essence stay around it, and the HUD's
+     * own refreshes keep it until it ends, so it is never overwritten a moment after it appears
+     * (the action bar only shows one text at a time). Player's thread.
+     */
+    public void flash(Player player, String legacyText, long ms) {
+        Sent s = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        s.flash = legacyText;
+        s.flashUntil = System.nanoTime() + Math.max(0, ms) * 1_000_000L;
+        updateHUD(player);
+    }
+
+    /** End a message early (a combo that timed out). Player's thread. */
+    public void clearFlash(Player player) {
+        Sent s = sent.get(player.getUniqueId());
+        if (s == null || s.flash == null) return;
+        s.flash = null;
+        updateHUD(player);
     }
 
     /** Forget a player's HUD state (on quit). */

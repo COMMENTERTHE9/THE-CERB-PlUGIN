@@ -523,7 +523,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         abilityCaster.setCanAct(p -> Classes.AbilityListener.noContainerOpen(p)
                 && !playerVirtualHealthManager.isRespawning(p) && !playerVirtualHealthManager.hasPendingCustomDeath(p));
         abilityCaster.setSpellCooldown((id, ms) -> secondaryEffects.cooldownMs(id, ms));
-        pm.registerEvents(new Classes.AbilityListener(classService, abilityCaster), this);
+        Classes.CastFeedback castFeedback = new Classes.CastFeedback(playerHUDManager);
+        abilityCaster.setFeedback(castFeedback);
+        Classes.AbilityBar abilityBar = new Classes.AbilityBar(this, classService, playerManaManager);
+        pm.registerEvents(new Classes.AbilityListener(this, classService, abilityCaster, castFeedback, abilityBar), this);
 
         // ── Virtual health (damage interception, regen block) ──
         this.virtualHealthListener = new VirtualHealthListener(playerVirtualHealthManager,
@@ -676,10 +679,33 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.GREEN + "Healed " + playerName + ".");
     }
 
-    /** /cerb mana <player> [amount] */
+    /**
+     * /cerb mana <player> [amount|full|empty]: show or set a player's Essence (an admin and test
+     * tool: playtests need "too little Essence" on demand). Clamped to 0..max by the mana manager.
+     */
     public void adjustMana(CommandSender sender, String[] args) {
-        // TODO: parse args[1] as player, args[2] (if present) as amount, then call mana manager
-        sender.sendMessage(ChatColor.YELLOW + "Mana adjustment is not implemented yet.");
+        String usage = ChatColor.RED + "Use: /cerb mana <player> [amount|full|empty]";
+        if (args.length < 2 || args.length > 3) { sender.sendMessage(usage); return; }
+        Player target = getServer().getPlayerExact(args[1]);
+        if (target == null) { sender.sendMessage(ChatColor.RED + "Player not online: " + args[1]); return; }
+        Double set = null;
+        if (args.length == 3) {
+            String v = args[2].toLowerCase(java.util.Locale.ROOT);
+            if (v.equals("full") || v.equals("max")) set = Double.POSITIVE_INFINITY;
+            else if (v.equals("empty")) set = 0.0;
+            else {
+                try { set = Double.parseDouble(v); } catch (NumberFormatException e) { sender.sendMessage(usage); return; }
+                if (!Double.isFinite(set) || set < 0) { sender.sendMessage(ChatColor.RED + "Amount must be a number >= 0."); return; }
+            }
+        }
+        Double amount = set;
+        // Folia: mana belongs to the target's region thread.
+        target.getScheduler().run(this, task -> {
+            if (amount != null) playerManaManager.setPlayerCurrentMana(target, Math.min(amount, playerManaManager.getMaxMana(target)));
+            if (playerHUDManager != null) playerHUDManager.updateHUD(target);
+            sender.sendMessage(ChatColor.GREEN + target.getName() + "'s Essence: "
+                    + Math.round(playerManaManager.getCurrentMana(target)) + " / " + Math.round(playerManaManager.getMaxMana(target)));
+        }, null);
     }
 
     /**

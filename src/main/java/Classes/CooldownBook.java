@@ -41,6 +41,9 @@ public final class CooldownBook {
     }
 
     /** Running cooldowns with at least {@code minLeftMs} left, to save (short ones don't matter after a relog). */
+    /** Admin and test tool: every cooldown ends now. */
+    public void clear() { until.clear(); }
+
     public Map<String, Long> saved(long now, long minLeftMs) {
         Map<String, Long> out = new HashMap<>();
         until.forEach((k, end) -> { if (end - now >= minLeftMs && !k.equals("global")) out.put(k, end); });

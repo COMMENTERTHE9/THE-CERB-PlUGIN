@@ -353,6 +353,40 @@ public final class ClassService implements AttributeSource {
         return (t != null && System.currentTimeMillis() - t < COMBAT_MS) || (tag != null && tag.isTagged(player));
     }
 
+    // ── controls (docs/design/ABILITY_CONTROLS.md) ──────────────
+
+    /** The scheme this player casts with: their own choice, else the server default. */
+    public Controls.Scheme scheme(UUID player) {
+        ClassProfile p = profiles.get(player);
+        Controls.Scheme s = p == null ? null : p.controls();
+        return s != null ? s : catalog.controls().defaultScheme();
+    }
+
+    /** When this player's ability bar shows: their own choice, else the server default. */
+    public Controls.BarMode barMode(UUID player) {
+        ClassProfile p = profiles.get(player);
+        Controls.BarMode m = p == null ? null : p.bar();
+        return m != null ? m : catalog.controls().defaultBar();
+    }
+
+    /** Choose a control scheme; saved. False when the player's classes aren't loaded. Player's thread. */
+    public boolean setScheme(Player p, Controls.Scheme scheme) {
+        ClassProfile prof = profiles.get(p.getUniqueId());
+        if (prof == null) return false;
+        prof.setControls(scheme);
+        save(p);
+        return true;
+    }
+
+    /** Choose when the ability bar shows; saved. False when the player's classes aren't loaded. Player's thread. */
+    public boolean setBarMode(Player p, Controls.BarMode mode) {
+        ClassProfile prof = profiles.get(p.getUniqueId());
+        if (prof == null) return false;
+        prof.setBar(mode);
+        save(p);
+        return true;
+    }
+
     // ── loadouts ────────────────────────────────────────────────
 
     /**
@@ -456,12 +490,17 @@ public final class ClassService implements AttributeSource {
                 : Contribution.stat("class:" + a.id(), a.displayName(), b.stat(), b.amount(), null);
         List<Running> list = buffs.computeIfAbsent(id, k -> new ArrayList<>());
         list.removeIf(r -> r.abilityId().equals(a.id()));
-        list.add(new Running(a.id(), c, until));
+        Running running = new Running(a.id(), c, until);
+        list.add(running);
         refreshContributions(p);
+        // The buff ends when this task runs. It removes exactly this buff (a recast replaced it with a
+        // new one, which its own task ends), not "whatever has expired by the clock": a region's
+        // catch-up ticks can run the task a few ms before the clock says so, and then nothing would
+        // ever end the buff (found by the ability audit: War Cry still +15% after 8 s).
         p.getScheduler().runDelayed(plugin, t -> {
             List<Running> now = buffs.get(id);
-            if (now != null && now.removeIf(r -> r.until() <= System.currentTimeMillis())) refreshContributions(p);
-        }, null, Math.max(1, Math.round(b.seconds() * 20)) + 1);
+            if (now != null && now.remove(running)) refreshContributions(p);
+        }, null, Math.max(1, Math.round(b.seconds() * 20)));
     }
 
     /** Rebuild this player's contributions (equipped passives and keystone, running buffs). Player's thread. */

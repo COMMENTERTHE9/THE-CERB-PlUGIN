@@ -21,6 +21,11 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Handles right-click casting for custom spell items (wands, rods, etc.).
  * Identifies spell items by PDC tag {@code cerb_spell} instead of display name.
+ *
+ * <p>Runs after the class ability keys (NORMAL, they listen at LOW): a right-click that cast an
+ * ability is marked used and skipped here, so a spell item that is also a focus (the test
+ * Fireball Wand is a blaze rod) never swallows the ability on that key. With no ability on the
+ * key the item casts its own spell as before.
  */
 public class CustomItemListener implements Listener {
 
@@ -36,10 +41,11 @@ public class CustomItemListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent event) {
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
+        if (event.useItemInHand() == org.bukkit.event.Event.Result.DENY) return; // an ability (or the menu) used this click
 
         Player player = event.getPlayer();
         ItemStack item = event.getItem();

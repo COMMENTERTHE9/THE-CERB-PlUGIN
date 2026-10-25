@@ -24,8 +24,10 @@ final class ClassView {
 
     private ClassView() {}
 
-    /** The five cast keys, by active slot. */
-    static final String[] KEYS = {"Sneak + right-click", "Sneak + left-click", "Sneak + F", "Sneak + Q", "Sneak + scroll"};
+    /** The key for active slot {@code slot} in this player's control scheme ("Right-click", "Sneak + F", "R L R"). */
+    static String key(ClassService svc, UUID player, int slot) {
+        return Classes.Controls.keyLabel(svc.scheme(player), slot, false);
+    }
 
     static Material icon(ClassCatalog cat, String id, Material fallback) {
         String name = cat.icon(id);

@@ -54,7 +54,7 @@ public final class LoadoutMenu extends PlayerMenu {
 
         for (int s = 0; s < Loadout.ACTIVE_SLOTS; s++) {
             int pos = s;
-            v.button(ACTIVE_SLOTS[s], ClassView.slotTile(svc, prof, "Active " + (s + 1), ClassView.KEYS[s], l.actives().get(s), "Click to choose"),
+            v.button(ACTIVE_SLOTS[s], ClassView.slotTile(svc, prof, "Active " + (s + 1), ClassView.key(svc, v.viewer().getUniqueId(), s), l.actives().get(s), "Click to choose"),
                     k -> menus.open(k.player(), new AbilityPickerMenu(plugin, index, ClassService.Slot.ACTIVE, pos)));
         }
         for (int s = 0; s < Loadout.PASSIVE_SLOTS; s++) {

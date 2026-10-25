@@ -5,6 +5,19 @@
 
 # icon: the item a class's menu tile shows (a material name); abilities can have one too.
 
+# Ability keys (docs/design/ABILITY_CONTROLS.md). Each player can choose their own scheme (/class controls,
+# or the Controls tile in Player Menu -> Classes & Abilities); this is the default for everyone else.
+#   quick: right-click = active 1, F = 2, Q = 3, Sneak + right-click = 4, Sneak + F = 5
+#   combo: three clicks starting with right-click (R R R = 1, R L R = 2, R L L = 3, R R L = 4), F = 5
+# With a bow or crossbow right and left swap. Keys are ability keys only with a weapon, a focus or an
+# empty hand and an active ability equipped; with anything else they work as usual.
+controls:
+  default-scheme: quick
+  combo-gap-ms: 700            # most time between two clicks of a combo (250-2000)
+  ability-bar: auto            # boss bar with the loadout's keys and cooldowns: auto (in a fight, and for a
+                               # moment after a press or taking a weapon in hand), on, or off; players can change theirs
+  ability-bar-linger-ms: 5000  # how long "auto" stays up after a press (1000-30000)
+
 # Shared cooldown groups: every ability in a group locks the whole group for this long.
 groups:
   movement: 2s   # every dash and blink: mobility can stack, but can't chain without limit

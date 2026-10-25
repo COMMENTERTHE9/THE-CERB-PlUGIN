@@ -38,17 +38,23 @@ public final class ClassCatalog {
     private final List<String> problems;
     /** class or ability id -> the item its menu tile shows (the optional "icon:" key; a material name). */
     private final Map<String, String> icons;
+    /** The ability keys' server settings ({@code controls:} in classes.yml). */
+    private final Controls.Settings controls;
 
     private ClassCatalog(Map<String, ClassDef> classes, Map<String, AbilityDef> abilities, Map<String, Long> groupMs,
-                         List<String> problems, Map<String, String> icons) {
+                         List<String> problems, Map<String, String> icons, Controls.Settings controls) {
         this.classes = Collections.unmodifiableMap(classes);
         this.abilities = Collections.unmodifiableMap(abilities);
         this.groupMs = Collections.unmodifiableMap(groupMs);
         this.problems = List.copyOf(problems);
         this.icons = Collections.unmodifiableMap(icons);
+        this.controls = controls;
     }
 
-    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), Map.of()); }
+    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), Map.of(), Controls.Settings.DEFAULTS); }
+
+    /** The ability keys' server settings: default scheme, combo timing, ability bar. */
+    public Controls.Settings controls() { return controls; }
 
     /** The configured menu icon (a material name) of a class or ability, or null for the default. */
     public String icon(String id) { return id == null ? null : icons.get(id); }
@@ -123,7 +129,8 @@ public final class ClassCatalog {
             problems.add("ability " + a.id() + ": unknown class " + a.classId());
             return true;
         });
-        return new ClassCatalog(classes, abilities, groups, problems, icons);
+        Controls.Settings controls = Controls.Settings.from(classesYml == null ? null : classesYml.getConfigurationSection("controls"));
+        return new ClassCatalog(classes, abilities, groups, problems, icons, controls);
     }
 
     private static AbilityDef parseAbility(String id, ConfigurationSection a, List<String> why) {

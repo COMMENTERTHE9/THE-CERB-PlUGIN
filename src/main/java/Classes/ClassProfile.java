@@ -38,6 +38,9 @@ public final class ClassProfile {
     private final List<Loadout> loadouts = new ArrayList<>();
     private int active;
     private final CooldownBook cooldowns = new CooldownBook();
+    /** The player's own control scheme and ability-bar mode; null = the server's default. Saved. */
+    private Controls.Scheme controls;
+    private Controls.BarMode bar;
 
     // ── runtime only ────────────────────────────────────────────
     int momentum;
@@ -106,6 +109,18 @@ public final class ClassProfile {
 
     public CooldownBook cooldowns() { return cooldowns; }
 
+    // ── preferences ─────────────────────────────────────────────
+
+    /** The player's chosen control scheme, or null for the server default. */
+    public Controls.Scheme controls() { return controls; }
+
+    /** The player's ability-bar mode, or null for the server default. */
+    public Controls.BarMode bar() { return bar; }
+
+    void setControls(Controls.Scheme scheme) { controls = scheme; }
+
+    void setBar(Controls.BarMode mode) { bar = mode; }
+
     // ── saving ──────────────────────────────────────────────────
 
     /**
@@ -126,7 +141,8 @@ public final class ClassProfile {
      * immutable). Taken on the player's thread; turning it into text ({@link Snapshot#toYaml}) can
      * then happen anywhere, off the tick.
      */
-    public record Snapshot(Map<String, Progress> classes, List<Loadout> loadouts, int active, Map<String, Long> cooldowns) {
+    public record Snapshot(Map<String, Progress> classes, List<Loadout> loadouts, int active, Map<String, Long> cooldowns,
+                           Controls.Scheme controls, Controls.BarMode bar) {
 
         /** The saved form (YAML). Pure: safe on any thread. */
         public String toYaml() {
@@ -146,6 +162,8 @@ public final class ClassProfile {
             }
             y.set("active", active);
             cooldowns.forEach((key, end) -> y.set("cooldowns." + key.replace(':', '~'), end));
+            if (controls != null) y.set("controls", controls.id());
+            if (bar != null) y.set("bar", bar.id());
             return y.saveToString();
         }
     }
@@ -155,7 +173,7 @@ public final class ClassProfile {
         Map<String, Progress> all = new LinkedHashMap<>(dormant);
         all.putAll(classes);
         return new Snapshot(Collections.unmodifiableMap(all), List.copyOf(loadouts), active,
-                Collections.unmodifiableMap(cooldowns.saved(now, 3_000)));
+                Collections.unmodifiableMap(cooldowns.saved(now, 3_000)), controls, bar);
     }
 
     /** The saved form (YAML). {@code now} decides which cooldowns are long enough to keep. */
@@ -215,6 +233,9 @@ public final class ClassProfile {
         }
         int act = y.getInt("active", 0);
         p.active = act >= 0 && act < p.loadouts.size() ? act : 0;
+        // Preferences: an unknown value (a newer build's scheme) falls back to the server default.
+        p.controls = Controls.Scheme.parse(y.getString("controls"));
+        p.bar = Controls.BarMode.parse(y.getString("bar"));
         ConfigurationSection cd = y.getConfigurationSection("cooldowns");
         if (cd != null) {
             Map<String, Long> saved = new HashMap<>();

@@ -29,7 +29,7 @@ public class CerbTabCompleter implements TabCompleter {
             "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
-            "speed", "spawn"
+            "speed", "spawn", "mobs"
     );
 
     private static final List<String> ON_OFF = List.of("on", "off");
