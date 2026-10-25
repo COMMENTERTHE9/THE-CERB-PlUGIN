@@ -23,6 +23,8 @@ public final class MenuHolder implements InventoryHolder {
     /** When this window last switched to another screen in place (System.nanoTime). */
     private long switchedAt;
     private boolean switched;
+    /** Counts renders of this window: an animation only draws into the render it was made for. */
+    private int renderSeq;
     private final UUID viewerId;
     private final Map<Integer, MenuAction> actions = new HashMap<>();
     private Inventory inventory;
@@ -45,6 +47,11 @@ public final class MenuHolder implements InventoryHolder {
     }
 
     void attach(Inventory inventory) { this.inventory = inventory; }
+
+    /** A new render starts (screen switch or refresh); returns its number. */
+    int nextRender() { return ++renderSeq; }
+
+    int renderSeq() { return renderSeq; }
 
     @Override
     public Inventory getInventory() { return inventory; }

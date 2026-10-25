@@ -8,6 +8,10 @@
 //   perf   - (op) browsing every screen three times opens no database connection and rebuilds no snapshot
 //   shelves - (op) decision B: three chained powered shelves swap the whole hotbar except the head and the admin chest;
 //            the shelf items meant for those two slots stay on the shelves; nothing is lost or duplicated
+//   motion - (op) Player Menu 2.1: opening reveal (centre out, buttons work at once), header sweep between screens,
+//            page-turn sounds, the progress strip filling, new progress since the last close (glow, lines, one chime,
+//            one level-up flash), category tabs, last opened category, animations cancelled on fast clicks and
+//            none left running on an idle open menu
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'nav';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -54,7 +58,9 @@ async function openViaHead() {
   await closeAny();
   bot.setQuickBarSlot(8); await sleep(300);
   bot.activateItem(); await sleep(300); bot.deactivateItem();
-  return waitTitle(SCREEN('Player Menu'));
+  const ok = await waitTitle(SCREEN('Player Menu'));
+  await sleep(300); // Player Menu 2.1: the content appears over 4 ticks after the window opens
+  return ok;
 }
 
 // ── nav ───────────────────────────────────────────────────────────
@@ -520,6 +526,165 @@ async function shelves() {
   await cmd('/gamemode creative', 400);
 }
 
+// ── motion (Player Menu 2.1) ──────────────────────────────────────
+
+const typeAt = i => { const it = slot(i); return it ? it.name : '-'; };
+const glows = i => { const it = slot(i); return !!it && /glint/.test(JSON.stringify(it.components || [])); };
+/** Skill level and XP from /cerb skill ... xp 0 (adds nothing). */
+async function skillNow(skill) {
+  const at = await cmd(`/cerb skill ${NAME} ${skill} xp 0`, 900);
+  const m = (chat.slice(at).find(x => /is now level \d+ \(\d+ XP\)/.test(x)) || '').match(/level (\d+) \((\d+) XP\)/);
+  return m ? { level: Number(m[1]), xp: Number(m[2]) } : null;
+}
+/** Record every slot update of the next window the server opens (in-place switches send a new open). */
+function watchNext() {
+  const log = [];
+  bot.once('windowOpen', w => { const t0 = Date.now(); w.on('updateSlot', (sl, o, n) => log.push({ s: sl, at: Date.now() - t0, name: n ? n.name : '-' })); });
+  return log;
+}
+async function headOpen() {
+  await closeAny();
+  bot.setQuickBarSlot(8); await sleep(250);
+  const opened = new Promise(r => bot.once('windowOpen', r));
+  bot.activateItem(); await sleep(60); bot.deactivateItem();
+  await opened;
+}
+
+async function motion() {
+  // The plugin sends sounds by registry id, and this test client's 1.21.11 id table is out of date (it names them
+  // wrongly). Each menu sound has its own volume and pitch, so they are told apart by those; the page turns must
+  // also share one sound id, different from the click, the chime and the level-up.
+  const SIG = { 'item.book.page_turn': [[0.8, 1.0], [0.6, 1.2], [0.6, 0.85]], 'ui.button.click': [[0.4, 1.2]],
+    'block.amethyst_block.chime': [[0.7, 1.3]], 'entity.player.levelup': [[0.4, 1.4]] };
+  const sounds = [];
+  bot._client.on('sound_effect', pk => {
+    const vol = pk.volume, pitch = pk.pitch;
+    const key = Object.keys(SIG).find(k => SIG[k].some(([v, p]) => Math.abs(vol - v) < 0.02 && Math.abs(pitch - p) < 0.02));
+    sounds.push({ key: key || '?', id: pk.sound ? (pk.sound.soundId ?? JSON.stringify(pk.sound.data)) : pk.soundId, pitch, at: Date.now() });
+  });
+  const heard = (key, since) => sounds.filter(x => x.at >= since && x.key === key);
+  const names = since => sounds.filter(x => x.at >= since).map(x => x.key + '#' + x.id).join(', ') || 'none';
+  await cmd('/gamemode creative', 400);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 3`, 600);
+
+  // 1. Opening: header and navigation at once; content from the centre column outwards; done within ~0.3 s.
+  let t = Date.now();
+  const log = watchNext();
+  await headOpen();
+  const headAtOnce = typeAt(4), skillsAtOnce = typeAt(19);
+  await sleep(450);
+  // When each column's real tiles arrived (the window's first contents hold the background in their place).
+  const first = col => Math.min(...log.filter(c => c.s >= 9 && c.s < 45 && c.s % 9 === col && c.name !== 'black_stained_glass_pane').map(c => c.at));
+  check('Opening: header at once, content appears after it (Skills tile hidden, then there)', headAtOnce === 'player_head'
+      && skillsAtOnce === 'black_stained_glass_pane' && typeAt(19) === 'experience_bottle', `${headAtOnce}; Skills tile ${skillsAtOnce} -> ${typeAt(19)}`);
+  check('Opening: centre column first, edges last, all within 0.4 s', first(4) < first(1) && first(2) <= first(1) && first(1) < 400,
+      `column 4 at ${first(4)} ms, 2 at ${first(2)} ms, 1 at ${first(1)} ms`);
+  check('Opening sound: a page turn', heard('item.book.page_turn', t).length >= 1, names(t));
+
+  // 2. A button works before it has appeared.
+  await headOpen();
+  await bot.clickWindow(19, 0, 0);
+  check('A button works before it has appeared (no waiting for animations)', await waitTitle(SCREEN('Skills')), title());
+  await sleep(500);
+  // ...and the opening animation it interrupted wrote nothing into the new screen.
+  const hubOnly = { 11: 'glistering_melon_slice', 13: 'nether_star', 15: 'heart_of_the_sea', 21: 'blaze_powder', 23: 'end_crystal', 25: 'netherite_chestplate', 28: 'zombie_head', 30: 'filled_map' };
+  const leaked = Object.entries(hubOnly).filter(([sl, n]) => typeAt(Number(sl)) === n).map(([sl, n]) => sl + ':' + n);
+  check('An interrupted animation writes nothing into the next screen', leaked.length === 0 && SCREEN('Skills').test(title()), leaked.join(', ') || 'clean');
+
+  // 3. Moving between screens: a light sweeps the header row from the centre out and settles; page-turn pitch by direction.
+  t = Date.now();
+  const sweep = watchNext();
+  await click(45, 700); // Back -> hub, in place
+  const lit = [...new Set(sweep.filter(x => x.s < 9 && x.name === 'white_stained_glass_pane').map(x => x.s))].sort();
+  const firstLit = s => (sweep.find(x => x.s === s && x.name === 'white_stained_glass_pane') || { at: 1e9 }).at;
+  check('Moving between screens: a light sweeps the header from the centre out, then settles', SCREEN('Player Menu').test(title())
+      && [3, 5, 0, 8].every(s => lit.includes(s)) && firstLit(3) <= firstLit(0) && [0, 1, 2, 3, 5, 6, 7, 8].every(s => typeAt(s) !== 'white_stained_glass_pane'),
+      `lit ${lit.join(',')}; slot 3 at ${firstLit(3)} ms, slot 0 at ${firstLit(0)} ms`);
+  const back = heard('item.book.page_turn', t);
+  t = Date.now();
+  await click(19, 700); // forward -> Skills
+  const fwd = heard('item.book.page_turn', t);
+  check('Page turns: lower pitch going back, higher going forward', back.length >= 1 && fwd.length >= 1 && back[0].pitch < fwd[0].pitch,
+      `back ${back.map(x => x.pitch.toFixed(2))}, forward ${fwd.map(x => x.pitch.toFixed(2))}`);
+  t = Date.now();
+  await click(52, 600); // Refresh: not a move, a plain click
+  check('A button that stays on the screen clicks instead', heard('ui.button.click', t).length >= 1 && heard('item.book.page_turn', t).length === 0, names(t));
+
+  // 4. Category tabs and the selected category.
+  await click(20, 800); // Combat
+  const cat = title();
+  const tabL = slotName(2), tabR = slotName(6);
+  check('Category screen: the shown category glows in the header, the other two are tabs beside it', glows(4) && /◀ /.test(tabL) && / ▶/.test(tabR), `${cat}: [${tabL}] [${tabR}] glow ${glows(4)}`);
+  await click(6, 800);
+  check('A tab switches category in place', title() !== cat && /✦ /.test(title()), `${cat} -> ${title()}`);
+  await click(45, 800); // Back -> Skills (the tab replaced the screen; history unchanged)
+  const lastTile = [20, 22, 24].find(sl => /Last opened/.test(slotLore(sl)));
+  check('Back on Skills: the category last opened is marked', SCREEN('Skills').test(title()) && lastTile !== undefined,
+      `${title()}; marked slot ${lastTile}`);
+
+  // 5. The progress strip fills as the page appears; XP since the last close starts from where it was.
+  await click(20, 800); // Combat
+  const bmSlot = findSlot(/^(▲ )?Blade Mastery\b/);
+  await click(bmSlot, 600);
+  const req = Number(((slotLore(10).match(/XP: [\d,]+ \/ ([\d,]+)/) || [])[1] || '0').replace(/,/g, ''));
+  await closeAny(); await sleep(500); // closing remembers what was seen: Blade Mastery 3, 0 XP
+  await cmd(`/cerb skill ${NAME} Blade_Mastery xp ${Math.round(req * 0.6)}`, 900);
+  await openViaHead(); await click(19, 700); await click(20, 700);
+  const strip = watchNext();
+  await click(findSlot(/^(▲ )?Blade Mastery\b/), 50);
+  const limeAtOnce = [10, 11, 12, 13, 14, 15, 16].filter(i => typeAt(i) === 'lime_stained_glass_pane').length;
+  await sleep(500);
+  const limeLater = [10, 11, 12, 13, 14, 15, 16].filter(i => typeAt(i) === 'lime_stained_glass_pane').length;
+  check('Skill page: the strip fills as the page appears (60% of a level -> 4 of 7 panes)', req > 0 && limeAtOnce < limeLater && limeLater === 4,
+      `${limeAtOnce} -> ${limeLater} lit; ${strip.filter(x => x.s >= 10 && x.s <= 16).length} strip updates`);
+  check('Skill page: XP gained since the last close is called out', /▲ \+[\d,]+ XP since you last looked/.test(slotLore(4)), slotLore(4).split(' | ')[0]);
+
+  // 6. Levels gained since the last close: glow and line on the hub, category and skill; one chime; one level-up flash.
+  await closeAny(); await sleep(500);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 5`, 900);
+  t = Date.now();
+  await openViaHead(); await sleep(300);
+  const count = i => { const it = slot(i); return it ? it.count : 0; };
+  check('Hub: the Skills tile counts the new levels and says what is new', count(19) === 2 && /▲ \+2 levels since you last looked/.test(slotLore(19)),
+      `count ${count(19)}; ${slotLore(19).split(' | ').find(x => /▲/.test(x)) || 'no ▲ line'}`);
+  check('Hub: one soft chime for the news', heard('block.amethyst_block.chime', t).length === 1, names(t));
+  await click(19, 700);
+  const combat = [20, 22, 24].find(sl => /Combat/.test(slotName(sl)));
+  check('Skills: the tile with new levels has a ▲ before its name (a count of 1 is not drawn)', combat !== undefined && /^▲ /.test(slotName(combat)), combat !== undefined ? slotName(combat) : 'no Combat tile');
+  check('Skills: the category with new levels counts them and says so', combat !== undefined && /▲ \+2 levels/.test(slotLore(combat)) && count(combat) === 2,
+      combat !== undefined ? `count ${count(combat)}; ${slotLore(combat).split(' | ')[0]}` : 'no Combat tile');
+  await click(combat, 700);
+  const bm = findSlot(/^(▲ )?Blade Mastery\b/);
+  check('Category: the skill with new levels glows, counts them and says so', bm >= 0 && glows(bm) && count(bm) === 2 && /▲ \+2 levels/.test(slotLore(bm)),
+      bm >= 0 ? `count ${count(bm)}; ${slotLore(bm).split(' | ')[0]}` : 'none');
+  t = Date.now();
+  const flash = watchNext();
+  await click(bm, 900);
+  const yellow = flash.filter(x => x.s >= 10 && x.s <= 16 && x.name === 'yellow_stained_glass_pane').length;
+  check('Skill page: the level-up since the last close flashes the strip gold, with a level-up sound', /▲ Level 3 → 5 since you last looked/.test(slotLore(4))
+      && yellow === 7 && heard('entity.player.levelup', t).length === 1, `${slotLore(4).split(' | ')[0]}; ${yellow} gold panes; sounds ${names(t)}`);
+  await click(45, 700);
+  t = Date.now();
+  const again = watchNext();
+  await click(findSlot(/^(▲ )?Blade Mastery\b/), 900);
+  check('...only the first time: opening it again just fills', again.filter(x => x.s >= 10 && x.s <= 16 && x.name === 'yellow_stained_glass_pane').length === 0
+      && heard('entity.player.levelup', t).length === 0, `${again.filter(x => x.name === 'yellow_stained_glass_pane').length} gold`);
+
+  const ids = k => [...new Set(sounds.filter(x => x.key === k).map(x => String(x.id)))];
+  const turn = ids('item.book.page_turn'), others = ['ui.button.click', 'block.amethyst_block.chime', 'entity.player.levelup'].flatMap(ids);
+  check('Sounds: every page turn is one sound, distinct from the click, the chime and the level-up', turn.length === 1 && others.length === 3 && !others.includes(turn[0]),
+      `page turn ${turn.join('/')}; others ${others.join('/')}`);
+
+  // 7. Nothing keeps running on an open menu.
+  await sleep(1500);
+  const q = await cmd('/cerb showqueues', 900);
+  const run = (chat.slice(q).find(x => /Menu animations running/.test(x)) || '');
+  check('An open menu nobody touches runs no animation', /Menu animations running: 0\b/.test(run) && !!bot.currentWindow, run);
+
+  await closeAny();
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 500);
+}
+
 // ── perf ──────────────────────────────────────────────────────────
 
 async function counters() {
@@ -558,6 +723,7 @@ async function perf() {
     else if (phase === 'safety') await safety();
     else if (phase === 'perf') await perf();
     else if (phase === 'shelves') await shelves();
+    else if (phase === 'motion') await motion();
     else console.log('unknown phase ' + phase);
   } catch (e) {
     check('phase ran without errors', false, e.stack);

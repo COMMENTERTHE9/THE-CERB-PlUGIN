@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 30 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
+*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 35 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -53,6 +53,17 @@
 | 5 | **Speed in PvP** (needs a second player) | As before: after a player hits you, your attack and movement speed bonuses pause for 15 seconds. |
 | 6 | **Admin double-click.** Players → you → Skills, then double-click a skill quickly | The skill editor opens; the level does not change. Only a click on a button in the editor changes it. |
 
-## 5. Afterwards
+## 5. Player Menu 2.1 (Step 3)
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Right-click the head | The frame appears and the tiles come in from the middle outwards in a blink (0.2 s), with a page-turn sound. You can click a tile straight away. |
+| 2 | Skills, then Back, then Home | Each move to another screen: a band of light sweeps across the top row. Going in plays a higher page turn, going back a lower one. Refresh just clicks. |
+| 3 | Skills → Combat | Combat glows in the middle of the top row, with Magic and Utility as tabs on either side; click one to switch. Back on Skills, Combat says "◆ Last opened". |
+| 4 | Open a skill with some XP into its level | The bar under the title fills up from the left as the page appears. |
+| 5 | Close the menu, kill a few mobs (or `/cerb skill YourName Blade_Mastery level <current + 2>`), open it again | The Skills tile shows a **2** in its corner and "▲ +2 levels since you last looked", with one soft chime. Skills → Combat shows the same on the category and on Blade Mastery. Opening Blade Mastery flashes its bar gold once, with a quiet level-up sound. Open it again: it just fills. |
+| 6 | Leave the menu open for a while, then close it | Nothing flickers or keeps moving. Closing is silent. |
+
+## 6. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

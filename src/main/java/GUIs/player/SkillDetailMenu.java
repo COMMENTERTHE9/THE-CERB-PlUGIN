@@ -66,8 +66,13 @@ public final class SkillDetailMenu extends PlayerMenu {
         AttributeRules rules = svc.rules();
         double realm = svc.get(id).realmMultiplier();
 
+        PlayerMenuMemory.Seen seen = memory().seen(id, skill);
+        boolean leveled = seen != null && pr.level() > seen.level();
+
         // ── Header: identity and level ─────────────────────────
         Ui.Lore head = Ui.lore();
+        if (leveled) head.raw(ChatColor.GREEN + "▲ Level " + seen.level() + " → " + pr.level() + " since you last looked");
+        else if (seen != null && seen.level() == pr.level() && pr.xp() > seen.xp()) head.raw(ChatColor.GREEN + "▲ +" + Fmt.grouped(pr.xp() - seen.xp()) + " XP since you last looked");
         if (SkillNames.formerName(d.name()) != null) head.raw(ChatColor.DARK_GRAY + "Formerly " + d.name());
         head.raw(d.category().color + d.category().displayTitle);
         for (String w : PlayerTheme.wrap(d.description(), SkillView.WIDTH)) head.text(w);
@@ -83,10 +88,12 @@ public final class SkillDetailMenu extends PlayerMenu {
         List<String> stripLore = pr.max() ? List.of() : Ui.lore()
                 .stat("XP", Fmt.grouped(pr.xp()) + " / " + Fmt.grouped(pr.required()))
                 .stat("To go", Fmt.grouped(pr.required() - pr.xp())).build();
-        for (int i = 0; i < STRIP_LENGTH; i++) {
-            Material pane = pr.max() ? Material.YELLOW_STAINED_GLASS_PANE
-                    : i < filled ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
-            v.set(STRIP_FIRST + i, Ui.item(pane, stripName, stripLore));
+        if (pr.max()) {
+            for (int i = 0; i < STRIP_LENGTH; i++) v.set(STRIP_FIRST + i, Ui.item(Material.YELLOW_STAINED_GLASS_PANE, stripName, stripLore));
+        } else {
+            boolean celebrate = leveled && memory().isFirstLook(id, skill);
+            fillStrip(v, filled, seen, celebrate, pr, stripName, stripLore);
+            if (celebrate) v.runLater(5, () -> memory().markLooked(id, skill)); // used up only if the flash really played
         }
 
         // ── Row 2: train / attributes / effects ────────────────
@@ -120,6 +127,39 @@ public final class SkillDetailMenu extends PlayerMenu {
                     c -> menus.replace(c.player(), new SkillDetailMenu(plugin, next.name())));
         }
         v.refreshButton();
+    }
+
+    /**
+     * Player Menu 2.1: the strip fills up as the page appears (two panes a tick), starting from where
+     * the player last saw it this session. The first look at a level gained since the menu was last
+     * closed fills the strip, flashes it gold with a level-up sound, then fills the new level.
+     */
+    private static void fillStrip(MenuView v, int filled, PlayerMenuMemory.Seen seen, boolean celebrate,
+                                  SkillView.Progress pr, String name, List<String> lore) {
+        ItemStack lime = Ui.item(Material.LIME_STAINED_GLASS_PANE, name, lore);
+        ItemStack gray = Ui.item(Material.GRAY_STAINED_GLASS_PANE, name, lore);
+        int from = stripFrom(seen, pr.level(), pr.required(), filled, STRIP_LENGTH);
+        for (int i = 0; i < STRIP_LENGTH; i++) v.set(STRIP_FIRST + i, i < from ? lime : gray);
+        int t = 1;
+        if (celebrate) {
+            ItemStack gold = Ui.item(Material.YELLOW_STAINED_GLASS_PANE, name, lore);
+            for (int i = 0; i < STRIP_LENGTH; i++) v.later(1 + i / 2, STRIP_FIRST + i, lime);
+            for (int i = 0; i < STRIP_LENGTH; i++) v.later(5, STRIP_FIRST + i, gold);
+            v.soundLater(5, org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.4f, 1.4f);
+            for (int i = 0; i < STRIP_LENGTH; i++) v.later(8, STRIP_FIRST + i, gray);
+            t = 9;
+        }
+        for (int i = from; i < filled; i++) v.later(t + (i - from) / 2, STRIP_FIRST + i, lime);
+    }
+
+    /**
+     * Panes already lit when the strip starts filling: where the player last saw this level (0 for a
+     * new level, nothing seen yet, or a level with no XP requirement), never beyond today's fill.
+     */
+    static int stripFrom(PlayerMenuMemory.Seen seen, int level, int required, int filled, int length) {
+        if (seen == null || seen.level() != level || required <= 0) return 0;
+        int was = (int) Math.round((double) Math.max(0, seen.xp()) / required * length);
+        return Math.max(0, Math.min(filled, was));
     }
 
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {

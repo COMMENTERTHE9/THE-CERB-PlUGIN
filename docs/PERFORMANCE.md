@@ -95,6 +95,31 @@ Same loads, warm server, two runs each. Cerberus, ms per tick:
 
 Within the budget. None of the Step 2 code appears among the costly frames: the fire-coverage lookup, the projectile XP rule, the shelf swap and the spear rule run only on their own events. The same functions as before lead (mob labels, damage numbers, HUD), and the spread matches the run-to-run noise above.
 
+## Step 3: Player Menu 2.1 (2026-10-25)
+
+New load mode `menuidle`: each bot opens the Player Menu once and leaves it open.
+
+**1. Baseline (Step 2 build).**
+- Menu browsing: 0.144 ms per tick.
+- Idle open menu: 0.028 ms per tick, the same as idle players.
+
+**2. Found.** The two biggest Cerberus allocators while browsing were avoidable:
+- `Fmt.grouped` built a `String.format` formatter per number: 26–38 MB per 60 s run;
+- `ConfigSkillMapper.describeItems` compiled two regexes for every skill tile: 13–17 MB.
+
+**3. Fixed** (commit 4e880cd). The number formatter now matches `String.format` without building one (unit-tested). The regexes are compiled once, and each skill's text is cached until a reload.
+
+**4. Measured again.** CPU was unchanged (0.146 ms per tick, within noise). Cerberus's allocations fell from 2.70 to 2.30 MB/s (−15%), and both hot spots are gone from the list. A small gain, but it is free.
+
+**5. Built the animations** (`MenuAnimator`). Each runs on the viewer's entity scheduler, is cancelled on any screen change, close or quit, and ends within 1 s.
+
+| Workload | Before (Step 2 build) | With Player Menu 2.1 | Budget |
+|---|---|---|---|
+| Menu browsing (9 bots, 225 clicks each) | 0.144 | 0.158–0.172 | ≤ ~0.25 |
+| Idle open menu (9 bots) | 0.028 | 0.036 (the profile shows no menu work: HUD, labels and regeneration only) | nothing measurable |
+
+The animations cost about 0.02 ms per tick at 27 clicks per second, mostly the header sweep's slot updates. They stay within the budget, and the click itself only schedules them.
+
 ## Budgets for the next milestones
 
-- **Step 3 (menu animations):** animation work must stay off the click path. The `menu` workload must not lose more than half of the Step 1 gain (Cerberus ≤ ~0.25 ms per tick). An idle open menu must cost nothing measurable.
+- **Step 4–5 (classes and abilities):** an ability use goes through the existing damage pipeline. The `combat` workload must stay within the Step 2 numbers plus noise, and equipping abilities or switching loadouts must not rebuild attribute snapshots more than once per change.

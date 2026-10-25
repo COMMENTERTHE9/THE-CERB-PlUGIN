@@ -8,6 +8,7 @@
 //            Blade Mastery -> next -> back -> home -> Stats -> back -> close
 //   mixed  - the bots split across the three
 //   idle   - the bots just stand there (per-player background cost: HUD, regen, saves)
+//   menuidle - each bot opens the Player Menu once and leaves it open (an open menu must cost nothing extra)
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -81,6 +82,17 @@ async function menu(b, deadline) {
   }
 }
 
+async function menuidle(b, deadline) {
+  b.chat('/gamemode creative'); await sleep(400);
+  b.chat('/menu'); await sleep(1500);
+  if (b.currentWindow) bump(b.username, 'open');
+  while (Date.now() < deadline) {
+    if (!b.currentWindow) { b.chat('/menu'); bump(b.username, 'reopened'); }
+    await sleep(1000);
+  }
+  if (b.currentWindow) b.closeWindow(b.currentWindow);
+}
+
 (async () => {
   const controller = await join('CerbSmoke');
   await sleep(2000);
@@ -108,7 +120,7 @@ async function menu(b, deadline) {
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
     const run = m === 'combat' ? combat(b, deadline) : m === 'hurt' ? hurt(b, deadline, controller)
-        : m === 'menu' ? menu(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
+        : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);

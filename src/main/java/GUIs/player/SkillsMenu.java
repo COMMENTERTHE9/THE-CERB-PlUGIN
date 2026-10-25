@@ -96,8 +96,15 @@ public final class SkillsMenu extends PlayerMenu {
         int cap = defs.size() * SkillProgression.MAX_LEVEL;
         List<SkillDef> sorted = new ArrayList<>(defs);
         sorted.sort(Comparator.comparingInt((SkillDef d) -> sm.getSkillLevel(id, d.name())).reversed());
+        PlayerMenuMemory mem = memory();
+        int gained = 0;
+        for (SkillDef d : defs) gained += mem.gained(id, d.name(), sm.getSkillLevel(id, d.name()));
+        boolean last = mem.lastCategory(id) == cat;
 
-        Ui.Lore l = Ui.lore()
+        Ui.Lore l = Ui.lore();
+        if (gained > 0) l.raw(PlayerTheme.newProgress(gained));
+        if (last) l.raw(ChatColor.DARK_GRAY + "◆ Last opened");
+        l
                 .stat("Skills", String.valueOf(defs.size()))
                 .stat("Levels", Fmt.grouped(sum) + ChatColor.DARK_GRAY + " / " + Fmt.grouped(cap))
                 .raw(PlayerTheme.bar(sum, cap, 20, cat.color))
@@ -108,7 +115,7 @@ public final class SkillsMenu extends PlayerMenu {
             l.raw(ChatColor.WHITE + "  " + d.displayName() + ChatColor.GRAY + "  " + sm.getSkillLevel(id, d.name()));
         }
         l.hint("Click to open");
-        return Ui.item(cat.icon, cat.color + "" + ChatColor.BOLD + cat.displayTitle, l.build());
+        return PlayerTheme.badge(Ui.glow(Ui.item(cat.icon, cat.color + "" + ChatColor.BOLD + cat.displayTitle, l.build()), gained > 0 || last), gained);
     }
 
     private static org.bukkit.inventory.ItemStack howItWorks() {

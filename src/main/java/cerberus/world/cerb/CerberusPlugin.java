@@ -711,6 +711,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.GRAY + "Database connections since start: " + ChatColor.WHITE + databaseManager.connectionsOpened());
         sender.sendMessage(ChatColor.GRAY + "Attribute rebuilds since start: " + ChatColor.WHITE + attributeService.rebuildCount());
         sender.sendMessage(ChatColor.GRAY + "Attribute previews since start: " + ChatColor.WHITE + attributeService.previewCount());
+        sender.sendMessage(ChatColor.GRAY + "Menu animations running: " + ChatColor.WHITE + menuManager.animator().runningCount()
+                + ChatColor.GRAY + " (started since start: " + ChatColor.WHITE + menuManager.animator().startedCount() + ChatColor.GRAY + ")");
         sender.sendMessage(ChatColor.GRAY + "Players with a menu open: " + ChatColor.WHITE + menuManager.activeViewers());
         sender.sendMessage(ChatColor.GRAY + "Mob HP pools tracked: " + ChatColor.WHITE + mobVirtualHealthManager.size());
     }

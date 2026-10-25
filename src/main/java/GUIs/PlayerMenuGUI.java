@@ -41,6 +41,7 @@ public class PlayerMenuGUI {
     private final CerberusPlugin plugin;
     private final NamespacedKey headKey;
     private final PlayerMenuSections sections = new PlayerMenuSections();
+    private final GUIs.player.PlayerMenuMemory memory = new GUIs.player.PlayerMenuMemory();
 
     public PlayerMenuGUI(CerberusPlugin plugin) {
         this.plugin = plugin;
@@ -50,6 +51,9 @@ public class PlayerMenuGUI {
 
     /** The hub's destinations. Register a section to make a new system reachable from the hub. */
     public PlayerMenuSections sections() { return sections; }
+
+    /** What each player last saw in the menu (this session, in memory). */
+    public GUIs.player.PlayerMenuMemory memory() { return memory; }
 
     // ── Opening ─────────────────────────────────────────────────
 
@@ -180,10 +184,13 @@ public class PlayerMenuGUI {
             total += lvl;
             if (lvl > best) { best = lvl; top = d; }
         }
-        String cap = String.format(java.util.Locale.ROOT, "%,d", SkillDefinitions.all().size() * Skills.SkillProgression.MAX_LEVEL);
-        return top == null ? List.of() : List.of(
-                ChatColor.GRAY + "Total level: " + ChatColor.WHITE + String.format(java.util.Locale.ROOT, "%,d", total)
-                        + ChatColor.DARK_GRAY + " / " + cap,
-                ChatColor.GRAY + "Highest: " + ChatColor.WHITE + top.displayName() + " " + best);
+        if (top == null) return List.of();
+        String cap = GUIs.menu.Fmt.grouped(SkillDefinitions.all().size() * Skills.SkillProgression.MAX_LEVEL);
+        List<String> lines = new java.util.ArrayList<>(3);
+        int gained = plugin.getPlayerMenuGUI().memory().gainedTotal(p.getUniqueId(), plugin.getSkillManager());
+        if (gained > 0) lines.add(GUIs.player.PlayerTheme.newProgress(gained));
+        lines.add(ChatColor.GRAY + "Total level: " + ChatColor.WHITE + GUIs.menu.Fmt.grouped(total) + ChatColor.DARK_GRAY + " / " + cap);
+        lines.add(ChatColor.GRAY + "Highest: " + ChatColor.WHITE + top.displayName() + " " + best);
+        return lines;
     }
 }

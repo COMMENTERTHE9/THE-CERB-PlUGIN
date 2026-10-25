@@ -244,6 +244,11 @@ public class PlayerSessionManager implements Listener {
             log.warning("[PlayerSession] Cleanup(hud) failed: " + e.getMessage());
         }
         try {
+            if (svc.playerMenuGUI() != null) svc.playerMenuGUI().memory().forget(uuid);
+        } catch (Exception e) {
+            log.warning("[PlayerSession] Cleanup(menu memory) failed: " + e.getMessage());
+        }
+        try {
             svc.skills().removePlayer(uuid);
         } catch (Exception e) {
             log.warning("[PlayerSession] Cleanup(skills) failed: " + e.getMessage());

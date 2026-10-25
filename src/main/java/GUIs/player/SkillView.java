@@ -298,7 +298,9 @@ public final class SkillView {
     /** The list tile for a skill (category screen, top skills). */
     static ItemStack tile(CerberusPlugin plugin, UUID player, SkillDef d) {
         Progress pr = progress(plugin, player, d.name());
+        int gained = plugin.getPlayerMenuGUI().memory().gained(player, d.name(), pr.level());
         Ui.Lore l = Ui.lore();
+        if (gained > 0) l.raw(PlayerTheme.newProgress(gained));
         if (SkillNames.formerName(d.name()) != null) l.raw(ChatColor.DARK_GRAY + "Formerly " + d.name());
         for (String w : PlayerTheme.wrap(d.description(), WIDTH)) l.text(w);
         l.gap();
@@ -311,7 +313,7 @@ public final class SkillView {
         l.raw(trainingSummary(plugin, d));
         l.hint("Click for details");
         String name = d.category().color + d.displayName() + ChatColor.DARK_GRAY + "  Lv " + pr.level();
-        return Ui.glow(Ui.item(d.icon(), name, l.build()), pr.max());
+        return PlayerTheme.badge(Ui.glow(Ui.item(d.icon(), name, l.build()), pr.max() || gained > 0), gained);
     }
 
     // ── Text helpers ─────────────────────────────────────────────

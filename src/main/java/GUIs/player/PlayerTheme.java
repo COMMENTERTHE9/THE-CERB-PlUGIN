@@ -41,6 +41,26 @@ public final class PlayerTheme {
         return hi - lo < 0.01 * hi ? "x" + Manager.Numbers.compact(hi) : "x" + Manager.Numbers.compact(lo) + " to x" + Manager.Numbers.compact(hi);
     }
 
+    /** "▲ +3 levels since you last looked": progress made while the menu was closed (Player Menu 2.1). */
+    public static String newProgress(int levels) {
+        return ChatColor.GREEN + "▲ +" + levels + (levels == 1 ? " level" : " levels") + " since you last looked";
+    }
+
+    /**
+     * Mark a tile with new levels: a green "▲" before its name, and the count in its corner from 2 up
+     * (a count of 1 isn't drawn). A glow alone can't say it: some icons, like the experience bottle
+     * and the enchanted book, always glow.
+     */
+    public static org.bukkit.inventory.ItemStack badge(org.bukkit.inventory.ItemStack tile, int newLevels) {
+        if (newLevels <= 0) return tile;
+        org.bukkit.inventory.meta.ItemMeta meta = tile.getItemMeta();
+        if (meta != null && meta.hasDisplayName()) {
+            meta.setDisplayName(ChatColor.GREEN + "▲ " + meta.getDisplayName());
+            tile.setItemMeta(meta);
+        }
+        return GUIs.menu.Ui.amount(tile, newLevels);
+    }
+
     /** "✦ Skills" — every player screen title. */
     public static String title(String screen) {
         return ChatColor.DARK_GRAY + "✦ " + ChatColor.DARK_RED + "" + ChatColor.BOLD + screen;

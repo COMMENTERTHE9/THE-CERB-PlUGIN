@@ -35,6 +35,19 @@ public abstract class Menu {
      */
     public boolean reuseWindow() { return true; }
 
+    /**
+     * The background a screen's content hides behind while it appears (Player Menu 2.1): opening
+     * from nothing, the content comes in from the centre outwards, and moving here from another
+     * screen sweeps a band of light across the header row. {@code null} (default): no animation.
+     */
+    public org.bukkit.Material animationBackground() { return null; }
+
+    /** Page-turn sounds for opening and moving between screens (instead of a plain click). */
+    public boolean navigationSounds() { return false; }
+
+    /** Called when the player closes the menu while this screen is shown (not when moving to another screen). */
+    public void closed(org.bukkit.entity.Player player) {}
+
     /** Render. Runs on the viewer's region thread; may be called again to refresh in place. */
     protected abstract void build(MenuView view);
 }

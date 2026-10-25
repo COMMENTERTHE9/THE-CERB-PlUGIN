@@ -32,6 +32,7 @@ public abstract class PlayerMenu extends Menu {
         nav(v);
         content(v);
         v.fill(PlayerTheme.FRAME);
+        memory().shown(v.viewer(), plugin.getSkillManager()); // what "since you last looked" compares with next time
     }
 
     /** The screen's own items. Frame and navigation are already in place; empty slots get filled after. */
@@ -42,6 +43,19 @@ public abstract class PlayerMenu extends Menu {
 
     /** True for the hub itself (no Back / Home there). */
     protected boolean isHub() { return false; }
+
+    // Player Menu 2.1: content appears centre-out on opening, a light sweeps the header on moving
+    // between screens, page-turn sounds, and the menu remembers what the player saw when closing it.
+    @Override public Material animationBackground() { return PlayerTheme.FRAME; }
+
+    @Override public boolean navigationSounds() { return true; }
+
+    @Override public void closed(Player player) {
+        memory().remember(player, plugin.getSkillManager());
+    }
+
+    /** What this player last saw in the menu (this session). */
+    protected PlayerMenuMemory memory() { return plugin.getPlayerMenuGUI().memory(); }
 
     private void nav(MenuView v) {
         if (!isHub()) {

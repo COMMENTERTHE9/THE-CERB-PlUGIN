@@ -114,8 +114,14 @@ public final class PlayerHubMenu extends PlayerMenu {
             l.gap().raw(a.state().label);
             if (a.note() != null) l.raw(ChatColor.DARK_GRAY + a.note());
             if (a.isAvailable() && sec.opener() != null) l.hint("Click to open");
-            v.button(sec.slot(), Ui.item(sec.icon(), (a.isAvailable() ? PlayerTheme.PRIMARY : ChatColor.GRAY) + sec.name(),
-                    l.build()), c -> openSection(c.player(), sec.id()));
+            // New skill levels since the menu was last closed: the Skills tile counts them, with one soft chime.
+            int news = "skills".equals(sec.id()) ? memory().gainedTotal(id, plugin.getSkillManager()) : 0;
+            if (news > 0 && memory().wouldAnnounce(id)) {
+                v.soundLater(4, org.bukkit.Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.3f);
+                v.runLater(4, () -> memory().markAnnounced(id));
+            }
+            v.button(sec.slot(), PlayerTheme.badge(Ui.item(sec.icon(), (a.isAvailable() ? PlayerTheme.PRIMARY : ChatColor.GRAY) + sec.name(),
+                    l.build()), news), c -> openSection(c.player(), sec.id()));
         }
     }
 

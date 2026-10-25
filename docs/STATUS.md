@@ -6,8 +6,9 @@
 - **Step 0**, the owner's decisions: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis.
 - **Step 1**, the performance assessment (`docs/PERFORMANCE.md`): Cerberus's server time dropped 66–69% for menu clicks, 17–37% in combat and 21–30% for hits taken. An independent review of that work found one real problem, a fast double-click in an admin screen could press a button on the next screen; it is fixed.
 - **Step 2**, decisions A–E: speed bonuses stay off in PvP, powered shelves work again, Survival's fire resistance covers every kind of fire, projectiles train Survival and Heavy Armor Mastery, and spears train Weapon Mastery.
+- **Step 3**, Player Menu 2.1: a short opening animation, a light sweeping the header between screens, page-turn sounds, the skill bar filling up, and "since you last looked" progress with one chime and one level-up flash. It stays within the performance budget, and an idle open menu costs nothing.
 
-The owner has playtested Player Menu 2.0; the remaining checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 3, Player Menu 2.1 animations**, then the classes and abilities design.
+The owner has playtested Player Menu 2.0; the remaining checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 4, the classes and abilities design**, then the prototype.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -156,6 +157,37 @@ None of the new code appears among the costly frames; the spread is the document
 - **A fast double-click in an admin screen could press a button on the next screen** (for example "+10 levels"). Reproduced with a lagging client: 3 of 4 stale clicks applied +10 on the old build, 0 of 4 now (`admin.js staleclick`). Admin and confirm screens now always open in a fresh window; the server drops clicks aimed at a closed window. Read-only Player Menu screens keep the fast in-place redraw, with a wider guard of about one round trip.
 - Damage numbers survive a 0 or negative `display.damage-number-ticks`.
 - HUD and menu timers no longer depend on the wall clock.
+
+## Done: Player Menu 2.1 (Step 3, 2026-10-25)
+
+Polish on Player Menu 2.0, vanilla only (no resource pack), all Played (`menu.js motion`, 21 checks):
+
+| What | How it looks | Bounds |
+|---|---|---|
+| Opening | Header and navigation at once; the content comes in from the centre column outwards over 4 ticks (0.2 s) | Only when the menu opens from nothing. Buttons work from the first tick. |
+| Moving between screens | A band of light sweeps out across the header row and settles (5 ticks); the new content is already there | Only between different screens, not on refresh or paging. |
+| Sounds | A page turn when opening or moving deeper, a lower page turn going back or home, the usual click for buttons that stay on the screen | Admin screens keep their click. Closing is silent. |
+| Skill page bar | The 7-pane bar fills up as the page appears (two panes a tick), starting from where you last saw it | ≤ 4 ticks |
+| Progress since you last looked | The Skills tile, the category and the skill count the new levels (the number in the corner) with a "▲ +2 levels since you last looked" line; a skill page says "▲ Level 3 → 5" or "▲ +415 XP". One soft chime on the hub; the first visit to a levelled skill flashes its bar gold with a quiet level-up sound | Remembered in memory for the session only (no database writes). Chime and flash once per menu visit. |
+| Selected category | The category screen shows the current category glowing in the middle of the header, with the other two as tabs beside it (switching keeps the Back history); Skills marks the category you opened last | Static: no animation |
+
+**Engine:** `GUIs/menu/MenuAnimator` plays a screen's keyframes (`MenuView.later`, `soundLater`) on the viewer's own entity scheduler (Folia-safe). Rules:
+- at most one animation per player;
+- each runs at most 1 s and ends by itself;
+- a new screen, a refresh, a close or a quit cancels it, and a step is only ever written into the exact render it was made for.
+
+Checked in game: an animation interrupted by a fast click writes nothing into the next screen, and an open menu nobody touches has no animation running (`/cerb showqueues`).
+
+**Performance** (`docs/PERFORMANCE.md`):
+- **Pre-work** first: two allocation hot spots in menu text are gone. Cerberus's allocations while browsing fell 15%; CPU time was unchanged.
+- **With animations:** menu browsing costs 0.158–0.172 ms per tick (0.144 before, budget 0.25). An idle open menu costs 0.036 ms, the same as an idle player; the profile shows no menu work.
+
+**Independent review:** no high or medium issues (wrong-screen writes, item safety, Folia races, leaks all checked). Its seven low findings are fixed, among them:
+- a single new level now also gets a green "▲" before the tile's name, because a count of 1 isn't drawn and some icons always glow;
+- "since you last looked" compares with what the last screen actually showed;
+- the chime and the flash are used up only when they really play.
+
+**Not built:** special presentation for cultivation breakthroughs, which waits for realm advancement. The engine supports it: keyframes on any screen.
 
 ## Roadmap
 

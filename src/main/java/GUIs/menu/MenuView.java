@@ -2,10 +2,13 @@ package GUIs.menu;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
@@ -29,6 +32,12 @@ public final class MenuView {
     private final Player viewer;
     private final Inventory inventory;
     private final MenuHolder holder;
+    /** Animation steps asked for while building (null: none). */
+    private List<Keyframe> keyframes;
+    private BitSet animatedSlots;
+
+    /** One animation step: {@code tick} ticks after the screen appears, show {@code item} in {@code slot}, play {@code sound} and/or run {@code action}. */
+    record Keyframe(int tick, int slot, ItemStack item, Sound sound, float volume, float pitch, Runnable action) {}
 
     MenuView(MenuManager menus, Player viewer, Inventory inventory, MenuHolder holder) {
         this.menus = menus;
@@ -53,6 +62,46 @@ public final class MenuView {
         inventory.setItem(slot, item);
         holder.bind(slot, action);
     }
+
+    // ── Animation (Player Menu 2.1; played by MenuAnimator) ───────
+
+    /**
+     * Show {@code item} in {@code slot} {@code ticks} ticks after this screen appears (1 to
+     * {@link MenuAnimator#MAX_TICKS}): draw the starting look with {@link #set}/{@link #button}, then
+     * the steps here. A button keeps working throughout. Steps are dropped when the screen changes,
+     * refreshes or closes first.
+     */
+    public void later(int ticks, int slot, ItemStack item) {
+        if (item == null || slot < 0 || slot >= inventory.getSize()) return;
+        add(new Keyframe(clampTick(ticks), slot, item, null, 0f, 0f, null));
+        if (animatedSlots == null) animatedSlots = new BitSet(inventory.getSize());
+        animatedSlots.set(slot);
+    }
+
+    /** Play {@code sound} to the viewer {@code ticks} ticks after this screen appears (dropped like {@link #later}). */
+    public void soundLater(int ticks, Sound sound, float volume, float pitch) {
+        if (sound != null) add(new Keyframe(clampTick(ticks), -1, null, sound, volume, pitch, null));
+    }
+
+    /**
+     * Run {@code action} on the viewer's thread {@code ticks} ticks after this screen appears, only if
+     * the animation gets that far: for marking a once-only effect as seen when it really played.
+     */
+    public void runLater(int ticks, Runnable action) {
+        if (action != null) add(new Keyframe(clampTick(ticks), -1, null, null, 0f, 0f, action));
+    }
+
+    /** True if this screen animates {@code slot} itself (generic transitions leave it alone). */
+    boolean animates(int slot) { return animatedSlots != null && animatedSlots.get(slot); }
+
+    List<Keyframe> keyframes() { return keyframes == null ? List.of() : keyframes; }
+
+    private void add(Keyframe k) {
+        if (keyframes == null) keyframes = new ArrayList<>();
+        keyframes.add(k);
+    }
+
+    private static int clampTick(int t) { return Math.max(1, Math.min(MenuAnimator.MAX_TICKS, t)); }
 
     /** Fill every slot that is still empty with a filler pane (call last). */
     public void fill(Material glass) {
