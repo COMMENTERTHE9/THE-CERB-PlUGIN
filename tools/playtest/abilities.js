@@ -217,8 +217,10 @@ let X = 0, Y = 200, Z = 0;
 async function arena() {
   const sp = bot.spawnPoint || bot.entity.position;
   X = Math.floor(sp.x) + 40; Z = Math.floor(sp.z);
-  await cmd('/gamerule doMobSpawning false', 300);
-  await cmd('/time set midnight', 300); // test zombies don't burn
+  await cmd('/gamerule spawn_mobs false', 300); // 1.21.11's name (doMobSpawning is gone: it failed silently, and wild mobs joined the checks)
+  await cmd('/time set midnight', 300); // test zombies don't burn...
+  await cmd('/gamerule advance_time false', 300); // ...even in a phase longer than a night (1.21.11's doDaylightCycle)
+  await cmd('/gamerule spawn_phantoms false', 300); // no phantoms swooping in on a sleepless bot (1.21.11's doInsomnia)
   await cmd(`/fill ${X - 14} ${Y - 1} ${Z - 14} ${X + 14} ${Y - 1} ${Z + 14} stone`, 500);
   await cmd(`/fill ${X - 14} ${Y} ${Z - 14} ${X + 14} ${Y + 4} ${Z + 14} air`, 500);
   await stand(0, 0);
@@ -290,6 +292,9 @@ async function use(n) {
 async function neutral() {
   for (const s of ['a1', 'a2', 'a3', 'a4', 'a5', 'p1', 'p2', 'p3', 'k']) await equip(`1 ${s} none`);
   await use(1);
+  await cmd('/gamerule spawn_mobs true', 300); // the sandbox world as the other scripts expect it
+  await cmd('/gamerule advance_time true', 300);
+  await cmd('/gamerule spawn_phantoms true', 300);
 }
 async function fresh() {
   await cmd(`/cerb class ${NAME} cooldowns`, 400);
@@ -640,9 +645,21 @@ async function warrior() {
   const stunned = ml.length > 0 && /slowness 10/.test(ml[0]);
   check('Charge (Sneak + right-click) rushes forward', !!flashed(t, /✦ Charge/) && moved >= 4, `moved ${moved.toFixed(1)} blocks`);
   check('...stuns the first zombie in its path (Slowness 10, 1 s) and strikes it', stunned && traces(at).length >= 1, `${ml[0] || 'no mob'}; ${traces(at).length} traces`);
-  t = Date.now();
-  await sneaking(rclick, 200); await sleep(400);
-  check('Charge again: on cooldown (10 s)', !!flashed(t, /Charge \d+\.\d s/), JSON.stringify(flashes(t)));
+  // Movement comes back in 1.2 s at most (owner rule); the stun and strike keep their 10 s.
+  await stand(0, 0); await face(SOUTH, 0);
+  const p1 = pos();
+  at = chat.length; t = Date.now();
+  await sneak(true); await rclick(); await sleep(500);
+  const t3 = Date.now(); await rclick(); await sleep(150); // half a second later: past the cast gap, inside the 1.2 s
+  const ml2 = await mobLines(); // the stun would still be on (it starts 0.35 s after the cast and lasts 1 s)
+  await sneak(false);
+  const moved2 = pos().distanceTo(p1);
+  const cf2 = flashed(t, /✦ Charge/);
+  check('Charge again a moment later: it rushes, but the stun and strike rest ("strike in N s")', !!cf2 && /strike in \d\.\d s/.test(cf2.m)
+    && moved2 >= 4 && traces(at).length === 0 && !(ml2.length && /slowness 10/.test(ml2[0])),
+    `${cf2 ? cf2.m : JSON.stringify(flashes(t))}; moved ${moved2.toFixed(1)}; ${traces(at).length} traces; ${ml2[0] || 'no mob'}`);
+  const cdf = flashed(t3, /Charge (\d+\.\d) s/);
+  check('...and half a second after it, Charge waits (1.2 s at most)', !!cdf && Number(cdf.m.match(/Charge (\d+\.\d) s/)[1]) <= 1.2, JSON.stringify(flashes(t3)));
   // Moving and jumping don't stop a cast.
   await fresh(); await clearMobs(); await zombie(0, 3); await stand(0, 0); await lookAt(zombies()[0]);
   bot.setControlState('forward', true); bot.setControlState('jump', true);
@@ -754,6 +771,16 @@ async function mage() {
   let d = pos().distanceTo(p0);
   check('Blink moves you about 6 blocks where you look, for 20 Essence', !!flashed(t, /✦ Blink/) && d >= 5 && d <= 6.6 && near(paid(t, /✦ Blink/), 20, 1.5),
     `moved ${d.toFixed(2)}, paid ${paid(t, /✦ Blink/)}`);
+  // Owner rule: movement as quick as the keys allow (Blink 0.4 s): two Blinks half a second apart both go off.
+  await fresh(); await stand(0, -12); await face(SOUTH, 0);
+  p0 = pos(); t = Date.now();
+  const c0 = (await casts()).casts;
+  await sneak(true); await rclick(); await sleep(550); await rclick(); await sleep(300); await sneak(false);
+  await sleep(500);
+  const c1 = (await casts()).casts;
+  d = pos().distanceTo(p0);
+  check('Two Blinks half a second apart both go off (cooldown 0.4 s), 12 blocks', c1 - c0 === 2 && d >= 10.5 && d <= 12.6,
+    `casts +${c1 - c0}, moved ${d.toFixed(2)}; ${flashes(t).map(f => f.m).join(' / ')}`);
   await fresh();
   await cmd(`/fill ${X - 2} ${Y} ${Z + 3} ${X + 2} ${Y + 3} ${Z + 3} stone`, 400);
   await stand(0, 0); await face(SOUTH, 0);
@@ -879,6 +906,14 @@ async function duelist() {
   await sneaking(rclick); await sleep(1000);
   const moved = pos().distanceTo(p0);
   check('Lunge closes the distance and strikes', !!flashed(t, /✦ Lunge/) && moved >= 2 && traces(at).length >= 1, `moved ${moved.toFixed(1)}, ${traces(at).length} traces`);
+  // 1.2 s later Lunge moves again (owner rule), the strike rests 7 s.
+  await stand(0, 0); await lookAt(zombies()[0]);
+  const q0 = pos();
+  at = chat.length; t = Date.now();
+  await sneaking(rclick); await sleep(1000);
+  const lf = flashed(t, /✦ Lunge/);
+  check('Lunge again 1.2 s later: it moves, the strike rests ("strike in 5.x s")', !!lf && /strike in \d\.\d s/.test(lf.m) && pos().distanceTo(q0) >= 2
+    && traces(at).length === 0, `${lf ? lf.m : JSON.stringify(flashes(t))}; moved ${pos().distanceTo(q0).toFixed(1)}; ${traces(at).length} traces`);
   t = Date.now(); await stand(0, -6); await face(SOUTH, 0); await equip(`3 a5 none`);
   // Lunge and Blink share the movement lockout: covered in "mixed".
   // Wrong weapon: an axe can't Flurry (blade only).
@@ -1084,9 +1119,15 @@ async function mixed() {
   // Movement lockout across classes: Charge (Warrior) then Blink (Mage).
   await fresh(); await clearMobs(); await stand(0, -8); await face(SOUTH, 0);
   t = Date.now();
-  await sneaking(rclick); await sleep(500);
-  await sneaking(async () => keyF()); await sleep(500);
+  await sneak(true); await rclick(); const tCharge = Date.now(); await sleep(500); // Sneak + R: Charge
+  keyF(); await sleep(300); await sneak(false);                                   // Sneak + F half a second later: Blink
   check('Blink right after Charge waits for the shared movement lockout', !!flashed(t, /✦ Charge/) && !!flashed(t, /Blink \d\.\d s/), flashes(t).map(f => f.m).join(' / '));
+  const lock = flashed(t, /Blink (\d\.\d) s/);
+  await sleep(Math.max(0, 1300 - (Date.now() - tCharge)));
+  const t2 = Date.now();
+  await sneaking(async () => keyF()); await sleep(500);
+  check('...1.2 s at most: then Blink goes off', !!lock && Number(lock.m.match(/Blink (\d\.\d) s/)[1]) <= 1.2 && !!flashed(t2, /✦ Blink/),
+    `${lock ? lock.m : '-'} / ${flashes(t2).map(f => f.m).join(' / ')}`);
   // Rapid presses: one cast per press, never two from one key mash.
   await fresh(); await clearMobs(); await zombie(0, 2, 50); await stand(0, 0); await lookAt(zombies()[0]);
   const c0 = (await casts()).casts;
@@ -1163,10 +1204,33 @@ async function mixed() {
   check('At Blade Mastery 40 a Cleave on a level-15 zombie pays a quarter (1 XP), on a level-30 one the full 6', xp1 - xp0 === 1 && xp3 - xp2 === 6,
     `level 15: +${xp1 - xp0}, level 30: +${xp3 - xp2}`);
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 10`, 600);
-  // Items: all the key presses above neither dropped nor duplicated anything.
+  // A mob kept alive pays cast XP only up to what its kill pays (40 for a level-1 zombie), then only its kill does.
+  // The fight is kept going by the zombie's own hits (it never moves), and War Cry (F) is charged to it. Each hit
+  // knocks the bot back, so it is put back in place every time (nine knockbacks pushed it off the arena).
+  await clearMobs(); await zombie(0, 2); await fresh(); await face(SOUTH, 0);
+  const caged = [];
+  xp0 = await classXp('Warrior');
+  for (let k = 0; k < 9; k++) {
+    await cmd(`/damage ${NAME} 1 minecraft:mob_attack by @e[type=zombie,limit=1,sort=nearest]`, 400);
+    await stand(0, 0); await face(SOUTH, 0);
+    await fresh(); keyF(); await sleep(600);
+    caged.push(await classXp('Warrior'));
+  }
+  const gains = caged.map((v, k) => v - (k ? caged[k - 1] : xp0));
+  check('A mob kept alive pays cast XP only up to its kill XP (40), then nothing', caged[8] - xp0 === 40 && gains.slice(-2).every(g => g === 0),
+    `gains ${gains.join(' ')} (total ${caged[8] - xp0})`);
+  const beforeKill = caged[8];
+  let swings = 0;
+  while (zombies(6).length && swings < 8) { await fresh(); await face(SOUTH, 0); await rclick(); swings++; await sleep(700); }
+  await sleep(1200);
+  xp1 = await classXp('Warrior');
+  check('...and its kill still pays the kill share', !zombies(6).length && xp1 - beforeKill === 20, `Warrior XP ${beforeKill} -> ${xp1} after ${swings} Cleaves`);
+  // Items: all the key presses above neither dropped nor duplicated the sword (mob loot on the ground is not a press's).
   const swords = bot.inventory.items().filter(i => i.name === 'iron_sword').reduce((n, i) => n + i.count, 0);
-  check('After every press in this phase exactly one sword, nothing dropped (the cow\'s beef aside)', swords === 1 && itemsAround(12) === 0,
-    `${bot.inventory.items().map(i => i.name + 'x' + i.count).join(',')}; ${itemsAround(12)} on the ground`);
+  const ground = Object.values(bot.entities).filter(e => e.name === 'item' && e.position.distanceTo(bot.entity.position) < 12)
+    .map(e => { try { return (e.getDroppedItem() || {}).name || '?'; } catch (err) { return '?'; } });
+  check('After every press in this phase exactly one sword, none dropped', swords === 1 && !ground.includes('iron_sword') && !ground.includes('?'),
+    `${bot.inventory.items().map(i => i.name + 'x' + i.count).join(',')}; on the ground: ${ground.join(',') || 'nothing'}`);
   // PvP safety: abilities never hit players.
   const target = await connect('CerbTarget');
   await sleep(1500);
@@ -1176,7 +1240,9 @@ async function mixed() {
   t = Date.now();
   await rclick(); await sleep(800);
   const cf = flashed(t, /✦ Cleave/);
-  check('Cleave with only a player in front: nobody hit ("no one hit")', !!cf && /no one hit/.test(cf.m) && traces(at2).length === 0, cf ? cf.m : JSON.stringify(flashes(t)));
+  let near = '';
+  if (!cf || !/no one hit/.test(cf.m)) { const at3 = await cmd('/cerb mobs 8', 800); near = ' | near: ' + chat.slice(at3).join(' / '); }
+  check('Cleave with only a player in front: nobody hit ("no one hit")', !!cf && /no one hit/.test(cf.m) && traces(at2).length === 0, (cf ? cf.m : JSON.stringify(flashes(t))) + near);
   // Execute (a single-target strike) finds no target in a player: refused, nothing spent.
   await equip('1 a4 execute'); await sleep(300); await fresh();
   await zombie(3, 0); await lookAt(zombies()[0]); await rclick(); await sleep(500); // a Cleave to the side: Momentum to spend

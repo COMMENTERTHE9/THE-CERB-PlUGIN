@@ -13,6 +13,11 @@
 //            ranks) and presses its quick keys on a rhythm while fighting (docs/design/ABILITY_CONTROLS.md):
 //            right-click (Execute), F (Cleave), Q (Flurry), Sneak + right-click (Feint), with plain hits in between.
 //            Many presses land on a cooldown, as in play. (Before 2026-10-25: the same four abilities on Sneak keys.)
+//   gather - each bot mines in survival, as a fast miner does (Efficiency V netherite pickaxe, Haste II, about 5 blocks
+//            a second): a 5x3x5 block of stone with coal, iron, copper and gold ore in front of it, refilled when mined
+//            out. Drops are picked up as in play. The Gameplay Depth baseline (docs/PERFORMANCE.md).
+//   craft  - each bot crafts at its own crafting table as fast as a hurried player: iron ingots and sticks into iron
+//            pickaxes, about two a second; finished pickaxes are cleared so the inventory never fills.
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -94,6 +99,66 @@ async function abilities(b, deadline, controller) {
   }
 }
 
+/** A 5x3x5 block in front of bot i (+z side), stone with ore mixed in: what a strip-mining player cuts through. */
+function oreCube(controller, x, y, z) {
+  controller.chat(`/fill ${x - 2} ${y - 1} ${z - 1} ${x + 2} ${y - 1} ${z + 7} stone`); // a floor to stand on
+  controller.chat(`/fill ${x - 2} ${y} ${z - 1} ${x + 2} ${y + 3} ${z + 1} air`);
+  controller.chat(`/fill ${x - 2} ${y} ${z + 2} ${x + 2} ${y + 2} ${z + 6} stone`);
+  for (const [ore, dx, dy, dz] of [['coal_ore', -1, 0, 3], ['iron_ore', 1, 1, 4], ['copper_ore', 0, 2, 5], ['gold_ore', 2, 0, 6], ['iron_ore', -2, 1, 6], ['coal_ore', 0, 1, 3]]) {
+    controller.chat(`/setblock ${x + dx} ${y + dy} ${z + dz} ${ore}`);
+  }
+}
+
+async function gather(b, deadline, controller) {
+  const n = b.username;
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  b.chat('/give @s netherite_pickaxe[enchantments={efficiency:5}]'); await sleep(800);
+  b.chat('/effect give @s haste infinite 1 true'); b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(500);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_pickaxe' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  const fill = async () => { oreCube(controller, home.x, home.y, home.z); bump(n, 'fills'); await sleep(900); };
+  await fill();
+  const vec3 = require('vec3');
+  while (Date.now() < deadline) {
+    // the nearest stone or ore of its cube still standing, front to back (the bot walks into the space it cuts)
+    let target = null;
+    for (let dz = 2; dz <= 6 && !target; dz++) for (let dy = 0; dy <= 2 && !target; dy++) for (let dx = -2; dx <= 2 && !target; dx++) {
+      const bl = b.blockAt(new vec3(home.x + dx, home.y + dy, home.z + dz));
+      if (bl && bl.name !== 'air' && bl.name !== 'cave_air') target = bl;
+    }
+    if (!target) { b.chat(`/tp @s ${home.x + 0.5} ${home.y} ${home.z + 0.5} 0 0`); await sleep(300); await fill(); continue; }
+    if (target.position.distanceTo(b.entity.position.offset(0, 1.6, 0)) > 4.2) {
+      b.chat(`/tp @s ${target.position.x + 0.5} ${home.y} ${target.position.z - 1.5} 0 0`); await sleep(250); // step up to it
+    }
+    try { await b.dig(target, true); bump(n, target.name.endsWith('_ore') ? 'ores' : 'stone'); } catch (e) { bump(n, 'digfail'); await sleep(200); }
+    if (b.inventory.emptySlotCount() < 3) { b.chat('/clear @s cobblestone'); b.chat('/clear @s raw_iron'); b.chat('/clear @s coal'); b.chat('/clear @s raw_copper'); b.chat('/clear @s raw_gold'); }
+    await sleep(200);
+  }
+}
+
+async function craft(b, deadline, controller) {
+  const n = b.username;
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  const p = b.entity.position.floored();
+  controller.chat(`/setblock ${p.x + 1} ${p.y} ${p.z} crafting_table`); await sleep(600);
+  const vec3 = require('vec3');
+  const table = b.blockAt(new vec3(p.x + 1, p.y, p.z));
+  const mcData = require('minecraft-data')(b.version);
+  const recipe = b.recipesAll(mcData.itemsByName.iron_pickaxe.id, null, table)[0];
+  if (!recipe) { console.log(n, 'craft: no recipe'); return; }
+  while (Date.now() < deadline) {
+    const ingots = b.inventory.count(mcData.itemsByName.iron_ingot.id), sticks = b.inventory.count(mcData.itemsByName.stick.id);
+    if (ingots < 3 || sticks < 2) { b.chat('/give @s iron_ingot 63'); b.chat('/give @s stick 42'); await sleep(700); continue; }
+    try { await b.craft(recipe, 1, table); bump(n, 'crafted'); } catch (e) { bump(n, 'craftfail'); await sleep(300); }
+    if (b.inventory.count(mcData.itemsByName.iron_pickaxe.id) > 8) { b.chat('/clear @s iron_pickaxe'); await sleep(200); }
+    await sleep(350);
+  }
+}
+
 async function hurt(b, deadline, controller) {
   b.on('entityHurt', e => { if (e === b.entity) bump(b.username, 'hurt'); });
   b.chat('/gamemode survival'); await sleep(400);
@@ -146,7 +211,8 @@ async function menuidle(b, deadline) {
     try {
       const b = await join(name);
       bots.push(b);
-      const x = s.x + 3 + (i % 4) * 4, z = s.z + 3 + Math.floor(i / 4) * 4;
+      // gather: one lane each, 7 blocks apart (an ore block reaches 6 ahead); else a 4-block grid
+      const x = MODE === 'gather' ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = MODE === 'gather' ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
   }
@@ -158,6 +224,7 @@ async function menuidle(b, deadline) {
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
     const run = m === 'combat' ? combat(b, deadline) : m === 'abilities' ? abilities(b, deadline, controller) : m === 'hurt' ? hurt(b, deadline, controller)
+        : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));

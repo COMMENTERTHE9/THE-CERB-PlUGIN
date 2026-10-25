@@ -426,21 +426,26 @@ async function exploits() {
   let t = await cast('left');
   check('Pressed again: Cleave is on cooldown and says for how long', t.some(m => /Cleave \d\.\d s/.test(m)), t.join(' / '));
 
-  // A cooldown belongs to the player: switching loadouts doesn't reset it.
+  // A cooldown belongs to the player: switching loadouts doesn't reset it. War Cry (30 s) shows it; Blink is back
+  // in 0.4 s since the owner's movement rule.
   t = await cast('f');
   check('Blink goes off in Loadout 1', went(t, 'Blink'), t.join(' / '));
   await stand(0, 0);
+  await sleep(500);
+  t = await cast('right');
+  check('War Cry goes off in Loadout 1', went(t, 'War Cry'), t.join(' / '));
   let at = chat.length;
   bot.chat('/class loadout 2');
   await sleep(300);
   t = await cast('right');
-  check('Switched to Loadout 2 (it has Blink too)', !!saw(/Now using Loadout 2/, at), chat.slice(at).join(' / '));
+  check('Switched to Loadout 2 (it has War Cry too)', !!saw(/Now using Loadout 2/, at), chat.slice(at).join(' / '));
   check('The cast lock: no casting in the first second after a switch', t.some(m => /Switching loadouts/.test(m)), t.join(' / '));
   await sleep(1100);
-  t = await cast('right');
-  check('Blink is still on cooldown in Loadout 2', t.some(m => /Blink \d\.\d s/.test(m)), t.join(' / '));
+  t = await cast('left');
+  check('War Cry is still on cooldown in Loadout 2', t.some(m => /War Cry \d+\.\d s/.test(m)), t.join(' / '));
   at = await cmd('/class loadout 1', 700);
   check('The switch gap: a second switch within 10 s is refused', !!saw(/Switching again in \d+ s/, at), chat.slice(at).join(' / '));
+  await cmd(`/cerb class ${NAME} cooldowns`, 500); // the buff checks below cast War Cry afresh
 
   // A buff never stacks and ends with its loadout; a relog doesn't reset a long cooldown.
   await sleep(10000);
