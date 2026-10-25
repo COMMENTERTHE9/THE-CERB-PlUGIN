@@ -13,9 +13,10 @@
 //            ranks) and presses its quick keys on a rhythm while fighting (docs/design/ABILITY_CONTROLS.md):
 //            right-click (Execute), F (Cleave), Q (Flurry), Sneak + right-click (Feint), with plain hits in between.
 //            Many presses land on a cooldown, as in play. (Before 2026-10-25: the same four abilities on Sneak keys.)
-//   gather - each bot mines in survival, as a fast miner does (Efficiency V netherite pickaxe, Haste II, about 5 blocks
-//            a second): a 5x3x5 block of stone with coal, iron, copper and gold ore in front of it, refilled when mined
-//            out. Drops are picked up as in play. The Gameplay Depth baseline (docs/PERFORMANCE.md).
+//   gather - each bot mines in survival, as a fast miner does (a netherite pickaxe and Haste II, 2-3 blocks a second;
+//            no enchantment: this mineflayer can't read 1.21.11 enchantment data and its dig() throws): a 5x3x5 block of
+//            stone with coal, iron, copper and gold ore in front of it, refilled when mined out. Drops are picked up as
+//            in play. The Gameplay Depth baseline (docs/PERFORMANCE.md).
 //   craft  - each bot crafts at its own crafting table as fast as a hurried player: iron ingots and sticks into iron
 //            pickaxes, about two a second; finished pickaxes are cleared so the inventory never fills.
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
@@ -113,7 +114,7 @@ async function gather(b, deadline, controller) {
   const n = b.username;
   b.chat('/gamemode survival'); await sleep(400);
   b.chat('/clear @s'); await sleep(300);
-  b.chat('/give @s netherite_pickaxe[enchantments={efficiency:5}]'); await sleep(800);
+  b.chat('/give @s netherite_pickaxe'); await sleep(800);
   b.chat('/effect give @s haste infinite 1 true'); b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
   await sleep(500);
   const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_pickaxe' && i >= 36 && i <= 44);
@@ -133,7 +134,7 @@ async function gather(b, deadline, controller) {
     if (target.position.distanceTo(b.entity.position.offset(0, 1.6, 0)) > 4.2) {
       b.chat(`/tp @s ${target.position.x + 0.5} ${home.y} ${target.position.z - 1.5} 0 0`); await sleep(250); // step up to it
     }
-    try { await b.dig(target, true); bump(n, target.name.endsWith('_ore') ? 'ores' : 'stone'); } catch (e) { bump(n, 'digfail'); await sleep(200); }
+    try { await b.dig(target, true); bump(n, target.name.endsWith('_ore') ? 'ores' : 'stone'); } catch (e) { bump(n, 'digfail'); if (!counts.firstError) counts.firstError = { [n]: String(e.message || e).slice(0, 120) }; await sleep(200); }
     if (b.inventory.emptySlotCount() < 3) { b.chat('/clear @s cobblestone'); b.chat('/clear @s raw_iron'); b.chat('/clear @s coal'); b.chat('/clear @s raw_copper'); b.chat('/clear @s raw_gold'); }
     await sleep(200);
   }
