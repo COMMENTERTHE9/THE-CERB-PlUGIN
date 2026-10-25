@@ -52,7 +52,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | **XP sources** | Only combat, spells, damage taken, and new-chunk discovery grant XP. Mining, Woodcutting, Farming, Fishing, Crafting, Smithing, Alchemy, Enchanting, Herbalism, Cooking and 9 more have **no XP source**. |
 | Realms | Every player is Awakened; realm advancement (and its attribute bonuses) is not built. |
 | Old stat managers | Strength / Luck / Magic Find / Yield managers exist but nothing reachable calls them (Fortune will replace Luck / Magic Find). |
-| Crafting & traps | ~600 lines of quality-crafting and trap code, but no recipes are registered and the trap listener is never registered: unreachable. |
+| Crafting & traps | About 2,860 lines of quality-crafting, item-buff and trap code, unreachable and unsafe if wired (duplication, unbounded multipliers, "[Broken]" items): `docs/SKILL_AUDIT.md`. Replaced, not wired, by the gathering loop. |
 | Spells | Fireball only. It damages other players caught in the blast (PvP rules are not designed yet); it now spares the caster's own pets. |
 | Elements / knockback | Elemental bonuses are computed but never applied; the `knockback:` config is never read. |
 | Defensive Magic | Disabled (needed ProtocolLib, which Folia can't use). |
@@ -364,19 +364,62 @@ After the owner tried the new controls. Played on the sandbox unless noted.
 - **Shipped config reaches older installs** (`cerberus/world/cerb/ShippedConfig`, unit-tested). `abilities.yml` and `classes.yml` are written once, at install, and an update never replaces them, so earlier tuning never reached your server. Now a copy nobody edited is replaced by the new version at startup, and the old one is kept as `abilities.yml.old` / `classes.yml.old`. A file with your own edits is never touched; the log says it was kept. On the sandbox both files were unedited Step 5 copies and were updated, with the old copies kept byte for byte. Your `run.bat` also backs up the plugin data before every start.
 - **Horses, pigs and other rideable mobs show their health bar** (your playtest report). They had none on purpose: the label rides on the mob as a passenger, these mobs have a single seat, and on 2026-10-24 a labelled horse couldn't be mounted or tamed, so rideable mobs were left unlabelled. Now they get the label like every mob. It steps out of the seat the moment a player right-clicks the mob (before the game seats them) and comes back as soon as nobody rides it, or at once if they only fed, saddled or leashed it. Cows, sheep and chickens were never affected.
 - **Test harness:** the arena now stops time and phantoms. The trapped-mob check puts the test bot back in place after each hit: nine knockbacks had pushed it off the platform. The item check now looks for a dropped sword, not any mob loot.
+- **Independent review** (of the code, without my conclusions): no high-severity problem; 2 medium and 4 low, all fixed:
+  - **Medium:**
+    - A server file could make a movement ability strike every 0.4 s. A strike or stun now comes back no faster than 1 s, like any other ability; only the movement may be quicker.
+    - A config refresh could overwrite a backup. A backup is never overwritten now: the next one is `.old.2`, `.old.3`… On the sandbox the second refresh wrote `abilities.yml.old.2` and left `.old` untouched. The refresh also runs only at startup now, not on `/cerb reload`.
+  - **Low:**
+    - A cast that reached a dry boss and fresh adds paid nothing. It is charged to a mob that still has XP to give.
+    - A mob killed before any cast paid kept its record for 30 minutes; now 10 seconds.
+    - A cancelled death cleared a living mob's record.
+    - A rideable mob's label flickered on every right-click. It now steps aside only for a click that can seat you: not Sneak, not a spectator, not a baby, and a pig or strider only with a saddle.
+  - **Two design notes, built as recommended:** a mob's cast-XP budget follows the weak-mob rule like its kill (a weak mob's budget is a quarter); and Blink's 20 Essence matches the base Essence regeneration exactly, so it can chain indefinitely at about 15 blocks a second (decision 16 below).
 
-Checks on the final build:
+Checks on the final build (after the review's fixes):
 
-| Phase | Checks |
+| Suite | Checks |
 |---|---|
-| unit tests | 169 |
-| abilities.js warrior | 21 |
-| abilities.js mage | 24 |
-| abilities.js duelist | 15 |
-| abilities.js mixed | 18 of 20; the two misses were the check's own timing (it pressed Blink 1.2 s after Charge, exactly when the new lockout ends), rewritten and rerunning |
-| smoke | 13 of 14; the miss was the test bot (its "dismount" sends Jump, not Sneak, so it never got off the horse), fixed and rerunning |
+| unit tests | 170 |
+| abilities.js: warrior, mage, duelist, mixed | 21, 24, 15, 20 |
+| abilities.js: controls, combos, review fixes, persistence across a restart | 26, 13, 20, 4 |
+| classes.js: learn, trees, mixed, combat, exploits, menu | 7, 8, 8, 10, 22, 15 |
+| smoke | 14 |
+
+Every miss along the way was the test, not the plugin, and each test is fixed:
+- **Two checks pressed Blink too late.** They were timed for the old 2 s lockout and pressed at 1.2 s, exactly when the new one ends.
+- **The bot never got off the horse.** This mineflayer's "dismount" sends Jump (since 1.21.2 you get off with Sneak), and it never clears its own riding flag. The label's return is the evidence now: it only comes back when nobody rides.
+- **One check depended on test order.** It counted snapshot rebuilds while filling a loadout that an earlier phase had left in use.
 
 Nothing from the class milestone is left open.
+
+## Done: the 35-skill audit (2026-10-25)
+
+`docs/SKILL_AUDIT.md`: all 35 skills read from the code, with ten questions each and a status. The detailed evidence is in `audit/skills-2026-10-25/`.
+
+| Status | Count |
+|---|---|
+| Functional | 4: Blade Mastery, Weapon Mastery, Ranged Precision, Pathfinding (thin) |
+| Partial | 10 |
+| Disconnected | 11 |
+| Placeholder | 10 |
+
+The headlines:
+- **23 skills have no XP source.** Nothing pays for gathering, crafting, smelting, brewing, enchanting, fishing, taming or trading.
+- **Every skill's own effect code is unreachable and unsafe to wire.** It holds one shared level for everyone, duplicates items and stacks bonuses on every call. Skills act only through the attribute engine.
+- **Normal players can't use magic.** The only spell item is the op-only wand, and the Mage needs Intelligence 5, which only spells train.
+- **Live XP exploits:**
+  - magic skill XP is paid when a spell is fired, even into the sky;
+  - kill XP pays in full for spawner mobs, bred animals, creative mode, renamed mobs and player kills, and goes to whatever is in the hand at death;
+  - Critical Strike pays per hit without limits.
+- **Food and potions heal nothing:** vanilla healing is off for players.
+
+The highest-value loops, in order:
+1. Mining → Smithing → Equipment (`docs/design/GATHERING.md`, being built).
+2. Closing the live XP exploits.
+3. The defensive skills' XP.
+4. A way into magic.
+5. Fishing.
+6. Woodcutting and Farming.
 
 ## Roadmap
 
@@ -422,3 +465,6 @@ Nothing from the class milestone is left open.
 11. ~~The default control scheme~~: decided (above).
 12. **Execute needs Momentum** (built, reversible). At 0 Momentum it was a plain hit that spent its 8 s cooldown, so it is now refused and spends nothing. To keep the old behaviour, set `needs: 0` on its resource effect.
 13. ~~Cast XP from a mob that never dies~~: built as recommended (each mob pays cast XP only up to its kill XP; above).
+14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`). Today only an admin can open the Mage. Recommendation: let Spell Weaving 5 open it (kills with a stick or blaze rod already train Spell Weaving), together with magic skill XP paid on hits instead of casts.
+15. **Lifesteal for everyone from level 1.** Weapon Mastery gives every player 2.7% lifesteal on mob hits from the start, the only healing in a fight. Keep it, or start it at 0 and let it grow with the skill?
+16. **Blink chaining.** At 0.4 s and 20 Essence, Blink costs exactly the base Essence regeneration, so it can chain indefinitely at about 15 blocks a second (like a teleport item limited only by mana). Keep it, or raise its Essence cost so a chain runs dry after a few seconds?

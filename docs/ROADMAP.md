@@ -82,7 +82,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - The trapped-mob class-XP loophole is closed: a mob pays cast XP only up to what its kill pays. Done.
    - Movement comes back in 1.2 s at most (the owner's rule, below). Done.
    - The passive-mob health-bar inconsistency is fixed as a focused issue. Done: rideable mobs were unlabelled on purpose (the label took their only seat); their label now steps aside for a rider.
-2. **A code-grounded audit of all 35 skills** (`docs/SKILL_AUDIT.md`). For each skill it records:
+2. **A code-grounded audit of all 35 skills** (`docs/SKILL_AUDIT.md`). Done: 4 functional, 10 partial, 11 disconnected, 10 placeholder. For each skill it records:
    - XP sources, balance and exploits;
    - effects, reachable or not;
    - the attribute system;
@@ -93,7 +93,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - what can be done now and what must wait.
 
    Each skill is classed as functional, partial, disconnected, placeholder or design-only, with the highest-value missing loops named.
-3. **The first complete loop: Mining → Smithing → Equipment.** Find resources, mine them, earn Mining XP, process them, earn Smithing and Crafting XP, make useful equipment, and use it in combat.
+3. **The first complete loop: Mining → Smithing → Equipment** (`docs/design/GATHERING.md`; being built). Find resources, mine them, earn Mining XP, process them, earn Smithing and Crafting XP, make useful equipment, and use it in combat.
    - Vanilla resources first, on data-driven definitions with stable ids: resources, loot and XP, tool capabilities, extraction methods (manual or automated), and Fortune and rarity.
    - A future custom ore, tool, drill or machine plugs in without a rewrite, proven by a synthetic custom resource and tool.
    - Equipment feeds the existing attribute engine; there is no second item-stat engine.
@@ -103,7 +103,12 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - Combat information and ability feedback always come first.
    - A per-player setting: Compact, Detailed or Off.
    - Lightweight and Folia-safe, built on the existing progression and HUD. Tested with several XP sources and measured. A polish item, not a UI overhaul; it lands as the new gathering and crafting XP arrives.
-5. **The same pattern next** for Woodcutting, Farming, Fishing, Alchemy and the rest, in the order the audit recommends.
+5. **Close the live XP exploits the audit found** (small):
+   - magic skill XP on hits, not casts;
+   - kill XP credited to the weapon that landed the last hit, with no full XP from spawners, bred animals, creative mode, renamed mobs or player kills;
+   - Critical Strike XP capped per mob;
+   - the defensive skills' XP by the share of health taken, with an idle rule.
+6. **The same pattern next** for Woodcutting, Farming, Fishing, Alchemy and the rest, in the order the audit recommends (`docs/SKILL_AUDIT.md`, "Highest-value missing loops").
 
 **Rules for this milestone:**
 - **Movement (owner rule, 2026-10-25, standing):** every movement ability, a dash or a blink, comes back in 1.2 s at most, and so does the lockout they share. Teleport-style movement may be as quick as the gap between casts (Blink 0.4 s). Enforced when `abilities.yml` loads (`ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS`). A movement ability's strike or stun may keep a slower pace of its own (`strike-cooldown`). The rule holds for every class to come.
