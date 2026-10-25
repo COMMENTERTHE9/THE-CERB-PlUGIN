@@ -11,7 +11,13 @@
 - **Step 4**, the classes and abilities design: `docs/design/CLASSES.md`.
 - **Step 5**, the Warrior / Mage / Duelist prototype: learn several classes from your skills, unlock abilities by rank, mix them in three loadouts, cast with Sneak + a key. The six proofs were checked in game (91 checks), and an independent review's nine findings are fixed. Abilities are PvE-only for now; PvP gets turned on later (`docs/ROADMAP.md` → PvP).
 
-The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype. That playtest found control problems the automated checks missed: Sneak + left-click was unclear, Sneak + F did the off-hand swap, and the Mage's focus abilities were unreliable. **Now:** Phase 1, the ability controls, then an individual audit of all 21 abilities and polish of the three classes; Step 6 (six more classes, one at a time), the skill and gathering work and mastery to level 150 follow (`docs/ROADMAP.md` → After the class playtest).
+The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype. That playtest found control problems the automated checks missed: Sneak + left-click was unclear, Sneak + F did the off-hand swap, and the Mage's focus abilities were unreliable.
+- **Phases 1–3 are built and checked on the sandbox** (section "Done: ability controls…" below):
+  - new controls (quick keys by default, click combos as an option) with feedback for every press;
+  - every one of the 21 abilities audited on its own;
+  - class XP only from real fights; Execute as a real finisher.
+- **Now:** the owner's playtest of the new controls. Usability is not called verified before it.
+- **Then:** Step 6 (six more classes, one at a time), the skill and gathering work, and mastery to level 150 (`docs/ROADMAP.md` → After the class playtest).
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -34,7 +40,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and the unit tests. |
 | Defense | Resistance → armor → defense bar; resistance and armor together capped at 75%, the bar a separate pool; PvP hits use the pre-attribute defense as the same share of health. Fire resistance covers flames, burning, campfires, magma and fire spells fully and lava at half (`combat.yml fire-resistance`). Checked by `progression.js defense`, `defense-cap`, `pvp` and `fire`; details in `docs/ATTRIBUTES_ENGINE.md`. |
 | Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
-| Classes (prototype) | Warrior, Mage and Duelist: opened by skills, ranks 1–50, 7 abilities each unlocking by rank, 3 loadouts (5 actives, 3 passives, keystone) mixing any classes, cast with Sneak + right-click / left-click / F / Q / scroll. Player Menu → Classes & Abilities, `/class`, `/cerb class <player> <class> rank <n>`. Abilities affect mobs only. Verified with `tools/playtest/classes.js` (91 checks). |
+| Classes (prototype) | Warrior, Mage and Duelist: opened by skills, ranks 1–50, 7 abilities each unlocking by rank, 3 loadouts (5 actives, 3 passives, keystone) mixing any classes, cast with quick keys (right-click / F / Q, Sneak + right-click / Sneak + F) or click combos, chosen per player, with a HUD message and sound for every press and an ability bar. Player Menu → Classes & Abilities, `/class`, `/cerb class <player> <class> rank <n>`. Abilities affect mobs only. Verified with `tools/playtest/classes.js` and `abilities.js` (every ability on its own, `docs/ABILITY_AUDIT.md`). |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
 ## Incomplete (Read unless noted)
@@ -259,6 +265,85 @@ Warrior, Mage and Duelist on a data-driven ability engine (`docs/design/CLASSES.
 
 The review also found that cast XP paid for hitting farm animals; it now needs a hostile mob. Grey (far lower-level) mobs still pay full cast XP, the same gap as skill hit XP today; it belongs with the anti-farm decision 8.
 
+## Done: ability controls, ability audit, class polish (Phases 1–3, 2026-10-25)
+
+After the owner's class playtest: Sneak + left-click was unclear, Sneak + F swapped hands, and the Mage's focus abilities were unreliable. Everything below was Played on the sandbox unless noted. **Usability is not verified until the owner has played it** (`docs/PLAYTEST_CHECKLIST.md` §6).
+
+**Reproduced first** (`docs/design/ABILITY_CONTROLS.md` §1). The input problems were real, but most of the "doesn't work" feeling came from two things:
+- **Invisible feedback.** The HUD erased cast messages within 1–950 ms.
+- **Silent misses that still cost.** An Arcane Bolt that missed by a block still spent Essence and its cooldown.
+
+On top of that, the test Fireball Wand caught every right-click before the abilities saw it.
+
+**Built (Phase 1, `docs/design/ABILITY_CONTROLS.md`):**
+- **Two control schemes**, chosen per player and saved:
+  - **Quick keys** (default): right-click, F and Q for actives 1–3; Sneak + right-click and Sneak + F for 4–5.
+  - **Click combos** (option, Wynncraft-like): R R R / R L R / R L L / R R L, and F for active 5.
+
+  Switched with the Controls tile or `/class controls`. The scheme lives in one class; the abilities don't know about it.
+- **Keys are ability keys only when armed:** a weapon, a focus or an empty hand, with at least one active equipped. Doors, chests, friendly mobs, bows, spears and spell items keep their right-click. F and Q never swap or drop a weapon. Sneak pressed in the same tick as a key still counts: the decision waits one tick.
+- **Feedback for every press**, on the HUD (it now has a message slot) with a sound per reason. It covers casts, cooldowns, Essence, the wrong item, no target or no room, no Momentum, not unlocked, an empty key and switching. Nothing goes to chat. An **ability bar** (boss bar, `/class bar auto|on|off`) shows keys, readiness and Momentum.
+- **Checks before anything is spent:** a refused cast costs no Essence, cooldown or Momentum. Single-target abilities get aim assist (0.75 blocks) and a visible bolt.
+
+**Audited (Phase 2, `docs/ABILITY_AUDIT.md`):** all 21 abilities one by one, with real key presses and effects measured in the world. 134 checks in eight phases, all passing on the final build: controls 26, combos 13, warrior 20, mage 20, duelist 14, mixed 17, the review's fixes 20, persistence 4. Every "nothing happens" check has a positive control. The harness (`tools/playtest/abilities.js`) handles the test client's limits instead of hiding them:
+- the 1.21.9+ motion packet;
+- item-use rotation in degrees;
+- no Q-drop prediction;
+- mob effects read from the server.
+
+**Polished and fixed (Phase 3):**
+- **Class XP only from real fights** (`ClassRanks.castXp`, unit-tested):
+  - Farm animals pay no kill share.
+  - Weak mobs pay a quarter of the cast XP, kill XP's own rule (20+ levels below the class's skills).
+  - A self cast pays only in a fight with an enemy. Hitting a cow or an armor stand used to make Blink or War Cry pay.
+- **Execute is a finisher:** with no Momentum it is refused (`Execute needs 1 Momentum`) instead of spending its cooldown on a plain hit. The default holds for any spend-all finisher, so existing `abilities.yml` files get it too; `needs: 0` turns it off.
+- **Keystones checked by their values:** Glass Cannon adds +0.25 to the spell multiplier, and Blade Dancer adds +0.15 to the crit multiplier.
+- **The Fireball Wand** casts the right-click abilities that fit a focus, and its own Fireball otherwise. Before, a Warrior's Cleave on right-click made the wand do nothing.
+- **Signed bonuses:** a keystone's slower attacks showed as "+-4.6%" on the Skill, Stats and admin pages. They now read "-4.6%".
+
+**Regression.** Every earlier suite was run on the Phase 3 build: 360 checks.
+
+| Suite | Checks |
+|---|---|
+| smoke | 11 |
+| Player Menu | 116 |
+| Admin Control Panel | 65 |
+| progression | 94 |
+| classes | 74 |
+
+After the review's fixes, every suite they touch passed again on the final build:
+- smoke and the menu's navigation;
+- progression magic and mastery;
+- all of classes.js;
+- all of abilities.js.
+
+**Nine checks failed on the Phase 3 build, all on the test side, and all are fixed in the scripts:**
+- Six still pressed or read the retired Sneak keys (classes.js combat, exploits, menu).
+- Two came from the shared test character: hundreds of test Fireballs had raised the Essence skills that "magic" measures from level 1. An earlier run had also shown class passives raising its health. Every abilities.js phase now ends by emptying the loadout.
+- One counted swings over only three kills. It now uses five.
+
+The suite also found two real bugs, both fixed:
+- the Fireball Wand doing nothing with Cleave on right-click;
+- the "+-4.6%" display.
+
+**Performance** (`docs/PERFORMANCE.md`; 9 bots, two runs each, the same method as before):
+- **Ability load:** Cerberus at 0.053 / 0.038 ms per tick after, against 0.053 / 0.024 before. Within the run-to-run spread.
+- **Class logic:** about 0.016 ms per key press, against a 0.05 ms budget.
+- **New parts:** the feedback, HUD message and ability bar don't show in the profile.
+- **Players who don't cast:** class code in 5 and 0 samples per run.
+
+**Independent review** (of the code, without my conclusions): 3 medium and 5 low findings. Each was checked against the code before fixing, and each fix is checked in game (`abilities.js fixes`); the list is in `docs/ABILITY_AUDIT.md`.
+- **Medium:**
+  - A damage ability on Q struck bare-handed, because the server takes the item out of the hand during the drop event. Q now casts a tick later.
+  - Unhurtable mobs (a heart-bound Creaking, an invulnerable mob) paid class XP forever. They are no longer targets.
+  - Right-click took the off hand's own use: a shield never blocked, and an axe couldn't strip a log. The off hand's use and the axe's block uses now stay vanilla.
+- **Low:**
+  - Sneak let go with the key cast the plain slot.
+  - An unquoted `ability-bar: off` was ignored.
+  - Abilities could hit another player's pet or mount.
+  - Q right after closing an inventory dropped the weapon.
+  - Fireball paid class XP fired into the sky.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -292,4 +377,7 @@ The review also found that cast XP paid for hitting farm animals; it now needs a
     - the roster;
     - weapon display names.
 
-    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5) are off for now. That is not permanent: PvP gets turned on later (`docs/ROADMAP.md` → PvP). Now that it is playable, your feel for the cast keys (item 2) matters most.
+    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5) are off for now. That is not permanent: PvP gets turned on later (`docs/ROADMAP.md` → PvP). How to cast (item 2) is now built as two schemes, see item 11.
+11. **The default control scheme.** Quick keys or click combos (`docs/design/ABILITY_CONTROLS.md` §4–5). Recommendation: quick keys. The three most-used abilities are one press each with no Sneak, so you keep sprinting, and they read like SkyBlock's right-click abilities and any MMO's keys. Click combos stay as an option. Both are built; please try both (`docs/PLAYTEST_CHECKLIST.md` §6). The server default is one line: `classes.yml controls.default-scheme`.
+12. **Execute needs Momentum** (built, reversible). At 0 Momentum it was a plain hit that spent its 8 s cooldown, so it is now refused and spends nothing. To keep the old behaviour, set `needs: 0` on its resource effect.
+13. **Cast XP from a mob that never dies** (proposal, not built). The weak-mob rule stops farming trivial mobs. But a strong mob kept alive in a cage still pays 6 XP per cast forever: Arcane Bolt every 1.5 s is about 14,000 Mage XP an hour with an autoclicker, about 12 hours to rank 50. Recommendation: each mob pays cast XP only up to what its kill would pay, then only the kill pays. Real fights are unchanged, and a caged dummy runs dry after about 30 casts.

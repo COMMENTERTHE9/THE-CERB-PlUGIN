@@ -158,7 +158,31 @@ Class work on the region threads fell by about 40%, because the document moved e
 
 Within the budget: plain combat is unchanged, and casting costs about what the hits it deals cost.
 
+## Phases 1–3: ability controls, audit, class polish (2026-10-25)
+
+**Method:** as for Step 5. The `abilities` load (9 bots, 60 s, warm server, a warm-up run first, two measured runs with a 50 s JFR recording each) now presses the quick keys:
+- F: Cleave;
+- right-click: Execute;
+- Q: Flurry;
+- Sneak + right-click: Feint.
+
+Plain hits fall in between. The `combat` load shows what players who don't cast pay. Class code is counted per run from the recorded stacks (`Classes.*` on a region thread).
+
+| | Before (Step 5 controls) | After (quick keys, feedback, bar, review fixes) |
+|---|---|---|
+| `abilities`: Cerberus on the region threads | 53 / 24 samples (0.053 / 0.024 ms per tick) | 53 / 38 samples (0.053 / 0.038 ms per tick) |
+| ...of which class code | 8 / 1 | 5 / 5 |
+| Key presses / casts per run | about 306 / not counted | about 322 / 171 and 166 |
+| `combat` (nobody casts): Cerberus | | 42 / 41 samples (0.041–0.042 ms per tick) |
+| ...of which class code | | 5 / 0 |
+
+- **Within the run-to-run spread.** The baseline's two runs differed by more than before differs from after.
+- **Class logic is about 0.016 ms per key press:** 5 samples over about 322 presses, well inside the 0.05 ms budget. The extra checks before a cast (target, room, Momentum) don't show.
+- **The new parts cost nothing measurable.** The cast feedback, the HUD message slot and the ability bar appear in 0 samples under the `abilities` load, and the bar in 3 under `combat`. While shown, the bar redraws twice a second per player; hidden, it runs no task.
+- **A refused cast is cheaper than a cast.** The checks run before anything is spent, so a refusal costs the checks and one message.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
+- **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.
