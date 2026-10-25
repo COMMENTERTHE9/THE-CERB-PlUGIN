@@ -45,7 +45,8 @@ import java.util.function.Supplier;
  * owns them (nearby targets always are); blinks use {@code teleportAsync}; every delayed step runs
  * on the caster's entity scheduler and checks the caster is still there.
  *
- * <p>PROTOTYPE: abilities affect mobs, never players (PvP is an open owner decision, §10).
+ * <p>Abilities affect mobs, never players, for now: PvP is off until the PvP pass turns it on (not
+ * permanent; docs/ROADMAP.md -> PvP lists every switch).
  */
 public final class AbilityCaster {
 

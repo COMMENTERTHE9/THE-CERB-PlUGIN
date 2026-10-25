@@ -91,14 +91,16 @@ attributes:
     realm-magnitude: true   # realm multiplies damage, health, defense bar, regen (no effect at Awakened)
     pvp-defense: false      # false: PvP hits play as before Attributes 2.0 - worked out with the defender's old
                             # armor, resistances, bar and 100 health, then taken as the same share of their real
-                            # health and bar. true lets Vitality / Fortitude / realm count in PvP (future PvP pass).
+                            # health and bar. true lets Vitality / Fortitude / realm count in PvP. Off for now, not
+                            # permanently: the PvP pass turns it on (docs/ROADMAP.md -> PvP).
 
   # ── Speed and handling (docs/design/ATTRIBUTE_EXPANSION.md) ─────────
   # raw = driver attribute x per-point + skill contributions (per level, below)
   # effective = cap x (1 - e^(-raw / cap)): small bonuses count in full, never above the cap.
   secondary:
     # false: these bonuses pause while a player is in PvP combat (hit or was hit by a player
-    # within pvp-tag-seconds), so PvP stays vanilla. true applies them in PvP too (owner decision).
+    # within pvp-tag-seconds), so PvP stays vanilla. true applies them in PvP too. Off for now,
+    # not permanently: the PvP pass turns it on (docs/ROADMAP.md -> PvP).
     in-pvp: false
     pvp-tag-seconds: 15
     stats:

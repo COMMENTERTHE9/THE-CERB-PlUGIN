@@ -9,7 +9,7 @@
 - **Step 3**, Player Menu 2.1: a short opening animation, a light sweeping the header between screens, page-turn sounds, the skill bar filling up, and "since you last looked" progress with one chime and one level-up flash. It stays within the performance budget, and an idle open menu costs nothing.
 
 - **Step 4**, the classes and abilities design: `docs/design/CLASSES.md`.
-- **Step 5**, the Warrior / Mage / Duelist prototype: learn several classes from your skills, unlock abilities by rank, mix them in three loadouts, cast with Sneak + a key. The six proofs were checked in game (91 checks), and an independent review's nine findings are fixed. Abilities are PvE-only until the PvP decision.
+- **Step 5**, the Warrior / Mage / Duelist prototype: learn several classes from your skills, unlock abilities by rank, mix them in three loadouts, cast with Sneak + a key. The six proofs were checked in game (91 checks), and an independent review's nine findings are fixed. Abilities are PvE-only for now; PvP gets turned on later (`docs/ROADMAP.md` → PvP).
 
 The owner has playtested Player Menu 2.0; the remaining checks, now including classes, are in `docs/PLAYTEST_CHECKLIST.md`. **Next:** your playtest and the decisions below, then Step 6 (more classes) or the gathering loop, in the order you choose.
 
@@ -267,7 +267,7 @@ The review also found that cast XP paid for hitting farm animals; it now needs a
 
 **Made on 2026-10-25:**
 - **Merging:** a reviewed pull request into `master` after your playtest; never merged automatically.
-- **PvP:** unchanged for now (built); attributes in PvP get a dedicated pass later.
+- **PvP: off for now, not permanent.** Every PvP limit (attributes, speed bonuses, abilities, class XP) is temporary: not turned on yet, not decided against. A later PvP pass turns them all on. What is off and where each switch is: `docs/ROADMAP.md` → PvP.
 - **Damage-reduction cap:** 75% kept, applied to resistance × armor (built).
 - **Weapon Mastery:** its all-weapon bonus stays (analysed).
 - **A–E** (speed in PvP, shelves, Survival fire, projectile XP, spears): decided and built (Step 2).
@@ -292,4 +292,4 @@ The review also found that cast XP paid for hitting farm animals; it now needs a
     - the roster;
     - weapon display names.
 
-    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5). Allowing them would change PvP, which you keep as a separate decision, so for now abilities never hit players. Now that it is playable, your feel for the cast keys (item 2) matters most.
+    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5) are off for now. That is not permanent: PvP gets turned on later (`docs/ROADMAP.md` → PvP). Now that it is playable, your feel for the cast keys (item 2) matters most.

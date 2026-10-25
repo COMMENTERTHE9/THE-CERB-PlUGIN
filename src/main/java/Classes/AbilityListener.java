@@ -44,7 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>One key press can reach the server as several events (an attack and its swing, the main hand
  * and then the off hand); within {@link #SAME_PRESS_MS} they count as one press. Abilities never
- * hit players (PvP is an open owner decision), so a Sneak-attack on a player stays a normal attack.
+ * hit players for now (PvP is off until the PvP pass, docs/ROADMAP.md), so a Sneak-attack on a player stays a normal attack.
  * Also: classes load on join and save on quit, temporary effects end on death, and every hit dealt
  * or taken marks the player as in combat (the loadout lock).
  *

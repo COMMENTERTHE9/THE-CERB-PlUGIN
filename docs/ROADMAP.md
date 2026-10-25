@@ -33,7 +33,7 @@ Before any significant new system or major feature, examine the code it touches 
 | 2 | Decisions A–E (below), as small testable changes | Done 2026-10-25: `docs/STATUS.md` (each verified in game, before and after; within the performance budget) |
 | 3 | Player Menu 2.1: animations and feedback | Done 2026-10-25: `docs/STATUS.md` (21 in-game checks; within the performance budget; an idle open menu costs nothing) |
 | 4 | Classes and abilities **design**: review the roster and the weapon archetypes; architecture and phased plan | Done 2026-10-25: `docs/design/CLASSES.md` (eight owner decisions in its §10, each with a recommendation) |
-| 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | Done 2026-10-25: `docs/STATUS.md` (the six proofs in game, 91 checks; independent review fixed; within the performance budget: non-casting players pay nothing, class logic ~0.03 ms per key press). Built on the §10 recommendations, PvE-only until the PvP decision |
+| 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | Done 2026-10-25: `docs/STATUS.md` (the six proofs in game, 91 checks; independent review fixed; within the performance budget: non-casting players pay nothing, class logic ~0.03 ms per key press). Built on the §10 recommendations; PvE-only for now (PvP is turned on later, see PvP below) |
 | 6 | Scale up classes and abilities incrementally, keeping quality, identity, fair progression and performance | Next, after the owner's playtest and the `CLASSES.md` §10 decisions |
 
 Rules for every step: routine engineering decisions are made by the lead developer; material design conflicts, scope changes and destructive operations go to the owner with a recommendation. Work stays on the development branch; nothing merges into `master` automatically. The owner's world, characters, inventories and databases are never touched by tests; risky changes are tried on the separate development server.
@@ -46,7 +46,7 @@ Rules for every step: routine engineering decisions are made by the lead develop
 
 | | Decision | What it means |
 |---|---|---|
-| A | **PvP speed bonuses stay off in PvP** | Keep the 15-second PvP suppression until the full PvP integration is designed and verified. No extreme attack-speed combinations, cooldown bypasses or unrestricted ability stacking in PvP. |
+| A | **PvP speed bonuses stay off in PvP** | For now, not permanently (see PvP below). Keep the 15-second PvP suppression until the full PvP integration is designed and verified. No extreme attack-speed combinations, cooldown bypasses or unrestricted ability stacking in PvP. |
 | B | **Powered shelves must work** | Replace today's protection, which refuses every powered-shelf swap for everyone carrying the menu head. Find a Folia-safe mechanism that keeps normal shelf interactions working while the head still can't be duplicated, deleted, swapped into an invalid state or otherwise exploited. Positive and negative tests. |
 | C | **Survival's fire resistance covers environmental fire** | Extend it past standing in fire to burning, lava, magma blocks, campfires and related fire damage, using the existing defensive calculations. Keep the categories clear. Bounded: no immunity. |
 | D | **Projectile hits train Survival and Heavy Armor Mastery** | Only real defensive encounters count. Guard against harmless repeated hits, invulnerability windows, self-inflicted damage and artificial farming. |
@@ -134,6 +134,18 @@ Large amounts of content should not need new Java per ability, but dedicated cod
 Only then grow toward the full roster. A class is never called implemented just because it has a menu entry or a config definition.
 
 **Player Menu → Classes & Abilities** (when the system exists): every class or discipline, unlocked progression, actives and passives, prerequisites, equipped abilities, saved loadouts, combinations and their attribute contributions. It keeps Player Menu 2.0's style, with subtle unlock effects and clear progression indicators. Nothing is labelled functional before the gameplay exists.
+
+## PvP: off for now, not permanent (owner, 2026-10-25)
+
+Every PvP limit so far is **temporary**. None of it is a decision against PvP; these parts are simply not turned on yet. A later **PvP pass** turns them all on, with PvP-specific numbers where needed, and is verified in game like any milestone. Until then each limit stays switchable and listed here, so nothing is forgotten.
+
+| Off for now | Where it is switched | To turn it on |
+|---|---|---|
+| Attributes on defense in PvP (Vitality, Fortitude, realm): PvP hits use the pre-Attributes-2.0 defense | `attributes.yml` → `integration.pvp-defense: false` | Set `true`, then tune |
+| Speed bonuses in PvP (attack, movement, bow draw, spell cooldown) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
+| Attributes on offense in PvP (Power, crits, lifesteal): PvP hits still use the old per-skill bonuses | Code: `Manager/PveOffense` runs only on player → mob hits; PvP goes through `Manager/CombatSkillProcessor` | A PvP offense path with PvP coefficients |
+| Abilities hitting players: every ability targets mobs only (Cleave, Fireball...); Riposte only counters mobs; Feint's crit only on mob hits; a Sneak-attack on a player is a plain hit | Code: `Classes/AbilityCaster.valid`, the counter hook in `Listener/VirtualHealthListener`, `Manager/PveOffense.meleeHit`, `Spells/FireballSpell.castFromAbility`, `Classes/AbilityListener.onAttack` | `docs/design/CLASSES.md` §10 decision 5 (PvP coefficients), then one switch |
+| Class XP from fights with players | Code: `Listener/MobKillListener` gives no class share for player kills; casts never reach players | Together with abilities in PvP, with rules against farming each other |
 
 ## Reporting, per milestone
 

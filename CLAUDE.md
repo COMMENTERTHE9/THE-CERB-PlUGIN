@@ -28,7 +28,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Step 2, decisions A–E (`docs/STATUS.md`): PvP speed pause kept; powered shelves work (menu items lifted out for the swap tick); fire resistance per kind of fire (`combat.yml fire-resistance`); projectile hits train Survival/Heavy Armor; spears train Weapon Mastery. Admin/confirm screens always get a fresh window (`Menu.reuseWindow()`), fixing a stale-click bug from Step 1
 - ✅ Step 3, Player Menu 2.1 (`docs/STATUS.md`): opening reveal, header sweep, page-turn sounds, filling skill bar, "since you last looked" progress (session memory, no DB), category tabs; engine `GUIs/menu/MenuAnimator` + `MenuView.later/soundLater` (bounded, cancelled on any screen change; `menu.js motion`)
 - ✅ Step 4, classes & abilities design (`docs/design/CLASSES.md`; 8 owner decisions in its §10)
-- ✅ Step 5, class prototype (`docs/STATUS.md`, `docs/design/CLASSES.md` §11): Warrior / Mage / Duelist on a data-driven ability engine (`Classes/*`, `classes.yml`, `abilities.yml`); cast keys = Sneak + right-click / left-click / F / Q / scroll; loadouts (5 actives, 3 passives, keystone; 3 per player); Player Menu → Classes & Abilities, `/class`, `/cerb class`; PvE-only until the PvP decision (`tools/playtest/classes.js`, `load.js abilities`)
+- ✅ Step 5, class prototype (`docs/STATUS.md`, `docs/design/CLASSES.md` §11): Warrior / Mage / Duelist on a data-driven ability engine (`Classes/*`, `classes.yml`, `abilities.yml`); cast keys = Sneak + right-click / left-click / F / Q / scroll; loadouts (5 actives, 3 passives, keystone; 3 per player); Player Menu → Classes & Abilities, `/class`, `/cerb class`; PvE-only for now, PvP turned on later (`tools/playtest/classes.js`, `load.js abilities`)
 - ⬜ Next: the owner's playtest + the decisions in `docs/STATUS.md`; then Step 6 (more classes, `CLASSES.md` §9) or the gathering/crafting loop, as the owner orders them
 
 ## Key files
@@ -45,6 +45,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 
 ## Conventions
 - **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches (`tools/playtest/load.js` + `tools/perf/profile.sh`, method in `docs/PERFORMANCE.md`), fixing confirmed bottlenecks, and measuring again. No speculative rewrites. Menus: change screens with `MenuManager.open/replace` (same-size screens redraw in place); never open raw inventories per click. A screen whose buttons change state at once returns `reuseWindow() = false` (all admin screens do) so stale clicks can't reach it.
+- **PvP is off for now, not permanently** (owner, 2026-10-25): every PvP limit (attributes, speed bonuses, abilities, class XP) is temporary, waiting for a PvP pass that turns it all on. Keep each one switchable and listed in `docs/ROADMAP.md` → PvP; never treat them as final design.
 - **Folia threading:** snapshot on the entity/region thread → async I/O → reschedule back. Never touch Bukkit entity/player APIs off-thread.
 - New content ships as **config** (mobs.yml / combat.yml / *.yml + a registry), not code.
 - Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (any JDK >= 21).
