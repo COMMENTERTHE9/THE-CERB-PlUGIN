@@ -62,7 +62,9 @@ resources:
 | Fortune duplicating rewards | The bonus is at most one extra item per block, never multiplied by the Fortune enchantment, never on Silk Touch, and its chance is capped at 50%. |
 | Creative mode | No XP and no bonus. |
 | Craft and uncraft loops (ingots ↔ blocks, nuggets ↔ ingots) | Only forward recipes pay (gear); storage and reversible recipes pay nothing. |
-| Furnace automation | Smelting XP is paid when a player takes the output (`FurnaceExtractEvent`); hoppers pay nobody. One ingot always needs one mined raw metal. |
+| Furnace automation | Smelting XP is paid when a player takes the output; hoppers pay nobody. One ingot always needs one mined raw metal. |
+| Iron golem, gold and copper farms | Forging iron, gold and copper gear pays XP and rolls a quality only as far as the player smelted that metal themselves (`forging.needs-smelted`): each ingot taken out of a furnace covers one unit. Gear from farmed metal is plain vanilla gear. Diamonds can't be farmed, so diamond gear always pays. |
+| A torch (or bell, banner, rail) on an ore | The bonus goes only to an item the ore itself drops, never to what an attached block drops in the same break. |
 | Invalid definitions | Refused entry by entry, with a log line. |
 | Item duplication | The bonus changes the amount of an item vanilla drops; it never spawns extra entities or copies a block. |
 
@@ -115,14 +117,17 @@ Unit tests cover parsing and the rules; the sandbox covers the same in game.
 
 - **Mining XP** is paid at the end of the break (`BlockBreakEvent`, MONITOR, after nothing can cancel it). The rule table is one pure function, `GatherRules.decide`, unit-tested row by row.
 - **The bonus** adds one to the amount of the first item vanilla drops (`BlockDropItemEvent`), never the block itself; a custom resource's own drops get it the same way. A quiet chime says it happened.
-- **Placed blocks** live in each chunk's data (`cerberus:placed_resources`, a sorted array of packed positions), cached while the chunk is loaded. Only resource blocks are remembered; a block's mark is forgotten when it is broken or blown up.
+- **Placed blocks** live in each chunk's data (`cerberus:placed_resources`, a sorted array of packed positions), cached while the chunk is loaded. Only resource blocks are remembered: placed, formed (generators), spread or faded into a resource (covered nylium becomes netherrack), set by a mob, or moved by a piston. A block's mark is forgotten when it is broken, blown up or taken by a mob. Blocks placed before this was installed, and blocks of a material added to resources.yml later, count as natural.
+- **The bonus** only goes to an item type the ore itself drops (worked out when it breaks), so a torch or bell standing on the ore never gets it.
 - **Smelting and forging** are counted by the game's own "items crafted" statistic, which rises once per item really made:
   - a click on a crafting result that makes nothing (a full cursor, a number key onto an occupied hotbar slot) pays nothing;
   - a shift-click or Ctrl+Q batch pays every item, however many fit;
-  - a furnace that smelted two kinds of input (raw iron and iron ore) fires its extract event once per kind for one take, and still pays once.
-  The click arms the payment for 100 ms; the statistic pays it.
+  - smelting pays as the statistic rises while a furnace window is open, so one take pays once however many kinds of input the furnace smelted, and both halves of a right-click split pay. A number key or F onto an empty slot moves the whole output without raising the statistic, so that one take is paid from the click.
+  The forging click arms the payment for its own window for 100 ms, and the statistic pays it; any other craft disarms it.
+- **The netherite upgrade** pays the same way, except a shift-click: vanilla moves the result first and raises the statistic by nothing, so a shift-click pays when one more of the result is in the inventory a tick later (a shift-click only fails for want of room, and then nothing can arrive).
+- **Smelted metal for forging** is kept per player and metal (`cerberus:smelted_iron` and so on, saved with the player, no database). Each iron, gold or copper ingot taken out of a furnace adds one unit; forging a piece spends its units (a sword 2). Only covered pieces pay and get a quality.
 - **Quality** is rolled when the result slot is clicked. In a batch, each next result gets the same quality as the grid makes it, and a result left in the grid afterwards loses it, so the next take rolls its own.
-- **The equipment source** keeps, per player, the qualities in hand and worn (`EquipmentSource.Worn`), read when equipment changes, and rebuilds the snapshot only when that changes.
+- **The equipment source** keeps, per player, the qualities in hand and worn (`EquipmentSource.Worn`), read when equipment changes (a hotbar scroll and a hand swap at once, so a hit in the same tick uses the new item), and rebuilds the snapshot only when that changes.
 - **The XP display** hooks the single award path (`SkillManager.applyAward`), so every XP source shows without each one knowing about it: kills, hits, spells, chunks, mining, smelting, forging and admin grants. The line is shown on the player's thread (`Skills.XpDisplay`), merged per skill for 4 s (`Skills.XpLine`) and shown for 2.5 s. An ability or refusal message covers it; the XP line keeps its remaining time for afterwards.
 
 ## Admin and test tools
@@ -132,6 +137,7 @@ Unit tests cover parsing and the rules; the sandbox covers the same in game.
 - `/cerb gather quality <q|none>`: set the held gear's quality (the same data forging writes).
 - `/cerb gather extract`: a machine's extraction of the block you look at, with the item in hand as the machine's tool.
 - `/cerb gather stats`: paying blocks, bonuses, refusals, smelted/forged/upgraded counts, placed-block cache, XP display updates, attribute rebuilds.
+- `/cerb gather credit <metal> <units>`: set your smelted metal for forging (a test helper; `info` shows it).
 - `/cerb combatdebug` adds a `[Forge]` line per forging step.
 - `tools/playtest/gathering.js`: phases `mine`, `farm`, `fortune`, `smelt`, `forge`, `upgrade`, `gear`, `custom` (needs `SERVER_DIR`), `xpdisplay`, `persist-set`/`persist-check`.
 

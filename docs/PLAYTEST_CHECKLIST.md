@@ -145,7 +145,8 @@ Use a survival world spot with stone and ore (or make some with `/fill`: blocks 
 | 5 | `/cerb skill YourName Mining level 100`, `/stats` → Speed & handling. Mine stone. | Gathering speed +13.8%: stone breaks a little faster. Mining's page shows Fortune +50 and an extra-ore chance of 25%. |
 | 6 | Mine 20 iron ores at Mining 100. | About one ore in four drops 2 raw iron instead of 1, never more than 2 (a soft chime when it happens). With Silk Touch: never. |
 | 7 | Smelt raw iron in a furnace and take the ingots. | `+2 Smithing` per ingot. A hopper taking them out pays nobody. |
-| 8 | Craft an iron sword, then shift-click a batch of iron pickaxes. | `+10 Smithing` for the sword; `+15` for each pickaxe. Each item's lore shows a quality (Common, Fine, Superior or Masterwork); a shift-click batch shares one. |
+| 8 | With iron you smelted (step 7), craft an iron sword, then shift-click a batch of iron pickaxes. | `+10 Smithing` for the sword; `+15` for each pickaxe. Each item's lore shows a quality (Common, Fine, Superior or Masterwork); a shift-click batch shares one. `/cerb gather info` shows how much smelted iron is left. |
+| 8b | Craft a sword from ingots you didn't smelt (`/give YourName iron_ingot 2`, with no smelted iron left). | A plain sword: no XP, no quality, and a hint that Smithing pays for metal you smelted yourself. |
 | 9 | Hold a Fine or better sword; `/stats` → the weapon tile. Put on a Fine or better armor piece. | Power for swords +3 (Fine), +6, +10; Fortitude +1, +2, +4 per piece. `/cerb gather quality masterwork` sets the held item's quality for a quick test. |
 | 10 | 9 iron ingots into an iron block and back; repair two worn swords in the crafting grid. | No Smithing XP for any of these. |
 | 11 | Upgrade a diamond sword with a quality at a smithing table. | `+50 Smithing`; the netherite sword keeps its quality. |

@@ -456,6 +456,8 @@ The first complete gathering loop: find stone and ore → mine it (**Mining XP**
 | Fortune on top of Fortune | at most one extra item per block (40 ores at the 50% cap: 56 raw iron; 1 or 2 from each); with Fortune III, never above vanilla's 4 plus one |
 | A furnace that smelted two kinds of input | one take pays once (the game fires its extract event once per kind) |
 | A hopper under a furnace | pays nobody |
+| An iron golem, gold or copper farm | gear forged from metal you didn't smelt yourself is plain vanilla gear: no Smithing XP, no quality (each ingot you take out of a furnace covers one unit of forging; switchable: `forging.needs-smelted` in `resources.yml`) |
+| A torch, bell or banner standing on an ore | the bonus only ever goes to the ore's own drop |
 | A click on a crafting result that makes nothing (full cursor; a number key onto an occupied hotbar slot) | pays nothing |
 | Storage blocks both ways, nuggets, the repair recipe, armor trims | pay nothing |
 | Re-crafting to fish for a quality | a shift-click batch shares one roll; each roll costs the materials |
@@ -473,12 +475,47 @@ The first complete gathering loop: find stone and ore → mine it (**Mining XP**
 | Suite | Checks |
 |---|---|
 | unit tests | 189 (11 new: the rule table, the XP line, gear contributions, config delivery) |
-| gathering.js: mine, farm, fortune, smelt, forge, upgrade | 13, 11, 6, 3, 12, 3 |
+| gathering.js: mine, farm, fortune, smelt, forge, upgrade | 13, 11, 7, 6, 14, 4 |
 | gathering.js: gear, custom, xpdisplay, persistence across a restart | 8, 9, 3, 1 + 4 |
 
 Every miss along the way was in the test, not the plugin: the arena was filled before its chunks loaded, the bot picked up drops before they were counted, `/item replace` doesn't run on this Folia build, and this mineflayer maps the 1.21 smithing table as the old 3-slot one.
 
-**Regression, performance, review:** (being filled in).
+**Regression** (the existing in-game suites on the gathering build):
+
+| Suite | Checks |
+|---|---|
+| smoke | 14 |
+| progression.js: killxp, stats, speed, spear | 5, (re-running), (re-running), (re-running) |
+| menu.js: nav, safety, perf | (re-running), 18, 2 |
+| admin.js: main, attrs | 40, 14 |
+| abilities.js: controls, combos, warrior, mage, duelist, mixed, review fixes | 26, 13, 21, 24, 15, 20, 20 |
+| classes.js: learn, exploits, combat, menu | 7, 22, 10, 15 |
+
+On the first pass five checks failed, none of them in the plugin:
+- **Two checks still said Fortune does nothing.** Now true the other way round; they look for the extra-ore chance.
+- **The attack-speed and Fireball checks** ran with a class loadout an earlier session had left on the test character (a passive that slows attacks; the wand casting the loadout's ability). The ability phases end by clearing it; after them both pass. The speed check now also pins the skills behind Agility, which other phases raise.
+- **`classes.js learn`** needs a character that has never learned a class (as its notes say); with a new one, 7 of 7.
+- **One spear check** landed no hit on a fresh mob (timing); it passes on a re-run.
+
+**Independent review** (of the code, without my conclusions; it also read the server's own bytecode where vanilla behaviour mattered): no high-severity problem; 3 medium and 12 low, fixed or answered:
+- **Medium:**
+  - **A torch on an ore could take the bonus**, a small item duplication: the drop event also carries what blocks attached to the ore drop. The bonus now only goes to an item type the ore itself drops. In game: 20 ores with a torch on each, always 1 torch back.
+  - **A shift-click netherite upgrade paid nothing:** vanilla moves the result first and counts the emptied stack. A shift-click now pays when the result arrives. In game: 50 XP, once.
+  - **Farms made Smithing renewable**, and gold farms by far: forging paid for any metal, and every craft rolled a quality. Built the protection (above): iron, gold and copper gear pays and gets a quality only from metal you smelted. This was decision 19; it is switchable.
+- **Low, fixed:**
+  - **Smelting:** a right-click split paid only the first half, and a number key or F onto an empty slot paid nothing. Smelting is now counted as metal leaves a furnace window, and that one swap from the click. In game: both halves pay, and the number key pays once.
+  - **attributes.yml:** a skill an owner deleted from their own file came back with the new rule. Only skills an update adds (Mining) fill in now, and the log says so.
+  - **A stale bonus** could follow a player to a later block. Each break now starts clean.
+  - **Placed blocks:** covered nylium fading into netherrack, spreads and mob-set blocks are remembered too.
+  - **Spears** couldn't be forged (no unit count); a spear is one unit.
+  - **resources.yml:** a misspelled tool kind is refused with a log line; it used to load and make the ore unmineable.
+  - **The XP line** waited out the full length of a message that ended early.
+  - **Forging:** a payment armed by one craft could be spent by another in the same tick; it is now tied to its own window and disarmed by any other craft.
+  - **Gear:** a hit in the same tick as a hotbar scroll or a hand swap used the previous item's quality; scrolls and swaps are read at once.
+  - **Equipment after a quit:** a last equipment tick could bring a leaving player's entry back.
+- **Low, answered:** one progression check depends on the reduced-XP hint's once-a-minute timer, which a rejoin resets, so each run starts clean; and the cost of a paying block is measured below.
+
+**Performance:** (being measured).
 
 ## Roadmap
 
@@ -527,6 +564,10 @@ Every miss along the way was in the test, not the plugin: the arena was filled b
 14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`). Today only an admin can open the Mage. Recommendation: let Spell Weaving 5 open it (kills with a stick or blaze rod already train Spell Weaving), together with magic skill XP paid on hits instead of casts.
 15. **Lifesteal for everyone from level 1.** Weapon Mastery gives every player 2.7% lifesteal on mob hits from the start, the only healing in a fight. Keep it, or start it at 0 and let it grow with the skill?
 16. **Blink chaining.** At 0.4 s and 20 Essence, Blink costs exactly the base Essence regeneration, so it can chain indefinitely at about 15 blocks a second (like a teleport item limited only by mana). Keep it, or raise its Essence cost so a chain runs dry after a few seconds?
-17. **Gathering numbers** (`resources.yml`, all yours to tune): Mining XP per block, the weak-resource quarter, Fortune's 0.5% per point and 50% cap, the quality odds and bonuses. At level 1, strip mining pays about 8,000 Mining XP an hour (level 10 in about 2 hours), the same order as fighting.
+17. **Gathering numbers** (`resources.yml`, all yours to tune): Mining XP per block, the weak-resource quarter, Fortune's 0.5% per point and 50% cap, the quality odds and bonuses.
+    - **Pace:** strip mining by hand (about 2 blocks a second) pays about 8,000 Mining XP an hour at level 1, so level 10 (17,900 XP) takes about 2 hours, the same order as fighting.
+    - **The fast case:** an Efficiency V pickaxe with a Haste II beacon breaks stone instantly, 10 to 20 blocks a second. That is 36,000 to 72,000 Mining XP an hour until level 21 (152,000 XP, 2 to 4 hours), then a quarter of it.
+    - **Recommendation:** keep it (it needs an end-game beacon), or pay stone and deepslate 0.5 XP if you want it slower.
 18. **Gathering speed applies to every block,** dirt and wood included, as one block-breaking stat. Woodcutting and Excavation could get their own later; for now Mining drives it alone.
-19. **Iron and gold farms and Smithing.** Forging pays for the metal whatever its source, so an iron golem farm (a few hundred to a few thousand ingots an hour) makes Smithing XP renewable: 5 XP per ingot forged, about 2,000 XP an hour from a modest farm, without mining. Smelting XP can't be farmed this way (it needs mined ore). Recommendation: keep it for now (the ingots are the cost, and the gear is real gear); if farms dominate Smithing, move part of forging's XP to smelting, which only mined ore pays.
+19. ~~Iron and gold farms and Smithing~~: built as a protection after the review (above). Gear forged from iron, gold or copper you didn't smelt yourself is plain. To pay for any metal instead, empty the list: `forging.needs-smelted: []`.
+20. **Quality bonuses don't depend on the metal.** A Masterwork golden chestplate gives the same +4 Fortitude as a Masterwork netherite one (the armor itself is much weaker). Keep the flat bonuses, or scale them by material?
