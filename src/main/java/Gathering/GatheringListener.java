@@ -1,6 +1,7 @@
 package Gathering;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Item;
@@ -13,7 +14,9 @@ import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
@@ -32,8 +35,14 @@ public final class GatheringListener implements Listener {
     private final BiConsumer<Player, String> notice;
     /** The break's evaluation, from HIGH to MONITOR (same event, same thread). */
     private final Map<UUID, GatheringService.Evaluation> deciding = new ConcurrentHashMap<>();
-    /** A bonus to roll on the drops of the block just broken. */
-    private final Map<UUID, GatheringService.Evaluation> bonus = new ConcurrentHashMap<>();
+    /**
+     * A bonus to roll on the drops of the block just broken, with the item types vanilla drops for it:
+     * the drop event also carries what blocks attached to it dropped (a torch on the ore), and the
+     * bonus must never land on those.
+     */
+    private record Bonus(GatheringService.Evaluation ev, Set<Material> types) {}
+
+    private final Map<UUID, Bonus> bonus = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastNotice = new ConcurrentHashMap<>();
 
     public GatheringListener(GatheringService service, BiConsumer<Player, String> notice) {
@@ -44,6 +53,7 @@ public final class GatheringListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreakDecide(BlockBreakEvent e) {
         Player p = e.getPlayer();
+        bonus.remove(p.getUniqueId()); // a new break: an earlier block's bonus never carries over
         GatheringService.Evaluation ev = service.evaluate(p, e.getBlock());
         if (ev == null) { deciding.remove(p.getUniqueId()); return; }
         if (ev.decision().refuse()) {
@@ -74,21 +84,23 @@ public final class GatheringListener implements Listener {
             if (extra) service.countBonus();
             Location at = b.getLocation().add(0.5, 0.5, 0.5);
             for (ItemStack it : service.customDrops(ev.resource(), extra)) b.getWorld().dropItemNaturally(at, it);
-        } else if (ev.decision().bonus()) {
-            bonus.put(p.getUniqueId(), ev);
+        } else if (ev.decision().bonus() && e.isDropItems()) {
+            Set<Material> types = EnumSet.noneOf(Material.class);
+            for (ItemStack d : b.getDrops(p.getInventory().getItemInMainHand(), p)) if (d.getType() != b.getType()) types.add(d.getType());
+            if (!types.isEmpty()) bonus.put(p.getUniqueId(), new Bonus(ev, types));
         }
         service.payXp(p, ev);
         if (service.placedBlocks() != null) service.placedBlocks().unmark(b);
     }
 
-    /** The Fortune bonus: one more of the item vanilla drops (never the block itself, never a new item entity). */
+    /** The Fortune bonus: one more of an item the ore itself drops (never the block, never an attached block's drop, never a new item entity). */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDrop(BlockDropItemEvent e) {
-        GatheringService.Evaluation ev = bonus.remove(e.getPlayer().getUniqueId());
-        if (ev == null || !ev.block().equals(e.getBlock()) || !service.rollBonus(ev)) return;
+        Bonus pending = bonus.remove(e.getPlayer().getUniqueId());
+        if (pending == null || !pending.ev().block().equals(e.getBlock()) || !service.rollBonus(pending.ev())) return;
         for (Item item : e.getItems()) {
             ItemStack s = item.getItemStack();
-            if (s.getType() == e.getBlockState().getType() || s.getAmount() >= s.getMaxStackSize()) continue;
+            if (!pending.types().contains(s.getType()) || s.getAmount() >= s.getMaxStackSize()) continue;
             s.setAmount(s.getAmount() + 1);
             item.setItemStack(s);
             service.countBonus();

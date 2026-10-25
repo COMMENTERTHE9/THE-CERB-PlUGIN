@@ -154,6 +154,9 @@ public class PlayerHUDManager {
     public void clearFlash(Player player) {
         Sent s = sent.get(player.getUniqueId());
         if (s == null || s.flash == null) return;
+        long now = System.nanoTime();
+        // An XP line waiting behind the message moves up by the time the message no longer takes.
+        if (s.xp != null && s.flashUntil - now > 0 && s.xpUntil - s.flashUntil > 0) s.xpUntil -= s.flashUntil - now;
         s.flash = null;
         updateHUD(player);
     }

@@ -49,6 +49,10 @@ forging:
   skill: Smithing
   per-unit: { iron: 5, gold: 5, copper: 3, diamond: 20 }
   netherite-upgrade: 50
+  # Metal a farm makes without mining (iron golems, zombified piglins, drowned) pays forging XP and rolls a
+  # quality only as far as you smelted it yourself: each ingot you take out of a furnace covers one unit.
+  # Gear made from other metal is plain vanilla gear. An empty list pays for any metal.
+  needs-smelted: [iron, gold, copper]
   items: {}
 
 # Forged gear rolls a quality, better with Smithing (odds between level 1 and level 100). What each

@@ -422,7 +422,9 @@ async function speed() {
   await cmd('/kill @e[type=zombie,distance=..30]', 500);
   for (const s of ['Blade_Mastery', 'Weapon_Mastery', 'Ranged_Precision', 'Navigation', 'Spell_Weaving']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 300);
 
-  // 1. Attack speed: the server's attack-speed value with a sword in hand, by Blade Mastery level
+  // 1. Attack speed: the server's attack-speed value with a sword in hand, by Blade Mastery level. Agility adds to it
+  //    too: pin the skills that feed Agility (other phases and scripts leave them higher).
+  for (const s of ['Critical_Strike', 'Dual_Wielding', 'Navigation', 'Stealth']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400);
   check('Got a netherite sword', await equip('netherite_sword'));
   const swords = [];
   for (const bm of [1, 50, 100]) {

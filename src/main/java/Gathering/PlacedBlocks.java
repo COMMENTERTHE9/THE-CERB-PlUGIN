@@ -10,10 +10,13 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
 import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
@@ -30,8 +33,9 @@ import java.util.function.Supplier;
 
 /**
  * Resource blocks that did not grow in the world (docs/design/GATHERING.md, "What can't be farmed"):
- * placed by a player, formed by a generator (lava and water make stone and basalt), or moved by a
- * piston. Breaking one pays nothing. Kept in each chunk's own data, so it is saved with the world
+ * placed by a player, formed by a generator (lava and water make stone and basalt), moved by a
+ * piston, faded or spread into a resource, or set by a mob. Breaking one pays nothing. Blocks placed
+ * before this was installed, and blocks of a material added to resources.yml later, count as natural. Kept in each chunk's own data, so it is saved with the world
  * (no database), and cached while the chunk is loaded; only blocks that are some resource are
  * remembered. Every call runs on the thread that owns the block's chunk (Folia: its region thread).
  */
@@ -132,6 +136,25 @@ public final class PlacedBlocks implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onForm(BlockFormEvent e) {
         if (catalog.get().tracked(e.getNewState().getType())) mark(e.getBlock());
+    }
+
+    /** A spread that makes a resource block (its own event, not a form). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSpread(BlockSpreadEvent e) {
+        if (catalog.get().tracked(e.getNewState().getType())) mark(e.getBlock());
+    }
+
+    /** A block that fades into a resource block (covered nylium becomes netherrack): not grown there either. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFade(BlockFadeEvent e) {
+        if (catalog.get().tracked(e.getNewState().getType())) mark(e.getBlock());
+    }
+
+    /** A mob or falling block changing a block: a resource it makes counts as placed; one it takes away is forgotten. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityChange(EntityChangeBlockEvent e) {
+        if (catalog.get().tracked(e.getTo())) mark(e.getBlock());
+        else if (tracked(e.getBlock())) unmark(e.getBlock());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

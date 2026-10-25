@@ -45,7 +45,10 @@ public final class GatheringCatalog {
     public enum Gear { WEAPON, TOOL, WEAPON_AND_TOOL, ARMOR }
 
     private static final Map<String, Integer> UNITS = Map.of("SWORD", 2, "AXE", 3, "PICKAXE", 3, "SHOVEL", 1, "HOE", 2,
-            "HELMET", 5, "CHESTPLATE", 8, "LEGGINGS", 7, "BOOTS", 4);
+            "SPEAR", 1, "HELMET", 5, "CHESTPLATE", 8, "LEGGINGS", 7, "BOOTS", 4);
+
+    /** The tool kinds vanilla tools have ({@link GatherRules#vanillaTool}); a resource may also name a custom tool's kind. */
+    static final Set<String> VANILLA_KINDS = Set.of("pickaxe", "axe", "shovel", "hoe");
 
     private final Map<Material, ResourceDef> byBlock;
     private final Map<String, ResourceDef> resources;
@@ -57,6 +60,7 @@ public final class GatheringCatalog {
     private final Map<String, Double> perUnit;
     private final Map<Material, Double> forgeOverrides;
     private final double netheriteUpgrade;
+    private final Set<String> needsSmelted;
     private final QualityRules quality;
     private final double fortunePerPoint, fortuneMax;
     private final int weakGap;
@@ -66,8 +70,8 @@ public final class GatheringCatalog {
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
                              Map<String, ItemDef> items, String smeltingSkill, Map<Material, Double> smelting, String forgingSkill,
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
-                             QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap, double weakFactor,
-                             List<String> problems) {
+                             Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
+                             double weakFactor, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -78,6 +82,7 @@ public final class GatheringCatalog {
         this.perUnit = perUnit;
         this.forgeOverrides = forgeOverrides;
         this.netheriteUpgrade = netheriteUpgrade;
+        this.needsSmelted = needsSmelted;
         this.quality = quality;
         this.fortunePerPoint = fortunePerPoint;
         this.fortuneMax = fortuneMax;
@@ -112,6 +117,18 @@ public final class GatheringCatalog {
 
     public String forgingSkill() { return forgingSkill; }
     public double netheriteUpgradeXp() { return netheriteUpgrade; }
+
+    /**
+     * Metals that pay forging XP and roll a quality only as far as the player smelted them
+     * ({@code forging.needs-smelted}): a farm makes iron, gold and copper without any mining.
+     */
+    public Set<String> needsSmelted() { return needsSmelted; }
+
+    /** True when forging {@code gear} needs that much smelted metal first. */
+    public boolean needsSmelted(Material gear) {
+        String metal = gear == null ? null : metalOf(gear.name());
+        return metal != null && needsSmelted.contains(metal);
+    }
     public QualityRules quality() { return quality; }
     public double fortunePerPoint() { return fortunePerPoint; }
     public double fortuneMax() { return fortuneMax; }
@@ -136,6 +153,29 @@ public final class GatheringCatalog {
         Integer units = UNITS.get(shape);
         Double each = perUnit.get(metal.toLowerCase(Locale.ROOT));
         return units == null || each == null ? 0 : units * each;
+    }
+
+    /** The metal a gear material is forged from ("IRON_SWORD" → iron, "GOLDEN_HELMET" → gold), or null. */
+    public static String metalOf(String material) {
+        if (material == null) return null;
+        int cut = material.indexOf('_');
+        if (cut < 0 || !UNITS.containsKey(material.substring(cut + 1).toUpperCase(Locale.ROOT))) return null;
+        String metal = material.substring(0, cut).toUpperCase(Locale.ROOT);
+        return (metal.equals("GOLDEN") ? "GOLD" : metal).toLowerCase(Locale.ROOT);
+    }
+
+    /** Units of metal a gear material's shape takes (a sword 2, a chestplate 8), 0 when it is no forged gear. */
+    public static int unitsOf(String material) {
+        if (material == null) return 0;
+        int cut = material.indexOf('_');
+        Integer u = cut < 0 ? null : UNITS.get(material.substring(cut + 1).toUpperCase(Locale.ROOT));
+        return u == null ? 0 : u;
+    }
+
+    /** The metal one smelted item is a unit of ("IRON_INGOT" → iron), or null (food, scrap, glass...). */
+    public static String smeltedMetal(String material) {
+        if (material == null || !material.toUpperCase(Locale.ROOT).endsWith("_INGOT")) return null;
+        return material.substring(0, material.length() - "_INGOT".length()).toLowerCase(Locale.ROOT);
     }
 
     /** What kind of gear an item of {@code material} is, or null when it is none. */
@@ -180,6 +220,10 @@ public final class GatheringCatalog {
             perUnit.forEach((metal, xp) -> parts.add(metal + " " + number(xp)));
             out.computeIfAbsent(forgingSkill, k -> new ArrayList<>()).add("Craft tools, weapons and armor: per unit of metal (a sword takes 2, "
                     + "a chestplate 8): " + String.join(", ", parts) + " XP. Storage blocks and other reversible recipes give nothing.");
+            if (!needsSmelted.isEmpty()) {
+                out.get(forgingSkill).add("Gear of " + String.join(", ", needsSmelted) + " pays, and gets a quality, only from metal you "
+                        + "smelted yourself: each ingot you take out of a furnace covers one unit.");
+            }
         }
         if (netheriteUpgrade > 0) {
             out.computeIfAbsent(forgingSkill, k -> new ArrayList<>())
@@ -229,6 +273,9 @@ public final class GatheringCatalog {
             tools.put(id, new ToolDef(id, m, s.getString("name", id), Collections.unmodifiableSet(kinds), tier));
         }
 
+        Set<String> knownKinds = new java.util.HashSet<>(VANILLA_KINDS);
+        for (ToolDef t : tools.values()) knownKinds.addAll(t.kinds());
+
         Map<Material, ResourceDef> byBlock = new EnumMap<>(Material.class);
         Map<String, ResourceDef> resources = new LinkedHashMap<>();
         ConfigurationSection rs = root == null ? null : root.getConfigurationSection("resources");
@@ -253,6 +300,9 @@ public final class GatheringCatalog {
             int level = s.getInt("level", 1);
             if (level < 1 || level > 1000) why.add("level " + level + " outside 1-1000");
             String tool = s.getString("tool");
+            if (tool != null && !tool.isBlank() && !knownKinds.contains(tool.trim().toLowerCase(Locale.ROOT))) {
+                why.add("unknown tool kind " + tool + " (vanilla: pickaxe, axe, shovel, hoe; or a kind a custom tool lists)");
+            }
             int tier = s.getInt("tier", 0);
             if (tier < 0 || tier > 100) why.add("tier " + tier + " outside 0-100");
             List<Drop> drops = new ArrayList<>();
@@ -300,6 +350,12 @@ public final class GatheringCatalog {
             else overrides.put(m, v);
         }
         double netherite = fg == null ? 0 : Math.max(0, Math.min(10_000, fg.getDouble("netherite-upgrade", 0)));
+        Set<String> needsSmelted = new LinkedHashSet<>();
+        if (fg != null && fg.isList("needs-smelted")) {
+            for (String m : fg.getStringList("needs-smelted")) needsSmelted.add(m.trim().toLowerCase(Locale.ROOT));
+        } else {
+            needsSmelted.addAll(List.of("iron", "gold", "copper")); // the metals farms make; a file without the key keeps the protection
+        }
 
         ConfigurationSection q = root == null ? null : root.getConfigurationSection("quality");
         QualityRules quality = new QualityRules(skill(q, "quality", skills, problems),
@@ -319,7 +375,8 @@ public final class GatheringCatalog {
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
-                Collections.unmodifiableMap(overrides), netherite, quality, perPoint, max, gap, factor, problems);
+                Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
+                factor, problems);
     }
 
     /** A material by name, without the server's registry (unit tests read the shipped file too). */

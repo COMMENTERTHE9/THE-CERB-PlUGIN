@@ -91,7 +91,7 @@ public final class AttributesConfig {
         if (sk == null) {
             weights.putAll(def.skillWeights());
         } else {
-            for (String skill : keysWithShipped(sk)) {
+            for (String skill : keysWithShipped(sk, problems)) {
                 List<AttributeRules.SkillWeight> list = new ArrayList<>();
                 for (Map<?, ?> m : sk.getMapList(skill)) {
                     Attribute a = Attribute.parse(String.valueOf(m.get("attribute")));
@@ -183,7 +183,7 @@ public final class AttributesConfig {
         if (sk == null) {
             weights.putAll(def.skillWeights());
         } else {
-            for (String skill : keysWithShipped(sk)) {
+            for (String skill : keysWithShipped(sk, problems)) {
                 List<AttributeRules.StatWeight> list = new ArrayList<>();
                 for (Map<?, ?> m : sk.getMapList(skill)) {
                     Stat stat = Stat.parse(String.valueOf(m.get("stat")));
@@ -214,14 +214,28 @@ public final class AttributesConfig {
     }
 
     /**
-     * The skills {@code sk} lists, plus every skill the shipped file lists that this one doesn't
-     * mention at all: an attributes.yml from before a skill had an entry gets the shipped one (its
-     * list is read through the defaults). {@code Skill: []} in the server's file turns one off.
+     * Skills an update added to the shipped attributes.yml after its first version. Only these come
+     * from the shipped file when a server's file doesn't mention them: a skill an owner deleted from
+     * their own file before (older files said "skills not listed here add nothing") stays deleted.
+     * When an update adds a skill's entry to the shipped file, add the skill here.
      */
-    static java.util.Set<String> keysWithShipped(ConfigurationSection sk) {
+    static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of("Mining"); // 2026-10-25, the gathering loop
+
+    /**
+     * The skills {@code sk} lists, plus each skill in {@link #ADDED_BY_UPDATES} that the shipped file
+     * lists and this one doesn't mention at all (its list is then read through the defaults, and
+     * {@code note} says so). {@code Skill: []} in the server's file turns one off.
+     */
+    static java.util.Set<String> keysWithShipped(ConfigurationSection sk, Consumer<String> note) {
         java.util.Set<String> keys = new java.util.LinkedHashSet<>(sk.getKeys(false));
         ConfigurationSection shipped = sk.getDefaultSection();
-        if (shipped != null) keys.addAll(shipped.getKeys(false));
+        if (shipped == null) return keys;
+        for (String skill : shipped.getKeys(false)) {
+            if (!ADDED_BY_UPDATES.contains(skill) || keys.contains(skill)) continue;
+            keys.add(skill);
+            note.accept(sk.getCurrentPath() + "." + skill + ": not in this file (an update added it), so the plugin's own entry is used; "
+                    + "write \"" + skill + ": []\" to give it nothing");
+        }
         return keys;
     }
 

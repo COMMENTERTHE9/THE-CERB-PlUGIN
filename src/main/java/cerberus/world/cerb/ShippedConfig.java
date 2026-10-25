@@ -46,7 +46,8 @@ public final class ShippedConfig {
                     "ab9ecdf0e6d78a9824828546b58150a10f35299241db3f9724e7bed61fb843ab",  // speed and handling stats
                     "cb17940f48676bdf2543988f01131f3f34e012ec648da447d817206643291fd2",  // owner decisions (75% cap)
                     "ad4e8c0fd68ce07a064242a817a43fb490c6d22e63423e19ca057c1f191eb01f"), // PvP off for now, not permanently
-            "resources.yml", Set.of());
+            "resources.yml", Set.of(
+                    "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9")); // the gathering loop, first cut
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

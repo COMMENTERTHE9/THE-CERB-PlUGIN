@@ -4,14 +4,16 @@
 //               no XP), bare hands; gathering speed from Mining (the block_break_speed attribute)
 //   farm      - every "can't be farmed" row, each with a positive control: place and break, Silk Touch (XP, no bonus; the
 //               block placed again pays nothing), a lava-and-water generator, a piston, TNT, creative mode
-//   fortune   - the bonus at the 50% cap: one extra item at most, about half the time; never with Silk Touch; rare at low
-//               Fortune; on top of the Fortune enchantment, never multiplied by it
+//   fortune   - the bonus at the 50% cap: one extra item at most, about half the time, and never on a torch standing on the
+//               ore; never with Silk Touch; rare at low Fortune; on top of the Fortune enchantment, never multiplied by it
 //   smelt     - smelting XP when a player takes the metal: once per take (a furnace that smelted two kinds of input), a
-//               shift-click take, and a hopper pays nobody
+//               shift-click take, a right-click split (both halves), a number key onto an empty hotbar slot, and a hopper
+//               pays nobody; each ingot taken covers one unit of forging
 //   forge     - forging XP: one click, a shift-click batch (every item paid, one quality for the batch), a batch cut short by a
 //               full inventory, Ctrl+Q; a number key onto an occupied hotbar slot and a click with a full cursor make
-//               nothing and pay nothing; storage blocks both ways, nuggets and the repair recipe pay nothing
-//   upgrade   - the netherite upgrade at a smithing table (50 XP, the quality kept), an armor trim (nothing)
+//               nothing and pay nothing; storage blocks both ways, nuggets and the repair recipe pay nothing; iron the
+//               player didn't smelt (a farm's) makes plain gear and pays nothing, and a batch stops paying when it runs out
+//   upgrade   - the netherite upgrade at a smithing table (50 XP, the quality kept; a shift-click too), an armor trim (nothing)
 //   gear      - forged quality in the attribute engine: Power with that weapon in hand only (not in the off hand), Fortitude
 //               per armor piece worn, Fortune with the pickaxe in hand (the bonus chance follows); plain items rebuild nothing
 //   custom    - the synthetic custom resource, drop and drill (written into the sandbox's resources.yml for the phase, then
@@ -135,10 +137,15 @@ async function drops(dx, dy, dz, r = 3, clear = true) {
     if (e.name !== 'item' || e.position.distanceTo(p) > r) continue;
     try { const d = e.getDroppedItem(); if (d) out.push({ name: d.name, count: d.count, lore: loreOf(d), nameText: d.customName }); } catch (err) { out.push({ name: '?', count: 0 }); }
   }
-  if (clear) await cmd(`/kill @e[type=item,x=${X + dx},y=${Y + dy},z=${Z + dz},distance=..${r + 1}]`, 300);
+  if (clear) await cmd(`/kill @e[type=item,x=${X + dx},y=${Y + dy},z=${Z + dz},distance=..${r + 3}]`, 300);
   return out;
 }
 const count = (list, name) => list.filter(d => d.name === name).reduce((a, d) => a + d.count, 0);
+/** Fill every free slot with dirt, so the bot can't pick drops up: they are counted where they fall. */
+async function fill() {
+  const free = bot.inventory.emptySlotCount();
+  if (free > 0) await cmd(`/give @s dirt ${free * 64}`, 900);
+}
 const invCounts = () => { const m = {}; for (const it of bot.inventory.items()) m[it.name] = (m[it.name] || 0) + it.count; return m; };
 /** Break a block and collect what it dropped: item entities around it plus whatever the bot already picked up. */
 async function mineOne(dx, dy, dz, raw = false, ms = 900) {
@@ -327,6 +334,7 @@ async function fortune() {
   // Fortune 250 (Mining, Fishing, Trading, Scavenging, Lockpicking at 100: 0.5 each per level): the chance is capped at 50%.
   for (const s of ['Mining', 'Fishing', 'Trading', 'Scavenging', 'Lockpicking']) await setLevel(s, 100);
   await give('iron_pickaxe'); await hold('iron_pickaxe');
+  await fill();
   await stand(0, 0);
   await setblock(2, 0, 0, 'iron_ore');
   await look(2, 0, 0);
@@ -338,14 +346,26 @@ async function fortune() {
   const total = counts.reduce((x, y) => x + y, 0);
   check('One extra raw iron at most per ore (40 ores)', counts.every(c => c === 1 || c === 2), counts.join(''));
   check('...about half the time at the cap (50-70 of 40 ores)', total >= 50 && total <= 70, `${total} raw iron from 40 ores`);
+  // A torch on the ore drops with it, in the same drop event: the bonus goes to the raw iron, never the torch.
+  const torched = [];
+  for (let i = 0; i < 20; i++) {
+    await setblock(2, 0, 0, 'iron_ore', 200);
+    await setblock(2, 1, 0, 'torch', 200);
+    torched.push(await mineOne(2, 0, 0));
+  }
+  const torches = torched.map(d => count(d, 'torch')), irons = torched.map(d => count(d, 'raw_iron'));
+  check('A torch on the ore: always 1 torch back, the bonus on the raw iron (20 ores)', torches.every(t => t === 1) && irons.every(c => c === 1 || c === 2)
+      && irons.some(c => c === 2), `torches ${torches.join('')}, raw iron ${irons.join('')}`);
 
   await cmd('/clear @s', 300);
   await give('iron_pickaxe[enchantments={silk_touch:1}]'); await hold('iron_pickaxe');
+  await fill();
   const silk = await mineMany(12, 'iron_ore', true);
   check('Silk Touch never gets the bonus (12 ores: 12 ore blocks)', silk.every(d => count(d, 'iron_ore') === 1 && d.length === 1), silk.map(d => count(d, 'iron_ore')).join(''));
 
   await cmd('/clear @s', 300);
   await give('iron_pickaxe[enchantments={fortune:3}]'); await hold('iron_pickaxe');
+  await fill();
   const ench = await mineMany(15, 'iron_ore', true);
   const ec = ench.map(d => count(d, 'raw_iron'));
   check('With the Fortune III enchantment: never more than vanilla\'s 4 plus one', ec.every(c => c >= 1 && c <= 5), ec.join(' '));
@@ -353,7 +373,9 @@ async function fortune() {
   for (const s of ['Mining', 'Fishing', 'Trading', 'Scavenging', 'Lockpicking']) await setLevel(s, 1);
   await cmd('/clear @s', 300);
   await give('iron_pickaxe'); await hold('iron_pickaxe');
+  await fill();
   const low = await mineMany(20, 'iron_ore');
+  await cmd('/clear @s', 300);
   const extra = low.map(d => count(d, 'raw_iron')).reduce((x, y) => x + y, 0) - 20;
   check('Fortune 2.5 (all at level 1): a bonus is rare (at most 2 in 20 ores)', extra >= 0 && extra <= 2, `${extra} extra`);
 }
@@ -380,6 +402,7 @@ async function stash(w) { const f = freeIn(w); if (f >= 0) await clickW(f); }
 async function smelt() {
   await arena();
   await setLevel('Smithing', 1);
+  await cmd('/cerb gather credit iron 0', 400);
   await stand(0, 0);
   await setblock(2, 0, 0, 'blast_furnace[facing=west]');
   await give('raw_iron', 3); await give('coal', 8); await give('iron_ore', 1);
@@ -408,6 +431,34 @@ async function smelt() {
   check('Two kinds of input, one take of 2 ingots: 4 XP, not 8', (await smithing()) - before === 4, `+${(await smithing()) - before}`);
   bot.closeWindow(w);
 
+  // A right-click split takes half; the second half pays too.
+  await give('raw_iron', 4);
+  w = await openAt(2, 0, 0);
+  await put(w, 'raw_iron', 0);
+  bot.closeWindow(w);
+  await sleep(21000);
+  w = await openAt(2, 0, 0);
+  before = await smithing();
+  await clickW(2, 1, 0, 500); await stash(w); // right-click: half (2)
+  const half = (await smithing()) - before;
+  await clickW(2, 0, 0, 500); await stash(w); // the rest (2)
+  check('A right-click split: both halves pay (2 + 2 ingots, 4 + 4 XP)', half === 4 && (await smithing()) - before === 8, `+${half}, +${(await smithing()) - before}`);
+  // A number key onto an empty hotbar slot takes the whole stack: paid from the click, once.
+  await give('raw_iron', 2);
+  await put(w, 'raw_iron', 0);
+  bot.closeWindow(w);
+  await sleep(11000);
+  await cmd('/clear @s', 300);
+  w = await openAt(2, 0, 0);
+  before = await smithing();
+  await clickW(2, 4, 2, 700); // number key 5: hotbar slot 5 is empty
+  check('A number key onto an empty hotbar slot: 2 ingots, 4 XP, once', (await smithing()) - before === 4, `+${(await smithing()) - before}`);
+  bot.closeWindow(w);
+  await look(2, 0, 0);
+  const a2 = await cmd('/cerb gather info', 900);
+  const units = Number(((chat.slice(a2).find(m => /smelted metal for forging/.test(m)) || '').match(/iron (\d+)/) || [])[1]);
+  check('Every iron ingot taken covers one unit of forging (3 + 2 + 4 + 2 = 11)', units === 11, `iron ${units}`);
+
   // A hopper under the furnace takes the output: nobody is paid.
   await setblock(2, -1, 0, 'hopper');
   await give('raw_iron', 2);
@@ -429,6 +480,7 @@ async function forge() {
   await setLevel('Smithing', 1);
   await stand(0, 0);
   await setblock(2, 0, 0, 'crafting_table');
+  await cmd('/cerb gather credit iron 0', 400);
   const sword = async (n, how) => { // the sword pattern (slots 2, 5, 8), n sets
     await give('iron_ingot', 2 * n, 300); await give('stick', n, 300);
     const w = await openAt(2, 0, 0);
@@ -445,7 +497,21 @@ async function forge() {
     return gained;
   };
 
+  // Iron the player never smelted (a farm's): a plain sword, no XP, no quality.
   let g = await sword(1, async w => { await clickW(0, 0, 0, 400); await stash(w); });
+  const farmed = invItems('iron_sword');
+  check('A sword from iron you didn\'t smelt: plain, no XP', g === 0 && farmed.length === 1 && !qualityOf(farmed[0]), `+${g}, ${loreOf(farmed[0])}`);
+  await cmd('/clear @s', 300);
+  // Smelted iron for 3 swords (6 units), then a batch of 5: 3 paid and given a quality, 2 plain.
+  await cmd('/cerb gather credit iron 6', 400);
+  g = await sword(5, async () => { await clickW(0, 0, 1, 900); });
+  const mixed = invItems('iron_sword');
+  check('Smelted iron for 3 of a batch of 5: 30 XP, 3 with a quality, 2 plain', g === 30 && mixed.length === 5
+      && mixed.filter(qualityOf).length === 3, `+${g}, ${mixed.map(i => qualityOf(i) || 'plain').join(',')}`);
+  await cmd('/clear @s', 300);
+  await cmd('/cerb gather credit iron 1000', 400); // plenty for the checks below
+
+  g = await sword(1, async w => { await clickW(0, 0, 0, 400); await stash(w); });
   const one = invItems('iron_sword');
   check('One iron sword: 10 Smithing XP, and it carries a quality', g === 10 && one.length === 1 && !!qualityOf(one[0]), `+${g}, ${loreOf(one[0])}`);
   await cmd('/clear @s', 300);
@@ -558,6 +624,21 @@ async function upgrade() {
   bot.closeWindow(w);
   await sleep(500);
   check('An armor trim: no Smithing XP', (await smithing()) === before && (await serverCount('iron_chestplate')) === 1, `+${(await smithing()) - before}`);
+  await cmd('/clear @s', 300);
+
+  // A shift-click on the result: vanilla's statistic counts nothing for it; the upgrade still pays once.
+  await give('diamond_pickaxe'); await give('netherite_upgrade_smithing_template'); await give('netherite_ingot');
+  w = await openAt(2, 0, 0);
+  await put(w, 'netherite_upgrade_smithing_template', 0);
+  await put(w, 'diamond_pickaxe', 1);
+  await put(w, 'netherite_ingot', 2);
+  await sleep(500);
+  before = await smithing();
+  await clickW(3, 0, 1, 900);
+  bot.closeWindow(w);
+  await sleep(500);
+  check('A shift-click upgrade: 50 Smithing XP, once', (await smithing()) - before === 50 && (await serverCount('netherite_pickaxe')) === 1,
+      `+${(await smithing()) - before}`);
   await cmd('/clear @s', 300);
 }
 

@@ -46,11 +46,12 @@ class AttributesConfigDeliveryTest {
         server.setDefaults(shipped()); // as AttributesConfig.reload does with the jar's copy
         List<String> problems = new ArrayList<>();
         AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
-        assertEquals(List.of(), problems);
+        assertEquals(2, problems.size(), problems.toString());
+        assertTrue(problems.stream().allMatch(p -> p.contains("Mining") && p.contains("Mining: []")), "the log says where Mining came from: " + problems);
         assertEquals(2.0, r.skillWeights().get("Blade Mastery").get(0).perLevel(), "the owner's own number stays");
         assertFalse(r.skillWeights().containsKey("Fishing"), "\"Fishing: []\" turns it off");
         assertEquals(0.5, r.skillWeights().get("Mining").get(0).perLevel(), "Mining arrives from the shipped file");
-        assertEquals(AttributeRules.DEFAULT_SKILL_WEIGHTS.get("Survival"), r.skillWeights().get("Survival"), "every unmentioned skill too");
+        assertFalse(r.skillWeights().containsKey("Survival"), "a skill the owner's older file left out stays out (it said: not listed = nothing)");
         assertEquals(0.01, r.secondary().skillWeights().get("Blade Mastery").get(0).perLevel());
         assertEquals(0.002, r.secondary().skillWeights().get("Mining").get(0).perLevel(), "speed weights arrive the same way");
         assertTrue(r.secondary().get(Stat.GATHER_SPEED).enabled(), "a stat the file lacks uses the built-in setting");

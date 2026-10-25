@@ -11,8 +11,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
@@ -102,8 +104,17 @@ public final class EquipmentSource implements AttributeSource, Listener {
 
     /** Read what {@code p} has on and rebuild their attributes if a quality changed. Player's thread. */
     public void capture(Player p) {
+        capture(p, p.getInventory().getItemInMainHand());
+    }
+
+    /**
+     * The same, with {@code mainHand} as the item in hand: a hotbar scroll or a hand swap is read when
+     * it happens, so a hit or a break in that same tick already uses the new item's quality.
+     */
+    public void capture(Player p, ItemStack mainHand) {
+        if (!p.isConnected()) return; // leaving: a last equipment tick must not bring the entry back
         PlayerInventory inv = p.getInventory();
-        Piece hand = piece(inv.getItemInMainHand(), false);
+        Piece hand = piece(mainHand, false);
         List<Piece> armor = new ArrayList<>(4);
         for (ItemStack it : inv.getArmorContents()) {
             Piece a = piece(it, true);
@@ -136,6 +147,16 @@ public final class EquipmentSource implements AttributeSource, Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent e) {
         capture(e.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onHeld(PlayerItemHeldEvent e) {
+        capture(e.getPlayer(), e.getPlayer().getInventory().getItem(e.getNewSlot()));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSwapHands(PlayerSwapHandItemsEvent e) {
+        capture(e.getPlayer(), e.getMainHandItem());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

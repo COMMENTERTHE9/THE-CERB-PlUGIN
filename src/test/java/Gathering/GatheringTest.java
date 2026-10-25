@@ -285,6 +285,45 @@ class GatheringTest {
     }
 
     @Test
+    void metalUnitsAndTheSmeltedRule() throws Exception {
+        assertEquals("iron", GatheringCatalog.metalOf("IRON_SWORD"));
+        assertEquals("gold", GatheringCatalog.metalOf("GOLDEN_CHESTPLATE"));
+        assertEquals("diamond", GatheringCatalog.metalOf("DIAMOND_PICKAXE"));
+        assertEquals("copper", GatheringCatalog.metalOf("COPPER_SPEAR"));
+        assertNull(GatheringCatalog.metalOf("IRON_BLOCK"));
+        assertNull(GatheringCatalog.metalOf("STICK"));
+        assertEquals(8, GatheringCatalog.unitsOf("IRON_CHESTPLATE"));
+        assertEquals(1, GatheringCatalog.unitsOf("IRON_SPEAR"), "a spear is one unit and two sticks");
+        assertEquals(0, GatheringCatalog.unitsOf("IRON_INGOT"));
+        assertEquals("iron", GatheringCatalog.smeltedMetal("IRON_INGOT"));
+        assertEquals("gold", GatheringCatalog.smeltedMetal("GOLD_INGOT"));
+        assertNull(GatheringCatalog.smeltedMetal("IRON_NUGGET"), "melting gear down covers nothing");
+        assertNull(GatheringCatalog.smeltedMetal("NETHERITE_SCRAP"));
+        GatheringCatalog c = shipped();
+        assertEquals(Set.of("iron", "gold", "copper"), c.needsSmelted());
+        assertTrue(c.needsSmelted(Material.GOLDEN_HELMET));
+        assertFalse(c.needsSmelted(Material.DIAMOND_SWORD), "no farm makes diamonds");
+        assertEquals(5, c.forgeXp(Material.IRON_SPEAR), "spears forge too");
+        assertTrue(of("forging: { needs-smelted: [] }").needsSmelted().isEmpty(), "an empty list pays for any metal");
+        assertEquals(Set.of("iron", "gold", "copper"), of("forging: { per-unit: { iron: 5 } }").needsSmelted(), "an older file keeps the protection");
+    }
+
+    @Test
+    void aResourceMustNameAToolKindThatExists() throws Exception {
+        GatheringCatalog c = of("""
+                tools:
+                  drill: { material: DIAMOND_PICKAXE, kinds: [drill] }
+                resources:
+                  typo:   { skill: Mining, blocks: [STONE], tool: pickaxes, xp: 1 }
+                  vanilla: { skill: Mining, blocks: [DIRT], tool: shovel, xp: 1 }
+                  custom: { skill: Mining, blocks: [AMETHYST_BLOCK], tool: drill, xp: 1 }
+                  any:    { skill: Mining, blocks: [SAND], xp: 1 }
+                """);
+        assertEquals(Set.of("vanilla", "custom", "any"), c.resources().keySet(), c.problems().toString());
+        assertTrue(c.problems().get(0).contains("unknown tool kind pickaxes"), c.problems().toString());
+    }
+
+    @Test
     void gearKinds() {
         assertEquals(GatheringCatalog.Gear.WEAPON, GatheringCatalog.gear("IRON_SWORD"));
         assertEquals(GatheringCatalog.Gear.WEAPON_AND_TOOL, GatheringCatalog.gear("DIAMOND_AXE"));

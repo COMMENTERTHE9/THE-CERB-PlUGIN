@@ -152,6 +152,7 @@ public class CerbTabCompleter implements TabCompleter {
                 case "tool" -> filter(List.copyOf(svc.catalog().tools().keySet()), args[2]);
                 case "item" -> filter(List.copyOf(svc.catalog().items().keySet()), args[2]);
                 case "quality" -> filter(List.of("common", "fine", "superior", "masterwork", "none"), args[2]);
+                case "credit" -> filter(List.copyOf(svc.catalog().needsSmelted()), args[2]);
                 default -> List.of();
             };
         }

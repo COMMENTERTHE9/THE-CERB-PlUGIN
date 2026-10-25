@@ -24,7 +24,7 @@ import java.util.Locale;
  */
 public final class GatherCommand {
 
-    static final List<String> SUBS = List.of("info", "tool", "item", "quality", "extract", "stats");
+    static final List<String> SUBS = List.of("info", "tool", "item", "quality", "extract", "stats", "credit");
 
     private final CerberusPlugin plugin;
 
@@ -43,7 +43,8 @@ public final class GatherCommand {
             case "quality" -> quality(p, args);
             case "extract" -> extract(p, svc);
             case "stats" -> stats(p, svc);
-            default -> p.sendMessage(ChatColor.YELLOW + "Use: /cerb gather <info|tool <id>|item <id> [n]|quality <q>|extract|stats>");
+            case "credit" -> credit(p, svc, args);
+            default -> p.sendMessage(ChatColor.YELLOW + "Use: /cerb gather <info|tool <id>|item <id> [n]|quality <q>|extract|stats|credit <metal> <n>>");
         }
     }
 
@@ -83,6 +84,11 @@ public final class GatherCommand {
         p.sendMessage(ChatColor.GRAY + "  attributes now: " + ChatColor.WHITE + String.format(Locale.ROOT,
                 "Power %.2f (%s), Fortitude %.2f, Fortune %.2f", snap.power(wc), wc.singular.toLowerCase(Locale.ROOT),
                 snap.get(Attributes.Attribute.FORTITUDE), snap.get(Attributes.Attribute.FORTUNE)));
+        StringBuilder smelted = new StringBuilder();
+        for (String metal : svc.catalog().needsSmelted()) {
+            smelted.append(smelted.isEmpty() ? "" : ", ").append(metal).append(' ').append(ForgeListener.credit(p, metal));
+        }
+        if (!smelted.isEmpty()) p.sendMessage(ChatColor.GRAY + "  smelted metal for forging: " + ChatColor.WHITE + smelted);
         p.sendMessage(ChatColor.GRAY + "  in hand: " + ChatColor.WHITE + hand.getType().name().toLowerCase(Locale.ROOT)
                 + (q != null ? ChatColor.GRAY + ", quality " + q.color + q.displayName : "")
                 + (GearItems.toolId(hand) != null ? ChatColor.GRAY + ", custom tool " + GearItems.toolId(hand) : "")
@@ -151,6 +157,19 @@ public final class GatherCommand {
         if (xp != null) p.sendMessage(ChatColor.GOLD + "XP display: " + ChatColor.WHITE + xp.updates() + " HUD updates");
         var attrs = plugin.getAttributeService();
         if (attrs != null) p.sendMessage(ChatColor.GOLD + "Attribute snapshots built: " + ChatColor.WHITE + attrs.rebuildCount());
+    }
+
+    /** Test helper: set your smelted-metal units for forging (what smelting would have given). */
+    private void credit(Player p, GatheringService svc, String[] args) {
+        String metal = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "";
+        if (!svc.catalog().needsSmelted().contains(metal) || args.length < 4) {
+            p.sendMessage(ChatColor.RED + "Use: /cerb gather credit <" + String.join("|", svc.catalog().needsSmelted()) + "> <units>");
+            return;
+        }
+        int n;
+        try { n = Math.max(0, Integer.parseInt(args[3])); } catch (NumberFormatException e) { p.sendMessage(ChatColor.RED + "Units must be a number."); return; }
+        ForgeListener.addCredit(p, metal, (long) n - ForgeListener.credit(p, metal));
+        p.sendMessage(ChatColor.GREEN + "Smelted " + metal + " for forging: " + ForgeListener.credit(p, metal) + " units");
     }
 
     private static void give(Player p, ItemStack it) {

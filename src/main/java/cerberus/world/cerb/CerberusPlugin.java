@@ -634,6 +634,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(new Gathering.GatheringListener(gatheringService, (p, msg) -> playerHUDManager.flash(p, msg, 1500)), this);
         forgeListener = new Gathering.ForgeListener(this, gatheringService, skillManager);
         forgeListener.setDebug(this::isCombatDebugEnabled);
+        forgeListener.setNotice((p, msg) -> playerHUDManager.flash(p, msg, 2500));
         pm.registerEvents(forgeListener, this);
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
