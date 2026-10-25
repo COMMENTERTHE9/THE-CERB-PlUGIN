@@ -153,7 +153,7 @@ public final class AbilityCaster {
         casts.incrementAndGet();
         sound(p, a);
         StringBuilder detail = new StringBuilder();
-        run(p, prof, a, 0, null, false, aimed, blinkTo, detail);
+        run(p, prof, a, 0, null, 0, aimed, blinkTo, detail);
         return CastResult.cast(a, detail.toString());
     }
 
@@ -202,7 +202,8 @@ public final class AbilityCaster {
         counterStrike(p, attacker, w.coefficient());
         CastFeedback fb = feedback;
         if (fb != null) fb.event(p, "§6✦ " + a.displayName() + "! §7· §fcountered");
-        service.awardXp(p, a.classId(), ClassService.CAST_XP);
+        // Paid for the attacker's level (a weak one pays the kill-XP share); any mob that fights back is a fight.
+        service.awardCastXp(p, a.classId(), Bukkit.isOwnedByCurrentRegion(attacker) ? service.levelOf(attacker) : 0);
         return true;
     }
 
@@ -214,17 +215,19 @@ public final class AbilityCaster {
     /**
      * Perform the verbs from index {@code from}. A dash pauses the list until it lands, then the rest
      * runs (and the dash's stun lands on the first enemy in front). When the list is done, the cast
-     * earns class XP if it reached a hostile mob, or if it was a self cast (buff, blink, Feint...)
-     * made during a fight: casting into the air out of combat, or at farm animals, earns nothing
-     * (CLASSES.md §2.2). A Riposte earns its XP when it actually counters.
+     * earns class XP if it reached a hostile mob ({@code foe}: the strongest one's level), or if it
+     * was a self cast (buff, blink, Feint...) made during a fight with an enemy (paid for that
+     * enemy): casting into the air, at farm animals, or in a fight with no enemy in it earns nothing
+     * (CLASSES.md §2.2), and trivial mobs pay the kill-XP anti-grind share
+     * ({@link ClassService#awardCastXp}). A Riposte earns its XP when it actually counters.
      *
      * <p>{@code aimed} is the target the leading strike was checked against (it is the one hit),
      * {@code blinkTo} the leading Blink's checked landing spot; {@code detail} collects what the
      * first part did ("3 hit", "x2.2 · 3 Momentum") for the cast message (null after a dash).
      */
-    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, boolean reached,
+    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, int foe,
                      LivingEntity aimed, Location blinkTo, StringBuilder detail) {
-        if (landed != null && landed.stunSeconds() > 0) reached |= stunFirst(p, landed) instanceof org.bukkit.entity.Enemy;
+        if (landed != null && landed.stunSeconds() > 0) foe = Math.max(foe, strongest(stunFirst(p, landed)));
         List<EffectSpec> fx = a.effects();
         boolean self = false;
         int hit = 0;
@@ -235,7 +238,7 @@ public final class AbilityCaster {
                 case EffectSpec.Dash d -> {
                     dash(p, d);
                     int next = i + 1;
-                    boolean soFar = reached;
+                    int soFar = foe;
                     p.getScheduler().runDelayed(plugin, t -> {
                         if (p.isValid() && !p.isDead()) run(p, prof, a, next, d, soFar, null, null, null);
                     }, null, 7L);
@@ -244,10 +247,10 @@ public final class AbilityCaster {
                 case EffectSpec.Damage d -> {
                     List<LivingEntity> hits = damage(p, prof, d, leading ? aimed : null, detail);
                     hit = hits.size();
-                    reached |= anyHostile(hits);
+                    foe = Math.max(foe, strongest(hits));
                 }
                 case EffectSpec.Blink b -> self |= blink(p, b, leading ? blinkTo : null);
-                case EffectSpec.Status s -> reached |= anyHostile(status(p, s));
+                case EffectSpec.Status s -> foe = Math.max(foe, strongest(status(p, s)));
                 case EffectSpec.Buff b -> {
                     service.addBuff(p, a, b);
                     self = true;
@@ -269,7 +272,8 @@ public final class AbilityCaster {
                 case EffectSpec.Spell s -> self |= spells.get().castForAbility(s.name(), p);
             }
         }
-        if (reached || (self && service.inCombat(p.getUniqueId()))) service.awardXp(p, a.classId(), ClassService.CAST_XP);
+        if (foe == 0 && self) foe = service.fightFoeLevel(p.getUniqueId());
+        if (foe > 0) service.awardCastXp(p, a.classId(), foe);
     }
 
     /** Add a part to the cast message ("3 hit"); a null builder (after a dash) takes nothing. */
@@ -294,10 +298,15 @@ public final class AbilityCaster {
 
     // ── verbs ───────────────────────────────────────────────────
 
-    /** True when one of {@code hit} is a hostile mob (cast XP is not paid for hitting farm animals). */
-    private static boolean anyHostile(List<LivingEntity> hit) {
-        for (LivingEntity e : hit) if (e instanceof org.bukkit.entity.Enemy) return true;
-        return false;
+    /** The level of the strongest hostile mob in {@code hit}, or 0 when none is hostile (no cast XP for farm animals). */
+    private int strongest(List<LivingEntity> hit) {
+        int best = 0;
+        for (LivingEntity e : hit) best = Math.max(best, strongest(e));
+        return best;
+    }
+
+    private int strongest(LivingEntity e) {
+        return e instanceof org.bukkit.entity.Enemy ? service.levelOf(e) : 0;
     }
 
     /**

@@ -186,6 +186,7 @@ public final class ClassService implements AttributeSource {
         buffs.remove(id);
         contributions.remove(id);
         lastCombat.remove(id);
+        lastFoe.remove(id);
         counters.remove(id);
         empowered.remove(id);
     }
@@ -322,6 +323,57 @@ public final class ClassService implements AttributeSource {
             }
         }
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.2f);
+    }
+
+    // ── weak-mob rule for class XP (Phase 3) ───────────────────
+
+    /** kill-xp's anti-grind settings (attributes.yml), shared with kill XP; set by the plugin. */
+    private volatile java.util.function.Supplier<Attributes.KillXp.Params> killXp = () -> Attributes.KillXp.Params.DEFAULTS;
+    /** A mob's level (the registry's tag); set by the plugin. */
+    private volatile java.util.function.ToIntFunction<org.bukkit.entity.LivingEntity> levelOf = e -> 1;
+    /** The last enemy a player hit or was hit by: its level and when (a self cast in that fight is paid for it). */
+    private record Foe(int level, long at) {}
+    private final Map<UUID, Foe> lastFoe = new ConcurrentHashMap<>();
+
+    public void setKillXp(java.util.function.Supplier<Attributes.KillXp.Params> killXp) { this.killXp = killXp; }
+
+    public void setLevelOf(java.util.function.ToIntFunction<org.bukkit.entity.LivingEntity> levelOf) { this.levelOf = levelOf; }
+
+    /** A mob's level as the registry tagged it (1 when untagged). */
+    public int levelOf(org.bukkit.entity.LivingEntity mob) { return Math.max(1, levelOf.applyAsInt(mob)); }
+
+    /** A hit dealt or taken (any thread); {@code foeLevel} > 0 when the other side is an enemy of that level. */
+    public void markCombat(UUID player, int foeLevel) {
+        markCombat(player);
+        if (foeLevel > 0) lastFoe.put(player, new Foe(foeLevel, System.currentTimeMillis()));
+    }
+
+    /**
+     * The level of the enemy in this player's current fight (the last one hit or hit by, within
+     * {@link #COMBAT_MS}), or 0 when the fight has none: hitting a cow or an armor stand, or a PvP
+     * tag, is "combat" for the loadout lock but pays no class XP.
+     */
+    public int fightFoeLevel(UUID player) {
+        Foe f = lastFoe.get(player);
+        return f != null && System.currentTimeMillis() - f.at() < COMBAT_MS ? f.level() : 0;
+    }
+
+    /** The level a class's own skills are at: the highest of its entry skills (what a weak mob is measured against). */
+    int classSkillLevel(UUID player, ClassDef c) {
+        int best = 0;
+        for (String s : c.entry().keySet()) best = Math.max(best, skills.getSkillLevel(player, s));
+        for (String s : c.entryAny().keySet()) best = Math.max(best, skills.getSkillLevel(player, s));
+        return best;
+    }
+
+    /**
+     * Class XP for a cast that reached an enemy of level {@code foeLevel} (the strongest it reached;
+     * 0 = unknown): kill XP's weak-mob share, {@link ClassRanks#castXp}. Player's thread.
+     */
+    public void awardCastXp(Player p, String classId, int foeLevel) {
+        ClassDef c = catalog.classDef(classId);
+        int own = c == null ? 0 : classSkillLevel(p.getUniqueId(), c);
+        awardXp(p, classId, ClassRanks.castXp(CAST_XP, foeLevel, own, killXp.get()));
     }
 
     /** A mob died to this player (any thread): part of its XP goes to the classes used in the fight. */

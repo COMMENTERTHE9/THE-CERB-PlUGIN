@@ -10,9 +10,9 @@
 //   idle   - the bots just stand there (per-player background cost: HUD, regen, saves)
 //   menuidle - each bot opens the Player Menu once and leaves it open (an open menu must cost nothing extra)
 //   abilities - like combat, but each bot is a Warrior/Duelist (Step 5 classes; the controller sets its skills and
-//            ranks) and presses its cast keys on a rhythm while fighting: Sneak + attack (Cleave), Sneak +
-//            right-click (Execute), Sneak + F (Flurry), Sneak + Q (Feint), with plain hits in between. Many presses
-//            land on a cooldown, as in play
+//            ranks) and presses its quick keys on a rhythm while fighting (docs/design/ABILITY_CONTROLS.md):
+//            right-click (Execute), F (Cleave), Q (Flurry), Sneak + right-click (Feint), with plain hits in between.
+//            Many presses land on a cooldown, as in play. (Before 2026-10-25: the same four abilities on Sneak keys.)
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -84,12 +84,11 @@ async function abilities(b, deadline, controller) {
     const step = k++ % 6;
     if (step === 1 || step === 3 || step === 5) { b.attack(z); bump(n, 'hits'); }
     else {
-      b.setControlState('sneak', true); await sleep(60);
-      if (step === 0) b.attack(z);                                            // Cleave (A2)
-      else if (step === 2) { b.activateItem(); await sleep(50); b.deactivateItem(); } // Execute (A1)
-      else key(f++ % 2 === 0 ? 6 : 4);                                         // Flurry (F), then Feint (Q)
+      if (step === 0) key(6);                                                  // F: Cleave (A2)
+      else if (step === 2) { b.activateItem(); await sleep(50); b.deactivateItem(); } // right-click: Execute (A1)
+      else if (f++ % 2 === 0) { key(4); b.swingArm('right'); }                // Q: Flurry (A3)
+      else { b.setControlState('sneak', true); await sleep(60); b.activateItem(); await sleep(50); b.deactivateItem(); await sleep(60); b.setControlState('sneak', false); } // Sneak + right-click: Feint (A4)
       bump(n, 'presses');
-      await sleep(60); b.setControlState('sneak', false);
     }
     await sleep(650);
   }

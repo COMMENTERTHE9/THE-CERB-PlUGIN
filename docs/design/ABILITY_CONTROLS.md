@@ -1,0 +1,140 @@
+# Ability Controls
+
+*Phase 1 of `docs/ROADMAP.md` (owner direction, 2026-10-25). It covers how a player triggers abilities, what they see when they do, and why. Built and tested on the sandbox. **Usability is not verified until the owner has played it** (`docs/PLAYTEST_CHECKLIST.md`).*
+
+## 1. Why the Step 5 controls had to change
+
+The Step 5 prototype cast with **Sneak + right-click / left-click / F / Q / scroll**. The owner's playtest found three problems. Each was reproduced on the sandbox before anything was changed (survival mode, the checklist's own loadouts; `tools/playtest/abilities.js` keeps the checks):
+
+| What the owner saw | What was really happening |
+|---|---|
+| "Not sure what Sneak + left-click does; no clear feedback" | The HUD rewrote the action bar every second, and at once after any health or Essence change. A cast message stayed on screen for **1–950 ms, often 1 ms**. Execute with no Momentum dealt exactly a normal hit (9.2 vs 9.2). In the air it went off anyway and spent its 8 s cooldown on nothing. |
+| "Sneak + F puts things in my off hand" | Two causes. (1) F's slot was empty in the loadout in use, so the key stayed vanilla. (2) Sneak and F pressed together: a vanilla client sends the F packet **before** the Sneak state in the same tick, so the server saw "F without Sneak" and swapped. |
+| "Arcane Bolt / the focus doesn't work reliably" | Two causes. (1) The test **Fireball Wand** (`/givetestitem fireball`, a blaze rod carrying its own spell) caught every right-click first and cast the old Fireball, so abilities never saw it. (2) A plain blaze rod worked only with a precise aim. A miss by about one block, or a target past 8 blocks, still "went off": it spent Essence and its cooldown, drew nothing, and its message vanished. Essence was not the issue (1,095 at Intelligence 5). |
+
+So the input problems were real, but most of the "doesn't work" feeling came from **invisible feedback** and **silent misses that still cost**.
+
+## 2. What a vanilla 1.21.11 client tells the server
+
+Abilities can only use what the server can see and tell apart. Verified on the sandbox where marked (✔), otherwise from the client's code:
+
+| Input | Sent? | Notes |
+|---|---|---|
+| Right-click on air | Only with an item in a hand | An empty main hand **and** an empty off hand send nothing. The packet carries the look direction, which the server uses ✔. Holding the button repeats every 4 ticks. |
+| Right-click on a block or mob | Always | A door or chest uses the click (vanilla). A hostile mob passes it on, and the client then also sends an air click in the same tick ✔. A villager trade or a mount consumes it (no air click). |
+| Left-click on a mob | Always (attack) | |
+| Left-click on air or a block | An arm swing | The server reports it as a left-click. A Q drop and an off-hand item use **also** swing the arm ✔, so those swings must not count. |
+| **F** (swap hands) | Always, even with empty hands ✔ | Cancellable with no visible flicker: the client never predicts the swap. |
+| **Q** (drop) | Only when the held slot has an item | The client predicts the drop; when the server cancels it, the item comes back. |
+| Number keys / scroll | Only when the slot changes | The key of the slot already held sends nothing; it can't be a key. |
+| Sneak, Sprint, Jump, movement | State changes (PlayerInputEvent) | Sneak's new state arrives **after** a click or F pressed in the same tick ✔. |
+| Inventory (E), chat, other keys | Nothing usable in combat | R, C, V, X, Z and Tab never reach the server. |
+
+Two server facts matter for the tests too:
+- **Mob effects:** the client is never told a mob's effects. A slow or stun on a mob can only be read on the server (`/cerb mobs`).
+- **Motion packet:** since 1.21.9 the server sends motion in a new format. A dash or knockback moves a real client. The test bot's library misreads the format, and the harness corrects it.
+
+## 3. What other Minecraft RPGs do
+
+*Filled in from the research pass (Wynncraft, Hypixel SkyBlock, MMOCore, Fabled); see §3 when it lands.*
+
+## 4. The options, compared
+
+Requirements: several abilities fluently in a fight, no fighting Minecraft's own controls, no wrong ability by accident, nothing hard to remember, a vanilla client, mixed-class loadouts with **5 actives** (CLASSES.md §10 item 4), every weapon family (melee, bow, focus, empty hand), and clear feedback.
+
+| Scheme | Inputs per cast | While running | Conflicts with vanilla | Wrong-ability risk | To learn | Notes |
+|---|---|---|---|---|---|---|
+| **A. Sneak + 5 keys** (Step 5) | 1 + held Sneak | Slowed (Sneak walks) | F swap / Q drop leaked when a slot was empty | Same-tick Sneak race; L both attack and cast | 5 keys + Sneak | Retired |
+| **B. Quick keys** (built, default) | 1 (2 slots need Sneak) | Full speed for 1–3 | F and Q are taken over **only** with a weapon or focus in hand | Same-tick Sneak race fixed by deciding one tick later | R, F, Q, Sneak R, Sneak F | SkyBlock's "RIGHT CLICK / SNEAK RIGHT CLICK" plus MMO keys |
+| **C. Click combos** (built, option) | 3 clicks (F = 1) | Full speed (mouse only) | None (Q stays a drop) | A misclick changes the combo; a stray right-click starts one | 4 patterns, shown live | Wynncraft's idea; ours maps R R R = active 1 so holding right-click casts it |
+| D. F, then a number key (MMOCore's skill bar) | 2 | OK | Number keys taken while in mode | The held slot's number key is dead | Easy (keys on screen) | Dead key and hotbar flicker; not built |
+| E. Ability items in the hotbar (Fabled's skill bar) | 1 | OK | Takes 3–4 hotbar slots for good | Scrolling into a slot casts it | Very easy (icons, cooldown sweeps) | Costs inventory space; item-safety burden; not built |
+| F. Select with scroll, cast with a click | 2+ | Slowed | Scroll taken | Low | Easy | Too slow for 5 actives; not built |
+| G. Gestures (double-tap Sneak, double jump) | 1 | Good | None | Low | Hidden | Good for one dodge or dash; not for 5 general slots |
+
+## 5. Recommendation
+
+**Quick keys as the default, click combos as a per-player option.** Both are built, so the owner can compare them in the same playtest (`/class controls quick|combo`, or click the Controls tile). This is a player-controls decision, so it stays open until the owner has tried both.
+
+- Quick keys are the closest to "natural during combat". The three most-used slots are one press each with no Sneak, so you keep sprinting. They read like any MMO's ability keys and like SkyBlock's right-click abilities. Players arrange their loadout so that the frequent abilities sit on right-click, F and Q.
+- Click combos suit players who want everything on the mouse and their fingers on WASD. They cost three clicks per cast.
+- Both keep the fixes that matter more than the scheme: the visible message slot, refusals that cost nothing, aim assist, no swap or drop of a weapon, the one-tick Sneak decision, and the wand fix.
+
+Reversible: the scheme lives in one class (`Classes/Controls`), separate from the abilities. The server default is one line (`classes.yml controls.default-scheme`). Each player's choice is saved in their class document; a choice this build doesn't know falls back to the default and never touches progress.
+
+## 6. The rules as built
+
+**When keys are ability keys.** Only with a weapon, a focus (blaze rod, breeze rod, stick) or an empty hand, **and** with at least one active equipped in the loadout in use. With a tool, a block, food or any other item, every key is vanilla. A player without equipped actives keeps vanilla F, Q and right-click.
+
+**Quick keys.**
+
+| Active | Key | With a bow or crossbow |
+|---|---|---|
+| 1 | Right-click | Left-click (the bow shoots with right-click) |
+| 2 | F | F |
+| 3 | Q | Q |
+| 4 | Sneak + right-click | Sneak + left-click |
+| 5 | Sneak + F | Sneak + F |
+
+- F and Q never swap or drop a weapon or focus while armed. An empty F or Q says so ("Nothing on F"). A weapon can still be dropped from the inventory screen. With an empty main hand and an item in the off hand, F stays a swap: that is how you take the item into your hand.
+- Right-click stays vanilla on a usable block (door, chest, lever...), on a mob that isn't an enemy (trade, mount, feed), when nothing is on right-click (actives 1 and 4 empty), and with a spear or trident whose right-click abilities don't fit it (its charge or throw). Sneaking turns the first two into casts, as vanilla does with an item in hand.
+- Sneak + key: the decision waits one tick, so Sneak pressed together with the key counts.
+
+**Click combos.** The combos are R R R, R L R, R L L and R R L for actives 1–4. F is active 5 and Q stays a drop. Each click may follow the previous one by at most 0.7 s (`combo-gap-ms`). The HUD shows the clicks so far and what the next click casts. Clicks inside a combo don't attack. A lone right-click expires and casts nothing. A bow's combos start with left-click, since R and L swap. A left-click on a player is always a plain hit and ends the combo.
+
+**What a cast checks, before spending anything.** In order:
+1. The ability is unlocked.
+2. No loadout switch happened in the last second.
+3. It fits the item in hand.
+4. It is off cooldown.
+5. A single-target ability has a target. The aim assist forgives 0.75 blocks around the target's hitbox, within range and in sight; walls block it.
+6. A Blink has room.
+7. There is enough Essence.
+
+A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities (Cleave, Frost Nova) may still swing at nothing, as a weapon does.
+
+## 7. Feedback
+
+| Outcome | HUD message (middle of the bar, about 1.5 s) | Sound (refusals: only you hear it) |
+|---|---|---|
+| Cast | `✦ Cleave · 3 hit`, `✦ Execute · x2.2 · 3 Momentum`, `✦ War Cry · +15% damage · 8 s` | The ability's own sound, heard by everyone nearby |
+| Cooldown | `Cleave 2.4 s` | A soft tick |
+| Too little Essence | `Arcane Bolt needs 15 Essence` | A fizzle and a puff of smoke |
+| Wrong item | `Arcane Bolt needs a focus` | A low note |
+| No target, no room | `Arcane Bolt: no target within 8 blocks`, `Blink: no room` | A whiff |
+| Not unlocked | `Execute unlocks at Warrior rank 6` | A low note |
+| Nothing on the key | `Nothing on Sneak + F · set it in Classes & Abilities` | A low note |
+| Switching | `Switching loadouts...` | A low note |
+
+- The message replaces the HUD's middle figure. Health and Essence stay visible around it, and the HUD's own refreshes keep it until it ends. Nothing goes to chat.
+- Refusal sounds play at most every 0.35 s, because a held right-click repeats five times a second.
+- **What a cast looks like:** Arcane Bolt draws a coloured beam to its target. Execute's impact grows with the Momentum spent. Each Flurry strike sweeps higher. War Cry rings the caster, Riposte shows a guard and Feint a shimmer, and Blink leaves at both ends. Everything is one-off: nothing keeps running.
+
+**The ability bar.** A boss bar shows your loadout's keys, names and state, for example `[R] Cleave  [F] War Cry 12  [Q] Charge  [⇧R] Execute  ⚔ ●●●○○`:
+- **Colours:** green when ready, grey with seconds left, blue when Essence is short, dark when the ability doesn't fit what you hold.
+- **Momentum:** shown when the loadout uses it.
+- **When it shows:** in **auto** (the default) during a fight and for 5 s after a press or after taking a weapon in hand. **on** shows it always, **off** never (`/class bar`, or right-click the Controls tile).
+- **Cost:** while shown it refreshes twice a second; hidden, it runs no task.
+
+## 8. Where it lives
+
+- **Controls and casting:**
+  - `Classes/Controls`: the schemes, combo patterns, key labels and settings (pure, unit-tested).
+  - `Classes/AbilityListener`: raw key events → presses, by scheme.
+  - `Classes/AbilityCaster`: the checks, the cast, aim assist and visuals; returns a `CastResult`.
+- **Feedback and bar:**
+  - `Classes/CastFeedback`: messages and sounds.
+  - `Manager/PlayerHUDManager.flash`: the HUD message slot.
+  - `Classes/AbilityBar`: the boss bar.
+- **Player choices:**
+  - `ClassProfile` saves `controls:` and `bar:`. They are optional keys, so older documents load unchanged.
+  - Commands: `/class controls`, `/class bar`.
+  - The Controls tile in Player Menu → Classes & Abilities: click switches the scheme, right-click changes the bar.
+- **Admin and test tools:** `/cerb mana <player> [n|full|empty]`, `/cerb class <player> cooldowns`, `/cerb mobs [radius]`.
+
+## 9. Known limits
+
+- **Empty hand:** a vanilla client sends nothing for right-click in the air or for Q. Unarmed builds cast with F and Sneak + F, and with right-click on a mob or block. Gauntlets as a held item would fix this when weapons are built.
+- **Q briefly hides the held item** (the client predicts the drop until the server puts it back). F and right-click don't flicker.
+- **Spear or trident:** right-click casts only when the right-click abilities fit a polearm. Otherwise the vanilla charge or throw stays.
+- **Presentation:** a resource pack could later add ability icons and cooldown sweeps. Nothing depends on one.

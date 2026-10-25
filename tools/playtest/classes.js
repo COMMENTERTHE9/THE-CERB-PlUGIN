@@ -3,9 +3,9 @@
 // stay learned).  Usage: node classes.js <phase> [name]
 //   learn    - skills open classes (Warrior: Blade or Weapon Mastery 5; Mage: Intelligence 5; Duelist: Blade
 //              Mastery 10 + Critical Strike 5); /class shows ranks, or what is still missing
-//   keys     - hold Sneak: right-click, left-click, F, Q and scroll cast actives 1-5 with a sword; the key is consumed
-//              (nothing dropped, swapped or moved); without Sneak, with a block, with a bow (right-click) or with
-//              an empty slot every key does what vanilla does
+//   (keys    - superseded by the controls of 2026-10-25: `node abilities.js controls` and `combos` test every key)
+// Casting below presses each active slot with the quick keys (docs/design/ABILITY_CONTROLS.md): right-click, F, Q,
+// Sneak + right-click, Sneak + F for actives 1-5. Each check still names its slot by the Step 5 key it used to have.
 //   trees    - progress in two trees at once (Warrior from Cleave, Mage from Arcane Bolt); switching loadouts keeps it
 //   mixed    - one loadout from three classes works together: Riposte + Charge + War Cry + Blink + Flurry, passives
 //              from all three and a keystone; the shared movement lockout applies across classes; one attribute
@@ -75,18 +75,19 @@ async function keyQ(swing = true) {
 async function scroll() { bot.setQuickBarSlot((bot.quickBarSlot + 1) % 8); await sleep(500); }
 async function press(key) { await ({ right: rightClick, left: leftClick, f: keyF, q: keyQ, scroll }[key])(); }
 
-/**
- * Press `key` while holding Sneak; returns the action-bar texts it caused. With a mob under the
- * crosshair a real client's left-click is an attack (Paper sends no air click then): pass it as `at`.
- */
-async function cast(key, at = null) {
+/** Press active slot `slot` (0-4) with the quick keys; returns the action-bar texts it caused. */
+async function castSlot(slot) {
   const t = Date.now();
-  await sneak(true);
-  if (key === 'left' && at) { await bot.lookAt(at.position.offset(0, at.height * 0.6, 0), true); bot.attack(at); await sleep(500); }
-  else await press(key);
-  await sneak(false);
+  if (slot === 0) await rightClick();
+  else if (slot === 1) await keyF();
+  else if (slot === 2) await keyQ();
+  else if (slot === 3) { await sneak(true); await rightClick(); await sneak(false); }
+  else { await sneak(true); await keyF(); await sneak(false); }
+  await sleep(150); // quick keys decide one tick later (Sneak's state)
   return bars.filter(b => b.t >= t).map(b => b.m);
 }
+/** The Step 5 key names map to the same active slots: right = 1, left = 2, f = 3, q = 4, scroll = 5. */
+async function cast(key) { return castSlot({ right: 0, left: 1, f: 2, q: 3, scroll: 4 }[key]); }
 /** The nearest zombie in front (for left-click casts at a mob). */
 const front = () => zombiesIn().sort((a, b) => a.position.distanceTo(bot.entity.position) - b.position.distanceTo(bot.entity.position))[0];
 const went = (texts, name) => texts.some(m => m.includes('✦ ' + name));
@@ -194,110 +195,7 @@ async function learn() {
 }
 
 async function keys() {
-  await arena();
-  await cmd('/gamemode creative', 400);
-  await rank('warrior', 12); await rank('mage', 8); await rank('duelist', 12);
-  await cmd('/class loadout 1', 500);
-  for (const s of ['a1 war_cry', 'a2 cleave', 'a3 riposte', 'a4 feint', 'a5 blink']) await equipSlot('1 ' + s);
-  await cmd('/clear @s dirt', 300);
-  await cmd('/clear @s bow', 300);
-  const sword = await hold('netherite_sword');
-  check('Holding a sword', sword >= 0, 'hotbar ' + sword);
-  const before = await castCount();
-
-  // Without Sneak nothing casts.
-  let t = await (async () => { const t0 = Date.now(); await rightClick(); await leftClick(); return bars.filter(b => b.t >= t0).map(b => b.m); })();
-  check('Without Sneak, right- and left-click cast nothing', !t.some(m => m.includes('✦')), t.join(' / '));
-
-  t = await cast('right');
-  check('Sneak + right-click casts active 1 (War Cry)', went(t, 'War Cry'), t.join(' / '));
-  t = await cast('left');
-  check('Sneak + left-click casts active 2 (Cleave)', went(t, 'Cleave'), t.join(' / '));
-  t = await cast('f');
-  check('Sneak + F casts active 3 (Riposte), and nothing is swapped', went(t, 'Riposte') && inHand() === 'netherite_sword' && offHand() === 'air',
-    `${t.join(' / ')}; hand ${inHand()}, off hand ${offHand()}`);
-  const ground0 = itemsOnGround();
-  t = await cast('q');
-  await sleep(500);
-  check('Sneak + Q casts active 4 (Feint), and the sword is not dropped', went(t, 'Feint') && inHand() === 'netherite_sword' && itemsOnGround() === ground0,
-    `${t.join(' / ')}; hand ${inHand()}, items on the ground ${ground0} -> ${itemsOnGround()}`);
-  check('...and the arm swing the client sends after Q does not also cast active 2 (Cleave)', !t.some(m => /Cleave/.test(m)), t.filter(m => !/♥/.test(m)).join(' / '));
-  const slot0 = bot.quickBarSlot;
-  const pos0 = bot.entity.position.clone();
-  t = await cast('scroll');
-  await sleep(700);
-  check('Sneak + scroll casts active 5 (Blink), and the held slot stays', went(t, 'Blink') && bot.quickBarSlot === slot0 && inHand() === 'netherite_sword',
-    `${t.join(' / ')}; slot ${slot0} -> ${bot.quickBarSlot}`);
-  check('Blink moved the player about 6 blocks forward', near(bot.entity.position.z - pos0.z, 6, 0.8), `dz ${(bot.entity.position.z - pos0.z).toFixed(2)}`);
-  const after = await castCount();
-  check('Exactly five casts went off', after.casts - before.casts === 5, `${before.casts} -> ${after.casts}`);
-  await stand(0, 0);
-
-  // A block in hand: every key is vanilla (Q drops one).
-  await hold('dirt', 5);
-  const ground1 = itemsOnGround();
-  t = await cast('q');
-  await sleep(800);
-  // (mineflayer doesn't predict the drop in its own inventory, as a real client does: count the item on the ground)
-  check('With a block in hand Sneak + Q drops it as usual (no cast)', !t.some(m => m.includes('✦')) && itemsOnGround() === ground1 + 1,
-    `${t.join(' / ')}; items on the ground ${ground1} -> ${itemsOnGround()}`);
-  await cmd('/kill @e[type=item,distance=..10]', 400);
-  // A bow keeps its right-click (draw); an empty slot keeps its key.
-  await hold('bow');
-  t = await cast('right');
-  check('With a bow, Sneak + right-click still draws (no cast)', !t.some(m => m.includes('✦')), t.join(' / '));
-  bot.setQuickBarSlot(sword); await sleep(400);
-  await equipSlot('1 a3 none');
-  await sneak(true); await keyF(); await sneak(false);
-  await sleep(400);
-  check('An empty active slot leaves its key vanilla: Sneak + F swaps hands', offHand() === 'netherite_sword', `off hand ${offHand()}`);
-  await keyF(); await sleep(400); // swap back
-  await equipSlot('1 a3 riposte');
-
-  // Using an off-hand item while sneaking (active 1 empty): the off-hand swing that follows casts nothing.
-  await equipSlot('1 a1 none');
-  await cmd('/clear @s snowball', 300);
-  await cmd('/give @s snowball 4', 600);
-  const snow = bot.inventory.slots.findIndex((it, s) => it && it.name === 'snowball' && s >= 9 && s <= 44);
-  if (snow >= 0) { await bot.moveSlotItem(snow, 45); await sleep(500); }
-  bot.setQuickBarSlot(sword); await sleep(300);
-  await sleep(4200); // Cleave's cooldown from above is over: a stray cast would go off
-  t = await (async () => {
-    const t0 = Date.now();
-    await sneak(true);
-    bot.activateItem(true); await sleep(60); bot.deactivateItem(); bot.swingArm('left');
-    await sleep(600);
-    await sneak(false);
-    return bars.filter(b => b.t >= t0).map(b => b.m);
-  })();
-  check('Throwing an off-hand snowball while sneaking casts nothing (its arm swing is not a left-click)', offHand() === 'snowball' && !t.some(m => /Cleave/.test(m)),
-    `off hand ${offHand()}; ${t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing'}`);
-  await cmd('/clear @s snowball', 300);
-  await equipSlot('1 a1 war_cry');
-
-  // A spell item keeps its own right-click: the Fireball Wand casts Fireball, never active 1 (War Cry).
-  await cmd('/clear @s blaze_rod', 300);
-  await cmd('/givetestitem fireball', 800);
-  const wand = bot.inventory.slots.findIndex((it, s) => it && it.name === 'blaze_rod' && s >= 36 && s <= 43);
-  if (wand >= 0) { bot.setQuickBarSlot(wand - 36); await sleep(400); }
-  const wat = chat.length;
-  t = await cast('right');
-  await sleep(500);
-  check('The Fireball Wand keeps its right-click: Fireball, not War Cry', wand >= 0 && !t.some(m => /War Cry/.test(m)) && !!saw(/You cast Fireball/, wat),
-    `${t.filter(m => !/♥/.test(m)).join(' / ')}; ${chat.slice(wat).join(' / ')}`);
-  // Q with an empty hand: the client still sends "drop", but the server fires no event for dropping nothing.
-  await equipSlot('1 a4 blink');
-  const empty = [2, 3, 4, 5, 6, 7].find(i => !bot.inventory.slots[36 + i]);
-  bot.setQuickBarSlot(empty); await sleep(400);
-  t = await (async () => { const t0 = Date.now(); await sneak(true); await keyQ(false); await sneak(false); return bars.filter(b => b.t >= t0).map(b => b.m); })();
-  check('An empty hand can\'t cast with Q (the server gets no event for dropping nothing)', !t.some(m => /Blink/.test(m)),
-    t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing');
-  // (a vanilla client sends nothing for a right-click in the air with an empty hand either; scroll, F and left-click work)
-  await equipSlot('1 a5 war_cry');
-  t = await cast('scroll');
-  check('...while an empty hand still casts with scroll (War Cry answers, here with its cooldown)', t.some(m => /War Cry/.test(m)),
-    t.filter(m => !/♥/.test(m)).join(' / ') || 'nothing');
-  bot.setQuickBarSlot(sword); await sleep(300);
+  console.log('The keys phase tested the Step 5 Sneak keys, replaced on 2026-10-25: run `node abilities.js controls` and `combos`.');
 }
 
 async function trees() {
@@ -381,7 +279,7 @@ async function mixed() {
   t = await cast('left');
   await sleep(300);
   const t2 = await cast('q');
-  check('Charge (Warrior) then Blink (Mage): Blink waits for the shared movement lockout', went(t, 'Charge') && t2.some(m => /Blink: \d\.\d s/.test(m)),
+  check('Charge (Warrior) then Blink (Mage): Blink waits for the shared movement lockout', went(t, 'Charge') && t2.some(m => /Blink \d\.\d s/.test(m)),
     `${t.join(' / ')} || ${t2.join(' / ')}`);
   await stand(0, 0);
   await sleep(2200);
@@ -528,7 +426,7 @@ async function exploits() {
   check('Three left-clicks within 100 ms cast Cleave once', c1.casts - c0.casts === 1, `${c0.casts} -> ${c1.casts}`);
   await sleep(300);
   let t = await cast('left');
-  check('Pressed again: Cleave is on cooldown and says for how long', t.some(m => /Cleave: \d\.\d s/.test(m)), t.join(' / '));
+  check('Pressed again: Cleave is on cooldown and says for how long', t.some(m => /Cleave \d\.\d s/.test(m)), t.join(' / '));
 
   // A cooldown belongs to the player: switching loadouts doesn't reset it.
   t = await cast('f');
@@ -542,7 +440,7 @@ async function exploits() {
   check('The cast lock: no casting in the first second after a switch', t.some(m => /Switching loadouts/.test(m)), t.join(' / '));
   await sleep(1100);
   t = await cast('right');
-  check('Blink is still on cooldown in Loadout 2', t.some(m => /Blink: \d\.\d s/.test(m)), t.join(' / '));
+  check('Blink is still on cooldown in Loadout 2', t.some(m => /Blink \d\.\d s/.test(m)), t.join(' / '));
   at = await cmd('/class loadout 1', 700);
   check('The switch gap: a second switch within 10 s is refused', !!saw(/Switching again in \d+ s/, at), chat.slice(at).join(' / '));
 
@@ -569,7 +467,7 @@ async function exploits() {
   r = await ratio();
   check('War Cry: +15% damage on the next hits', went(t, 'War Cry') && near(r.bonus, 1.15, 0.01), `${t.filter(m => !/♥/.test(m)).join(' / ')}; x${r.bonus}`);
   t = await cast('left', z);
-  check('War Cry can\'t be recast to stack (30 s cooldown)', t.some(m => /War Cry: \d+\.\d s/.test(m)), t.filter(m => !/♥/.test(m)).join(' / '));
+  check('War Cry can\'t be recast to stack (30 s cooldown)', t.some(m => /War Cry \d+\.\d s/.test(m)), t.filter(m => !/♥/.test(m)).join(' / '));
   r = await ratio();
   check('...and the bonus is still +15%, not more', near(r.bonus, 1.15, 0.01), 'x' + r.bonus);
   await sleep(8500); // out of combat

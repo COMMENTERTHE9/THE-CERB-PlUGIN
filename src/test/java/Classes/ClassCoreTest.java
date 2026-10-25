@@ -134,6 +134,24 @@ class ClassCoreTest {
     }
 
     @Test
+    void castsAtWeakMobsPayKillXpsShare() {
+        Attributes.KillXp.Params k = Attributes.KillXp.Params.DEFAULTS; // gap 20, factor 0.25
+        double base = ClassService.CAST_XP;
+        assertEquals(base, ClassRanks.castXp(base, 30, 40, k), "a foe 10 levels below: full XP");
+        assertEquals(base * 0.25, ClassRanks.castXp(base, 20, 40, k), "exactly the gap below: grey, a quarter");
+        assertEquals(base * 0.25, ClassRanks.castXp(base, 15, 40, k));
+        assertEquals(base, ClassRanks.castXp(base, 1, 10, k), "a new player is never short-changed");
+        assertEquals(base, ClassRanks.castXp(base, 0, 99, k), "an unknown foe pays the base");
+        Attributes.KillXp.Params off = new Attributes.KillXp.Params(false, 40, 0.15, 20, 0.25, 1e6);
+        assertEquals(base, ClassRanks.castXp(base, 15, 40, off), "off with kill XP v2");
+        Attributes.KillXp.Params wild = new Attributes.KillXp.Params(true, 40, 0.15, 20, 7.0, 1e6);
+        assertEquals(base, ClassRanks.castXp(base, 15, 40, wild), "a factor above 1 never multiplies");
+        assertEquals(base, ClassRanks.castXp(base, 15, 40, null));
+        assertEquals(0.0, ClassRanks.castXp(Double.NaN, 30, 40, k));
+        assertEquals(1, ClassRanks.award(1, 0, ClassRanks.castXp(base, 15, 40, k)).xp(), "1.5 XP banks as 1");
+    }
+
+    @Test
     void loadoutRulesAreFewAndCrossClassIsFine() {
         ClassCatalog cat = shipped();
         Map<String, AbilityDef> ab = cat.abilities();

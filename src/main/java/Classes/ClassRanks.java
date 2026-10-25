@@ -24,6 +24,20 @@ public final class ClassRanks {
         return sum;
     }
 
+    /**
+     * Class XP for one cast that reached an enemy of {@code foeLevel} (0 = unknown, paid in full).
+     * Kill XP's weak-mob rule applies: a foe kill-xp.anti-grind-gap or more levels below the class's
+     * own skills ({@code classSkillLevel}) pays anti-grind-factor of {@code base}, so casting at
+     * trivial mobs can't out-earn real fights. Off with kill XP v2 itself ({@code enabled: false}).
+     */
+    public static double castXp(double base, int foeLevel, int classSkillLevel, Attributes.KillXp.Params k) {
+        double xp = Double.isFinite(base) ? Math.max(0.0, base) : 0.0;
+        if (k != null && k.enabled() && foeLevel > 0 && Attributes.KillXp.isGreyKill(foeLevel, classSkillLevel, k)) {
+            xp *= Math.max(0.0, Math.min(1.0, k.antiGrindFactor()));
+        }
+        return xp;
+    }
+
     /** Rank and XP into it after an award; nothing past the max rank. */
     public record Result(int rank, long xp, int ranksGained) {}
 

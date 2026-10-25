@@ -523,6 +523,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         abilityCaster.setCanAct(p -> Classes.AbilityListener.noContainerOpen(p)
                 && !playerVirtualHealthManager.isRespawning(p) && !playerVirtualHealthManager.hasPendingCustomDeath(p));
         abilityCaster.setSpellCooldown((id, ms) -> secondaryEffects.cooldownMs(id, ms));
+        classService.setKillXp(() -> getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS);
+        classService.setLevelOf(mobRegistry::getLevel);
         Classes.CastFeedback castFeedback = new Classes.CastFeedback(playerHUDManager);
         abilityCaster.setFeedback(castFeedback);
         Classes.AbilityBar abilityBar = new Classes.AbilityBar(this, classService, playerManaManager);

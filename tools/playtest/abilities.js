@@ -904,17 +904,60 @@ async function mixed() {
   keyF(); await sleep(600);                                       // War Cry, nobody around, not in a fight
   let xp1 = await classXp('Warrior');
   check('A self-buff cast out of combat earns no class XP', xp1 === xp0, `Warrior XP ${xp0} -> ${xp1}`);
-  await cmd(`/summon cow ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b}`, 500);
-  await fresh(); await stand(0, 0); await face(SOUTH, 0);
+  const cowNear = () => Object.values(bot.entities).find(e => e.name === 'cow' && e.position.distanceTo(bot.entity.position) < 6);
+  const cow = async () => { await cmd(`/summon cow ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b}`, 500); await stand(0, 0); await face(SOUTH, 0); };
+  await cow(); await fresh();
   xp0 = await classXp('Warrior');
-  await rclick(); await sleep(600);                               // Cleave hits the cow
+  t = Date.now(); await rclick(); await sleep(600);               // Cleave hits the cow
   xp1 = await classXp('Warrior');
-  check('Cleave on a farm animal earns no class XP', xp1 === xp0, `Warrior XP ${xp0} -> ${xp1}`);
-  await clearMobs(); await zombie(0, 2); await fresh(); await face(SOUTH, 0);
+  check('Cleave on a farm animal earns no class XP', !!flashed(t, /✦ Cleave · 1 hit/) && xp1 === xp0, `${(flashed(t, /Cleave/) || {}).m}; Warrior XP ${xp0} -> ${xp1}`);
+  // A "fight" with no enemy in it (a cow hit just before) pays a self cast nothing; one with a zombie pays it.
+  await fresh(); await lookAt(cowNear());
+  xp0 = await classXp('Warrior');
+  let at3 = chat.length; lclick(); await sleep(300); keyF(); await sleep(600); // hit the cow, then War Cry
+  xp1 = await classXp('Warrior');
+  check('A self cast right after hitting a farm animal earns no class XP', traces(at3).length > 0 && xp1 === xp0, `hit traced: ${traces(at3).length > 0}; Warrior XP ${xp0} -> ${xp1}`);
+  await clearMobs(); await zombie(0, 2); await fresh(); await lookAt(zombies()[0]);
+  xp0 = await classXp('Warrior');
+  at3 = chat.length; lclick(); await sleep(300); keyF(); await sleep(600); // hit the zombie, then War Cry
+  xp1 = await classXp('Warrior');
+  check('Positive control: the same self cast in a fight with a zombie earns class XP (6)', traces(at3).length > 0 && xp1 - xp0 === 6, `Warrior XP ${xp0} -> ${xp1}`);
+  await fresh(); await face(SOUTH, 0);
   xp0 = await classXp('Warrior');
   await rclick(); await sleep(600);
   xp1 = await classXp('Warrior');
   check('Positive control: Cleave on a zombie earns class XP', xp1 > xp0, `Warrior XP ${xp0} -> ${xp1}`);
+  // Killing farm animals pays no class XP either (only enemies do), so they can't be bred into ranks.
+  // A cow has a health pool like any mob (50 at level 1): Cleave until it falls.
+  await clearMobs(); await sleep(600); await cow();
+  xp0 = await classXp('Warrior');
+  let presses = 0;
+  while (cowNear() && presses < 8) { await fresh(); await face(SOUTH, 0); await rclick(); presses++; await sleep(700); }
+  await sleep(1200);
+  xp1 = await classXp('Warrior');
+  check('Killing a cow with an ability pays no class XP (no cast XP, no kill share)', !cowNear() && xp1 === xp0, `cow ${cowNear() ? 'alive' : 'killed'} after ${presses} Cleaves; Warrior XP ${xp0} -> ${xp1}`);
+  // Positive control: a zombie killed the same way pays every Cleave and a kill share on top.
+  await clearMobs(); await zombie(0, 2);
+  xp0 = await classXp('Warrior');
+  presses = 0;
+  while (zombies(6).length && presses < 8) { await fresh(); await face(SOUTH, 0); await rclick(); presses++; await sleep(700); }
+  await sleep(1200);
+  xp1 = await classXp('Warrior');
+  check('Positive control: killing a zombie with Cleave pays its casts and a kill share', !zombies(6).length && xp1 - xp0 > 6 * presses,
+    `zombie ${zombies(6).length ? 'alive' : 'killed'} after ${presses} Cleaves; Warrior XP ${xp0} -> ${xp1}`);
+  // Weak mobs pay a quarter of the cast XP: the kill-XP rule, measured against the class's own skills.
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 40`, 600);
+  await clearMobs(); await zombie(0, 2, 15); await fresh(); await face(SOUTH, 0); // level 15 <= 40 - 20: grey, and survives the Cleave
+  xp0 = await classXp('Warrior');
+  await rclick(); await sleep(700);
+  xp1 = await classXp('Warrior');
+  await clearMobs(); await zombie(0, 2, 30); await fresh(); await face(SOUTH, 0);
+  const xp2 = await classXp('Warrior');
+  await rclick(); await sleep(700);
+  const xp3 = await classXp('Warrior');
+  check('At Blade Mastery 40 a Cleave on a level-15 zombie pays a quarter (1 XP), on a level-30 one the full 6', xp1 - xp0 === 1 && xp3 - xp2 === 6,
+    `level 15: +${xp1 - xp0}, level 30: +${xp3 - xp2}`);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 10`, 600);
   // Items: all the key presses above neither dropped nor duplicated anything.
   const swords = bot.inventory.items().filter(i => i.name === 'iron_sword').reduce((n, i) => n + i.count, 0);
   check('After every press in this phase exactly one sword, nothing dropped (the cow\'s beef aside)', swords === 1 && itemsAround(12) === 0,
@@ -947,26 +990,32 @@ async function mixed() {
 }
 
 async function persist() {
+  // Run as: PERSIST=set, restart the server at once, PERSIST=check. War Cry's 30 s cooldown is the
+  // longest there is, so the cast comes last in "set" and the cooldown is read first in "check".
   const fs = require('fs'), file = require('path').join(__dirname, '.abilities-persist.json');
   if (process.env.PERSIST === 'set') {
     await setup('combo');
     await cmd('/class bar off', 400);
     await loadout(2, { a1: 'riposte', a2: 'blink', a5: 'war_cry' });
     await emptyHand();
+    const at = await cmd('/class', 800);
     await fresh();
-    keyF(); await sleep(800); // combos: F = active 5 = War Cry (30 s)
+    keyF(); await sleep(600); // combos: F = active 5 = War Cry (30 s)
     const cd = await cooldownLine();
-    fs.writeFileSync(file, JSON.stringify({ cd }));
-    check('Set: combo scheme, bar off, loadout 2, War Cry cooling down', /War Cry/.test(cd), cd);
+    fs.writeFileSync(file, JSON.stringify({ cd, at: Date.now() }));
+    check('Set: combo scheme, bar off, loadout 2 in use, War Cry cooling down', /War Cry/.test(cd) && !!saw(/▶ Loadout 2/, at), cd);
   } else {
     const before = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const cd = await cooldownLine();
+    const gone = ((Date.now() - before.at) / 1000).toFixed(1);
+    check('After the restart War Cry is still cooling down (saved as an end time)', /War Cry/.test(cd), `${before.cd} -> ${cd}, ${gone} s later`);
     let at = await cmd('/class controls', 800);
-    check('After the restart the scheme is still Click combos', !!saw(/Controls: Click combos/, at), chat.slice(at).join(' | ').slice(0, 100));
+    check('...the scheme is still Click combos', !!saw(/Controls: Click combos/, at), chat.slice(at).join(' | ').slice(0, 100));
     at = await cmd('/class bar', 600);
     check('...the ability bar is still off', !!saw(/Ability bar: off/, at));
-    const cd = await cooldownLine();
-    check('...and War Cry is still cooling down', /War Cry/.test(cd), `${before.cd} -> ${cd}`);
-    await cmd('/class controls quick', 400); await cmd('/class bar auto', 400);
+    at = await cmd('/class', 800);
+    check('...loadout 2 is still the one in use', !!saw(/▶ Loadout 2/, at));
+    await cmd('/class controls quick', 400); await cmd('/class bar auto', 400); await use(1);
   }
 }
 

@@ -462,12 +462,20 @@ public final class AbilityListener implements Listener {
         bar.refresh(p);
     }
 
-    /** A hit between a player and anything living (dealt or taken, arrows included) puts them in combat. */
+    /**
+     * A hit between a player and anything living (dealt or taken, arrows included) puts them in
+     * combat, and remembers the enemy's level (a self cast in this fight earns class XP for it).
+     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCombat(EntityDamageByEntityEvent e) {
         Entity source = e.getDamager() instanceof Projectile pr && pr.getShooter() instanceof Entity shooter ? shooter : e.getDamager();
-        if (source == e.getEntity() || !(e.getEntity() instanceof LivingEntity)) return;
-        if (source instanceof Player p) { service.markCombat(p.getUniqueId()); bar.touchIfShown(p); }
-        if (e.getEntity() instanceof Player p && source instanceof LivingEntity) { service.markCombat(p.getUniqueId()); bar.touchIfShown(p); }
+        if (source == e.getEntity() || !(e.getEntity() instanceof LivingEntity target)) return;
+        if (source instanceof Player p) { service.markCombat(p.getUniqueId(), foeLevel(target)); bar.touchIfShown(p); }
+        if (target instanceof Player p && source instanceof LivingEntity src) { service.markCombat(p.getUniqueId(), foeLevel(src)); bar.touchIfShown(p); }
+    }
+
+    /** An enemy's level for class XP, 0 for anything else (or a mob this region doesn't own). */
+    private int foeLevel(LivingEntity e) {
+        return e instanceof Enemy && !(e instanceof Player) && org.bukkit.Bukkit.isOwnedByCurrentRegion(e) ? service.levelOf(e) : 0;
     }
 }
