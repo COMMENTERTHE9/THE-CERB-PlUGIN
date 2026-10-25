@@ -6,7 +6,7 @@ package Attributes;
  * gear affix, or Weapon Mastery's lifesteal). All values are fractions (0.10 = +10%), except
  * {@link #CRIT_MULTIPLIER}, which adds to the multiplier itself.
  *
- * <p>The last four are the speed and handling stats (docs/design/ATTRIBUTE_EXPANSION.md): raised
+ * <p>The last five are the speed and handling stats (docs/design/ATTRIBUTE_EXPANSION.md): raised
  * by a primary attribute plus the skill that owns the action, then capped with diminishing
  * returns ({@link AttributeRules.Secondary}).
  */
@@ -25,10 +25,11 @@ public enum Stat {
     ATTACK_SPEED("Attack speed"),
     DRAW_SPEED("Bow draw speed"),
     MOVE_SPEED("Movement speed"),
-    COOLDOWN_RECOVERY("Spell cooldown recovery");
+    COOLDOWN_RECOVERY("Spell cooldown recovery"),
+    GATHER_SPEED("Gathering speed");
 
     /** The speed and handling stats, in display order. */
-    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY);
+    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED);
 
     public boolean isSecondary() { return SECONDARY.contains(this); }
 

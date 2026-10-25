@@ -27,8 +27,8 @@ import java.util.UUID;
 
 /**
  * Puts the speed and handling stats into the game (docs/design/ATTRIBUTE_EXPANSION.md):
- * attack speed and movement speed as temporary attribute modifiers (never saved with the
- * player), bow draw speed when an arrow is released, and the spell cooldown through
+ * attack, movement and gathering (block breaking) speed as temporary attribute modifiers (never
+ * saved with the player), bow draw speed when an arrow is released, and the spell cooldown through
  * {@link #cooldownMs}. Everything runs on the player's own region thread, only when something
  * changes (snapshot rebuilt, main hand changed, PvP tag started or ended): no per-tick work.
  */
@@ -36,6 +36,7 @@ public final class SecondaryEffects implements Listener {
 
     public static final NamespacedKey ATTACK_SPEED_KEY = new NamespacedKey("cerberus", "attack_speed");
     public static final NamespacedKey MOVE_SPEED_KEY = new NamespacedKey("cerberus", "movement_speed");
+    public static final NamespacedKey GATHER_SPEED_KEY = new NamespacedKey("cerberus", "gather_speed");
     /** On arrows shot with extra draw speed: how much faster they flew (to undo it against players). */
     private final NamespacedKey drawScaleKey;
     /** The old Navigation skill's speed modifier, saved into player data by earlier versions. */
@@ -67,13 +68,14 @@ public final class SecondaryEffects implements Listener {
         return paused(player) ? 0.0 : attributes.get(player).secondary(stat);
     }
 
-    /** Set attack and movement speed for the player's snapshot and main hand. Player's thread only. */
+    /** Set attack, movement and gathering speed for the player's snapshot and main hand. Player's thread only. */
     public void apply(Player p) {
         AttributeSnapshot s = attributes.get(p.getUniqueId());
         boolean off = !attributes.isTracked(p.getUniqueId()) || paused(p.getUniqueId());
         WeaponClass held = WeaponClass.ofMaterial(p.getInventory().getItemInMainHand().getType().name());
         set(p, Attribute.ATTACK_SPEED, ATTACK_SPEED_KEY, off ? 0.0 : s.attackSpeed(held));
         set(p, Attribute.MOVEMENT_SPEED, MOVE_SPEED_KEY, off ? 0.0 : s.secondary(Stat.MOVE_SPEED));
+        set(p, Attribute.BLOCK_BREAK_SPEED, GATHER_SPEED_KEY, off ? 0.0 : s.secondary(Stat.GATHER_SPEED));
     }
 
     /** Replace our modifier only when the amount changed (each change sends the client an update). */

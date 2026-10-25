@@ -19,7 +19,8 @@ kill-xp:
 # ── Attributes: derived automatically from skills (no manual points yet) ──
 # Each skill level adds `per-level` points. `weapon` limits Power to one weapon type
 # (sword, axe, mace, trident, spear, bow, unarmed); leave it out for "all weapons".
-# Skills not listed here add nothing.
+# A skill this file doesn't mention gets the plugin's own entry (so a skill added by an update
+# works in an older copy of this file); write "Skill: []" to give a skill nothing.
 attributes:
   skills:
     Blade Mastery:        [ { attribute: power, per-level: 1.0, weapon: sword } ]
@@ -48,6 +49,7 @@ attributes:
     Lockpicking:          [ { attribute: fortune, per-level: 0.5 } ]
     Trading:              [ { attribute: fortune, per-level: 0.5 } ]
     Fishing:              [ { attribute: fortune, per-level: 0.5 } ]
+    Mining:               [ { attribute: fortune, per-level: 0.5 } ]   # Fortune: a chance of one extra ore (resources.yml)
 
   # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
   caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }
@@ -108,6 +110,7 @@ attributes:
       draw-speed:        { enabled: true, driver: agility, per-point: 0.001,  cap: 0.50 } # bows: full power at 0.67 s instead of 1.0 s
       movement-speed:    { enabled: true, driver: agility, per-point: 0.0005, cap: 0.20 } # +20% = Speed I
       cooldown-recovery: { enabled: true, driver: essence, per-point: 0.002,  cap: 0.50 } # spell cooldown / (1 + this)
+      gather-speed:      { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # breaking blocks; only gathering skills raise it
     skills:
       Blade Mastery:    [ { stat: attack-speed, per-level: 0.003, weapon: sword } ]
       Weapon Mastery:
@@ -118,3 +121,4 @@ attributes:
       Ranged Precision: [ { stat: draw-speed, per-level: 0.004 } ]
       Navigation:       [ { stat: movement-speed, per-level: 0.001 } ]
       Spell Weaving:    [ { stat: cooldown-recovery, per-level: 0.003 } ]
+      Mining:           [ { stat: gather-speed, per-level: 0.002 } ]

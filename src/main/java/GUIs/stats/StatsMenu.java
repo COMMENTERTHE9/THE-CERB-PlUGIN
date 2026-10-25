@@ -176,10 +176,12 @@ public final class StatsMenu extends PlayerMenu {
         long fireball = sec == null ? 1000 : sec.cooldownMs(p.getUniqueId(), 1000);
         l.raw(ChatColor.AQUA + "Spell cooldown recovery: " + ChatColor.WHITE + Fmt.signedPct(cd)
                 + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  Fireball every %.2f s", fireball / 1000.0));
+        l.raw(ChatColor.AQUA + "Gathering speed: " + ChatColor.WHITE + Fmt.signedPct(s.secondary(Attributes.Stat.GATHER_SPEED))
+                + ChatColor.GRAY + "  breaking blocks");
         l.gap().text("Raised by Agility (Essence for spells)")
                 .text("and by the skill behind each action:")
                 .text("Blade Mastery, Weapon Mastery, Ranged")
-                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving.");
+                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving, Mining.");
         l.gap();
         if (paused) l.raw(ChatColor.YELLOW + "⏸ Paused: you are in PvP combat");
         else {
@@ -189,7 +191,7 @@ public final class StatsMenu extends PlayerMenu {
             if (!rules.inPvp()) l.raw(ChatColor.DARK_GRAY + "Pauses during PvP combat.");
         }
         l.raw(ChatColor.DARK_GRAY + "Not built yet: crossbow reload, knockback")
-                .raw(ChatColor.DARK_GRAY + "resistance, gathering and casting speed.");
+                .raw(ChatColor.DARK_GRAY + "resistance and casting speed.");
         return Ui.item(Material.FEATHER, ChatColor.AQUA + "Speed & handling", l.build());
     }
 

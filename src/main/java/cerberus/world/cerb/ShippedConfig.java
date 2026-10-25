@@ -13,7 +13,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Config files the plugin writes on first install (abilities.yml, classes.yml) belong to the server
+ * Config files the plugin writes on first install (abilities.yml, classes.yml, attributes.yml,
+ * resources.yml) belong to the server
  * afterwards: an update never replaces them, so a change to the shipped numbers would never reach a
  * server installed earlier. A file nobody edited is still an exact copy of a version the plugin
  * shipped (line endings aside); such a copy is replaced by the current version, the old one kept
@@ -36,7 +37,16 @@ public final class ShippedConfig {
                     "b838aacb331535782ae0bb1e06f7732b71a688090ddfd58ee227b3ee71ed7de2"), // the movement rule, first cut
             "classes.yml", Set.of(
                     "c1531ecb45d585cdaed23789845b4b21314956a5f9da9a3736cd35145e22244d",  // Step 5
-                    "9f6ff81a335d75f7194ab463e1f6faf9d9a3e26b03db897bf9173ac34c4a5c84")); // Ability controls 2.0
+                    "9f6ff81a335d75f7194ab463e1f6faf9d9a3e26b03db897bf9173ac34c4a5c84"), // Ability controls 2.0
+            "attributes.yml", Set.of(
+                    "86570131ff02bbae03d48a40992b786e595dc77ceea83eebd4e68434cf3adc23",  // Kill XP v2
+                    "290bb31fdfa52a76472b81c867b20ef43a04d69f1bbc00426f2807ec6ad4ce37",  // Attributes engine core
+                    "6946f28a15609bfac0f0e36c49d08ca105748ad4545b213f762c5150bbc6850c",  // admin inspector
+                    "451216560bb8f39b03131cbc84377ea6485a24c601ff7e79b54bc4d5edde4edf",  // realm magnitude
+                    "ab9ecdf0e6d78a9824828546b58150a10f35299241db3f9724e7bed61fb843ab",  // speed and handling stats
+                    "cb17940f48676bdf2543988f01131f3f34e012ec648da447d817206643291fd2",  // owner decisions (75% cap)
+                    "ad4e8c0fd68ce07a064242a817a43fb490c6d22e63423e19ca057c1f191eb01f"), // PvP off for now, not permanently
+            "resources.yml", Set.of());
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

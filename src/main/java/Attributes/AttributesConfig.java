@@ -91,7 +91,7 @@ public final class AttributesConfig {
         if (sk == null) {
             weights.putAll(def.skillWeights());
         } else {
-            for (String skill : sk.getKeys(false)) {
+            for (String skill : keysWithShipped(sk)) {
                 List<AttributeRules.SkillWeight> list = new ArrayList<>();
                 for (Map<?, ?> m : sk.getMapList(skill)) {
                     Attribute a = Attribute.parse(String.valueOf(m.get("attribute")));
@@ -183,7 +183,7 @@ public final class AttributesConfig {
         if (sk == null) {
             weights.putAll(def.skillWeights());
         } else {
-            for (String skill : sk.getKeys(false)) {
+            for (String skill : keysWithShipped(sk)) {
                 List<AttributeRules.StatWeight> list = new ArrayList<>();
                 for (Map<?, ?> m : sk.getMapList(skill)) {
                     Stat stat = Stat.parse(String.valueOf(m.get("stat")));
@@ -211,6 +211,18 @@ public final class AttributesConfig {
             tag = def.pvpTagSeconds();
         }
         return new AttributeRules.Secondary(stats, weights, s.getBoolean("in-pvp", def.inPvp()), tag);
+    }
+
+    /**
+     * The skills {@code sk} lists, plus every skill the shipped file lists that this one doesn't
+     * mention at all: an attributes.yml from before a skill had an entry gets the shipped one (its
+     * list is read through the defaults). {@code Skill: []} in the server's file turns one off.
+     */
+    static java.util.Set<String> keysWithShipped(ConfigurationSection sk) {
+        java.util.Set<String> keys = new java.util.LinkedHashSet<>(sk.getKeys(false));
+        ConfigurationSection shipped = sk.getDefaultSection();
+        if (shipped != null) keys.addAll(shipped.getKeys(false));
+        return keys;
     }
 
     /**

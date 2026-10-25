@@ -125,6 +125,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         m.put("Lockpicking", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Trading", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Fishing", List.of(new SkillWeight(L, 0.5, null)));
+        m.put("Mining", List.of(new SkillWeight(L, 0.5, null)));
         DEFAULT_SKILL_WEIGHTS = java.util.Collections.unmodifiableMap(m);
     }
 
@@ -146,6 +147,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         stats.put(Stat.DRAW_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.001, 0.50));
         stats.put(Stat.MOVE_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0005, 0.20));
         stats.put(Stat.COOLDOWN_RECOVERY, new SecondaryStat(true, Attribute.ESSENCE, 0.002, 0.50));
+        stats.put(Stat.GATHER_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0, 0.25)); // the gathering skills only
         Map<String, List<StatWeight>> w = new LinkedHashMap<>();
         w.put("Blade Mastery", List.of(new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.SWORD)));
         w.put("Weapon Mastery", List.of(
@@ -154,6 +156,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         w.put("Ranged Precision", List.of(new StatWeight(Stat.DRAW_SPEED, 0.004, null)));
         w.put("Navigation", List.of(new StatWeight(Stat.MOVE_SPEED, 0.001, null)));
         w.put("Spell Weaving", List.of(new StatWeight(Stat.COOLDOWN_RECOVERY, 0.003, null)));
+        w.put("Mining", List.of(new StatWeight(Stat.GATHER_SPEED, 0.002, null)));
         DEFAULT_SECONDARY = new Secondary(stats, w, false, 15);
     }
 

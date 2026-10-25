@@ -12,7 +12,7 @@ public enum Attribute {
     POWER("Power", ChatColor.GOLD, "Weapon damage (per weapon type)"),
     FORTITUDE("Fortitude", ChatColor.GRAY, "Armor, defense bar, fire/cold/drowning resistance"),
     AGILITY("Agility", ChatColor.YELLOW, "Critical hit chance and critical damage"),
-    FORTUNE("Fortune", ChatColor.GREEN, "Luck and magic find (not used yet)");
+    FORTUNE("Fortune", ChatColor.GREEN, "A chance of extra ore when mining (later luck and loot)");
 
     public final String displayName;
     public final ChatColor color;

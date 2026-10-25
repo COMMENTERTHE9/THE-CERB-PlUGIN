@@ -20,11 +20,15 @@ class ShippedConfigTest {
      */
     private static final String CURRENT_ABILITIES = "677925246e61266f82d703fd4336c5a240c047f53516571e9a897624cc339830";
     private static final String CURRENT_CLASSES = "c3cdfeeb78fb2427fea2f5a297a9dd1c963c5a79d11cefd614525c2648c06860";
+    private static final String CURRENT_ATTRIBUTES = "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b";
+    private static final String CURRENT_RESOURCES = "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9";
 
     @Test
     void everyShippedChangeKeepsTheVersionItReplaces() throws Exception {
         check("abilities.yml", CURRENT_ABILITIES);
         check("classes.yml", CURRENT_CLASSES);
+        check("attributes.yml", CURRENT_ATTRIBUTES);
+        check("resources.yml", CURRENT_RESOURCES);
     }
 
     private static void check(String name, String expected) throws Exception {

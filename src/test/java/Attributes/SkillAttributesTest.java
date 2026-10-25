@@ -55,7 +55,7 @@ class SkillAttributesTest {
 
     @Test
     void unlistedAndZeroLevelSkillsAddNothing() {
-        assertTrue(SkillAttributes.contributions(Map.of("Mining", 99, "Blade Mastery", 0), R).isEmpty());
+        assertTrue(SkillAttributes.contributions(Map.of("Farming", 99, "Blade Mastery", 0), R).isEmpty());
     }
 
     @Test

@@ -47,7 +47,7 @@ public final class GuideMenu extends PlayerMenu {
                 Attribute.VITALITY.displayName + ": max health.",
                 Attribute.FORTITUDE.displayName + ": armor, defense bar and resistances.",
                 Attribute.ESSENCE.displayName + ": Essence pool, regeneration and spell damage.",
-                Attribute.FORTUNE.displayName + ": not used in the game yet."));
+                Attribute.FORTUNE.displayName + ": a chance of one extra ore when mining."));
         v.set(25, topic(Material.GOLDEN_APPLE, "Health and defense",
                 "Your real health and Essence are shown above your hotbar; the hearts stay full.",
                 "The defense bar absorbs part of each hit and refills a few seconds after combat.",

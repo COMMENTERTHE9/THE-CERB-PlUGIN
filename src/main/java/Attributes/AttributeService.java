@@ -66,6 +66,11 @@ public final class AttributeService {
         cache.remove(player);
     }
 
+    /** A source's own settings changed (e.g. resources.yml's quality numbers): rebuild everyone on next read. */
+    public void markAllDirty() {
+        cache.clear();
+    }
+
     public boolean isTracked(UUID player) { return tracked.contains(player); }
 
     /** Whether an attribute changes gameplay right now. */
@@ -77,6 +82,7 @@ public final class AttributeService {
     static final boolean VITALITY_WIRED = true;   // Manager.AttributeEffects, increment 5
     static final boolean FORTITUDE_WIRED = true;  // PlayerDefenseManager.updateDefense, increment 5
     static final boolean ESSENCE_WIRED = true;    // AttributeEffects.applyMana + PveOffense.spellDamage, increment 6
+    static final boolean FORTUNE_WIRED = true;    // Gathering: the extra-ore chance (docs/design/GATHERING.md)
 
     public Effect effect(Attribute a) {
         AttributeRules.Switches sw = rules.get().switches();
@@ -85,7 +91,7 @@ public final class AttributeService {
             case VITALITY -> effect(VITALITY_WIRED, sw.vitality());
             case FORTITUDE -> effect(FORTITUDE_WIRED, sw.fortitude());
             case ESSENCE -> effect(ESSENCE_WIRED, sw.essence());
-            case FORTUNE -> Effect.NOT_YET;
+            case FORTUNE -> effect(FORTUNE_WIRED, true);
         };
     }
 
