@@ -34,13 +34,39 @@ Before any significant new system or major feature, examine the code it touches 
 | 3 | Player Menu 2.1: animations and feedback | Done 2026-10-25: `docs/STATUS.md` (21 in-game checks; within the performance budget; an idle open menu costs nothing) |
 | 4 | Classes and abilities **design**: review the roster and the weapon archetypes; architecture and phased plan | Done 2026-10-25: `docs/design/CLASSES.md` (eight owner decisions in its §10, each with a recommendation) |
 | 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | Done 2026-10-25: `docs/STATUS.md` (the six proofs in game, 91 checks; independent review fixed; within the performance budget: non-casting players pay nothing, class logic ~0.03 ms per key press). Built on the §10 recommendations; PvE-only for now (PvP is turned on later, see PvP below) |
-| 6 | Scale up classes and abilities incrementally, keeping quality, identity, fair progression and performance | Next, after the owner's playtest and the `CLASSES.md` §10 decisions |
+| 6 | Scale up classes and abilities incrementally, keeping quality, identity, fair progression and performance | Becomes Phase 4 below: after the ability controls and the three classes are reliable (owner, 2026-10-25) |
 
 Rules for every step: routine engineering decisions are made by the lead developer; material design conflicts, scope changes and destructive operations go to the owner with a recommendation. Work stays on the development branch; nothing merges into `master` automatically. The owner's world, characters, inventories and databases are never touched by tests; risky changes are tried on the separate development server.
 
-**Earlier items, still on the list (placement to be confirmed by the owner):**
-- **Gathering, crafting, meaningful resource progression, making Fortune useful.** Named as the next gameplay milestone before this roadmap; it now follows the steps above unless the owner says otherwise.
+**Earlier items, still on the list:**
+- **Gathering, crafting, meaningful resource progression, making Fortune useful:** now Phase 5 below.
 - **Architectural goals to preserve, not to build yet:** procedural world generation, modular structure building, a custom resource pack, custom mobs and living-world systems. They should eventually support generated settlements, temples, dungeons, ecosystems, resources and dynamic world events. They are never built all at once, and the existing world is never modified without permission.
+
+## After the class playtest: quality before quantity (owner, 2026-10-25, approved)
+
+The owner played the Warrior / Mage / Duelist prototype. **Feedback:** Sneak + left-click was unclear, with no clear sign whether anything activated; Sneak + F did Minecraft's off-hand swap; Arcane Bolt and other Mage abilities did not work reliably with the focus. The automated checks had passed, so the tests must improve too.
+
+**Principle:** three classes with reliable, enjoyable, polished abilities beat nine with awkward controls. Build a strong ability-control foundation now, so every future class uses it. A feature is not good enough just because it technically works: it must be understandable, responsive, rewarding and fun.
+
+| Phase | What | State |
+|---|---|---|
+| 1 | **Ability controls.** Reproduce the playtest problems before fixing them. Research how Wynncraft and Hypixel SkyBlock activate abilities (their real controls; learn, don't copy). Design an original control scheme a vanilla 1.21.11 client supports (no client mods; a resource pack may only improve presentation). Clear feedback for success, cooldown, too little Essence, missing weapon or focus, invalid target or range, not unlocked or not equipped, and disabled here: action bar, sounds, light effects, no chat spam. The activation layer stays separate from the ability definitions; progress, ranks, loadouts and the PvP limits are kept. | In progress |
+| 2 | **Audit all 21 abilities individually** (Warrior 7, Mage 7, Duelist 7): real behaviour verified in the world (damage, movement and landing, mitigation, buffs and durations, attribute contributions, keystones) in every relevant situation (still, moving, sneaking, jumping, switching items, right and wrong weapon, focus, empty hand, no Essence, cooldown, valid and invalid targets, one and many enemies, edge of range, loadout changes, relog, restart). Combinations across classes without cooldown resets, duplicate buffs, damage multiplication, bad refunds, XP farming, item loss or PvP bypass. A better harness: real input sequences, positive and negative controls, a clean predictable arena, bot limits told apart from plugin behaviour, manual checks where automation can't judge feel. | Next |
+| 3 | **Polish Warrior, Mage and Duelist** into the quality standard: recognisable identities, clear visual and audio feedback, satisfying execution, distinct strengths and weaknesses, good cross-class combinations, predictable costs. Fix weak-mob class-XP farming (eligibility or reward scaling). Upgrades and advanced tiers stay on the roadmap, not rushed. | |
+| 4 | **Step 6: the next six classes**, one at a time: Knight (defense, counters, protection), Ranger (ranged mobility, precision, wilderness), Cleric (healing, support), Assassin (stealth, ambush, burst), Elementalist (elemental interactions), Summoner (allies and constructs). Each with real abilities, individual tests and a complete gameplay loop, on the shared engine, attributes, Essence and progression. The ~25-class roster stays the plan; nothing is deleted or finalised before its design review. | After 1–3 |
+| 5 | **Gameplay depth and systems completion.** A code-grounded audit of all 35 skills (how XP is earned, what works, what is disconnected, what to add, beginner-to-mastery path, links to other systems). Then real gathering and crafting loops, Mining, Woodcutting, Farming, Fishing, Smithing, Crafting and Alchemy first: resources, progression, rewards, recipes, equipment interactions, new capabilities as skills grow, not just percentages. **Future-proof:** registries, resource definitions, tool capabilities, reward rules and extension points, so a later custom ore, tree, plant, tool, drill or machine plugs in without rewriting the progression. No giant speculative frameworks: today's gameplay done properly, proven by small synthetic extension tests. | |
+| 6 | **Advanced mastery, level 100 → 150** for all 35 skills: a skill-specific mastery challenge at 100 unlocks 101–150, permanently per player and skill; real progression and milestone rewards, not 50 empty levels. **Heavy Armor Mastery first:** its high-level defense bar feels weak; look at capacity, regeneration, defensive techniques and breakthroughs, with the scaling math checked against realm magnitude and enemy damage before any per-level doubling. Caps migrate safely; no progress is lost. | |
+| 7 | **Review the skeletal systems:** equipment and weapon archetypes, techniques, cultivation, crafting and processing, mobs and Bestiary, exploration and regions, quests and collections, structures and procedural generation, living world, mounts. For each: functional, prototype, placeholder or plan. Complete loops that connect systems first. | |
+| 8 | **Playtest backlog** (below), placed into the phases above. | |
+
+Skill depth (5) and mastery (6) may share infrastructure and be coordinated; class expansion must not postpone the noncombat gameplay indefinitely. Profiling, correctness tests and regression tests recur in every phase.
+
+**Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
+
+**Playtest backlog** (to investigate, not assumed to be code defects):
+- **Passive mob health bars:** some passive animals (pigs, horses) showed no Cerberus health bar. Check the intended display rules and whether passive mobs are registered, tracked and updated.
+- **Weapon names:** the owner prefers **Furnace Hammer** (Cauldron-Hammer) and **Runeblade** (Talisman-Blade) as Western-fantasy display names; mechanics and internal ids stay. Settled when the weapons are built (see `docs/design/CLASSES.md` §4).
+- **Skill progression:** the level-100 cap and the weak-feeling Heavy Armor rewards: Phase 6.
 
 ## Step 2: decisions A–E (approved)
 
@@ -149,13 +175,13 @@ Every PvP limit so far is **temporary**. None of it is a decision against PvP; t
 
 ## Reporting, per milestone
 
-Report each milestone with:
-- what was completed;
-- what was tested on a real Folia server;
-- the performance problems found;
-- what was optimized, with measured gains;
-- what remains;
-- what the owner can test in Minecraft;
-- what comes next.
+Report each milestone with (owner's format, 2026-10-25):
+1. what was completed;
+2. what problems were found and fixed;
+3. which tests passed;
+4. what the performance measurements show;
+5. what the owner needs to test personally;
+6. what remains unfinished;
+7. what comes next.
 
-Performance claims need benchmarks and gameplay claims need in-game checks. Small, reliable, reusable, well-tested components, not huge disconnected changes.
+Performance claims need benchmarks and gameplay claims need in-game checks. Small, reliable, reusable, well-tested components, not huge disconnected changes. A feature is not finished because it compiles, has a menu entry or a config definition: it is verified in gameplay, and the docs say honestly what works, what is incomplete and what is still a proposal. Significant code or architecture changes get a focused independent review; findings are verified before acting on them.

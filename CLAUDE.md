@@ -29,7 +29,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Step 3, Player Menu 2.1 (`docs/STATUS.md`): opening reveal, header sweep, page-turn sounds, filling skill bar, "since you last looked" progress (session memory, no DB), category tabs; engine `GUIs/menu/MenuAnimator` + `MenuView.later/soundLater` (bounded, cancelled on any screen change; `menu.js motion`)
 - ✅ Step 4, classes & abilities design (`docs/design/CLASSES.md`; 8 owner decisions in its §10)
 - ✅ Step 5, class prototype (`docs/STATUS.md`, `docs/design/CLASSES.md` §11): Warrior / Mage / Duelist on a data-driven ability engine (`Classes/*`, `classes.yml`, `abilities.yml`); cast keys = Sneak + right-click / left-click / F / Q / scroll; loadouts (5 actives, 3 passives, keystone; 3 per player); Player Menu → Classes & Abilities, `/class`, `/cerb class`; PvE-only for now, PvP turned on later (`tools/playtest/classes.js`, `load.js abilities`)
-- ⬜ Next: the owner's playtest + the decisions in `docs/STATUS.md`; then Step 6 (more classes, `CLASSES.md` §9) or the gathering/crafting loop, as the owner orders them
+- ⬜ Now (owner, 2026-10-25, after playtesting the classes): Phase 1 ability controls → Phase 2 individual audit of the 21 abilities → Phase 3 polish; then Step 6 (six classes, one at a time), the 35-skill audit + gathering/crafting, mastery to level 150 (`docs/ROADMAP.md` → After the class playtest). Quality before class count; usability is verified only by the owner's own playtest
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle

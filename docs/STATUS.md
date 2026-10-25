@@ -11,7 +11,7 @@
 - **Step 4**, the classes and abilities design: `docs/design/CLASSES.md`.
 - **Step 5**, the Warrior / Mage / Duelist prototype: learn several classes from your skills, unlock abilities by rank, mix them in three loadouts, cast with Sneak + a key. The six proofs were checked in game (91 checks), and an independent review's nine findings are fixed. Abilities are PvE-only for now; PvP gets turned on later (`docs/ROADMAP.md` → PvP).
 
-The owner has playtested Player Menu 2.0; the remaining checks, now including classes, are in `docs/PLAYTEST_CHECKLIST.md`. **Next:** your playtest and the decisions below, then Step 6 (more classes) or the gathering loop, in the order you choose.
+The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype. That playtest found control problems the automated checks missed: Sneak + left-click was unclear, Sneak + F did the off-hand swap, and the Mage's focus abilities were unreliable. **Now:** Phase 1, the ability controls, then an individual audit of all 21 abilities and polish of the three classes; Step 6 (six more classes, one at a time), the skill and gathering work and mastery to level 150 follow (`docs/ROADMAP.md` → After the class playtest).
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 

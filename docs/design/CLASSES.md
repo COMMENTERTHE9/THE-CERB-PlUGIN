@@ -100,7 +100,7 @@ All 25 stay. Every name is already Western-forward (NAMING.md), so no renames ar
 | 10 | Beastmaster | animal companions | Summon (tamed animals) | Animal Taming 15 | any |
 | 11 | Mage | general offensive magic | Essence flow, element states | Intelligence 10, Spell Weaving 5 | focus (wand, staff) |
 | 12 | Elementalist | elemental control and reactions | Reactions | Elemental Mastery 15 | focus |
-| 13 | Spellblade | melee weapons with magic | Element states on weapon hits | Blade Mastery 15, Spell Weaving 15 | sword, Sigil Blade |
+| 13 | Spellblade | melee weapons with magic | Element states on weapon hits | Blade Mastery 15, Spell Weaving 15 | sword, Runeblade |
 | 14 | Arcanist | advanced magic, Essence control | Essence flow (amplify, borrow) | Arcane Knowledge 20, Intelligence 20 | focus |
 | 15 | Summoner | summoned beings and constructs | Summon (constructs, elementals) | Summoning 15 | focus |
 | 16 | Cleric | healing and support | Heal & cleanse, barrier | Field Medicine 15, Intelligence 10 | focus, mace |
@@ -148,8 +148,8 @@ The mechanics stay exactly as WEAPONS.md §2 defines them. Only the player-facin
 | 14 | Dual-Wield set | **Twin Blades** | Dual Wielding | two weapons |
 | 15 | Flying Sword (yujian) | **Flying Sword** (kept: readable) | Blade Mastery + magic | — |
 | 16 | Spirit Whip / Soul Lash | **Soul Lash** | Martial Expertise + magic | — |
-| 17 | Talisman-Blade / Sabre-of-Cinders | **Sigil Blade** | Blade Mastery + magic | — |
-| 18 | Cauldron-Hammer / Dao-Furnace | **Furnace Hammer** | Heavy Armor Mastery | — |
+| 17 | Talisman-Blade / Sabre-of-Cinders | **Runeblade** (owner's preference, 2026-10-25; first proposal: Sigil Blade) | Blade Mastery + magic | — |
+| 18 | Cauldron-Hammer / Dao-Furnace | **Furnace Hammer** (owner's preference too) | Heavy Armor Mastery | — |
 | 19 | Shortbow | **Shortbow** | Ranged Precision | — |
 | 20 | Longbow / War-Bow | **Longbow** | Ranged Precision | — |
 | 21 | Spirit-Gun / Qi-Repeater | **Essence Repeater** (pistol, rifle, hand-cannon) | Ranged Precision + magic | — |
@@ -323,7 +323,7 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 | 5 | **Abilities in PvP** | Allowed, with PvP-specific coefficients and PvP's "as before" defense rule, until the PvP pass. The alternative is PvE-only for now. |
 | 6 | **Class entry** | Skill requirements, never another class: open and readable. |
 | 7 | **Roster** | Keep all 25 with the §3 refinements (Scout as mobility support; Arcanist as the advanced magic class). Confirm Warrior, Mage and Duelist for the prototype. |
-| 8 | **Weapon display names** | The §4 table (Straight Sword, Saber, Quarterstaff, Warhammer, Sigil Blade, Furnace Hammer, Essence Repeater…). |
+| 8 | **Weapon display names** | The §4 table (Straight Sword, Saber, Quarterstaff, Warhammer, Runeblade, Furnace Hammer, Essence Repeater…). The owner prefers Furnace Hammer and Runeblade (2026-10-25); settled when the weapons are built. |
 
 ## 11. Prototype status (Step 5, 2026-10-25)
 
