@@ -619,6 +619,27 @@ async function exploits() {
   const hitTraces = traces(at);
   check('Cleave with a player and a zombie in front hits only the zombie', went(t, 'Cleave') && hitTraces.filter(x => /Power\(Swords/.test(x)).length === 1
     && !hitTraces.some(x => /Incoming/.test(x)), `${hitTraces.length} traces: ${hitTraces.map(x => x.slice(0, 60)).join(' / ')}`);
+  // Fireball (the spell, cast as a Mage ability) must not hurt or ignite a player either. Before the PvP
+  // hit below: that tags for 15 s, and the loadout in use can't be edited while tagged.
+  await sleep(8500); // out of combat after the Cleave
+  let eq = [];
+  for (const s of ['a1 fireball', 'a2 flurry']) eq.push(await equipSlot('3 ' + s));
+  await cmd('/kill @e[type=zombie,distance=..40]', 400);
+  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 4.5}`, 800);
+  await hold('blaze_rod');
+  await stand(0, 0);
+  await sleep(1000);
+  at = chat.length;
+  t = await cast('right');
+  await sleep(2500);
+  const tpf = Object.values(bot.entities).find(e => e.username === 'CerbTarget');
+  const burning = tpf && tpf.metadata && typeof tpf.metadata[0] === 'number' ? (tpf.metadata[0] & 0x01) !== 0 : false;
+  const fb = traces(at).filter(x => /Incoming/.test(x));
+  check('A Fireball ability never hurts or ignites a player in its path', eq[0].includes('Equipped Fireball') && went(t, 'Fireball') && fb.length === 0 && !burning,
+    `${eq[0]}; ${t.filter(m => !/♥/.test(m)).join(' / ')}; ${fb.length} hits on the player; burning ${burning}`);
+  await hold('netherite_sword');
+  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 2.5}`, 800);
+  await stand(0, 0);
   const tp = Object.values(bot.entities).find(e => e.username === 'CerbTarget');
   await sleep(600);
   at = chat.length;
@@ -628,22 +649,6 @@ async function exploits() {
   const pvp = traces(at).filter(x => /Incoming/.test(x));
   check('A Sneak-attack on a player is a normal PvP hit (Flurry is not cast)', !!tp && !barSince(/✦/, t0) && pvp.length === 1,
     `${bars.filter(b => b.t >= t0 && !/♥/.test(b.m)).map(b => b.m).join(' / ')}; ${pvp.join(' / ').slice(0, 140) || 'no PvP trace'}`);
-  // Fireball (the spell, cast as a Mage ability) must not hurt or ignite a player either.
-  await sleep(8500);
-  for (const s of ['a1 fireball', 'a2 none']) await equipSlot('3 ' + s);
-  await cmd('/kill @e[type=zombie,distance=..40]', 400);
-  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 4.5}`, 800);
-  await hold('blaze_rod');
-  await stand(0, 0);
-  await sleep(1000);
-  at = chat.length;
-  t = await cast('right');
-  await sleep(2500);
-  const tp2 = Object.values(bot.entities).find(e => e.username === 'CerbTarget');
-  const burning = tp2 && tp2.metadata && typeof tp2.metadata[0] === 'number' ? (tp2.metadata[0] & 0x01) !== 0 : false;
-  const fb = traces(at).filter(x => /Incoming/.test(x));
-  check('A Fireball ability never hurts or ignites a player in its path', went(t, 'Fireball') && fb.length === 0 && !burning,
-    `${t.filter(m => !/♥/.test(m)).join(' / ')}; ${fb.length} hits on the player; burning ${burning}`);
   target.quit();
   await debug(false);
 }
