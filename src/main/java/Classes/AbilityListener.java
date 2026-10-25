@@ -109,7 +109,11 @@ public final class AbilityListener implements Listener {
         this.caster = caster;
         this.feedback = feedback;
         this.bar = bar;
+        this.spellKey = new org.bukkit.NamespacedKey(plugin, "cerb_spell");
     }
+
+    /** The tag on spell items (Listener.CustomItemListener reads the same one). */
+    private final org.bukkit.NamespacedKey spellKey;
 
     private State state(Player p) { return states.computeIfAbsent(p.getUniqueId(), k -> new State()); }
 
@@ -408,7 +412,9 @@ public final class AbilityListener implements Listener {
         if (!sneaking && entity != null && !(entity instanceof Enemy)) return true;
         int[] slots = quick ? new int[]{0, 3} : new int[]{0, 1, 2, 3};
         if (!hasAny(prof, slots)) return true;
-        if (hand == WeaponFamily.POLEARM) {
+        // An item with a right-click of its own (a spear's charge or throw, a spell item's spell) keeps it
+        // unless an ability on the key fits that item.
+        if (hand == WeaponFamily.POLEARM || spellItem(p.getInventory().getItemInMainHand())) {
             List<String> actives = prof.activeLoadout().actives();
             for (int s : slots) {
                 AbilityDef a = service.catalog().ability(actives.get(s));
@@ -420,6 +426,12 @@ public final class AbilityListener implements Listener {
     }
 
     private static boolean bow(WeaponFamily f) { return f == WeaponFamily.BOW || f == WeaponFamily.CROSSBOW; }
+
+    /** A spell item (the Fireball Wand), tagged with the spell it casts. */
+    private boolean spellItem(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer().has(spellKey, org.bukkit.persistence.PersistentDataType.STRING);
+    }
 
     private static WeaponFamily family(ItemStack item) {
         return WeaponFamily.ofMaterial(item == null ? null : item.getType().name());

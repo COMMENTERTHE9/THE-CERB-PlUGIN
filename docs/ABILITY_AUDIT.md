@@ -29,13 +29,15 @@
 
 Key = the default control scheme (quick keys) in the loadout each phase uses. With a bow, right and left swap.
 
+**In numbers**, on the final build: `controls` 26, `combos` 13, `warrior` 20, `mage` 20, `duelist` 14, `mixed` 17, `persist` 4. That makes 114 checks, all passing.
+
 ### Warrior
 
 | Ability | Intended (abilities.yml) | Verified in game | Result |
 |---|---|---|---|
 | **Cleave** (active, rank 1) | Cone 3.5 blocks, 100°, 1.6x Power, up to 6; +1 Momentum per enemy; 4 s; blade, axe, polearm, blunt | Hits the 3 zombies in front (14.8 each = 1.6x 9.2), not the one behind nor the one 5 blocks away; message "3 hit"; on cooldown: "Cleave 3.0 s", nothing hit; works running and jumping; a whiff spends its cooldown ("no one hit"), as a swing does; a player in front is never hit | ✅ |
 | **Charge** (active, rank 3) | Dash 8 blocks; the first enemy in its path stunned 1 s; then a 1.0x strike; 10 s; movement lockout | Dashed 6.2 blocks; the zombie in the path got Slowness 10 for 1 s (`/cerb mobs`) and was struck; on cooldown after; Blink right after it waits for the shared lockout | ✅ |
-| **Execute** (active, rank 6) | Strike 3.5 blocks, 1.0x + 0.4x per Momentum, spends all Momentum; 8 s | After a 3-zombie Cleave: "x2.2 · 3 Momentum", 20.3 damage (2.2x); with none: "no Momentum"; nothing in reach: "no target within 3.5 blocks", no cooldown, Momentum kept; aim assist finds a zombie half a block off the crosshair, not one 2 blocks off; with an empty hand: "needs a blade, an axe, a polearm or a blunt weapon", nothing spent | ✅ (identity: Phase 3) |
+| **Execute** (active, rank 6) | Strike 3.5 blocks, 1.0x + 0.4x per Momentum, spends all Momentum, **needs 1** (Phase 3); 8 s | After a 3-zombie Cleave: "x2.2 · 3 Momentum", 20.3 damage (2.2x). With no Momentum: "Execute needs 1 Momentum", no strike, no cooldown (before Phase 3 it was a plain 1.0x hit that spent its 8 s). Nothing in reach: "no target within 3.5 blocks", no cooldown, Momentum kept. Aim assist finds a zombie half a block off the crosshair, not one 2 blocks off. With an empty hand: "needs a blade, an axe, a polearm or a blunt weapon", nothing spent | ✅ |
 | **War Cry** (active, rank 10) | +15% damage for 8 s; 30 s; any hand | Next hit x1.152 (crits divided out); recast refused ("War Cry 28.4 s", no stacking); ends after 8 s. **Bug found and fixed:** the buff could outlive its 8 s when a region's catch-up ticks ran its end task a few ms early | ✅ after fix |
 | **Battle-Hardened** (passive, rank 2) | +8 Vitality | Max health 102 → 110 | ✅ |
 | **Weapon Discipline** (passive, rank 8) | +5% attack speed (inside the speed caps) | Attack speed 1.653 → 1.716 | ✅ |
@@ -45,13 +47,13 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 
 | Ability | Intended | Verified in game | Result |
 |---|---|---|---|
-| **Arcane Bolt** (active, rank 1) | Instant bolt at the enemy you look at, 8 blocks, 1.4x spell hit (Essence scaling), 15 Essence, 1.5 s; focus | Hits a zombie 6 blocks away once (8.4 → 10.0 with Essence), costs exactly 15, draws a beam; 0.7 blocks off: still hits; 2.5 blocks off, 10 blocks away, or behind a wall: "no target within 8 blocks", no Essence, no cooldown; blaze rod, breeze rod and stick all work; sword: "needs a focus"; almost no Essence: "needs 15 Essence", no cooldown. **The owner's report:** the Fireball Wand now casts it (it cast its own spell before) | ✅ after fixes |
+| **Arcane Bolt** (active, rank 1) | Instant bolt at the enemy you look at, 8 blocks, 1.4x spell hit (Essence scaling), 15 Essence, 1.5 s; focus | Hits a zombie 6 blocks away once (8.4 → 10.0 with Essence), costs exactly 15, draws a beam; 0.7 blocks off: still hits; 2.5 blocks off, 10 blocks away, or behind a wall: "no target within 8 blocks", no Essence, no cooldown; blaze rod, breeze rod and stick all work; sword: "needs a focus"; almost no Essence: "needs 15 Essence", no cooldown. **The owner's report:** the Fireball Wand now casts it (it cast its own spell before), and still casts its own Fireball when no right-click ability fits a focus (Cleave on right-click used to make it do nothing) | ✅ after fixes |
 | **Fireball** (active, rank 3) | The Fireball spell, mobs only, flies through players; 20 Essence, 2 s; focus | Q: flies and bursts on a zombie (1 hit), costs exactly 20, the rod stays in hand | ✅ |
 | **Frost Nova** (active, rank 5) | Circle 4 blocks, 0.8x spell hit, Slowness II 3 s, up to 8; 30 Essence, 8 s | Hits the 3 zombies within 4 blocks, not the one 6 away; all 3 slowed (`/cerb mobs`); costs exactly 30 | ✅ |
 | **Blink** (active, rank 8) | Teleport up to 6 blocks where you look, never into blocks; 20 Essence, 6 s; movement lockout | Moved 6.00 blocks, costs 20; wall 3 blocks ahead: stops 2 blocks in (never inside); facing a wall: "Blink: no room", nothing spent | ✅ |
 | **Essence Flow** (passive, rank 2) | +15% Essence regeneration | 3 s from empty: 226 vs 201 without | ✅ |
 | **Spell Focus** (passive, rank 6) | +8 Essence | Max mana 1,100 → 1,180 | ✅ |
-| **Glass Cannon** (keystone, rank 12) | +25% spell damage, 15% less max health | Max health 102 → 87 | ✅ (spell bonus: Phase 3 check) |
+| **Glass Cannon** (keystone, rank 12) | +25% spell damage, 15% less max health | Arcane Bolt's spell multiplier x2.32 → x2.57 (+0.25, read from the trace); max health 102 → 87 | ✅ |
 
 ### Duelist
 
@@ -63,7 +65,7 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 | **Feint** (active, rank 9) | The next weapon hit within 3 s is a critical hit; 10 s; blade | "next hit crits"; the next hit shows "guaranteed: Feint"; the one after it doesn't; the sword stays in hand (Q) | ✅ |
 | **Precision** (passive, rank 2) | +5% critical hit chance | Crit chance 16.0% → 21.0% | ✅ |
 | **Footwork** (passive, rank 5) | +4% movement speed | Movement speed 0.1 → 0.104 | ✅ |
-| **Blade Dancer** (keystone, rank 12) | +15% critical damage, 6 less Fortitude | Applies (Stats page reloads with it) | ✅ (crit damage value: Phase 3 check) |
+| **Blade Dancer** (keystone, rank 12) | +15% critical damage, 6 less Fortitude | Feint's guaranteed crit x1.58 → x1.73 (+0.15, read from the trace); the Stats page reloads with it | ✅ |
 
 ## Across abilities
 
@@ -101,12 +103,15 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 3. **The Fireball Wand took every right-click.** Its listener now runs after the ability keys.
 4. **Misses still cost Essence and the cooldown.** Single-target abilities and Blink now check before spending, with aim assist and a visible bolt.
 5. **A buff could outlive its time** (War Cry): its end task now removes exactly that buff.
-6. **Class XP could be farmed:**
+6. **Execute at 0 Momentum** was a plain hit that spent its 8 s cooldown. It is now refused ("Execute needs 1 Momentum") and spends nothing.
+7. **The Fireball Wand did nothing with a melee ability on right-click** (found by the regression suite). It now keeps its own spell unless a right-click ability fits a focus.
+8. **Class XP could be farmed:**
    - Farm animals paid it on a kill.
    - Weak mobs paid full cast XP.
    - Hitting anything (a cow, an armor stand) made self casts pay.
 
    Now only enemies count, with the kill-XP grey-mob share (`ClassRanks.castXp`, unit-tested).
+9. **A negative bonus read "+-4.6%"**: a keystone's slower attacks on the Skill, Stats and admin pages (found by the regression suite). Signed bonuses now show one sign.
 
 ## Not verifiable by a bot (needs the owner)
 

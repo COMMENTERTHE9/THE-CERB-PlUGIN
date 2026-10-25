@@ -138,6 +138,7 @@ public final class AbilityBar {
             if (!prof.unlocked(a) || !WeaponFamily.fits(a.weapons(), hand)) b.append("§8").append(a.displayName());
             else if (left > 0) b.append("§7").append(a.displayName()).append(" §f").append((left + 999) / 1000);
             else if (a.essenceCost() > essence) b.append("§9").append(a.displayName());
+            else if (AbilityCaster.momentum(prof) < AbilityCaster.momentumNeeded(a)) b.append("§6").append(a.displayName());
             else b.append("§a").append(a.displayName());
         }
         if (!any) return null;

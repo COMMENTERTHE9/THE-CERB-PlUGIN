@@ -221,7 +221,9 @@ public final class ClassCatalog {
                     yield new EffectSpec.Buff(attr, stat, amount, bounded(num(p, "seconds", 8), 1, 30, "buff seconds", why));
                 }
                 case "resource" -> new EffectSpec.Resource(str(p, "kind", "momentum"), (int) bounded(num(p, "delta", 1), -10, 10, "resource delta", why),
-                        (int) bounded(num(p, "max", MAX_STACKS), 1, MAX_STACKS, "resource max", why), bool(p, "per-target"), bool(p, "spend-all"));
+                        (int) bounded(num(p, "max", MAX_STACKS), 1, MAX_STACKS, "resource max", why), bool(p, "per-target"), bool(p, "spend-all"),
+                        // A finisher that spends it all needs a stack to spend (a file without "needs" too).
+                        (int) bounded(num(p, "needs", bool(p, "spend-all") ? 1 : 0), 0, MAX_STACKS, "resource needs", why));
                 case "counter" -> new EffectSpec.Counter((long) bounded(millis(p.get("window"), 600), 100, 2_000, "counter window (ms)", why),
                         bounded(num(p, "coefficient", 2.0), 0, MAX_COEFFICIENT_SHORT, "counter coefficient", why),
                         (long) bounded(millis(p.get("success-cooldown"), 1_500), 0, 60_000, "counter success-cooldown (ms)", why));

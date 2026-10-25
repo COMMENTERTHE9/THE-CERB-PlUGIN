@@ -277,6 +277,11 @@ async function owners() {
 async function attrs() {
   await cmd('/cerb skill ' + NAME + ' Blade_Mastery level 1', 600);
   await cmd('/cerb skill ' + NAME + ' Survival level 1', 600);
+  // Max health before any buff (102 for a fresh character; a class loadout can add to it).
+  await cmd('/stats', 1500);
+  const baseHp = Number(((slotLore(31).match(/Max health: ([\d,]+)/) || [])[1] || 'NaN').replace(/,/g, ''));
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+  await sleep(300);
   await cmd('/cerb panel', 1500);
   const tile = findSlot(/^Attributes$/);
   check('Home shows Attributes as live', tile >= 0 && /Live/.test(slotLore(tile)), slotLore(tile));
@@ -309,7 +314,7 @@ async function attrs() {
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
   await cmd('/stats', 1500);
   const buffed = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
-  check('Max health rose with the buff (102 -> 202)', buffed === '202', slotLore(31));
+  check(`Max health rose by 100 with the buff (${baseHp} -> ${baseHp + 100})`, Number(String(buffed).replace(/,/g, '')) === baseHp + 100, slotLore(31));
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
   await cmd('/cerb panel', 1500);
   await click(findSlot(/^Attributes$/), 900); await click(10, 900); await click(31, 900);
@@ -319,7 +324,7 @@ async function attrs() {
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
   await cmd('/stats', 1500);
   const after = (slotLore(31).match(/Max health: ([\d,]+)/) || [])[1];
-  check('Max health back to normal after clearing', after === '102', slotLore(31));
+  check(`Max health back to normal after clearing (${baseHp})`, Number(String(after).replace(/,/g, '')) === baseHp, slotLore(31));
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
 }
 

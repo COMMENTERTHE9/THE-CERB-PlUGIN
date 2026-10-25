@@ -4,6 +4,8 @@
 # Bounds are enforced when the file loads: an active deals at most 3.0x a basic hit per cast
 # (6.0x with a cooldown of 20 s or more) and comes back no faster than 1 s. Effect verbs: damage,
 # dash, blink, status, buff, resource, counter, empower, spell. PROTOTYPE numbers, for tuning in game.
+# resource "needs": the stacks a cast requires (refused, nothing spent, below it); a spend-all
+# finisher needs 1 unless it says "needs: 0".
 # icon: the item its menu tile shows (a material name; optional).
 
 abilities:
@@ -44,7 +46,7 @@ abilities:
     cooldown: 8s
     effects:
       - damage: { shape: strike, range: 3.5, coefficient: 1.0, scale: power, per-momentum: 0.4 }
-      - resource: { kind: momentum, delta: -5, max: 5, spend-all: true }
+      - resource: { kind: momentum, delta: -5, max: 5, spend-all: true, needs: 1 }
   war_cry:
     class: warrior
     name: War Cry

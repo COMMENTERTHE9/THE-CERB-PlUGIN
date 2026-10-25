@@ -5,7 +5,7 @@
 //              control) and with nothing equipped; vanilla right-click stays on doors/chests, mobs that aren't enemies, bows,
 //              tools and blocks; a bow's abilities move to left-click; an empty key says so; one press casts once even when
 //              the client sends it for both hands; the message stays readable while the HUD refreshes (taking hits); the old
-//              Fireball Wand no longer hides Arcane Bolt but still casts its own spell when nothing is on right-click
+//              Fireball Wand no longer hides Arcane Bolt but still casts its own spell when no right-click ability fits a focus
 //   combos   - click combos: R R R / R L R / R L L / R R L and F reach slots 1-5; a lone click expires and casts nothing; clicks
 //              inside a combo don't attack; Q drops again; a bow starts with left-click; a left-click on a player is a plain
 //              hit and ends the combo; the scheme choice is saved
@@ -14,6 +14,8 @@
 //              refusals that spend nothing, moving / jumping / sneaking (see AUDIT notes per check)
 //   mixed    - abilities from three classes in one loadout, rapid presses, shared lockouts, no duplicate buffs, PvP safety
 //   persist  - PERSIST=set: scheme, bar, loadout, a long cooldown; restart; PERSIST=check: the same
+//   neutral  - only the clean-up every phase ends with: loadout 1 in use, no class passive or keystone (other scripts
+//              such as menu.js and admin.js expect the character's plain attributes)
 // Bot limits handled here (each told apart from plugin behaviour): the 1.21.9+ motion packet (applied as the client does),
 // item-use rotation in degrees (the server aims with it), no client-side prediction of a Q drop (counted on the ground).
 // Every "nothing happens" check has a positive control (the same input doing something when it should), so a check can't
@@ -277,6 +279,14 @@ async function use(n) {
     await sleep(w ? Number(w[1]) * 1000 + 500 : 10500);
   }
 }
+/**
+ * Leave the character as the other scripts expect it: loadout 1 in use, with no class passive or
+ * keystone (they would change max health, attack speed and crits in menu.js, admin.js...).
+ */
+async function neutral() {
+  for (const s of ['p1', 'p2', 'p3', 'k']) await equip(`1 ${s} none`);
+  await use(1);
+}
 async function fresh() {
   await cmd(`/cerb class ${NAME} cooldowns`, 400);
   await cmd(`/cerb mana ${NAME} full`, 400);
@@ -293,14 +303,15 @@ async function controls() {
   await hold('iron_sword');
   await fresh();
 
-  // 1. Each quick key reaches its slot (sword in hand, one zombie in front for Execute).
+  // 1. Each quick key reaches its slot (sword in hand, one zombie in front; Execute right after the Cleave
+  //    that gives it Momentum to spend).
   await zombie(0, 2);
   const z = zombies()[0];
   const keys = [
     ['Right-click = active 1 (Cleave)', async () => { await lookAt(z); await rclick(); }, /✦ Cleave/],
+    ['Sneak + right-click = active 4 (Execute)', async () => { await lookAt(z); await sneaking(rclick); }, /✦ Execute/],
     ['F = active 2 (War Cry)', async () => keyF(), /✦ War Cry/],
     ['Q = active 3 (Charge); the sword stays in hand', async () => { await face(NORTH, 0); keyQ(); }, /✦ Charge/],
-    ['Sneak + right-click = active 4 (Execute)', async () => { await stand(0, 0); await lookAt(z); await sneaking(rclick); }, /✦ Execute/],
     ['Sneak + F = active 5 (Blink)', async () => { await stand(0, -4, 180); await sneaking(async () => keyF()); }, /✦ Blink/],
   ];
   for (const [name, press, re] of keys) {
@@ -320,7 +331,7 @@ async function controls() {
   await lookAt(z);
   await sameTick(rclick);
   await sleep(500);
-  check('Right-click and Sneak in the same tick cast active 4 (Execute), not active 1', !!flashed(t, /✦ Execute|Execute: no target/) && !flashed(t, /Cleave/), JSON.stringify(flashes(t)));
+  check('Right-click and Sneak in the same tick cast active 4 (Execute), not active 1', !!flashed(t, /Execute/) && !flashed(t, /Cleave/), JSON.stringify(flashes(t)));
   await fresh(); await stand(0, -4, 180);
   t = Date.now();
   await sameTick(async () => keyF());
@@ -433,6 +444,13 @@ async function controls() {
   t = Date.now();
   await rclick(); await sleep(900);
   check('With nothing on right-click, the wand casts its own Fireball as before', !!saw(/You cast Fireball/, at) && !flashed(t, /Nothing on/), chat.slice(at).join(' | ').slice(0, 120));
+  // ...and with only a blade ability on right-click (Cleave can't use a focus), the same: its own Fireball.
+  await equip('2 a1 cleave'); await sleep(1300); // the wand's own 1 s cooldown
+  at = chat.length;
+  t = Date.now();
+  await rclick(); await sleep(900);
+  check('With only Cleave on right-click (it needs a blade), the wand casts its own Fireball, not "Cleave needs..."', !!saw(/You cast Fireball/, at) && !flashed(t, /Cleave/),
+    `${chat.slice(at).join(' | ').slice(0, 100)}; ${JSON.stringify(flashes(t))}`);
   await equip('2 a1 arcane_bolt'); await equip('2 a4 blink');
 
   // 10. With no ability equipped at all, every key is vanilla (a sword's F swaps).
@@ -461,8 +479,8 @@ async function combos() {
   const gap = 150;
   const seqs = [
     ['R R R (hold right-click) = active 1, Cleave', ['r', 'r', 'r'], /✦ Cleave/],
+    ['R L L = active 3, Execute', ['r', 'l', 'l'], /✦ Execute/], // right after the Cleave: Momentum to spend
     ['R L R = active 2, War Cry', ['r', 'l', 'r'], /✦ War Cry/],
-    ['R L L = active 3, Execute', ['r', 'l', 'l'], /✦ Execute/],
     ['R R L = active 4, Charge', ['r', 'r', 'l'], /✦ Charge/],
   ];
   for (const [name, keys, re] of seqs) {
@@ -553,22 +571,35 @@ async function warrior() {
   const ef = flashed(t, /✦ Execute/);
   check('Execute after a Cleave on three: x2.2 with 3 Momentum, one strike', !!ef && /x2\.2 · 3 Momentum/.test(ef.m) && traces(at).length === 1, ef ? ef.m : JSON.stringify(flashes(t)));
   note('Execute trace: ' + (traces(at)[0] || '').slice(0, 140));
-  // Execute with nothing in reach: refused, nothing spent.
-  await fresh(); await clearMobs(); await stand(0, 0);
-  t = Date.now();
+  // Execute is a finisher: with no Momentum (the Execute above spent it all) it is refused, nothing spent.
+  await fresh(); await lookAt(zombies()[0]);
+  at = chat.length; t = Date.now();
   keyF(); await sleep(700);
   let cd = await cooldownLine();
-  check('Execute with no enemy in reach: "no target within 3.5 blocks", no cooldown spent', !!flashed(t, /Execute: no target within 3\.5 blocks/) && !/Execute/.test(cd),
-    `${JSON.stringify(flashes(t))}; ${cd}`);
+  check('Execute with no Momentum: "Execute needs 1 Momentum", no strike, no cooldown spent', !!flashed(t, /Execute needs 1 Momentum/) && traces(at).length === 0 && !/Execute/.test(cd),
+    `${JSON.stringify(flashes(t))}; ${traces(at).length} traces; ${cd}`);
+  /** A Cleave at the zombie in front: one Momentum for the next Execute (it fades after 6 s). */
+  const momentumUp = async () => { await face(SOUTH, 0); t = Date.now(); await rclick(); await sleep(600); return !!flashed(t, /✦ Cleave · 1 hit/); };
+  // Execute with nothing in reach: refused, nothing spent, Momentum kept.
+  await clearMobs(); await zombie(0, 2); await stand(0, 0); await fresh();
+  let built = await momentumUp();
+  await clearMobs(); await fresh();
+  t = Date.now();
+  keyF(); await sleep(700);
+  cd = await cooldownLine();
+  check('Execute with no enemy in reach: "no target within 3.5 blocks", no cooldown spent', built && !!flashed(t, /Execute: no target within 3\.5 blocks/) && !/Execute/.test(cd),
+    `Momentum built: ${built}; ${JSON.stringify(flashes(t))}; ${cd}`);
   // Aim assist: a zombie half a block off the crosshair is still the target; two blocks off is not.
-  await zombie(0, 3); await stand(0, 0);
+  await zombie(0, 3); await stand(0, 0); await fresh();
+  built = await momentumUp(); await fresh();
   await lookAt(zombies()[0], 0.55);
   t = Date.now(); keyF(); await sleep(700);
-  check('Execute with the crosshair half a block beside the zombie still hits it (aim assist)', !!flashed(t, /✦ Execute/), JSON.stringify(flashes(t)));
+  check('Execute with the crosshair half a block beside the zombie still hits it (aim assist)', built && !!flashed(t, /✦ Execute/), JSON.stringify(flashes(t)));
   await fresh();
+  built = await momentumUp(); await fresh();
   await lookAt(zombies()[0], 2.2);
   t = Date.now(); keyF(); await sleep(700);
-  check('...but 2 blocks beside it is a miss: refused, nothing spent', !!flashed(t, /no target/), JSON.stringify(flashes(t)));
+  check('...but 2 blocks beside it is a miss: refused, nothing spent', built && !!flashed(t, /no target/), JSON.stringify(flashes(t)));
   // War Cry: +15% damage for 8 s.
   await fresh(); await clearMobs(); await zombie(0, 2, 50); await stand(0, 0);
   const zz = zombies()[0];
@@ -748,9 +779,20 @@ async function mage() {
   await sleep(3000);
   const regenWithout = await essence();
   check('Essence Flow (+15% Essence regeneration): more Essence back in 3 s', regenWith > regenWithout, `${regenWith} vs ${regenWithout} without`);
+  /** Arcane Bolt at a zombie 5 blocks away: the spell multiplier its trace shows (realm x Essence x spell bonuses). */
+  const boltMult = async () => {
+    await hold('blaze_rod'); await clearMobs(); await zombie(0, 5, 50); await stand(0, 0); await fresh();
+    await lookAt(zombies()[0]);
+    const at = chat.length; await rclick(); await sleep(800);
+    const m = (traces(at).find(l => /Spell\(/.test(l)) || '').match(/realm and Essence x([\d.]+)/);
+    return m ? Number(m[1]) : NaN;
+  };
+  const sm0 = await boltMult();
   await equip('2 k glass_cannon'); await sleep(600);
+  const sm1 = await boltMult();
+  check('Glass Cannon (keystone): +25% spell damage (+0.25 on the spell multiplier)', near(sm1 - sm0, 0.25, 0.015), `x${sm0} -> x${sm1}`);
   const v2 = await statsValues();
-  check('Glass Cannon (keystone) lowers max health', Number(String(v2.health).replace(/,/g, '')) < Number(String(v1.health).replace(/,/g, '')), `${v1.health} -> ${v2.health}`);
+  check('...and 15% less max health', Number(String(v2.health).replace(/,/g, '')) < Number(String(v1.health).replace(/,/g, '')), `${v1.health} -> ${v2.health}`);
   for (const s of ['p1', 'k']) await equip(`2 ${s} none`);
   await debug(false);
   await clearMobs();
@@ -831,9 +873,21 @@ async function duelist() {
   await equip('3 p2 footwork'); await sleep(600);
   const ms1 = await attr('movement_speed');
   check('Footwork (+4% movement speed) raises movement speed', ms1 > ms0, `${ms0} -> ${ms1}`);
+  /** Feint, then a hit: the guaranteed crit's multiplier from the trace. */
+  const feintCrit = async () => {
+    await clearMobs(); await zombie(0, 2, 50); await stand(0, 0); await fresh();
+    await lookAt(zombies()[0]);
+    keyQ(); await sleep(500);
+    const at = chat.length; attack(zombies()[0]); await sleep(800);
+    const m = (traces(at).find(l => /guaranteed: Feint/.test(l)) || '').match(/Crit\(x([\d.]+)/);
+    return m ? Number(m[1]) : NaN;
+  };
+  const cm0 = await feintCrit();
   await equip('3 k blade_dancer'); await sleep(600);
+  const cm1 = await feintCrit();
+  check('Blade Dancer (keystone): +15% critical damage (+0.15 on the crit multiplier)', near(cm1 - cm0, 0.15, 0.011), `x${cm0} -> x${cm1}`);
   const v2 = await statsValues();
-  check('Blade Dancer (keystone) applies (the page reloads with it)', !!v2.crit, JSON.stringify(v2));
+  check('...and the Stats page reloads with it', !!v2.crit, JSON.stringify(v2));
   for (const s of ['p1', 'p2', 'k']) await equip(`3 ${s} none`);
   await debug(false);
   await clearMobs();
@@ -974,6 +1028,8 @@ async function mixed() {
   check('Cleave with only a player in front: nobody hit ("no one hit")', !!cf && /no one hit/.test(cf.m) && traces(at2).length === 0, cf ? cf.m : JSON.stringify(flashes(t)));
   // Execute (a single-target strike) finds no target in a player: refused, nothing spent.
   await equip('1 a4 execute'); await sleep(300); await fresh();
+  await zombie(3, 0); await lookAt(zombies()[0]); await rclick(); await sleep(500); // a Cleave to the side: Momentum to spend
+  await clearMobs(); await fresh(); await face(SOUTH, 0);
   t = Date.now(); await sneaking(rclick); await sleep(500);
   check('Execute aimed at a player: "no target" (players are never targets)', !!flashed(t, /Execute: no target/), JSON.stringify(flashes(t)));
   // Riposte doesn't counter a player's hit.
@@ -1030,7 +1086,8 @@ async function persist() {
     else if (phase === 'duelist') await duelist();
     else if (phase === 'mixed') await mixed();
     else if (phase === 'persist') await persist();
-    else console.log('unknown phase ' + phase);
+    else if (phase !== 'neutral') console.log('unknown phase ' + phase);
+    if (!(phase === 'persist' && process.env.PERSIST === 'set')) await neutral(); // the restart check needs loadout 2
   } catch (e) {
     console.log('ERROR ' + (e && e.stack || e));
     results.push(false);

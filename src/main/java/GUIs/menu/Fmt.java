@@ -29,6 +29,13 @@ public final class Fmt {
         return String.format(Locale.ROOT, "%.1f%%", fraction * 100.0);
     }
 
+    /** A bonus that can be negative (a keystone's slower attacks): 0.046 -> "+4.6%", -0.046 -> "-4.6%". */
+    public static String signedPct(double fraction) {
+        if (Double.isNaN(fraction)) return "?";
+        String s = String.format(Locale.ROOT, "%+.1f%%", fraction * 100.0);
+        return s.equals("-0.0%") ? "+0.0%" : s; // a value that rounds to nothing has no sign
+    }
+
     /** Multiplier: 2.345 -> "x2.35". */
     public static String mult(double m) {
         return String.format(Locale.ROOT, "x%.2f", m);

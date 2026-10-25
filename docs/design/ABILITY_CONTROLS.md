@@ -36,7 +36,58 @@ Two server facts matter for the tests too:
 
 ## 3. What other Minecraft RPGs do
 
-*Filled in from the research pass (Wynncraft, Hypixel SkyBlock, MMOCore, Fabled); see §3 when it lands.*
+Learn, don't copy: what established servers and plugins do on a vanilla client, from their wikis, configs and source (research of 2026-10-25). Where a point could not be confirmed from a source, it is left out.
+
+**Wynncraft 2.x** (the click-combo reference):
+- **Four spells, four 3-click patterns**, the same for every class except Archer:
+  - Spell 1: R-L-R. Spell 2, the movement spell: R-R-R. Spell 3: R-L-L. Spell 4: R-R-L.
+  - **Archer uses the mirror image** (L-R-L, L-L-L, L-R-R, L-L-R), "since it attacks using Right-Click" ([Bows](https://wynncraft.wiki.gg/wiki/Bows), [Wands](https://wynncraft.wiki.gg/wiki/Wands)).
+  - Some newer spells add Sneak variants on top ([2.1.1](https://wynncraft.wiki.gg/wiki/Version_2.1.1)).
+- **Feedback:**
+  - Combo progress is an action-bar segment of three slots.
+  - A cast shows "<Spell> Cast! -N" there.
+  - **Failures go to chat** in dark red ("You don't have enough mana to cast that spell!"). Players complained that these flood chat ([forum](https://forums.wynncraft.com/threads/dont-spam-the-out-of-mana-text.295417/); parsers in the [Wynntils](https://github.com/Wynntils/Wynntils) mod).
+- **Spell spam:** repeating a spell quickly costs more mana each time. It replaced a delay between spells in 2014 ([Mana](https://wynncraft.wiki.gg/wiki/Mana), [version history](https://wynncraft.wiki.gg/wiki/Version_history)).
+- **Combos are not enough on their own:**
+  - Players use client mods for one key per spell. The server rules allow a macro for "a single 3-click spell command at a time" ([rules](https://forums.wynncraft.com/threads/game-forum-rules.111874/)).
+  - A macro mod notes that blocking the first click against accidental casts also stops right-clicking doors and NPCs.
+
+**Hypixel SkyBlock** (the item-ability reference):
+- **Abilities sit on the item.** The tooltip reads "Ability: <Name> RIGHT CLICK", with mana cost and cooldown lines. One item can have several triggers: RIGHT CLICK, SNEAK RIGHT CLICK, LEFT CLICK ([Builder's Ruler](https://hypixel-skyblock.fandom.com/wiki/Builder%27s_Ruler)).
+- **Action bar:** the mana spent ("-N Mana (<ability>)") replaces the Defense figure ([Player](https://hypixelskyblock.minecraft.wiki/w/Player)), much as our HUD message slot replaces the middle figure.
+- **Too little mana or on cooldown:** the ability doesn't work and chat says so ("This ability is on cooldown for Ns"). Hypixel later added settings to turn the cooldown chat messages and sounds off ([changelog](https://hypixelskyblock.minecraft.wiki/w/Changelog/2022/August_1)).
+- **Dungeon classes:**
+  - **Drop (Q) uses the Ultimate**, and Q drops nothing inside dungeons. Ctrl + Q uses the class ability, and the Ultimate's cooldown shows on the XP bar ([changelog](https://hypixel-skyblock.fandom.com/wiki/Changelog/2020/July_7)).
+  - The off hand (F) is disabled in SkyBlock.
+
+**MythicRPG and Fabled** (plugin frameworks):
+- **MythicRPG** opens casting with F or Q, then a hotbar number or a click combo (3 inputs, 800 ms between them). Vanilla actions are cancelled while a combo is open, and it can show hints for the next input ([Casting](https://wiki.mythiccraft.io/mythicrpg/Spells/Casting)). Its documented limits:
+  - the opening key can't be part of a combo;
+  - without a global cooldown, "a player with several off-cooldown spells can fire all of them in the same tick".
+- **Fabled** (formerly SkillAPI) has several modes ([config](https://github.com/magemonkeystudio/fabled/blob/dev/src/main/resources/config.yml)):
+  - F, then a number key, is the default;
+  - a scroll wheel;
+  - a skill bar on hotbar slots 1–5, which cancels the slot change;
+  - click combos (4 inputs, 1.0 s), off by default. Using Q or F in them "disables dropping items via Q" or swapping hands.
+- **MMOCore:** key combos with the progress on the action bar, item interaction blocked during a combo, and a skill bar entered with F, then keys 1–6 ([docs](https://docs.phoenixdevt.fr/mmocore/skills/casting.html)).
+
+**Platform facts behind the options:**
+- **The server can't tell a scroll step from a number key:** the packet carries only the slot ([protocol](https://minecraft.wiki/w/Java_Edition_protocol/Packets)).
+- **Switching the held item resets the attack charge** ([Damage](https://minecraft.wiki/w/Damage)).
+- **There is no packet for a left-click in the air.** The server guesses it from the arm swing, so dropping with Q also looks like a left-click ([SPIGOT-5435](https://hub.spigotmc.org/jira/browse/SPIGOT-5435), [SPIGOT-5632](https://hub.spigotmc.org/jira/browse/SPIGOT-5632)).
+
+**What we took, and what we didn't:**
+- **Took:**
+  - Wynncraft's four patterns and the mirrored bow (the combo option).
+  - SkyBlock's item-ability keys: right-click and Sneak + right-click, and Q as an ability key, as in its dungeons (quick keys).
+  - Feedback on the action bar rather than in chat. Both servers drew complaints, or added opt-outs, for chat-based refusals.
+  - A global gap between casts (MythicRPG's stated limit).
+  - Doors and NPCs keep their right-click (the macro-mod lesson).
+  - The swing after a drop is not a left-click.
+- **Didn't take:**
+  - Hotbar or skill-bar modes: number keys and scroll change the held weapon, reset the attack charge, and re-selecting the held slot sends nothing.
+  - Opening a casting mode that blocks vanilla actions.
+  - Escalating spell costs. Our cooldowns do that job; it stays an option for Essence-heavy classes later.
 
 ## 4. The options, compared
 
@@ -57,6 +108,7 @@ Requirements: several abilities fluently in a fight, no fighting Minecraft's own
 **Quick keys as the default, click combos as a per-player option.** Both are built, so the owner can compare them in the same playtest (`/class controls quick|combo`, or click the Controls tile). This is a player-controls decision, so it stays open until the owner has tried both.
 
 - Quick keys are the closest to "natural during combat". The three most-used slots are one press each with no Sneak, so you keep sprinting. They read like any MMO's ability keys and like SkyBlock's right-click abilities. Players arrange their loadout so that the frequent abilities sit on right-click, F and Q.
+- The research (§3) points the same way. Wynncraft players install client mods to get one key per spell, which quick keys give without mods, and SkyBlock's dungeons already put an ability on Q.
 - Click combos suit players who want everything on the mouse and their fingers on WASD. They cost three clicks per cast.
 - Both keep the fixes that matter more than the scheme: the visible message slot, refusals that cost nothing, aim assist, no swap or drop of a weapon, the one-tick Sneak decision, and the wand fix.
 
@@ -77,7 +129,7 @@ Reversible: the scheme lives in one class (`Classes/Controls`), separate from th
 | 5 | Sneak + F | Sneak + F |
 
 - F and Q never swap or drop a weapon or focus while armed. An empty F or Q says so ("Nothing on F"). A weapon can still be dropped from the inventory screen. With an empty main hand and an item in the off hand, F stays a swap: that is how you take the item into your hand.
-- Right-click stays vanilla on a usable block (door, chest, lever...), on a mob that isn't an enemy (trade, mount, feed), when nothing is on right-click (actives 1 and 4 empty), and with a spear or trident whose right-click abilities don't fit it (its charge or throw). Sneaking turns the first two into casts, as vanilla does with an item in hand.
+- Right-click stays vanilla on a usable block (door, chest, lever...), on a mob that isn't an enemy (trade, mount, feed), when nothing is on right-click (actives 1 and 4 empty), and with an item that has a right-click of its own when no right-click ability fits it: a spear or trident (its charge or throw), a spell item such as the Fireball Wand (its spell). Sneaking turns the first two into casts, as vanilla does with an item in hand.
 - Sneak + key: the decision waits one tick, so Sneak pressed together with the key counts.
 
 **Click combos.** The combos are R R R, R L R, R L L and R R L for actives 1–4. F is active 5 and Q stays a drop. Each click may follow the previous one by at most 0.7 s (`combo-gap-ms`). The HUD shows the clicks so far and what the next click casts. Clicks inside a combo don't attack. A lone right-click expires and casts nothing. A bow's combos start with left-click, since R and L swap. A left-click on a player is always a plain hit and ends the combo.
@@ -87,9 +139,10 @@ Reversible: the scheme lives in one class (`Classes/Controls`), separate from th
 2. No loadout switch happened in the last second.
 3. It fits the item in hand.
 4. It is off cooldown.
-5. A single-target ability has a target. The aim assist forgives 0.75 blocks around the target's hitbox, within range and in sight; walls block it.
-6. A Blink has room.
-7. There is enough Essence.
+5. A finisher has the Momentum it spends. Execute needs 1: at 0 it would be a plain hit that wastes its cooldown (Phase 3; `needs` on the resource effect, which a spend-all finisher gets by default).
+6. A single-target ability has a target. The aim assist forgives 0.75 blocks around the target's hitbox, within range and in sight; walls block it.
+7. A Blink has room.
+8. There is enough Essence.
 
 A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities (Cleave, Frost Nova) may still swing at nothing, as a weapon does.
 
@@ -100,6 +153,7 @@ A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities 
 | Cast | `✦ Cleave · 3 hit`, `✦ Execute · x2.2 · 3 Momentum`, `✦ War Cry · +15% damage · 8 s` | The ability's own sound, heard by everyone nearby |
 | Cooldown | `Cleave 2.4 s` | A soft tick |
 | Too little Essence | `Arcane Bolt needs 15 Essence` | A fizzle and a puff of smoke |
+| No Momentum to spend | `Execute needs 1 Momentum` | A low note |
 | Wrong item | `Arcane Bolt needs a focus` | A low note |
 | No target, no room | `Arcane Bolt: no target within 8 blocks`, `Blink: no room` | A whiff |
 | Not unlocked | `Execute unlocks at Warrior rank 6` | A low note |
@@ -111,7 +165,7 @@ A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities 
 - **What a cast looks like:** Arcane Bolt draws a coloured beam to its target. Execute's impact grows with the Momentum spent. Each Flurry strike sweeps higher. War Cry rings the caster, Riposte shows a guard and Feint a shimmer, and Blink leaves at both ends. Everything is one-off: nothing keeps running.
 
 **The ability bar.** A boss bar shows your loadout's keys, names and state, for example `[R] Cleave  [F] War Cry 12  [Q] Charge  [⇧R] Execute  ⚔ ●●●○○`:
-- **Colours:** green when ready, grey with seconds left, blue when Essence is short, dark when the ability doesn't fit what you hold.
+- **Colours:** green when ready, grey with seconds left, blue when Essence is short, gold when a finisher has no Momentum, dark when the ability doesn't fit what you hold.
 - **Momentum:** shown when the loadout uses it.
 - **When it shows:** in **auto** (the default) during a fight and for 5 s after a press or after taking a weapon in hand. **on** shows it always, **off** never (`/class bar`, or right-click the Controls tile).
 - **Cost:** while shown it refreshes twice a second; hidden, it runs no task.

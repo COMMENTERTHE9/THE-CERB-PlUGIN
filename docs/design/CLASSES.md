@@ -186,21 +186,21 @@ Validation at load refuses an ability whose numbers break the bounds (§8): a co
 About 15 verbs cover the 25 classes' identities. A new verb is real Java, reviewed and tested once, then reused by any number of abilities.
 
 ### 5.3 Casting: inputs and validation
-**Proposed input** (vanilla client, no mods or resource pack): hold Sneak, then press one of five keys.
+**Built (Phase 1, 2026-10-25):** the full design, its reasons and its limits are in `docs/design/ABILITY_CONTROLS.md`. The Step 5 scheme (hold Sneak, then right-click, left-click, F, Q or scroll) is retired. In the playtest, Sneak + left-click gave no clear feedback and Sneak + F swapped hands. Two schemes are built; each player picks one, and the owner's playtest decides the default.
 
-| Key (while holding Sneak) | Casts |
-|---|---|
-| right-click | active 1 |
-| left-click (swing; at a mob too) | active 2 |
-| swap-hands key (F) | active 3 |
-| drop key (Q) | active 4 |
-| scroll or any number key | active 5 |
+| Active | Quick keys (default) | Click combos (option) |
+|---|---|---|
+| 1 | right-click | R R R (hold right-click) |
+| 2 | F | R L R |
+| 3 | Q | R L L |
+| 4 | Sneak + right-click | R R L |
+| 5 | Sneak + F | F |
 
-- **Casting only works with a weapon, a focus or an empty hand.** With a block or a tool in hand, every key does what vanilla does, so building and using items are never affected.
-- Each key is consumed, so nothing is dropped or swapped and the held slot doesn't change.
-- **Why not "Sneak + 1–5":** re-selecting the slot you already hold sends nothing to the server, so one number key would always be dead. A scroll step and a number key also look the same to the server.
-
-Alternatives are in §10. All inputs are plain events the server already receives.
+- **Ability keys only when armed:** a weapon, a focus or an empty hand, with at least one active equipped. With a tool, a block or food, every key is vanilla.
+- F and Q never swap or drop a weapon.
+- Doors, chests and friendly mobs keep their right-click unless you sneak.
+- A bow swaps right and left.
+- Every press gets an answer on the HUD: the cast, or why not. A refused cast spends nothing.
 
 **Server-authoritative chain, for every cast:**
 1. the input belongs to the player;
@@ -208,8 +208,9 @@ Alternatives are in §10. All inputs are plain events the server already receive
 3. it is unlocked (re-checked, never trusted from storage);
 4. the held weapon fits;
 5. the cooldown and its groups are ready, with a global 0.4 s between casts;
-6. the cost can be paid;
-7. the player can act (alive, not in a menu, not stunned or respawning).
+6. what it needs in the world is there: a target in range and in sight for a single-target ability (with a little aim assist), room for a Blink, Momentum for a finisher;
+7. the cost can be paid;
+8. the player can act (alive, not in a menu, not stunned or respawning).
 
 Only then are the effects applied and the cost and cooldown committed, in one step on the caster's thread. The client never decides anything.
 
@@ -330,7 +331,7 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 **Built and verified in game** (`tools/playtest/classes.js`, 91 checks on a Folia 1.21.11 sandbox; `docs/STATUS.md`):
 - Warrior, Mage and Duelist with the abilities in §9 (4 actives, 2 passives and a keystone each; `classes.yml`, `abilities.yml`);
 - the engine core: catalog with its power bounds (§8), loadouts and their rules, the caster, cooldowns with shared groups, the attribute source, persistence v1;
-- the five cast keys;
+- the five cast keys (replaced in Phase 1 by quick keys and click combos, §5.3);
 - Player Menu → Classes & Abilities (classes, a class's abilities, loadouts, an ability picker), `/class`, and the admin `/cerb class <player> <class> rank <n> | info`.
 
 The other 22 classes of the roster are design only.
@@ -339,21 +340,20 @@ The other 22 classes of the roster are design only.
 
 **Settled while building.** These deviate from the text above; each takes the cautious side:
 - **PvP: off for now, not permanent.** Abilities never hit players yet, and a Sneak-attack on a player stays a normal hit. The owner will turn PvP on later (`docs/ROADMAP.md` → PvP, which lists every switch); decision 5 then sets the PvP coefficients.
-- **Inputs.**
-  - A bow or crossbow keeps Sneak + right-click, because it shoots with it.
-  - A left-click whose cast doesn't go off (cooldown, Essence) is still a normal attack.
-  - With a mob under the crosshair the client sends an attack, not an air click, so the cast comes from the attack.
-  - Spears stab with their own action: their hit is caught as damage and replaced by the cast.
-  - Spell items (the Fireball Wand) keep their own right-click.
-  - The arm swing a client sends after dropping or using an item (a snowball from the off hand, a block) is not a left-click, so it never casts active 2.
-  - An empty hand can't cast with Q, and its right-click reaches the server only on a block or a mob. In both cases the vanilla client sends nothing the server can act on. Scroll, F and left-click work empty-handed.
+- **Inputs** (Phase 1 rules; the Step 5 rules are retired with the Sneak scheme, `docs/design/ABILITY_CONTROLS.md` §6):
+  - A bow or crossbow casts its right-click abilities with left-click, because it shoots with right-click.
+  - Spears and tridents keep their own right-click unless the right-click abilities fit a polearm.
+  - Spell items (the Fireball Wand) cast the right-click abilities that fit a focus, and their own spell otherwise.
+  - An empty hand can't cast with right-click in the air or with Q: the vanilla client sends nothing the server can act on. F and Sneak + F work empty-handed.
 - **Arcane Bolt** is an instant bolt: a ray to the first enemy within 8 blocks, and walls block it. It is not a flying projectile.
 - **Fireball** casts a mobs-only version of the existing spell. It flies through players, and its blast neither damages nor ignites them. Its 20 Essence is checked and paid by the ability engine before anything is spent.
-- **Class XP.**
-  - A cast earns 6 XP when it reaches a hostile mob (farm animals don't count), or when it is a self cast (buff, Blink, Feint) made during a fight.
+- **Class XP** (Phase 3 rules, against farming):
+  - A cast earns 6 XP when it reaches a hostile mob (farm animals don't count), or when it is a self cast (buff, Blink, Feint) made in a fight with an enemy.
+  - Hitting a cow or an armor stand, or a PvP tag, starts a "fight" for the loadout lock but pays no class XP.
   - Riposte earns it when it counters.
   - Casting into the air out of combat earns nothing.
-  - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced.
+  - **Weak mobs pay less, as kill XP does:** a foe 20 or more levels below the class's own skills (`kill-xp.anti-grind-gap`) pays a quarter (`anti-grind-factor`). `ClassRanks.castXp`, unit-tested.
+  - A kill gives 50% of its skill XP, split between the classes whose abilities were used in the last 10 s; grey mobs are already reduced. **Only enemies count:** farm animals pay no kill share.
 - **Essence abilities** have their cooldowns shortened by Spell cooldown recovery (capped, paused in PvP), never below 1 s.
 - **Config changes never cost progress.**
   - A class removed from `classes.yml` keeps its saved rank and XP, unused, and gets them back if it returns.

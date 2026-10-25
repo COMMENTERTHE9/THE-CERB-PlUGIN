@@ -1,4 +1,4 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes prototype
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls
 
 *2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 50 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
 
@@ -66,26 +66,66 @@
 | 5 | Close the menu, kill a few mobs (or `/cerb skill YourName Blade_Mastery level <current + 2>`), open it again | The Skills tile shows a **2** in its corner and "▲ +2 levels since you last looked", with one soft chime. Skills → Combat shows the same on the category and on Blade Mastery. Opening Blade Mastery flashes its bar gold once, with a quiet level-up sound. Open it again: it just fills. |
 | 6 | Leave the menu open for a while, then close it | Nothing flickers or keeps moving. Closing is silent. |
 
-## 6. Classes & Abilities (Step 5 prototype: Warrior, Mage, Duelist)
+## 6. Classes & Abilities: the new controls (Phases 1–3)
 
-Only these three classes exist; the rest of the roster is design only.
+Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **This section matters most:** the sandbox checks prove the keys reach the right ability, but only you can say whether they feel right. Nothing here is called "usable" until you have played it. Details: `docs/design/ABILITY_CONTROLS.md`, results per ability: `docs/ABILITY_AUDIT.md`.
+
+**Setup** (skip what you already have): `/cerb skill YourName Blade_Mastery level 10`, `… Critical_Strike level 5`, `… Intelligence level 5`, then `/cerb class YourName warrior rank 12`, `… mage rank 12`, `… duelist rank 12`. `/cerb spawn zombie 1 noai` puts a zombie that stands still where you stand.
+
+**Where things show.** Cast messages appear in the **middle of the HUD bar** for about 1.5 s; health and Essence stay visible around them. Nothing goes to chat. In a fight, or for 5 s after a key press, a **boss bar** at the top lists your keys and what is ready.
+
+### 6a. Quick keys (the default)
 
 | # | Do | Expected |
 |---|---|---|
-| 1 | Player Menu → **Classes & Abilities** (the star, bottom row) | Three class tiles: your rank and XP, or what each still needs ("Blade Mastery 10 (you: 3)…"); three loadouts; "How to cast". |
-| 2 | `/cerb skill YourName Blade_Mastery level 10`, `… Critical_Strike level 5`, `… Intelligence level 5` (skip what you already have) | "✦ New class: Warrior", then Duelist and Mage, each once. |
-| 3 | `/cerb class YourName warrior rank 12`, `… mage rank 8`, `… duelist rank 12` | "✦ Warrior rank 12" and the abilities it unlocks. A class tile → its abilities: unlocked in colour, the rest with the rank that opens them. |
-| 4 | Loadout 1 → click Active 1 → Cleave; Active 2 → Execute; Active 3 → War Cry; Passive 1 → Battle-Hardened; Keystone → Juggernaut | Each pick says where it went and returns to the loadout. The Bonuses tile lists +8 and +12 Vitality, +6 Fortitude, −6% attack speed; once the loadout is in use, max health on the HUD goes up. |
-| 5 | Sword in hand, a few zombies close in front: hold **Sneak** and right-click, then Sneak + left-click one zombie, then Sneak + F | Cleave hits every zombie in front ("✦ Cleave"); Execute hits harder after a Cleave on several (Momentum); War Cry gives +15% damage for 8 s. Pressing again too soon shows the seconds left. |
-| 6 | Loadout 2 → Riposte (A1), Flurry (A2), Feint (A3), Precision (P1); "Use this loadout" (out of combat) | Riposte just before a zombie hits you: no damage, it is struck back ("✦ Riposte!"). Flurry: three quick hits. Feint, then a normal hit: a critical hit. |
-| 7 | Loadout 3 → Arcane Bolt (A1), Frost Nova (A2), Blink (A3), Fireball (A4); blaze rod in hand | Arcane Bolt hits a zombie up to 8 blocks away and costs 15 Essence; Frost Nova slows everything around you; Blink jumps you 6 blocks forward, never into blocks; Fireball bursts on the first zombie it meets (20 Essence). With a sword the focus abilities say "needs a focus". |
-| 8 | Keys stay normal: no Sneak; or a pickaxe, block or food in hand; or a bow (right-click) | Everything works as before: no casts, drops drop, bows shoot. |
-| 9 | With abilities on Q, F and scroll: Sneak + Q, Sneak + F, Sneak + scroll | The ability goes off; the sword stays in your hand, nothing is dropped or swapped, the selected slot doesn't move. Only that ability goes off (not the one on left-click too). With an empty hand Q does nothing: the game doesn't tell the server. |
-| 10 | Hit a zombie, then `/class loadout 2` straight away; wait 8 s and switch twice in a row | Refused during the fight ("Not during a fight…"); after a switch, a second one waits 10 s. Cooldowns follow you into the other loadout. |
-| 11 | Cast War Cry, rejoin within 30 s, `/class` | Ranks, loadouts and the active loadout are as you left them; War Cry still shows its cooldown. |
-| 12 | Another player in front of you while you Cleave or cast Fireball; Sneak + left-click that player | Abilities never hit players (Fireball flies through them); a Sneak-attack on a player is a normal PvP hit. |
+| 1 | Player Menu → **Classes & Abilities**. Look at the **Controls** tile. | "Quick keys", your five keys with their abilities, and the bar setting. |
+| 2 | Loadout 1: Cleave (A1), War Cry (A2), Charge (A3), Execute (A4), Blink (A5). "Use this loadout". | Each pick says where it went. |
+| 3 | Sword in hand, three zombies close in front. **Right-click.** | `✦ Cleave · 3 hit`. Right-click again at once: `Cleave 3.8 s` and a soft tick. |
+| 4 | **Sneak + right-click** at a zombie straight after the Cleave. | `✦ Execute · x2.2 · 3 Momentum`, a heavier impact. Again with no Momentum: `Execute needs 1 Momentum`, nothing spent. *(New: Execute is a finisher, so it no longer wastes its cooldown on a plain hit.)* |
+| 5 | **F**. | `✦ War Cry · +15% damage · 8 s` and a ring around you. **The sword stays in your hand.** |
+| 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits: `Blink 1.2 s`. Later, Sneak + F blinks you 6 blocks. |
+| 7 | Swap the sword for a **pickaxe, a block or food**. Press R, F, Q. | All vanilla: you mine, place, eat, swap and drop as usual. |
+| 8 | Sword in hand: right-click a **door, a chest, a villager, a horse**. | They open, trade or mount as usual. With Sneak, right-click casts instead (vanilla also skips them while sneaking). |
+| 9 | Empty a slot (A2 → none). Press **F**. | `Nothing on F · set it in Classes & Abilities`. No swap. |
 
-`/class` shows the same in chat (`/class abilities`, `/class equip 1 a1 cleave`, `/class loadout 2`).
+### 6b. The Mage and the focus (your earlier report)
+
+| # | Do | Expected |
+|---|---|---|
+| 10 | Loadout 2: Arcane Bolt (A1), Frost Nova (A2), Fireball (A3), Blink (A4). **Blaze rod** in hand. | A blaze rod, breeze rod or stick is a focus. |
+| 11 | Right-click at a zombie 6 blocks away. | `✦ Arcane Bolt`, a purple beam to it, 15 Essence spent. Aim half a block beside it: still hits (aim assist). |
+| 12 | Aim well beside it, at one 10 blocks away, or behind a wall. | `Arcane Bolt: no target within 8 blocks`, a whiff. **No Essence and no cooldown spent.** |
+| 13 | **F** with zombies around you; **Q** at a zombie. | Frost Nova damages and slows those within 4 blocks; Fireball bursts on the first zombie (20 Essence). |
+| 14 | Spend your Essence (`/cerb mana YourName 0`), then right-click. | `Arcane Bolt needs 15 Essence`, a fizzle. |
+| 15 | A sword instead of the rod. Right-click. | `Arcane Bolt needs a focus`, a low note. |
+| 16 | `/givetestitem fireball` (the Fireball Wand) with Arcane Bolt on right-click. | The wand now casts **Arcane Bolt**; before, it always cast its own Fireball. When no right-click ability fits a focus (say Cleave on A1, nothing on A4), it casts its Fireball as before. |
+
+### 6c. Click combos (the option, Wynncraft-like)
+
+| # | Do | Expected |
+|---|---|---|
+| 17 | Click the **Controls** tile (or `/class controls combo`). | "Click combos": R R R, R L R, R L L, R R L for actives 1–4, F for 5, and Q is a normal drop. |
+| 18 | With loadout 1: **R R R** (or hold right-click) at zombies; **R R L** right after it. | Cleave, then Execute (active 4). The HUD shows the clicks so far and what the next one casts. The left-clicks inside a combo don't hit. |
+| 19 | One right-click and wait 1 s. | Nothing is cast; the combo expires. |
+| 20 | Switch back: click the tile again (or `/class controls quick`). Right-click the tile to cycle the bar: auto, on, off. | Your choice is saved; it is still there after a rejoin. |
+
+### 6d. Duelist, mixing, saving, players
+
+| # | Do | Expected |
+|---|---|---|
+| 21 | Loadout 3: Riposte (A1), Flurry (A2), Feint (A3), Lunge (A4), Precision (P1). Right-click just before a zombie hits you. | No damage, it is struck back (`✦ Riposte! · countered`) and Riposte is ready again in 1.5 s. |
+| 22 | **F** facing a zombie; then **Q**, then a normal hit. | Flurry: three rising sweeps. Feint: `next hit crits`, and the hit is a critical one. |
+| 23 | Mix: Cleave (Warrior), Feint (Duelist), Blink (Mage) in one loadout. | All three work. |
+| 24 | Hit a zombie, then try to switch loadouts at once. | `Not during a fight: wait until 8 s after the last hit.` Cooldowns follow you into the other loadout. |
+| 25 | Cast War Cry, rejoin within 30 s, `/class`. | Loadouts, controls and War Cry's cooldown as you left them. |
+| 26 | Another player in front of you while you Cleave or Fireball; aim Execute at them. | Abilities never hit players (PvP for abilities is off for now). |
+| 27 | War Cry (F), then kill a cow with normal hits; `/class`. Then Cleave a zombie until it dies; `/class`. | **No class XP from the cow**, from casts or kills. The zombie pays 6 per Cleave and a share of its kill XP. Zombies 20 or more levels below your class's skills pay a quarter. |
+
+**What only you can judge, please tell me:**
+- Which scheme feels better in a real fight: quick keys or click combos? Should the default change?
+- Is 1.5 s right for the messages? Does the boss bar help or get in the way?
+- Can you tell the refusal sounds apart (cooldown tick, Essence fizzle, low note, whiff)?
+- Do the three classes feel different, and does each ability feel worth pressing?
 
 ## 7. Afterwards
 

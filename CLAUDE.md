@@ -28,8 +28,13 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Step 2, decisions A–E (`docs/STATUS.md`): PvP speed pause kept; powered shelves work (menu items lifted out for the swap tick); fire resistance per kind of fire (`combat.yml fire-resistance`); projectile hits train Survival/Heavy Armor; spears train Weapon Mastery. Admin/confirm screens always get a fresh window (`Menu.reuseWindow()`), fixing a stale-click bug from Step 1
 - ✅ Step 3, Player Menu 2.1 (`docs/STATUS.md`): opening reveal, header sweep, page-turn sounds, filling skill bar, "since you last looked" progress (session memory, no DB), category tabs; engine `GUIs/menu/MenuAnimator` + `MenuView.later/soundLater` (bounded, cancelled on any screen change; `menu.js motion`)
 - ✅ Step 4, classes & abilities design (`docs/design/CLASSES.md`; 8 owner decisions in its §10)
-- ✅ Step 5, class prototype (`docs/STATUS.md`, `docs/design/CLASSES.md` §11): Warrior / Mage / Duelist on a data-driven ability engine (`Classes/*`, `classes.yml`, `abilities.yml`); cast keys = Sneak + right-click / left-click / F / Q / scroll; loadouts (5 actives, 3 passives, keystone; 3 per player); Player Menu → Classes & Abilities, `/class`, `/cerb class`; PvE-only for now, PvP turned on later (`tools/playtest/classes.js`, `load.js abilities`)
-- ⬜ Now (owner, 2026-10-25, after playtesting the classes): Phase 1 ability controls → Phase 2 individual audit of the 21 abilities → Phase 3 polish; then Step 6 (six classes, one at a time), the 35-skill audit + gathering/crafting, mastery to level 150 (`docs/ROADMAP.md` → After the class playtest). Quality before class count; usability is verified only by the owner's own playtest
+- ✅ Step 5, class prototype (`docs/STATUS.md`, `docs/design/CLASSES.md` §11): Warrior / Mage / Duelist on a data-driven ability engine (`Classes/*`, `classes.yml`, `abilities.yml`); cast keys (Step 5: Sneak + a key, retired in Phase 1); loadouts (5 actives, 3 passives, keystone; 3 per player); Player Menu → Classes & Abilities, `/class`, `/cerb class`; PvE-only for now, PvP turned on later (`tools/playtest/classes.js`, `load.js abilities`)
+- ✅ Phases 1–3 after the class playtest (2026-10-25, `docs/ROADMAP.md` → After the class playtest):
+  - **Ability controls 2.0** (`docs/design/ABILITY_CONTROLS.md`): quick keys by default (right-click / F / Q, Sneak + right-click / Sneak + F), click combos as an option, a HUD message and sound for every press, refusals spend nothing, aim assist, an ability bar.
+  - **All 21 abilities audited** in game (`docs/ABILITY_AUDIT.md`, `tools/playtest/abilities.js`).
+  - **Class XP only from real fights** (`ClassRanks.castXp`), and Execute needs Momentum.
+  - **Usability waits for the owner's playtest** (`docs/PLAYTEST_CHECKLIST.md` §6).
+- ⬜ Next: the owner's playtest of the controls + the open decisions in `docs/STATUS.md`; then Phase 4 (Step 6, six classes one at a time), the 35-skill audit + gathering/crafting, mastery to level 150. Quality before class count
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -40,7 +45,12 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - `Listener/VirtualHealthListener.java` — damage pipeline (player + mob virtual HP); `Manager/PlayerVirtualHealthManager.applyResolvedDamage` + `Manager/DefenseMath` — resistance → armor → 75% cap → defense bar, PvP-as-before; `Manager/PveOffense.java` — attributes on player→mob hits; `Manager/SecondaryEffects.java` + `Manager/PvpTag.java` — speed stats
 - `GUIs/PlayerMenuGUI.java` — hotbar head, `/menu`, hub sections (a new destination = one `PlayerMenuSections.Section`); screens extend `GUIs/player/PlayerMenu`
 - `Attributes/*` — attribute engine (pure calculator, cached per-player `AttributeService`, sources); `Manager/AttributeEffects.java` pushes Vitality/Fortitude/Essence into health/defense/mana
-- `Classes/*` — classes & abilities: `ClassCatalog` (YAML → definitions, power bounds), `ClassService` (profiles, ranks, loadouts, switch rules, attribute source, saves), `AbilityCaster` (validates and runs the effect verbs through the normal damage pipeline), `AbilityListener` (the cast keys), `ClassProfile` (saved document, repaired on load); menus `GUIs/player/Classes*`, `LoadoutMenu`, `AbilityPickerMenu`
+- `Classes/*` — classes & abilities:
+  - **Engine:** `ClassCatalog` (YAML → definitions, power bounds); `ClassService` (profiles, ranks, loadouts, switch rules, attribute source, class XP, saves); `AbilityCaster` (checks before spending, aim assist, runs the effect verbs through the normal damage pipeline, returns a `CastResult`).
+  - **Controls:** `AbilityListener` (raw keys → presses by scheme); `Controls` (schemes, combos, key labels; pure); `CastFeedback` (HUD message + sound per outcome); `AbilityBar` (the boss bar).
+  - **Saved data:** `ClassProfile` (the saved document, incl. `controls:`/`bar:`, repaired on load).
+  - **Menus:** `GUIs/player/Classes*`, `LoadoutMenu`, `AbilityPickerMenu`.
+  - **Test tools:** `/cerb mana <p> [n|full|empty]`, `/cerb class <p> cooldowns`, `/cerb mobs [radius]`.
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions

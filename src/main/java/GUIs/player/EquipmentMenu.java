@@ -48,7 +48,7 @@ public final class EquipmentMenu extends PlayerMenu {
             }
             double r = cc.getArmorReductionForPiece(piece.getType());
             gear += r;
-            Ui.Lore l = Ui.lore().stat("Damage reduction", "+" + Fmt.pct(r));
+            Ui.Lore l = Ui.lore().stat("Damage reduction", Fmt.signedPct(r));
             if (PlayerDefenseManager.isHeavyArmor(piece.getType())) {
                 l.raw(ChatColor.GREEN + "● Heavy armor: trains " + SkillNames.display("Heavy Armor Training"));
             }
@@ -67,9 +67,9 @@ public final class EquipmentMenu extends PlayerMenu {
                 .stat("Heavy armor", heavy ? "yes" : "no").build()));
 
         Ui.Lore t = Ui.lore()
-                .stat("From armor pieces", "+" + Fmt.pct(gear))
-                .stat("From " + SkillNames.display("Heavy Armor Training"), "+" + Fmt.pct(skill))
-                .stat("From Fortitude", "+" + Fmt.pct(fort))
+                .stat("From armor pieces", Fmt.signedPct(gear))
+                .stat("From " + SkillNames.display("Heavy Armor Training"), Fmt.signedPct(skill))
+                .stat("From Fortitude", Fmt.signedPct(fort))
                 .raw(ChatColor.GRAY + "Total: " + ChatColor.WHITE + Fmt.pct(total)
                         + (gear + skill + fort > cap + 1e-9 ? ChatColor.YELLOW + "  (capped at " + Fmt.pct(cap) + ")" : ""))
                 .gap().text("Each hit you take is reduced by this.")

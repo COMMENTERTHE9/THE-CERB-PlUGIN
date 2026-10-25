@@ -82,9 +82,9 @@ public final class AttributeView {
             }
             case VITALITY -> out.add(g + "Max health: " + w + Fmt.mult(s.maxHpMultiplier()));
             case FORTITUDE -> {
-                out.add(g + "Armor: " + w + "+" + Fmt.pct(s.armorBonus()));
+                out.add(g + "Armor: " + w + Fmt.signedPct(s.armorBonus()));
                 out.add(g + "Defense bar: " + w + Fmt.mult(s.defenseBarMultiplier()));
-                out.add(g + "Fire / cold / drowning resist: " + w + "+" + Fmt.pct(s.resist()));
+                out.add(g + "Fire / cold / drowning resist: " + w + Fmt.signedPct(s.resist()));
             }
             case ESSENCE -> {
                 out.add(g + "Max mana: " + w + Fmt.mult(s.maxManaMultiplier()));

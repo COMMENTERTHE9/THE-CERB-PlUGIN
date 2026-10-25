@@ -17,6 +17,8 @@ public record CastResult(Outcome outcome, AbilityDef ability, String detail, lon
         COOLDOWN,
         /** Not enough Essence (detail: the cost). */
         NO_ESSENCE,
+        /** Not enough of a class resource, a finisher with no Momentum (detail: "1 Momentum"). */
+        NO_RESOURCE,
         /** The item in hand doesn't fit (detail: what it needs, "a focus"). */
         WRONG_ITEM,
         /** Nothing to hit within range (detail: the range). */

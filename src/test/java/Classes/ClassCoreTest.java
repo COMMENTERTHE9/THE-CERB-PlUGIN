@@ -66,6 +66,21 @@ class ClassCoreTest {
         assertEquals(2000L, cat.groupMs().get("movement"));
         assertEquals(Set.of("movement"), cat.ability("blink").groups());
         assertEquals(Set.of(WeaponFamily.FOCUS), cat.ability("arcane_bolt").weapons());
+        assertEquals(1, AbilityCaster.momentumNeeded(cat.ability("execute")), "Execute needs Momentum to spend");
+        assertEquals(0, AbilityCaster.momentumNeeded(cat.ability("cleave")), "Cleave builds it");
+    }
+
+    @Test
+    void aFinisherNeedsAStackUnlessTheFileSaysOtherwise() throws Exception {
+        // A server's abilities.yml written before "needs" existed: the spend-all finisher still needs one stack.
+        String old = edit(SHIPPED_ABILITIES, "spend-all: true, needs: 1 \\}", "spend-all: true }");
+        assertEquals(1, AbilityCaster.momentumNeeded(of(SHIPPED_CLASSES, old).ability("execute")));
+        String off = edit(SHIPPED_ABILITIES, "needs: 1 \\}", "needs: 0 }");
+        assertEquals(0, AbilityCaster.momentumNeeded(of(SHIPPED_CLASSES, off).ability("execute")), "needs: 0 turns it off");
+        String wild = edit(SHIPPED_ABILITIES, "needs: 1 \\}", "needs: 99 }");
+        ClassCatalog w = of(SHIPPED_CLASSES, wild);
+        assertTrue(w.ability("execute") == null || AbilityCaster.momentumNeeded(w.ability("execute")) <= ClassCatalog.MAX_STACKS,
+                "an out-of-range value is refused or clamped, never above the stack cap");
     }
 
     @Test

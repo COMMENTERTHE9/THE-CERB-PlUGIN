@@ -111,7 +111,7 @@ async function nav() {
   check('Progress strip is labelled', /Level \d+ → \d+: \d+%|Max level/.test(slotName(10)) && slotName(10) === slotName(16), slotName(10));
   check('How to train: kills with swords, XP per mob level', /Kill mobs while holding: any sword\./.test(flat(20)) && /Lv1 \d+ · Lv25 \d+ · Lv50 \d+ · Lv100 \d+/.test(flat(20)), flat(20));
   check('Attributes & speed: per level, now, and what it does', /Each level gives: \+1 Power \(swords\) \+0\.3% sword attack speed/.test(flat(22))
-      && /Sword damage \(mobs\): x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22))
+      && /Sword damage \(mobs\): x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: [+-][\d.]+% → [+-][\d.]+%/.test(flat(22))
       && /Attack speed: ● Active/.test(flat(22)) && /pause during PvP/.test(flat(22)), flat(22));
   check('Indented lines keep their indent', (slot(22).customLore || []).map(plain).some(l => /^  \+1 Power/.test(l)), slotLore(22));
   check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(24)), flat(24));

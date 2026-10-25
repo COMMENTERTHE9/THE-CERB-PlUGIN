@@ -112,6 +112,7 @@ class ControlsTest {
         assertEquals("§6✦ Arcane Bolt §7· §f3 hit", CastFeedback.text(CastResult.cast(bolt, "3 hit"), "Right-click"));
         assertEquals("§7Arcane Bolt §f1.2 s", CastFeedback.text(CastResult.cooldown(bolt, 1_200), "Right-click"));
         assertEquals("§bArcane Bolt §cneeds 15 Essence", CastFeedback.text(CastResult.refuse(CastResult.Outcome.NO_ESSENCE, bolt, "15"), "x"));
+        assertEquals("§6Arcane Bolt §cneeds 1 Momentum", CastFeedback.text(CastResult.refuse(CastResult.Outcome.NO_RESOURCE, bolt, "1 Momentum"), "x"));
         assertEquals("§cArcane Bolt needs a focus", CastFeedback.text(CastResult.refuse(CastResult.Outcome.WRONG_ITEM, bolt, "a focus"), "x"));
         assertEquals("§cArcane Bolt: no target within 8 blocks", CastFeedback.text(CastResult.refuse(CastResult.Outcome.NO_TARGET, bolt, "8 blocks"), "x"));
         assertEquals("§cArcane Bolt unlocks at Mage rank 3", CastFeedback.text(CastResult.refuse(CastResult.Outcome.NOT_UNLOCKED, bolt, "Mage rank 3"), "x"));

@@ -28,6 +28,15 @@ class FmtTest {
     }
 
     @Test
+    void signedPctShowsOneSign() {
+        assertEquals("+4.6%", Fmt.signedPct(0.046));
+        assertEquals("-4.6%", Fmt.signedPct(-0.046)); // a keystone's slower attacks: never "+-4.6%"
+        assertEquals("+0.0%", Fmt.signedPct(0));
+        assertEquals("+0.0%", Fmt.signedPct(-0.0001));
+        assertEquals("?", Fmt.signedPct(Double.NaN));
+    }
+
+    @Test
     void duration() {
         assertEquals("0s", Fmt.duration(-5));
         assertEquals("1m 1s", Fmt.duration(61_000));

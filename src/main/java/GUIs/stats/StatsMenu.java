@@ -161,7 +161,7 @@ public final class StatsMenu extends PlayerMenu {
 
         double as = s.attackSpeed(wc);
         l.raw(ChatColor.AQUA + "Attack speed" + ChatColor.GRAY + " (" + wc.displayName.toLowerCase(java.util.Locale.ROOT) + "): "
-                + ChatColor.WHITE + "+" + Fmt.pct(as));
+                + ChatColor.WHITE + Fmt.signedPct(as));
         l.raw(ChatColor.DARK_GRAY + "  sources " + Fmt.pct(s.attackSpeedRaw(wc)) + ", max " + Fmt.pct(rules.get(Attributes.Stat.ATTACK_SPEED).cap()));
         double perSecond = attacksPerSecond(p, wc, inHand, paused ? 0 : as);
         if (perSecond > 0) {
@@ -169,12 +169,12 @@ public final class StatsMenu extends PlayerMenu {
                     + (inHand ? "" : ChatColor.DARK_GRAY + " (iron)"));
         }
         double ds = s.secondary(Attributes.Stat.DRAW_SPEED);
-        l.raw(ChatColor.AQUA + "Bow draw speed: " + ChatColor.WHITE + "+" + Fmt.pct(ds)
+        l.raw(ChatColor.AQUA + "Bow draw speed: " + ChatColor.WHITE + Fmt.signedPct(ds)
                 + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  full power in %.2f s", Attributes.BowDraw.fullDrawSeconds(paused ? 0 : ds)));
-        l.raw(ChatColor.AQUA + "Movement speed: " + ChatColor.WHITE + "+" + Fmt.pct(s.secondary(Attributes.Stat.MOVE_SPEED)));
+        l.raw(ChatColor.AQUA + "Movement speed: " + ChatColor.WHITE + Fmt.signedPct(s.secondary(Attributes.Stat.MOVE_SPEED)));
         double cd = s.secondary(Attributes.Stat.COOLDOWN_RECOVERY);
         long fireball = sec == null ? 1000 : sec.cooldownMs(p.getUniqueId(), 1000);
-        l.raw(ChatColor.AQUA + "Spell cooldown recovery: " + ChatColor.WHITE + "+" + Fmt.pct(cd)
+        l.raw(ChatColor.AQUA + "Spell cooldown recovery: " + ChatColor.WHITE + Fmt.signedPct(cd)
                 + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  Fireball every %.2f s", fireball / 1000.0));
         l.gap().text("Raised by Agility (Essence for spells)")
                 .text("and by the skill behind each action:")
@@ -227,9 +227,9 @@ public final class StatsMenu extends PlayerMenu {
                 .stat("  Max health", (hs == null ? "?" : num(hs.maxHp())) + "  (" + Fmt.mult(s.maxHpMultiplier()) + ")")
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.VITALITY), Attribute.VITALITY))
                 .gap().text("From Fortitude (on top of gear and skills):")
-                .stat("  Armor bonus", "+" + Fmt.pct(s.armorBonus()))
+                .stat("  Armor bonus", Fmt.signedPct(s.armorBonus()))
                 .stat("  Defense bar", Fmt.mult(s.defenseBarMultiplier()))
-                .stat("  Resistances", "+" + Fmt.pct(s.resist()))
+                .stat("  Resistances", Fmt.signedPct(s.resist()))
                 .raw(AttributeView.effectLabel(svc.effect(Attribute.FORTITUDE), Attribute.FORTITUDE))
                 .gap().text("Your totals now:")
                 .stat("  Armor reduction", Fmt.pct(vh.getArmorReduction(p)) + " (max " + Fmt.pct(s.rules().limits().armor()) + ")")

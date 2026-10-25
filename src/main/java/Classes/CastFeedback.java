@@ -66,6 +66,7 @@ public final class CastFeedback {
             case CAST -> "§6✦ " + name + (d.isEmpty() ? "" : " §7· §f" + d);
             case COOLDOWN -> "§7" + name + " §f" + AbilityCaster.seconds(r.remainingMs());
             case NO_ESSENCE -> "§b" + name + " §cneeds " + d + " Essence";
+            case NO_RESOURCE -> "§6" + name + " §cneeds " + d;
             case WRONG_ITEM -> "§c" + name + " needs " + d;
             case NO_TARGET -> "§c" + name + ": no target within " + d;
             case BLOCKED -> "§c" + name + ": no room";
@@ -88,7 +89,7 @@ public final class CastFeedback {
                 p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS, 0.35f, 1.8f);
                 p.spawnParticle(Particle.SMOKE, p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(0.7)), 5, 0.1, 0.1, 0.1, 0.01);
             }
-            case WRONG_ITEM -> p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.PLAYERS, 0.6f, 0.6f);
+            case WRONG_ITEM, NO_RESOURCE -> p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.PLAYERS, 0.6f, 0.6f);
             case NO_TARGET, BLOCKED -> p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_NODAMAGE, SoundCategory.PLAYERS, 0.7f, 1.0f);
             case NOT_UNLOCKED, EMPTY, SWITCHING, UNAVAILABLE -> p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.PLAYERS, 0.4f, 0.5f);
             case CAST, CANNOT_ACT -> { }

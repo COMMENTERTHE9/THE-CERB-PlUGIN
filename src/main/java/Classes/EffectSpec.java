@@ -38,7 +38,7 @@ public sealed interface EffectSpec {
     record Buff(Attribute attribute, Stat stat, double amount, double seconds) implements EffectSpec {}
 
     /** Gain ({@code delta} > 0, per target hit when {@code perTarget}) or spend ({@code delta} < 0, or all when {@code spendAll}) a class resource. */
-    record Resource(String kind, int delta, int max, boolean perTarget, boolean spendAll) implements EffectSpec {}
+    record Resource(String kind, int delta, int max, boolean perTarget, boolean spendAll, int needs) implements EffectSpec {}
 
     /**
      * A counter window: for {@code windowMs} the next melee hit you take is negated and answered at

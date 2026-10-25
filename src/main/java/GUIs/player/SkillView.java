@@ -180,7 +180,7 @@ public final class SkillView {
             AttributeRules.StatWeight first = group.get(0);
             List<String> weapons = new ArrayList<>();
             for (AttributeRules.StatWeight w : group) if (w.weapon() != null) weapons.add(w.weapon().singular.toLowerCase(Locale.ROOT));
-            out.add(ChatColor.AQUA + "+" + Fmt.pct(first.perLevel() * levels).replace(".0%", "%") + " "
+            out.add(ChatColor.AQUA + Fmt.signedPct(first.perLevel() * levels).replace(".0%", "%") + " "
                     + (weapons.isEmpty() ? "" : String.join("/", weapons) + " ")
                     + first.stat().displayName.toLowerCase(Locale.ROOT)
                     + (perLevel ? ChatColor.DARK_GRAY + " per level" : ""));
@@ -218,9 +218,9 @@ public final class SkillView {
                 }
                 case VITALITY -> rows.put("Max health", new String[]{Fmt.mult(now.maxHpMultiplier()), Fmt.mult(next.maxHpMultiplier())});
                 case FORTITUDE -> {
-                    rows.put("Armor", new String[]{"+" + Fmt.pct(now.armorBonus()), "+" + Fmt.pct(next.armorBonus())});
+                    rows.put("Armor", new String[]{Fmt.signedPct(now.armorBonus()), Fmt.signedPct(next.armorBonus())});
                     rows.put("Defense bar", new String[]{Fmt.mult(now.defenseBarMultiplier()), Fmt.mult(next.defenseBarMultiplier())});
-                    rows.put("Resistances", new String[]{"+" + Fmt.pct(now.resist()), "+" + Fmt.pct(next.resist())});
+                    rows.put("Resistances", new String[]{Fmt.signedPct(now.resist()), Fmt.signedPct(next.resist())});
                 }
                 case ESSENCE -> {
                     rows.put("Max Essence", new String[]{Fmt.mult(now.maxManaMultiplier()), Fmt.mult(next.maxManaMultiplier())});
@@ -231,7 +231,7 @@ public final class SkillView {
             }
         }
         for (SpeedRow r : speedRows(statWeights(svc.rules(), skill))) {
-            rows.put(r.label(), new String[]{"+" + Fmt.pct(r.value(now)), "+" + Fmt.pct(r.value(next))});
+            rows.put(r.label(), new String[]{Fmt.signedPct(r.value(now)), Fmt.signedPct(r.value(next))});
         }
         List<String> out = new ArrayList<>();
         rows.forEach((label, v) -> {

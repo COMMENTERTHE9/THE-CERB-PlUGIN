@@ -130,6 +130,8 @@ public final class AbilityCaster {
         }
         long left = prof.cooldowns().remaining(a, now);
         if (left > 0) return CastResult.cooldown(a, left);
+        int needs = momentumNeeded(a);
+        if (needs > 0 && momentum(prof) < needs) return CastResult.refuse(CastResult.Outcome.NO_RESOURCE, a, needs + " Momentum");
         // What the ability needs in the world, checked before anything is spent.
         LivingEntity aimed = null;
         EffectSpec first = a.effects().isEmpty() ? null : a.effects().get(0);
@@ -500,6 +502,15 @@ public final class AbilityCaster {
         else cur = Math.max(0, cur + r.delta());
         prof.momentum = cur;
         prof.momentumAt = System.currentTimeMillis();
+    }
+
+    /** The Momentum an ability needs before it can be cast (a finisher: 1), 0 for none. */
+    static int momentumNeeded(AbilityDef a) {
+        int n = 0;
+        for (EffectSpec e : a.effects()) {
+            if (e instanceof EffectSpec.Resource r && "momentum".equalsIgnoreCase(r.kind())) n = Math.max(n, r.needs());
+        }
+        return n;
     }
 
     /** Momentum stacks right now (they fade {@link #MOMENTUM_DECAY_MS} after the last gain). */
