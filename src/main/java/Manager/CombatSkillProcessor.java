@@ -103,10 +103,19 @@ public class CombatSkillProcessor {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return;
 
-        // Apply lifesteal healing
+        // Apply lifesteal healing. A PvP hit's lifesteal restores the same share of the attacker's
+        // health as before attributes. The attacker may be in another region (an arrow from far
+        // away): heal on their own thread, and never revive one who died meanwhile.
         double lifesteal = ctx.postDamage().getLifestealAmount();
         if (lifesteal > 0 && ctx.defense().getFinalDamage() > 0) {
-            virtualHealthManager.heal(attacker, lifesteal);
+            boolean pvp = ctx.isPvp();
+            Runnable heal = () -> {
+                if (attacker.isDead() || virtualHealthManager.isRespawning(attacker)
+                        || virtualHealthManager.hasPendingCustomDeath(attacker)) return;
+                virtualHealthManager.heal(attacker, lifesteal * (pvp ? virtualHealthManager.pvpHealScale(attacker) : 1.0));
+            };
+            if (org.bukkit.Bukkit.isOwnedByCurrentRegion(attacker)) heal.run();
+            else attacker.getScheduler().run(cerberus.world.cerb.CerberusPlugin.getInstance(), t -> heal.run(), null);
             ctx.appendTrace("LifestealApplied", 0, lifesteal, "healed");
         }
 

@@ -13,6 +13,16 @@
 //   speed   - speed stats measured in game: attack interval by Blade/Weapon Mastery (server attribute value and
 //             damage at a fixed swing rhythm), bow draw (power and critical arrows by draw time), movement speed,
 //             spell cooldown (Fireball intervals), and the PvP pause (spawns CerbTarget as a second player)
+//   defense - how a hit on a player is reduced (exact /damage hits, read from the combat trace): armor counts
+//             as soon as it is put on or taken off, resistance x armor (70% at most today, under the 75% cap),
+//             then the defense bar takes its share of what is left
+//   mastery - Weapon Mastery with the specialized skills: swings to kill a level-100 zombie and the server's Power
+//             multiplier, netherite sword at Blade Mastery 100 + Weapon Mastery 1 vs 100, netherite axe at Weapon Mastery 100
+//   pvp     - PvP plays as before Attributes 2.0 (attributes.yml integration.pvp-defense: false): exact /damage hits
+//             by this bot on a second player (CerbTarget) with defensive skills 100 use the old armor (gear + Heavy
+//             Armor), Survival resistance, and take the share of health a 100-health defender lost
+//   defense-cap - the 75% cap binding: needs a TEMPORARILY raised limits.resist (e.g. 0.75) in the sandbox
+//             server's plugins/CerberusPlugin/attributes.yml (then /cerb reload); fire resist 70% + armor 40% = 82% -> 75%
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -59,8 +69,8 @@ async function equip(item) {
   return slot >= 0;
 }
 
-/** Spawn a no-AI mob at `level`, hit it until it dies (vanilla attack cooldown respected). */
-async function killOne(type, level, entity = type) {
+/** Spawn a no-AI mob at `level`, hit it until it dies (vanilla attack cooldown respected: `delay` ms per swing). */
+async function killOne(type, level, entity = type, delay = 650) {
   await cmd(`/kill @e[type=${entity},distance=..10]`, 600);
   const at = await cmd(`/cerb spawn ${type} ${level} noai`, 1500);
   const target = mobsNear(entity, 5)[0];
@@ -72,7 +82,7 @@ async function killOne(type, level, entity = type) {
     if (m.position.distanceTo(bot.entity.position) > 4.5) { console.log('  target out of reach'); break; }
     await bot.lookAt(m.position.offset(0, m.height * 0.6, 0), true);
     bot.attack(m);
-    await sleep(650); // full sword cooldown (~0.625 s) so every hit is a full-strength hit
+    await sleep(delay); // a full cooldown (sword ~0.625 s) so every hit is a full-strength hit
   }
   await sleep(800);
   const msg = saw(/^\+(\d+) \S.* XP$/, at);
@@ -538,6 +548,238 @@ async function speed() {
   return out;
 }
 
+// ── Defense (resistance, armor, the 75% cap, the defense bar) ─────
+const DEF_SKILLS = ['Survival', 'Heavy_Armor_Training', 'Defensive_Magic'];
+const PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
+const near = (a, b, tol = 0.006) => Math.abs(a - b) <= tol;
+const pct = v => (100 * v).toFixed(1) + '%';
+
+async function debugOn(on) {
+  for (let i = 0; i < 2; i++) {
+    const at = await cmd('/cerb combatdebug', 700);
+    const m = saw(/Combat debug: (ON|OFF)/, at);
+    if (m && /ON/.test(m) === on) return true;
+  }
+  return false;
+}
+
+/**
+ * One exact hit (/damage) with full health and a full bar; the numbers from its trace. `by` names the
+ * attacking player (a PvP hit); the trace goes to whichever of the two has combat debug on.
+ */
+async function hitTrace(type, amount = 100, target = NAME, by = '') {
+  await cmd(`/cerb heal ${target}`, 900);
+  const at = chat.length;
+  await cmd(`/damage ${target} ${amount} ${type}${by ? ' by ' + by : ''}`, 1300);
+  return parseTrace(chat.slice(at).find(m => /\[Combat\].*Final/.test(m)) || '');
+}
+
+/** Steps of a "[Combat] Incoming: 100.0 -> Armor(40% reduction): 60.0 -> ..." trace line. */
+function parseTrace(t) {
+  const steps = [...t.matchAll(/(\w+)(?:\(([^)]*)\))?: (-?[\d.]+)/g)].map(m => ({ step: m[1], note: m[2] || '', v: Number(m[3]) }));
+  const at_ = name => steps.findIndex(x => x.step === name);
+  const value = name => { const i = at_(name); return i >= 0 ? steps[i].v : NaN; };
+  const iBar = at_('DefenseBar'), iArmor = at_('Armor'), iResist = at_('ElemResist'), iShare = at_('HealthShare');
+  const r = {
+    trace: t, incoming: value('Incoming'), final: value('Final'), capped: at_('ReductionCap') >= 0,
+    pvpAsBefore: at_('PvP') >= 0,
+    beforeBar: iBar > 0 ? steps[iBar - 1].v : NaN,
+    afterBar: iBar > 0 ? steps[iBar].v : NaN,
+    armor: iArmor > 0 ? 1 - steps[iArmor].v / steps[iArmor - 1].v : 0,
+    resist: iResist > 0 ? 1 - steps[iResist].v / steps[iResist - 1].v : 0,
+    healthShare: iShare > 0 ? Number((steps[iShare].note.match(/x([\d.]+)/) || [])[1]) : 1,
+  };
+  r.through = r.beforeBar / r.incoming;              // share of the hit left after resistance and armor
+  r.barShare = (r.beforeBar - r.afterBar) / r.beforeBar; // share of that the bar took
+  return r;
+}
+
+/** Put a netherite piece on the everyday way: hold it and right-click (no inventory screen). */
+async function rightClickOn(piece) {
+  await equip('netherite_' + piece);
+  await bot.look(bot.entity.yaw, Math.PI / 2, true);
+  bot.activateItem(); await sleep(250); bot.deactivateItem(); await sleep(700);
+}
+
+async function defenseSetup(full) {
+  await cmd('/gamemode survival'); await cmd('/difficulty normal'); await cmd('/time set day');
+  for (const p of PIECES) await cmd('/clear @s netherite_' + p, 300);
+  for (const sk of DEF_SKILLS) await cmd(`/cerb skill ${NAME} ${sk} level ${full ? 100 : 1}`, 500);
+  if (full) for (const p of PIECES) await rightClickOn(p);
+  await sleep(800);
+  if (!(await debugOn(true))) console.log('  (could not turn combat debug on)');
+}
+
+async function defenseCleanup() {
+  await debugOn(false);
+  for (const p of PIECES) await cmd('/clear @s netherite_' + p, 300);
+  for (const sk of DEF_SKILLS) await cmd(`/cerb skill ${NAME} ${sk} level 1`, 500);
+  await cmd(`/cerb heal ${NAME}`, 500);
+  await cmd('/gamemode creative');
+}
+
+async function defense() {
+  await defenseSetup(false);
+  const bare = await hitTrace('minecraft:generic');
+  await rightClickOn('chestplate');
+  const chest = await hitTrace('minecraft:generic');
+  check('Armor put on by right-click counts at once', chest.armor > bare.armor + 0.05, `${pct(bare.armor)} -> ${pct(chest.armor)}`);
+  await cmd('/clear @s netherite_chestplate', 900);
+  const off = await hitTrace('minecraft:generic');
+  check('Armor taken off stops counting at once', near(off.armor, bare.armor), `${pct(chest.armor)} -> ${pct(off.armor)}`);
+
+  await defenseSetup(true); // full netherite, Survival / Heavy Armor / Defensive Magic 100: the strongest defense today
+  const fire = await hitTrace('minecraft:in_fire');
+  const plain = await hitTrace('minecraft:generic');
+  console.log('  fire:  ' + fire.trace);
+  console.log('  plain: ' + plain.trace);
+  check('Armor tops out at 40%', near(plain.armor, 0.40), pct(plain.armor));
+  check('Non-elemental hit: armor alone lets 60% through', near(plain.through, 0.60), pct(plain.through));
+  check('Fire hit: 50% resistance x 40% armor lets 30% through (70% removed, under the 75% cap)', near(fire.through, 0.30), pct(fire.through));
+  check('No cap step in today\'s strongest defense', !fire.capped && !plain.capped);
+  check('A full defense bar takes 70% of what gets through', near(fire.barShare, 0.70, 0.01) && near(plain.barShare, 0.70, 0.01),
+      `${pct(fire.barShare)} / ${pct(plain.barShare)}`);
+  await defenseCleanup();
+}
+
+async function pvp() {
+  const T = 'CerbTarget';
+  const SK = ['Survival', 'Heavy_Armor_Training', 'First_Aid', 'Defensive_Magic'];
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: T, version: '1.21.11', auth: 'offline' });
+  other.on('messagestr', () => {});
+  await new Promise(r => other.once('spawn', r));
+  await sleep(2500);
+  await cmd(`/gamemode survival ${T}`, 500); await cmd('/gamemode survival', 500); await cmd('/difficulty normal', 400);
+  // No armor on either: what Fortitude adds to armor (+20% at 200 Fortitude) is then plain to see.
+  for (const p of PIECES) { await cmd(`/clear ${T} netherite_${p}`, 250); await cmd(`/clear @s netherite_${p}`, 250); }
+  for (const who of [T, NAME]) for (const sk of SK) await cmd(`/cerb skill ${who} ${sk} level 100`, 450);
+  await sleep(1000);
+  if (!(await debugOn(true))) console.log('  (could not turn combat debug on)');
+  const at = await cmd(`/cerb healthstate ${T}`, 900);
+  const hpLine = saw(/Custom HP: [\d.]+\/([\d.]+)/, at);
+  const maxHp = hpLine ? Number(hpLine.match(/\/([\d.]+)/)[1]) : NaN;
+
+  // The same defender build hit by the world (this bot, PvE) and by a player (CerbTarget, PvP).
+  const pveHit = await hitTrace('minecraft:generic', 100);
+  const pveFire = await hitTrace('minecraft:in_fire', 100);
+  // This bot (the attacker, same build: 300 health) is hurt first, so its lifesteal from the PvP hit shows.
+  const hp = async who => { const a = await cmd(`/cerb healthstate ${who}`, 900); const m = saw(/Custom HP: ([\d.]+)\/([\d.]+)/, a); return m ? Number(m.match(/Custom HP: ([\d.]+)/)[1]) : NaN; };
+  await cmd(`/damage ${NAME} 60 minecraft:generic`, 1200);
+  const hp0 = await hp(NAME);
+  const pvpHit = await hitTrace('minecraft:player_attack', 20, T, NAME);
+  const hp1 = await hp(NAME);
+  const lifesteal = Number((pvpHit.trace.match(/Lifesteal: ([\d.]+)/) || [])[1]);
+  // A fire spell from a player (/damage "by" a player arrives as a plain melee hit): Fireball at the defender.
+  await cmd('/clear @s blaze_rod', 300);
+  await cmd('/givetestitem fireball', 900);
+  const wand = bot.inventory.items().find(it => it.name === 'blaze_rod');
+  if (wand) await bot.equip(wand, 'hand');
+  await cmd(`/tp ${T} ~3 ~ ~`, 1000);
+  await cmd(`/cerb heal ${T}`, 900);
+  let pvpFire = parseTrace('');
+  const tgt = Object.values(bot.entities).find(e => e.type === 'player' && e.username === T);
+  if (tgt && bot.heldItem && bot.heldItem.name === 'blaze_rod') {
+    const at2 = chat.length;
+    await bot.lookAt(tgt.position.offset(0, 1.0, 0), true); await sleep(300);
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000 && !chat.slice(at2).some(m => /\[Combat\].*Final/.test(m))) await sleep(200);
+    pvpFire = parseTrace(chat.slice(at2).find(m => /\[Combat\].*Final/.test(m)) || '');
+  }
+  await cmd('/clear @s blaze_rod', 300);
+
+  // A burn tick carries no attacker: during a PvP fight (tagged) it is PvP too, afterwards it isn't.
+  await cmd(`/tp ${T} ${NAME}`, 900);
+  const me = Object.values(other.entities).find(e => e.type === 'player' && e.username === NAME);
+  if (me) { await other.lookAt(me.position.offset(0, 1.5, 0), true); other.attack(me); }
+  await sleep(1200);
+  await cmd(`/cerb heal ${NAME}`, 900);
+  let at3 = chat.length;
+  await cmd(`/damage ${NAME} 4 minecraft:on_fire`, 1300);
+  const burnTagged = parseTrace(chat.slice(at3).find(m => /\[Combat\].*Final/.test(m)) || '');
+  await sleep(16000); // the 15 s PvP tag runs out
+  await cmd(`/cerb heal ${NAME}`, 900);
+  at3 = chat.length;
+  await cmd(`/damage ${NAME} 4 minecraft:on_fire`, 1300);
+  const burnLater = parseTrace(chat.slice(at3).find(m => /\[Combat\].*Final/.test(m)) || '');
+  console.log(`  defender max health ${maxHp}`);
+  console.log('  PvE hit:  ' + pveHit.trace);
+  console.log('  PvP hit:  ' + pvpHit.trace);
+  console.log('  PvE fire: ' + pveFire.trace);
+  console.log('  PvP fire (Fireball): ' + pvpFire.trace);
+  console.log('  burn tick during PvP: ' + burnTagged.trace);
+  console.log('  burn tick 16 s later: ' + burnLater.trace);
+  check('A PvP hit is worked out as before attributes (trace marker)', pvpHit.pvpAsBefore && pvpFire.pvpAsBefore);
+  check('PvE: Fortitude adds to armor (Heavy Armor 15% + Fortitude 20%)', near(pveHit.armor, 0.35, 0.011), pct(pveHit.armor));
+  check('PvP: armor without Fortitude (Heavy Armor only, as before)', near(pvpHit.armor, 0.15, 0.011), pct(pvpHit.armor));
+  check('PvE: fire resistance 50% (Survival 30% + Fortitude, capped)', near(pveFire.resist, 0.50, 0.011), pct(pveFire.resist));
+  check('PvP: fire resistance 30% (Survival only, as before)', near(pvpFire.resist, 0.30, 0.011), pct(pvpFire.resist));
+  check('Vitality tripled max health (300)', near(maxHp, 300, 0.5), String(maxHp));
+  check('PvP: the hit is scaled to that health (x3.00)', near(pvpHit.healthShare, maxHp / 100, 0.011), 'x' + pvpHit.healthShare);
+  // Before attributes: 100 health, Heavy Armor 100's 15% armor, a full bar taking 70%.
+  const share = pvpHit.final / maxHp, before = pvpHit.incoming * (1 - 0.15) * (1 - 0.70) / 100;
+  check('PvP: the defender loses the share of health a 100-health defender lost before', near(share, before, 0.001),
+      `${pct(share)} of ${maxHp} vs ${pct(before)} of 100`);
+  const healed = hp1 - hp0;
+  check('PvP lifesteal restores the same share of the attacker\'s 300 health as before (x3)', lifesteal > 0 && near(healed, lifesteal * 3, 0.35),
+      `healed ${healed.toFixed(2)} for lifesteal ${lifesteal}`);
+  check('A burn tick during a PvP fight is PvP (old armor)', burnTagged.pvpAsBefore && near(burnTagged.armor, 0.15, 0.03), burnTagged.trace);
+  check('Once the PvP tag ends, burning uses your attributes again', !burnLater.pvpAsBefore && near(burnLater.armor, 0.35, 0.03), burnLater.trace);
+  check('PvP: the bar still takes 70% (full bar)', near(pvpHit.barShare, 0.70, 0.01), pct(pvpHit.barShare));
+
+  await debugOn(false);
+  for (const who of [T, NAME]) for (const sk of SK) await cmd(`/cerb skill ${who} ${sk} level 1`, 450);
+  await cmd(`/cerb heal ${T}`, 400); await cmd(`/cerb heal ${NAME}`, 400);
+  other.quit();
+  await cmd('/gamemode creative', 400);
+}
+
+async function mastery() {
+  await cmd('/gamemode creative'); await cmd('/time set day');
+  await cmd(`/cerb skill ${NAME} Critical_Strike level 1`, 400);
+  const runs = [
+    { label: 'sword, Blade Mastery 100 + Weapon Mastery 1  ', item: 'netherite_sword', bm: 100, wm: 1, delay: 700, cls: 'Swords' },
+    { label: 'sword, Blade Mastery 100 + Weapon Mastery 100', item: 'netherite_sword', bm: 100, wm: 100, delay: 700, cls: 'Swords' },
+    { label: 'axe,   Weapon Mastery 100 alone             ', item: 'netherite_axe', bm: 1, wm: 100, delay: 1150, cls: 'Axes' },
+  ];
+  for (const r of runs) {
+    await equip(r.item);
+    await cmd(`/cerb skill ${NAME} Blade_Mastery level ${r.bm}`, 400);
+    await cmd(`/cerb skill ${NAME} Weapon_Mastery level ${r.wm}`, 900);
+    await debugOn(true);
+    const at = chat.length;
+    const first = await killOne('zombie', 100, 'zombie', r.delay);
+    await debugOn(false);
+    const t = chat.slice(at).find(m => new RegExp('Power\\(' + r.cls).test(m)) || '';
+    const pm = t.match(/Power\((\w+), Power ([\d.]+) -> x([\d.]+)\)/);
+    r.power = pm ? Number(pm[2]) : NaN; r.mult = pm ? Number(pm[3]) : NaN;
+    const kills = [first.swings];
+    for (let i = 0; i < 2; i++) kills.push((await killOne('zombie', 100, 'zombie', r.delay)).swings);
+    r.swings = kills; r.avg = kills.reduce((a, b) => a + b, 0) / kills.length;
+    console.log(`  ${r.label}: Power ${r.power} -> x${r.mult}, swings to kill a level-100 zombie ${kills.join(' / ')} (avg ${r.avg.toFixed(1)})`);
+  }
+  const [bm, both, axe] = runs;
+  check('Weapon Mastery 100 adds 25 Power to a sword at Blade Mastery 100 (x6.01 -> x7.25)', near(bm.mult, 6.01, 0.011) && near(both.mult, 7.25, 0.011), `x${bm.mult} -> x${both.mult}`);
+  check('An axe at Weapon Mastery 100 alone has the same x7.25', near(axe.mult, 7.25, 0.011), `x${axe.mult}`);
+  check('The extra 21% shows up as fewer swings, not a one-shot', both.avg < bm.avg && Math.min(...both.swings, ...axe.swings) >= 4,
+      `${bm.avg.toFixed(1)} -> ${both.avg.toFixed(1)} swings; axe ${axe.avg.toFixed(1)}`);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 400);
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 1`, 400);
+  await cmd('/kill @e[type=zombie,distance=..10]', 500);
+}
+
+async function defenseCap() {
+  await defenseSetup(true);
+  const fire = await hitTrace('minecraft:in_fire');
+  const plain = await hitTrace('minecraft:generic');
+  console.log('  fire:  ' + fire.trace);
+  check('Fire resistance x armor would remove 82%; the cap leaves 25% (75% removed)', near(fire.through, 0.25), pct(fire.through));
+  check('The trace shows the cap step', fire.capped, fire.trace);
+  check('Armor alone (40%) is under the cap: unchanged', near(plain.through, 0.60) && !plain.capped, pct(plain.through));
+  check('The bar still takes 70% of what gets through (it is not part of the cap)', near(fire.barShare, 0.70, 0.01), pct(fire.barShare));
+  await defenseCleanup();
+}
+
 // Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
 // inside a hillside suffocate mid-check.
 async function goHome() {
@@ -568,6 +810,10 @@ bot.once('spawn', async () => {
     else if (phase === 'perf') await perf();
     else if (phase === 'speed') await speed();
     else if (phase === 'realm') await realm();
+    else if (phase === 'defense') await defense();
+    else if (phase === 'defense-cap') await defenseCap();
+    else if (phase === 'pvp') await pvp();
+    else if (phase === 'mastery') await mastery();
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');
       await equip('netherite_sword');

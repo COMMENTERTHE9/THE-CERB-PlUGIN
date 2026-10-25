@@ -237,7 +237,13 @@ public final class StatsMenu extends PlayerMenu {
                 .stat("  Fire / cold / drowning", Fmt.pct(vh.getPlayerFireResistance(p)) + " / "
                         + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)))
                 .raw(ChatColor.DARK_GRAY + "  Fire: standing in fire and fire spells;")
-                .raw(ChatColor.DARK_GRAY + "  not yet burning, lava or magma.");
+                .raw(ChatColor.DARK_GRAY + "  not yet burning, lava or magma.")
+                .raw(ChatColor.DARK_GRAY + "  Resistance and armor together block at")
+                .raw(ChatColor.DARK_GRAY + "  most " + Fmt.pct(s.rules().limits().totalMitigation()) + " of a hit; the bar is extra.");
+        if (!s.rules().switches().pvpDefense()) {
+            l.raw(ChatColor.DARK_GRAY + "  PvP: these bonuses don't count yet;")
+             .raw(ChatColor.DARK_GRAY + "  players hit you as before.");
+        }
         return Ui.item(Material.TOTEM_OF_UNDYING, ChatColor.RED + "Survivability", l.build());
     }
 

@@ -231,8 +231,25 @@ public class CombatConfig {
      * @return validated ScalingParams
      */
     private ScalingParams loadScaling(String path, Preset defaultPreset) {
-        ConfigurationSection section = config.getConfigurationSection(path);
+        ScalingParams result = scalingFrom(config.getConfigurationSection(path), defaultPreset, path);
 
+        // Register for preview iteration
+        // Extract a clean name from path: "skills.critical-strike.crit-chance" -> "critical-strike / crit-chance"
+        String cleanName = path.replace("skills.", "");
+        int lastDot = cleanName.lastIndexOf('.');
+        if (lastDot > 0) {
+            cleanName = cleanName.substring(0, lastDot) + " / " + cleanName.substring(lastDot + 1);
+        }
+        allScalingParams.put(cleanName, result);
+
+        return result;
+    }
+
+    /**
+     * One scaling curve from its combat.yml section (preset + explicit overrides, validated).
+     * Static so tests can read the shipped combat.yml exactly as the server does.
+     */
+    static ScalingParams scalingFrom(ConfigurationSection section, Preset defaultPreset, String path) {
         ScalingParams result;
         if (section == null) {
             // No config section at all — use full preset defaults
@@ -274,16 +291,6 @@ public class CombatConfig {
             result = new ScalingParams(result.base(), result.logScale(), 0.08,
                     result.inflection(), result.lateBonus(), result.hardCap());
         }
-
-        // Register for preview iteration
-        // Extract a clean name from path: "skills.critical-strike.crit-chance" -> "critical-strike / crit-chance"
-        String cleanName = path.replace("skills.", "");
-        int lastDot = cleanName.lastIndexOf('.');
-        if (lastDot > 0) {
-            cleanName = cleanName.substring(0, lastDot) + " / " + cleanName.substring(lastDot + 1);
-        }
-        allScalingParams.put(cleanName, result);
-
         return result;
     }
 

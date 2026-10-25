@@ -68,6 +68,7 @@ public class PlayerDefenseManager {
         double armorSum = calculateArmorFromGear(player);
         double skillBonus = calculateSkillArmorBonus(player);
         double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
+        pushPvpBaseline(player, Math.min(cap, armorSum + skillBonus));
         double fortArmor = 0.0;
         if (fort != null) {
             fortArmor = fort.armorBonus();                       // Fortitude adds on top of gear + Heavy Armor Training
@@ -92,6 +93,20 @@ public class PlayerDefenseManager {
         // Push defense bar bonus from Heavy Armor Training (+ Fortitude), scaled to the realm
         double realm = attributes != null ? attributes.get(player.getUniqueId()).realmMultiplier() : 1.0;
         applyDefenseBarBonus(player, fort, realm);
+    }
+
+    /**
+     * Defense as it was before Attributes 2.0 (no Fortitude, no Vitality, no realm), which PvP
+     * hits are worked out with unless attributes.yml integration.pvp-defense is true.
+     */
+    private void pushPvpBaseline(Player player, double armor) {
+        int survival = skillManager != null ? skillManager.getSkillLevel(player, "Survival") : 0;
+        int heavyArmor = skillManager != null ? skillManager.getSkillLevel(player, "Heavy Armor Training") : 0;
+        double bar = defenseBarManager != null ? defenseBarManager.getBaseMaxPoints() : 0.0;
+        if (combatConfig != null) bar += heavyArmorBarBonus(combatConfig, heavyArmor);
+        virtualHealthManager.setPvpBaseline(player, new PlayerVirtualHealthManager.PvpBaseline(armor,
+                survivalFireResist(survival), survivalColdResist(survival), survivalDrowningResist(survival),
+                bar, HealthLifecycleEngine.DEFAULT_MAX_HP));
     }
 
     /** Sum per-piece armor reduction from equipped gear using CombatConfig values. */

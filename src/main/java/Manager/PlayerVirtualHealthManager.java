@@ -25,6 +25,7 @@ public class PlayerVirtualHealthManager {
     private final Map<UUID, Double> playerFireResistance = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerColdResistance = new ConcurrentHashMap<>();
     private final Map<UUID, Double> playerDrowningResistance = new ConcurrentHashMap<>();
+    private final Map<UUID, PvpBaseline> pvpBaselines = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastHitSoundTime = new ConcurrentHashMap<>();
     private final Map<UUID, ScheduledTask> healthUpdateTasks = new ConcurrentHashMap<>();
     private final Map<UUID, ScheduledTask> healthRegenTasks = new ConcurrentHashMap<>();
@@ -174,6 +175,52 @@ public class PlayerVirtualHealthManager {
         return Double.isFinite(s) && s > 0 ? s : 1.0;
     }
 
+    /** Total damage-reduction cap (attributes.yml limits.total-mitigation): resistance and armor together. */
+    private volatile java.util.function.DoubleSupplier reductionCap = () -> DefenseMath.DEFAULT_REDUCTION_CAP;
+
+    public void setReductionCap(java.util.function.DoubleSupplier cap) {
+        this.reductionCap = cap == null ? () -> DefenseMath.DEFAULT_REDUCTION_CAP : cap;
+    }
+
+    /**
+     * A player's defense as it was before Attributes 2.0: gear + Heavy Armor armor, Survival
+     * resistances, base + Heavy Armor bar, base health. PvP hits are worked out with it unless
+     * attributes.yml integration.pvp-defense is true. Pushed by PlayerDefenseManager.updateDefense.
+     */
+    public record PvpBaseline(double armor, double fireResist, double coldResist, double drowningResist,
+                              double barMax, double maxHp) {
+        double resist(CustomDamageType type) {
+            return switch (type) {
+                case FIRE, BURN_DOT, PYROMANCY -> fireResist;
+                case FREEZE, FREEZE_DOT, CRYOMANCY -> coldResist;
+                case DROWNING -> drowningResist;
+                default -> 0.0;
+            };
+        }
+    }
+
+    /** false (default): PvP hits use the pre-attribute baseline. attributes.yml integration.pvp-defense. */
+    private volatile java.util.function.BooleanSupplier pvpUsesAttributes = () -> false;
+
+    public void setPvpUsesAttributes(java.util.function.BooleanSupplier on) {
+        this.pvpUsesAttributes = on == null ? () -> false : on;
+    }
+
+    public void setPvpBaseline(Player player, PvpBaseline baseline) {
+        pvpBaselines.put(player.getUniqueId(), baseline);
+    }
+
+    /**
+     * PvP as before attributes: a heal measured in old health points (lifesteal from a PvP hit) is
+     * this much bigger in the player's real health, so it restores the same share. 1 when PvP uses
+     * attributes or the player has no baseline. Call on the player's own thread.
+     */
+    public double pvpHealScale(Player player) {
+        if (pvpUsesAttributes.getAsBoolean()) return 1.0;
+        PvpBaseline b = pvpBaselines.get(player.getUniqueId());
+        return b == null ? 1.0 : DefenseMath.shareScale(getOrCreateState(player).maxHp(), b.maxHp());
+    }
+
     public void setPlayerVirtualHealth(Player player, double health) {
         lifecycleEngine.setCurrentHp(getOrCreateState(player), health);
     }
@@ -306,8 +353,7 @@ public class PlayerVirtualHealthManager {
             return DamageResolution.noDamage(state.currentHp());
         }
 
-        double current = damage;
-        ctx.appendTrace("Incoming", 0, current, null);
+        ctx.appendTrace("Incoming", 0, damage, null);
 
         double healthBefore = state.currentHp();
         double healthMax = state.maxHp();
@@ -319,38 +365,63 @@ public class PlayerVirtualHealthManager {
             defBarMax = bar.getMaximum();
         }
 
-        double typeResist = getTypeSpecificResistance(player, damageType);
+        // PvP plays as before Attributes 2.0 unless attributes.yml integration.pvp-defense is true:
+        // the hit is worked out with the defender's pre-attribute armor, resistances, bar and
+        // health, then taken from their real bar and health as the same share.
+        PvpBaseline asBefore = ctx.isPvp() && !pvpUsesAttributes.getAsBoolean() ? pvpBaselines.get(player.getUniqueId()) : null;
+        double typeResist = asBefore != null ? asBefore.resist(damageType) : getTypeSpecificResistance(player, damageType);
+        double barScale = 1.0;
+        double healthScale = 1.0;
+        if (asBefore != null) {
+            // The caller may have taken a mob's armor penetration off (a player's tamed animal): keep that share.
+            double fullArmor = getArmorReduction(player);
+            double kept = fullArmor > 0 ? Math.min(1.0, effectiveArmorReduction / fullArmor) : 1.0;
+            effectiveArmorReduction = asBefore.armor() * kept;
+            barScale = DefenseMath.shareScale(defBarMax, asBefore.barMax());
+            healthScale = DefenseMath.shareScale(healthMax, asBefore.maxHp());
+            ctx.appendTrace("PvP", damage, damage, "as before attributes");
+        }
+
+        // Resistance and armor are both damage reductions: together they remove at most the cap
+        // (75% by design). The defense bar is a draining pool, not a reduction: not counted.
+        double maxAbsorption = defenseBarManager != null ? defenseBarManager.getMaxAbsorption() : 0.0;
+        DefenseMath.Hit hit = DefenseMath.resolve(damage, typeResist, effectiveArmorReduction,
+                reductionCap.getAsDouble(), defBarBefore, defBarMax, maxAbsorption, barScale, healthScale);
+
         if (typeResist > 0.0) {
-            double before = current;
-            current *= (1.0 - typeResist);
-            ctx.appendTrace("ElemResist", before, current,
+            ctx.appendTrace("ElemResist", damage, hit.afterResist(),
                     damageType.name() + " " + String.format("%.0f%%", typeResist * 100.0));
         }
-        ctx.defense().setAfterElementalResist(current);
-
+        ctx.defense().setAfterElementalResist(hit.afterResist());
         if (effectiveArmorReduction > 0.0) {
-            double before = current;
-            current *= (1.0 - effectiveArmorReduction);
-            ctx.appendTrace("Armor", before, current,
+            ctx.appendTrace("Armor", hit.afterResist(), hit.afterArmor(),
                     String.format("%.0f%% reduction", effectiveArmorReduction * 100.0));
         }
-        ctx.defense().setAfterArmor(current);
+        if (hit.reduction() < hit.uncappedReduction() - 1e-12) {
+            ctx.appendTrace("ReductionCap", hit.afterArmor(), hit.afterReductions(),
+                    String.format("%.0f%% capped to %.0f%%", hit.uncappedReduction() * 100.0, hit.reduction() * 100.0));
+        }
+        ctx.defense().setAfterArmor(hit.afterReductions());
 
         double absorbed = 0.0;
         double absorptionRate = 0.0;
-        if (defenseBarManager != null && current > 0.0) {
-            double beforeBar = current;
-            current = defenseBarManager.applyDamageToBar(player, current);
-            absorbed = beforeBar - current;
-            DefenseBarManager.DefenseBar bar = defenseBarManager.getDefenseBar(player);
-            absorptionRate = bar.getLastAbsorptionRate();
-            ctx.appendTrace("DefenseBar", beforeBar, current,
-                    String.format("%.0f%% absorb, -%.1f", absorptionRate * 100.0, absorbed));
+        if (defenseBarManager != null && hit.afterReductions() > 0.0) {
+            absorbed = hit.absorbed();
+            absorptionRate = hit.barRate();
+            defenseBarManager.drain(player, absorbed, absorptionRate);
+            ctx.appendTrace("DefenseBar", hit.afterReductions(), hit.afterBar(), barScale == 1.0
+                    ? String.format("%.0f%% absorb, -%.1f", absorptionRate * 100.0, absorbed)
+                    : String.format("%.0f%% absorb, bar -%.1f", absorptionRate * 100.0, absorbed));
         }
-        ctx.defense().setAfterDefenseAbsorption(current);
+        ctx.defense().setAfterDefenseAbsorption(hit.afterBar());
         ctx.defense().setDefenseAbsorptionRate(absorptionRate);
 
-        current = Math.max(0.0, current);
+        if (healthScale != 1.0) {
+            ctx.defense().setHealthScale(healthScale);
+            ctx.appendTrace("HealthShare", hit.afterBar(), hit.toHealth(), String.format("x%.2f", healthScale));
+        }
+
+        double current = Math.max(0.0, hit.toHealth());
         ctx.defense().setFinalDamage(current);
         ctx.appendTrace("Final", damage, current, null);
 
@@ -543,6 +614,7 @@ public class PlayerVirtualHealthManager {
         playerFireResistance.remove(uuid);
         playerColdResistance.remove(uuid);
         playerDrowningResistance.remove(uuid);
+        pvpBaselines.remove(uuid);
         lastHitSoundTime.remove(uuid);
     }
 

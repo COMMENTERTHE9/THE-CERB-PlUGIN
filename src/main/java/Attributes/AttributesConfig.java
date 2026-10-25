@@ -148,7 +148,8 @@ public final class AttributesConfig {
                 s.getBoolean("integration.vitality", ds.vitality()),
                 s.getBoolean("integration.fortitude", ds.fortitude()),
                 s.getBoolean("integration.essence", ds.essence()),
-                s.getBoolean("integration.realm-magnitude", ds.realmMagnitude()));
+                s.getBoolean("integration.realm-magnitude", ds.realmMagnitude()),
+                s.getBoolean("integration.pvp-defense", ds.pvpDefense()));
 
         return new AttributeRules(weights, caps, derived, limits, curves, switches, parseSecondary(section(s, "secondary"), problems));
     }

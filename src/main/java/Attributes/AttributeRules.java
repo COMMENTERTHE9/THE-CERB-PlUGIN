@@ -46,9 +46,13 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
     public record Curves(ScalingParams critChance, ScalingParams critMultiplier,
                          String lifestealSkill, ScalingParams lifesteal) {}
 
-    /** Kill switches: each integration can be turned off without touching the others. */
+    /**
+     * Kill switches: each integration can be turned off without touching the others.
+     * {@code pvpDefense}: false (default) keeps PvP hits as before Attributes 2.0 - the defender's
+     * Vitality, Fortitude and realm don't change them; true is for the future PvP pass.
+     */
     public record Switches(boolean pveOffense, boolean vitality, boolean fortitude, boolean essence,
-                           boolean realmMagnitude) {}
+                           boolean realmMagnitude, boolean pvpDefense) {}
 
     /**
      * One speed/handling stat: {@code driver} x {@code perPoint} plus skill contributions gives the
@@ -133,7 +137,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
             new ScalingParams(1.5, 0.04, 0.10, 60, 1.5, 3.5),
             "Weapon Mastery",
             new ScalingParams(0.0, 0.03, 0.08, 50, 0.30, 0.40));
-    public static final Switches DEFAULT_SWITCHES = new Switches(true, true, true, true, true);
+    public static final Switches DEFAULT_SWITCHES = new Switches(true, true, true, true, true, false);
 
     public static final Secondary DEFAULT_SECONDARY;
     static {

@@ -2,7 +2,7 @@
 
 *Last updated 2026-10-25 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
-**Current milestone:** Player Menu 2.0 and the first speed stats (attack, bow draw, movement, spell cooldown; `docs/design/ATTRIBUTE_EXPANSION.md`) are built and verified in-game on the cloud sandbox, on top of Admin Control Panel 2.0 and Attributes & Progression 2.0. Waiting for the owner's playtest on the real server.
+**Current milestone:** the owner's decisions of 2026-10-25 are in: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis, all verified in game on the cloud sandbox. The owner has playtested Player Menu 2.0; the Admin Control Panel and Attributes checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 1 of `docs/ROADMAP.md`, the performance assessment**, then decisions A–E, menu animations, and the classes and abilities design.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -22,7 +22,8 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Persistence | Skill levels and XP survive restarts; saves coalesce within 1 s; a failed database load disconnects the player instead of overwriting data. |
 | Player Menu | Head in slot 9 or `/menu`. Hub with the character at a glance and every destination marked *Available* or *In development*. Skills → category → skill pages (training sources, attribute and speed gains, effects with status, next milestones); Stats & Attributes; Ascension (realm ladder); Equipment; Bestiary; World & Exploration; Guide. Verified with `tools/playtest/menu.js` (nav 63 as op / 61 as non-op, safety 18 with controls, perf 2: no database access and no snapshot rebuilds while browsing). Four skills shown under new names (`NAMING.md`). |
 | Admin Control Panel | `/cerb panel`: Players (inspect/edit), Combat Lab (spawn at level, mob inspector, cleanup of your own test mobs), Progression Lab, Attributes (inspector, simulator, dev buffs), My Test Character, Server & Plugin, Maintenance. Permission-checked on every click; verified with `tools/playtest/admin.js` (main 40, attrs 14, owners 5, cross 5, security 6). An independent review found no security or item-duplication hole; its correctness findings are fixed. |
-| Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and 113 unit tests. |
+| Attributes | Power (per weapon type), Agility (crits), Vitality (max health), Fortitude (armor, defense bar, resistances), Essence (mana, regen, spell damage), Fortune (shown only), plus speed stats: attack speed (per weapon type), bow draw speed, movement speed, spell cooldown recovery, with diminishing returns and caps; paused during PvP by default. Derived from skills, capped in one place, cached per player, `attributes.yml` with kill switches. Stats page (`/stats` or Player Menu → Stats & Attributes). Verified with `tools/playtest/progression.js` (incl. `speed`, 13 measurements) and the unit tests. |
+| Defense | Resistance → armor → defense bar; resistance and armor together capped at 75%, the bar a separate pool; PvP hits use the pre-attribute defense as the same share of health (`progression.js defense`, `defense-cap`, `pvp`; `docs/ATTRIBUTES_ENGINE.md`). |
 | Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
 | Test content | `/givetestitem kit`; Fireball Wand (20 mana, regenerates); `/cerb spawn <mobId>`; `/spawncustomzombie` (High Health Zombie, BOSS pool); `/cerb skill <player> <skill> level\|xp <n>`; `/testregen`; `/cerb healthstate`, `/cerb combatdebug`. |
 
@@ -92,28 +93,33 @@ Built in three increments plus a reliability pass and an independent review (all
 | Fireball cooldown while clicking constantly (Spell Weaving) | 1,037 ms | 810 ms |
 | Hit by a player | bonuses pause, return 15 s later | |
 
-## Roadmap after that
+## Done: owner decisions of 2026-10-25
 
-1. **Gathering & crafting loop** — block-break XP for the 19 dead skills, capped yields, register recipes and wire the existing quality-crafting code. Fortune starts paying off here.
-2. **Bestiary & zones as data** — mob families in `mobs.yml`, location → band/realm (`ZoneManager`), realm suppression; themed areas instead of plain distance.
-3. **First weapons & gear slice** — ~20 registry items feeding attributes through a GearSource; the 20-slot equip layout.
-4. **Ascension (realms)** — realm display names, breakthroughs and stages over the existing tiers; a RealmSource feeding attributes.
-5. **PvP rules** — whether PvP should use attributes and speed stats too (today it uses the old per-skill bonuses; speed stats pause during PvP).
-6. **Attribute expansion, next stats** — crossbow reload, knockback resistance, gathering speed (after gathering XP exists); see `ATTRIBUTE_EXPANSION.md`.
+Details and measurements in `docs/ATTRIBUTES_ENGINE.md`. All Played on the sandbox, comparing the previous build with the new one:
 
-Each milestone ends with in-game checks and new playtest checks.
+| Decision | Before | Now |
+|---|---|---|
+| **75% total damage reduction**, applied to resistance × armor only (the defense bar is a draining pool, not a reduction) | not enforced; a raised resist limit let 82% through the reduction layers | capped at 75% (`ReductionCap` trace step). Default play unchanged: today's maximum is 70% (fire hit 100 → 30 → bar 21 → 9 on both builds) |
+| **PvP unchanged for now** | the defender's Vitality, Fortitude and realm counted in PvP: defensive skills 100 lost 1.5% of health per player hit | PvP hits use the pre-attribute defense as the same share: 6.0% per hit, exactly what a 100-health defender loses. This also covers a player's pets, potion clouds and TNT, burn and poison ticks during a PvP fight, and PvP lifesteal (same share). PvE unchanged. `attributes.integration.pvp-defense: false` |
+| **Weapon Mastery kept** | — | Bounded: at most +25 Power on any weapon (125 total), at most 21.8% ahead of an equal-level mob, crits inside the ×6 budget (`WeaponMasteryStackingTest`). Level-100 zombie: sword BM 100 7.0–7.7 swings, + WM 100 6.7–7.0; axe WM 100 alone 4.3. Proposal for the imbalance (axes etc. reach 125 with one skill) is recorded, not built. |
 
-## Decisions that are yours
+## Roadmap
 
-1. **Merging.** All work is on `claude/quirky-mccarthy-nhaz58`. Open a pull request into `master` once you've playtested, or keep working on the branch?
-2. **PvP and attributes.** PvP is unchanged on purpose. Should PvP read attributes too (a balance decision)?
-3. **Total mitigation cap.** The design caps resist + armor + defense bar at 75% combined. The existing defense pipeline already allows ~82% with full armor and a full bar, so enforcing 75% would make well-armored players take more damage. Enforce it, or keep today's behaviour? (`attributes.yml limits.total-mitigation` is reserved and not enforced yet.)
-4. **Weapon Mastery stacking.** Weapon Mastery gives +1 Power per level to axes/maces/tridents/spears *and* +0.25 to every weapon, so at level 100 an axe hits x7.25 vs a level-100 mob's x5.95 HP. Keep (rewards the generalist skill) or drop the +0.25?
-5. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend planning the upgrade now that Attributes v1 is in.
-6. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
-7. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
-8. **Speed stats in PvP.** They pause for 15 s after any PvP hit so PvP stays vanilla (`attributes.secondary.in-pvp: false`). Keep, or let them count in PvP (possibly with lower PvP caps)?
-9. **Powered shelves.** They swap hotbar slots 7–9, which would take the Player Menu head, so powered shelves refuse to swap for anyone carrying the head (everyone). Accept, or should the head move out of the hotbar (for example into the off-hand or a fixed inventory slot)?
-10. **Fire resistance coverage.** Survival's fire resistance (and Fortitude's) applies to standing in fire and fire spells, not to burning afterwards, lava, magma or campfires. Extend it to those (a combat change), or keep?
-11. **Projectile hits and XP.** Arrows and other projectiles hitting a player give no Survival or Heavy Armor XP (only melee, falls, fire...). Make them count?
-12. **Spears and Weapon Mastery.** Weapon Mastery gives spears Power and attack speed, but spear kills don't train it (skills.yml routes only axes, maces and tridents; spear kills fall back to Heavy Armor in heavy armor). Add `.*_SPEAR` to Weapon Mastery's kill routing?
+`docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
+
+## Decisions
+
+**Made on 2026-10-25:**
+- **Merging:** a reviewed pull request into `master` after your playtest; never merged automatically.
+- **PvP:** unchanged for now (built); attributes in PvP get a dedicated pass later.
+- **Damage-reduction cap:** 75% kept, applied to resistance × armor (built).
+- **Weapon Mastery:** its all-weapon bonus stays (analysed).
+- **A–E** (speed in PvP, shelves, Survival fire, projectile XP, spears): decided, scheduled as Step 2 of `docs/ROADMAP.md`.
+
+**Still yours:**
+1. **Big hits and the defense bar.** One hit larger than about 430 (for a 300-point bar) is still taken at the bar's full rate, so the bar absorbs more than it holds. Today only extreme hits reach that. Recommendation: limit the bar to its points when the first bosses with big telegraphed hits arrive (`ATTRIBUTES_ENGINE.md`).
+2. **Weapon Mastery's double role.** Recommendation: split it at the weapons and classes design step (Step 4), so every weapon needs two skills for 125 Power (`ATTRIBUTES_ENGINE.md`).
+3. **Where gathering and crafting go** in the new order (`ROADMAP.md`).
+4. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend planning the upgrade now that Attributes v1 is in.
+5. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
+6. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?

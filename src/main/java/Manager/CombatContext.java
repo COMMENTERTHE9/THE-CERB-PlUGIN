@@ -25,6 +25,8 @@ public class CombatContext {
     private final LivingEntity target;
     private final CustomDamageType damageType;
     private final double rawDamage;
+    /** A hit from another player, or caused by one (their pet, potion cloud, TNT; a burn during PvP). */
+    private boolean pvp;
 
     // ─── Sections ───────────────────────────────────────────────
     private final AttackState attack = new AttackState();
@@ -44,6 +46,7 @@ public class CombatContext {
         this.target = target;
         this.damageType = damageType;
         this.rawDamage = rawDamage;
+        this.pvp = attacker != null && target instanceof Player victim && !attacker.getUniqueId().equals(victim.getUniqueId());
         // Initialize modifiedDamage to rawDamage — if no skills modify it, it passes through unchanged
         this.attack.modifiedDamage = rawDamage;
     }
@@ -56,6 +59,9 @@ public class CombatContext {
     public LivingEntity getTarget() { return target; }
     public CustomDamageType getDamageType() { return damageType; }
     public double getRawDamage() { return rawDamage; }
+    public boolean isPvp() { return pvp; }
+    /** Damage a player caused without being the attacker (no attacker skills apply): still PvP for defense. */
+    public void markPvp() { this.pvp = true; }
 
     // ─────────────────────────────────────────────────────────────
     // Section accessors
@@ -124,6 +130,7 @@ public class CombatContext {
         private double afterDefenseAbsorption;
         private double defenseAbsorptionRate;
         private double finalDamage;
+        private double healthScale = 1.0;
 
         // Getters
         public double getAfterElementalResist() { return afterElementalResist; }
@@ -131,6 +138,12 @@ public class CombatContext {
         public double getAfterDefenseAbsorption() { return afterDefenseAbsorption; }
         public double getDefenseAbsorptionRate() { return defenseAbsorptionRate; }
         public double getFinalDamage() { return finalDamage; }
+        /**
+         * PvP as before attributes: the hit was worked out on the defender's pre-attribute health
+         * and multiplied by this to take the same share of their real health (1 otherwise).
+         * {@code finalDamage / healthScale} is the hit in pre-attribute terms (used for XP).
+         */
+        public double getHealthScale() { return healthScale; }
 
         // Setters (package-private for pipeline phases)
         void setAfterElementalResist(double v) { this.afterElementalResist = v; }
@@ -138,6 +151,7 @@ public class CombatContext {
         void setAfterDefenseAbsorption(double v) { this.afterDefenseAbsorption = v; }
         void setDefenseAbsorptionRate(double v) { this.defenseAbsorptionRate = v; }
         void setFinalDamage(double v) { this.finalDamage = v; }
+        void setHealthScale(double v) { this.healthScale = v; }
     }
 
     // ═════════════════════════════════════════════════════════════

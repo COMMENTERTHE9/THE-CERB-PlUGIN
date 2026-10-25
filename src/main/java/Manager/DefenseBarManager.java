@@ -69,34 +69,19 @@ public class DefenseBarManager {
         return playerDefenseBars.get(playerId);
     }
 
+    /** {@code combat.yml defense-bar.max-absorption}: the share a full bar takes of a hit. */
+    public double getMaxAbsorption() { return maxAbsorption; }
+
     /**
-     * Apply damage through partial absorption. Returns damage that passes through to health.
-     * <p>
-     * The bar absorbs {@code maxAbsorption * barPercent} of the incoming damage.
-     * The absorbed portion drains from the bar; the rest goes to health.
-     *
-     * @param player the target player
-     * @param damage post-armor damage entering this layer
-     * @return damage to subtract from virtual health (always >= 0)
+     * The bar took part of a hit (worked out by {@link DefenseMath#resolve}): it loses
+     * {@code points} (never below zero), remembers the share it took, and refills later.
      */
-    public double applyDamageToBar(Player player, double damage) {
+    public void drain(Player player, double points, double rate) {
         DefenseBar bar = getDefenseBar(player);
-
-        double barPercent = bar.maximum > 0 ? bar.current / bar.maximum : 0;
-        double absorptionRate = maxAbsorption * barPercent;
-
-        double absorbed = damage * absorptionRate;
-        double toHealth = damage - absorbed;
-
-        // Drain bar by absorbed amount
-        bar.current = Math.max(0, bar.current - absorbed);
+        if (Double.isFinite(points) && points > 0) bar.current = Math.max(0, bar.current - points);
         bar.lastDamageTime = System.currentTimeMillis();
-        bar.lastAbsorptionRate = absorptionRate;
-
-        // Schedule regeneration
+        bar.lastAbsorptionRate = rate;
         bar.scheduleRegeneration();
-
-        return toHealth;
     }
 
     /** Set additional max points (e.g. from Heavy Armor Training skill). */

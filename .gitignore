@@ -70,3 +70,8 @@ test-server/
 # Node (tools/playtest)
 node_modules/
 package-lock.json
+
+# Profiling output (tools/perf)
+perf-out/
+*.jfr
+__pycache__/

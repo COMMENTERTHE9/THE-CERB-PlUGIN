@@ -1,7 +1,12 @@
 package Manager;
 
+import org.bukkit.entity.AreaEffectCloud;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EvokerFangs;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.Tameable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -40,11 +45,25 @@ public final class PvpTag implements Listener {
         return t != null && t > System.currentTimeMillis();
     }
 
+    /**
+     * The player behind damage dealt by {@code damager}: the player, the shooter of their
+     * projectile, the thrower of a lingering potion cloud, the igniter of TNT, the owner of a
+     * tamed animal or of evoker fangs. Null when no player caused it.
+     */
+    public static Player playerBehind(Entity damager) {
+        if (damager instanceof Player p) return p;
+        if (damager instanceof Projectile pr && pr.getShooter() instanceof Player p) return p;
+        if (damager instanceof AreaEffectCloud c && c.getSource() instanceof Player p) return p;
+        if (damager instanceof TNTPrimed t && t.getSource() instanceof Player p) return p;
+        if (damager instanceof Tameable pet && pet.isTamed() && pet.getOwner() instanceof Player p) return p;
+        if (damager instanceof EvokerFangs f && f.getOwner() instanceof Player p) return p;
+        return null;
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDamage(EntityDamageByEntityEvent e) {
         if (!(e.getEntity() instanceof Player victim)) return;
-        Player attacker = e.getDamager() instanceof Player p ? p
-                : e.getDamager() instanceof Projectile pr && pr.getShooter() instanceof Player p2 ? p2 : null;
+        Player attacker = playerBehind(e.getDamager());
         if (attacker == null || attacker.equals(victim)) return;
         tag(victim);
         tag(attacker);

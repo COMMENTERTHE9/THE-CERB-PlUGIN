@@ -364,6 +364,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         });
         playerVirtualHealthManager.setRegenScale(id -> attributeService.get(id).realmMultiplier());
         defenseBarManager.setRegenScale(id -> attributeService.get(id).realmMultiplier());
+        playerVirtualHealthManager.setReductionCap(() -> attributeService.rules().limits().totalMitigation());
+        playerVirtualHealthManager.setPvpUsesAttributes(() -> attributeService.rules().switches().pvpDefense());
         playerDefenseManager.setAttributeService(attributeService);
         attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager,
                 playerManaManager);

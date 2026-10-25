@@ -27,6 +27,10 @@ node smoke.js                             # PASS/FAIL per check, non-zero exit o
 | `progression.js persist` | `PERSIST=set`, restart the server, `PERSIST=check`: attributes identical after restart |
 | `progression.js perf` | Hits don't rebuild attribute snapshots |
 | `progression.js speed` | Speed stats measured in game: server attack-speed value by Blade/Weapon Mastery level, hits at a fixed 0.55 s rhythm (charged vs not), bow power and critical arrows by draw time and Ranged Precision, movement speed by Pathfinding, Fireball cooldown by Spell Weaving, and the PvP pause (spawns `CerbTarget`) |
+| `progression.js defense` | How a hit on a player is reduced, from exact `/damage` hits and the combat trace: armor follows what is worn, resistance × armor (70% today, under the 75% cap), the defense bar's 70% share |
+| `progression.js defense-cap` | The 75% cap binding. Needs a temporarily raised `attributes.limits.resist` (e.g. 0.75) in the sandbox's `plugins/CerberusPlugin/attributes.yml` + `/cerb reload`; restore it afterwards |
+| `progression.js pvp` | PvP as before Attributes 2.0 (spawns `CerbTarget`): pre-attribute armor and resistance (Fireball), hits scaled to the defender's health so the share lost matches a 100-health defender, lifesteal restoring the same share, burn ticks during the PvP tag (and not after it); PvE unchanged |
+| `progression.js mastery` | Weapon Mastery with the specialized skills: Power multiplier and swings to kill a level-100 zombie (sword BM 100 + WM 1 / 100, axe WM 100) |
 | `progression.js offswitch` | With `attributes.integration.pve-offense: false` + `/cerb reload`, old swing counts return |
 
 Never point these at a server with real players or online-mode=true.

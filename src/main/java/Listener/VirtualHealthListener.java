@@ -151,6 +151,7 @@ public class VirtualHealthListener implements Listener {
             if (entity instanceof Player player) {
                 // ── Player is the TARGET (mob/player hitting the player) ──
                 CombatContext ctx = new CombatContext(attackerPlayer, entity, damageType, dmg);
+                if (!ctx.isPvp() && causedByAnotherPlayer(event, damager, player)) ctx.markPvp();
 
                 if (combatSkillProcessor != null && attackerPlayer != null) {
                     combatSkillProcessor.processAttackerSkills(ctx);
@@ -205,8 +206,9 @@ public class VirtualHealthListener implements Listener {
                     combatSkillProcessor.applyPostDamageEffects(ctx);
                 }
 
-                // Defender XP: award for taking damage (HAT, Survival)
-                double damageTaken = ctx.defense().getFinalDamage();
+                // Defender XP: award for taking damage (HAT, Survival). PvP as before attributes
+                // scales the hit to the defender's health; XP counts it in the old terms.
+                double damageTaken = ctx.defense().getFinalDamage() / ctx.defense().getHealthScale();
                 if (damageTaken <= 0) damageTaken = modifiedDmg * 0.1; // minimum XP even if fully mitigated
                 if (combatSkillProcessor != null) {
                     combatSkillProcessor.awardDefenderHitXp(player, damageTaken);
@@ -438,6 +440,23 @@ public class VirtualHealthListener implements Listener {
     /**
      * Send combat debug trace to any involved players that have debug enabled.
      */
+    /** Burning, poison and wither ticks carry no attacker; during a PvP fight they count as PvP. */
+    private static final java.util.Set<EntityDamageEvent.DamageCause> DAMAGE_OVER_TIME = java.util.EnumSet.of(
+            EntityDamageEvent.DamageCause.FIRE_TICK, EntityDamageEvent.DamageCause.POISON, EntityDamageEvent.DamageCause.WITHER);
+
+    /**
+     * Damage another player caused without hitting directly: their pet, potion cloud, TNT or
+     * evoker fangs, or a burn / poison / wither tick while the victim is PvP-tagged (a Fire
+     * Aspect or Fireball burn, a poison arrow). PvP plays as before attributes for these too;
+     * the attacker's own skill bonuses still don't apply (as before).
+     */
+    private boolean causedByAnotherPlayer(EntityDamageEvent event, @Nullable Entity damager, Player victim) {
+        Player behind = damager != null ? Manager.PvpTag.playerBehind(damager) : null;
+        if (behind != null) return !behind.getUniqueId().equals(victim.getUniqueId());
+        Manager.PvpTag tag = plugin.getPvpTag();
+        return tag != null && DAMAGE_OVER_TIME.contains(event.getCause()) && tag.isTagged(victim.getUniqueId());
+    }
+
     private void sendCombatDebugTrace(CombatContext ctx) {
         Player attacker = ctx.getAttacker();
         boolean toAttacker = attacker != null && plugin.isCombatDebugEnabled(attacker.getUniqueId());

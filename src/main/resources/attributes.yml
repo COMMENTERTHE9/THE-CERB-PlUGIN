@@ -72,7 +72,8 @@ attributes:
     lifesteal: 0.40
     armor: 0.40             # total armor reduction (gear + Fortitude)
     resist: 0.50            # each of fire / cold / drowning
-    total-mitigation: 0.75  # RESERVED, not enforced yet: today's defense pipeline allows ~82%; enforcing is an owner decision
+    total-mitigation: 0.75  # resistance and armor TOGETHER remove at most this share of a hit (today's max is 70%);
+                            # the defense bar is a draining pool after them and does not count toward it
 
   # Realm magnitude (docs/design/POWER_SCALING.md §2): a player's realm multiplies their damage,
   # max health, defense bar, health/bar regeneration and spell damage by the realm curve in
@@ -88,6 +89,9 @@ attributes:
     fortitude: true         # armor, defense bar, resistances
     essence: true           # mana and spell damage
     realm-magnitude: true   # realm multiplies damage, health, defense bar, regen (no effect at Awakened)
+    pvp-defense: false      # false: PvP hits play as before Attributes 2.0 - worked out with the defender's old
+                            # armor, resistances, bar and 100 health, then taken as the same share of their real
+                            # health and bar. true lets Vitality / Fortitude / realm count in PvP (future PvP pass).
 
   # ── Speed and handling (docs/design/ATTRIBUTE_EXPANSION.md) ─────────
   # raw = driver attribute x per-point + skill contributions (per level, below)
