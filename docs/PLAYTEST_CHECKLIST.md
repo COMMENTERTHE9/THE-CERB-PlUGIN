@@ -1,6 +1,6 @@
 # Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 50 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
+*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 6, the ability controls (about 30 minutes).** Sections 1–5 are from earlier milestones.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
