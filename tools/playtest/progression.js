@@ -78,8 +78,16 @@ async function equip(item) {
   return slot >= 0;
 }
 
-/** Spawn a no-AI mob at `level`, hit it until it dies (vanilla attack cooldown respected: `delay` ms per swing). */
-async function killOne(type, level, entity = type, delay = 650) {
+/** Total XP a skill holds: every level's cost below its level (SkillManager.xpForLevel) plus the XP into it. */
+const xpForLevel = l => Math.round(75 * Math.pow(Math.max(1, l), 1.85) + 40 * Math.max(1, l));
+const totalXp = s => { let t = s.xp; for (let l = 1; l < s.level; l++) t += xpForLevel(l); return t; };
+
+/**
+ * Spawn a no-AI mob at `level`, hit it until it dies (vanilla attack cooldown respected: `delay` ms per swing).
+ * With `skill`, the kill's XP is read back from the server (kill XP shows on the HUD now, not in chat).
+ */
+async function killOne(type, level, entity = type, delay = 650, skill = null) {
+  const before = skill ? await skillXp(skill) : null;
   await cmd(`/kill @e[type=${entity},distance=..10]`, 600);
   const at = await cmd(`/cerb spawn ${type} ${level} noai`, 1500);
   const target = mobsNear(entity, 5)[0];
@@ -94,20 +102,24 @@ async function killOne(type, level, entity = type, delay = 650) {
     await sleep(delay); // a full cooldown (sword ~0.625 s) so every hit is a full-strength hit
   }
   await sleep(800);
-  const msg = saw(/^\+(\d+) \S.* XP$/, at);
-  return { swings, xp: msg ? Number(msg.match(/^\+(\d+)/)[1]) : NaN, msg, grey: !!saw(/Low-level mob/, at) };
+  const hud = actionBar;
+  const after = skill ? await skillXp(skill) : null;
+  const xp = skill ? totalXp(after) - totalXp(before) : NaN;
+  return { swings, xp, msg: skill ? `${skill} +${xp} (HUD: ${hud})` : '', hud, grey: !!saw(/Low-level mob/, at) };
 }
 
 async function killxp() {
   await cmd('/gamemode creative');
   check('Got a netherite sword', await equip('netherite_sword'));
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
-  let r = await killOne('zombie', 1);
+  let r = await killOne('zombie', 1, 'zombie', 650, 'Blade_Mastery');
   check('Common L1 kill pays 40 Blade Mastery XP', r.xp === 40, r.msg + ', ' + r.swings + ' swings');
-  r = await killOne('zombie', 50);
+  check('...and the HUD shows it (real-time XP display)', /\+40 Blade Mastery/.test(r.hud), r.hud);
+  await sleep(4500); // let the XP line's merge window pass
+  r = await killOne('zombie', 50, 'zombie', 650, 'Blade_Mastery');
   check('Common L50 kill pays 334 Blade Mastery XP', r.xp === 334, r.msg + ', ' + r.swings + ' swings');
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 30`);
-  r = await killOne('zombie', 1);
+  r = await killOne('zombie', 1, 'zombie', 650, 'Blade_Mastery');
   check('Anti-grind: L1 mob at Blade Mastery 30 pays x0.25 and says so', r.xp === 10 && r.grey, r.msg + ' | ' + chat.slice(-6).join(' / '));
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
 }
@@ -379,7 +391,7 @@ async function realm() {
   await cmd('/cerb combatdebug', 500);
   bot.setQuickBarSlot(heldSlot);
   const at = chat.length;
-  const one = await killOne('zombie', 50);
+  const one = await killOne('zombie', 50, 'zombie', 650, 'Blade_Mastery');
   await cmd('/cerb combatdebug', 500);
   const trace = chat.slice(at).find(m => /\[Combat\] Realm/.test(m)) || '';
   // The harness's first swing often doesn't register (same +1 seen in every swing count), so allow 2.
@@ -999,8 +1011,7 @@ async function stabOne(level, max = 200, delay = 1000) {
     await sleep(delay);
   }
   await sleep(800);
-  const msg = saw(/^\+(\d+) \S.* XP$/, at);
-  return { stabs, xp: msg ? Number(msg.match(/^\+(\d+)/)[1]) : NaN, msg };
+  return { stabs, hud: actionBar };
 }
 
 async function spear() {
@@ -1016,10 +1027,9 @@ async function spear() {
   const r = await stabOne(1);
   await debugOn(false);
   const wm1 = await skillXp('Weapon_Mastery'), ham1 = await skillXp('Heavy_Armor_Training');
-  const rewards = chat.slice(at).filter(m => /^\+\d+ \S.* XP$/.test(m));
-  console.log(`  spear kill: ${r.stabs} jabs; ${rewards.join(' / ') || 'no XP message'}; Weapon Mastery ${xpText(wm0, wm1)}; Heavy Armor ${xpText(ham0, ham1)}`);
-  check('A spear kill pays Weapon Mastery XP', /Weapon Mastery XP$/.test(r.msg || '') && grew(wm0, wm1), `${r.msg}; ${xpText(wm0, wm1)}`);
-  check('One reward per kill: no Heavy Armor Mastery XP on top', rewards.length === 1 && same(ham0, ham1), `${rewards.join(' / ')}; Heavy Armor ${xpText(ham0, ham1)}`);
+  console.log(`  spear kill: ${r.stabs} jabs; HUD ${r.hud}; Weapon Mastery ${xpText(wm0, wm1)}; Heavy Armor ${xpText(ham0, ham1)}`);
+  check('A spear kill pays Weapon Mastery XP', grew(wm0, wm1), `HUD ${r.hud}; ${xpText(wm0, wm1)}`);
+  check('One reward per kill: no Heavy Armor Mastery XP on top', same(ham0, ham1), `Heavy Armor ${xpText(ham0, ham1)}`);
   const t1 = chat.slice(at).find(m => /Power\(Spears/.test(m)) || '';
   check('Spear hits use Weapon Mastery\'s Power', /Power\(Spears, Power [\d.]+ -> x[\d.]+\)/.test(t1), t1.slice(0, 160) || 'no Power(Spears) step');
   // The same classification for the combat bonus: Weapon Mastery 100 gives spears x7.25, as axes.

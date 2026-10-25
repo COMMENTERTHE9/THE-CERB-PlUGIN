@@ -23,6 +23,8 @@ public class PlayerHUDManager {
         String effectivenessText = "";
         String flash;       // legacy-coloured text shown in the middle of the bar, or null
         long flashUntil;    // System.nanoTime()
+        String xp;          // the XP line: the same place, lower priority (it waits while a message shows)
+        long xpUntil;       // System.nanoTime()
     }
 
     private final Map<UUID, Sent> sent = new ConcurrentHashMap<>();
@@ -97,8 +99,10 @@ public class PlayerHUDManager {
         // Realm magnitudes reach billions: exact below 10,000, compact above (Numbers.hud).
         long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
         if (last.flash != null && now - last.flashUntil >= 0) last.flash = null;
+        if (last.xp != null && now - last.xpUntil >= 0) last.xp = null;
         hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ");
         if (last.flash != null) hudBuilder.append(last.flash).append("   ");
+        else if (last.xp != null) hudBuilder.append(last.xp).append("   ");
         else hudBuilder.append(effectivenessColor).append(last.effectivenessText);
         hudBuilder.append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
 
@@ -118,8 +122,31 @@ public class PlayerHUDManager {
      */
     public void flash(Player player, String legacyText, long ms) {
         Sent s = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        long now = System.nanoTime();
+        long shownUntil = s.flash != null && s.flashUntil - now > 0 ? s.flashUntil : now;
         s.flash = legacyText;
-        s.flashUntil = System.nanoTime() + Math.max(0, ms) * 1_000_000L;
+        s.flashUntil = now + Math.max(0, ms) * 1_000_000L;
+        // An XP line waits while the message shows: it keeps the time it had left for after it.
+        if (s.xp != null && s.xpUntil - shownUntil > 0) s.xpUntil = s.flashUntil + (s.xpUntil - shownUntil);
+        updateHUD(player);
+    }
+
+    /**
+     * Show the XP line (the real-time XP display) in the same place as {@link #flash} messages, for
+     * {@code ms}: below them in priority, so an ability's result or a refusal is never covered, and
+     * an XP line that arrives during one shows once it ends. Empty text clears it. Player's thread.
+     */
+    public void xp(Player player, String legacyText, long ms) {
+        Sent s = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        if (legacyText == null || legacyText.isEmpty()) {
+            if (s.xp == null) return;
+            s.xp = null;
+        } else {
+            long now = System.nanoTime();
+            long start = s.flash != null && s.flashUntil - now > 0 ? s.flashUntil : now;
+            s.xp = legacyText;
+            s.xpUntil = start + Math.max(0, ms) * 1_000_000L;
+        }
         updateHUD(player);
     }
 

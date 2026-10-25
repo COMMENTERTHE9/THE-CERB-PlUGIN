@@ -129,6 +129,17 @@ public class SkillManager {
     };
     private volatile LevelListener levelListener = NO_LISTENER;
 
+    /** Every XP award that added something: the real-time XP display (Skills.XpDisplay). Called on the awarding thread. */
+    public interface XpListener {
+        void gained(Player player, String skill, long amount, SkillProgression.Result after);
+    }
+
+    private volatile XpListener xpListener;
+
+    public void setXpListener(XpListener listener) {
+        this.xpListener = listener;
+    }
+
     public void setLevelListener(LevelListener listener) {
         this.levelListener = listener == null ? NO_LISTENER : listener;
     }
@@ -270,6 +281,11 @@ public class SkillManager {
             player.sendMessage(createLevelUpMessage(skillName, r.level() - i));
         }
         if (r.levelsGained() > 0) levelListener.changed(player.getUniqueId());
+        XpListener feed = xpListener;
+        long whole = SkillProgression.wholeXp(amount);
+        if (feed != null && whole > 0 && SkillProgression.clampLevel(currentLevel) < SkillProgression.MAX_LEVEL) {
+            feed.gained(player, skillName, whole, r);
+        }
         return r;
     }
 

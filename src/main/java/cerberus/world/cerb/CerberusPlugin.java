@@ -297,6 +297,42 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         return catalog;
     }
 
+    private Gathering.GatheringService gatheringService;
+    private Gathering.ForgeListener forgeListener;
+    private Gathering.EquipmentSource equipmentSource;
+    private XpDisplay xpDisplay;
+
+    /** Gathering and forging (docs/design/GATHERING.md): resources.yml, Mining and Smithing XP, placed blocks. */
+    public Gathering.GatheringService getGatheringService() { return gatheringService; }
+    public Gathering.ForgeListener getForgeListener() { return forgeListener; }
+    public Gathering.EquipmentSource getEquipmentSource() { return equipmentSource; }
+    /** The real-time XP display on the HUD. */
+    public XpDisplay getXpDisplay() { return xpDisplay; }
+
+    /**
+     * resources.yml (written on first install, refreshed at startup when unedited). Null when the file
+     * can't be read: the caller keeps what it had. Bad entries are refused one by one and logged.
+     */
+    private Gathering.GatheringCatalog loadGatheringCatalog(boolean startup) {
+        if (startup) refreshShipped("resources.yml");
+        File file = new File(getDataFolder(), "resources.yml");
+        if (!file.exists()) saveResource("resources.yml", false);
+        YamlConfiguration yml = new YamlConfiguration();
+        try {
+            yml.load(file);
+        } catch (Exception e) {
+            getLogger().severe("[Gathering] resources.yml could not be read (" + e.getMessage()
+                    + "). Nothing was changed; fix the file and run /cerb reload.");
+            return null;
+        }
+        Gathering.GatheringCatalog catalog = Gathering.GatheringCatalog.from(yml, skillManager::findSkillName);
+        for (String problem : catalog.problems()) getLogger().warning("[Gathering] resources.yml: " + problem);
+        getLogger().info("[Gathering] " + catalog.resources().size() + " resources, " + catalog.tools().size() + " custom tools and "
+                + catalog.items().size() + " custom items loaded");
+        SkillDefinitions.setGeneratedTraining(catalog.trainingLines());
+        return catalog;
+    }
+
     /**
      * A shipped config file nobody edited is brought up to the current version (ShippedConfig): an
      * update's new numbers reach servers installed earlier, while a file with the owner's own
@@ -409,6 +445,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Combat system: config, elemental, skill processor
         combatConfig = new CombatConfig(this);
         // After combat.yml: the attribute engine reuses its crit and lifesteal curves.
+        refreshShipped("attributes.yml"); // an unedited copy of an earlier version gets this one's new entries
         attributesConfig = new Attributes.AttributesConfig(this, this::attributeCurves);
         attributeService = new Attributes.AttributeService(attributesConfig::rules);
         attributeService.addSource(new Attributes.SkillSource(skillManager));
@@ -439,6 +476,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 () -> pvpTag, classCatalog != null ? classCatalog : Classes.ClassCatalog.empty());
         classService.setAttributesChanged(p -> attributeEffects.refresh(p));
         attributeService.addSource(classService);
+        // Gathering and forging (docs/design/GATHERING.md): resources.yml, and forged gear as one more
+        // attribute source. A file that can't be read leaves gathering paying nothing, touching nothing.
+        gatheringService = new Gathering.GatheringService(skillManager, attributeService);
+        gatheringService.setCatalog(loadGatheringCatalog(true));
+        equipmentSource = new Gathering.EquipmentSource(attributeService, gatheringService::catalog, p -> attributeEffects.refresh(p));
+        attributeService.addSource(equipmentSource);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
             @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); classService.skillsChanged(p); }
             @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); classService.skillsChanged(p); }
@@ -461,6 +504,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Update HUD manager now that managers are in place
         playerHUDManager = new PlayerHUDManager(playerManaManager, playerDefenseManager, playerVirtualHealthManager);
         playerHUDManager.setDefenseBarManager(defenseBarManager);
+        // Real-time XP display: every award shows briefly on the HUD, below ability messages
+        xpDisplay = new XpDisplay(this, playerHUDManager);
+        skillManager.setXpListener(xpDisplay);
     }
 
 
@@ -502,6 +548,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var classCmd = Objects.requireNonNull(getCommand("class"));
         classCmd.setExecutor(classCommand);
         classCmd.setTabCompleter(classCommand);
+        var xpCmd = Objects.requireNonNull(getCommand("xpdisplay"));
+        xpCmd.setExecutor(xpDisplay);
+        xpCmd.setTabCompleter(xpDisplay);
     }
 
     private Commands.ClassCommand classCommand;
@@ -578,6 +627,17 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(damageDisplayListener, this);
         pm.registerEvents(craftingListener, this);
 
+        // ── Gathering and forging (docs/design/GATHERING.md) and the XP display ──
+        Gathering.PlacedBlocks placedBlocks = new Gathering.PlacedBlocks(gatheringService::catalog);
+        gatheringService.setPlacedBlocks(placedBlocks);
+        pm.registerEvents(placedBlocks, this);
+        pm.registerEvents(new Gathering.GatheringListener(gatheringService, (p, msg) -> playerHUDManager.flash(p, msg, 1500)), this);
+        forgeListener = new Gathering.ForgeListener(this, gatheringService, skillManager);
+        forgeListener.setDebug(this::isCombatDebugEnabled);
+        pm.registerEvents(forgeListener, this);
+        pm.registerEvents(equipmentSource, this);
+        pm.registerEvents(xpDisplay, this);
+
         // REMOVED: ManaListener (lifecycle moved to PlayerSessionManager)
         // REMOVED: SpeedLimiterListener (speed limit moved to PlayerSessionManager)
     }
@@ -609,6 +669,14 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (classService != null) {
             Classes.ClassCatalog next = loadClassCatalog(false);
             if (next != null) classService.setCatalog(next); // a file that doesn't parse keeps the old catalog
+        }
+        if (gatheringService != null) {
+            Gathering.GatheringCatalog next = loadGatheringCatalog(false);
+            if (next != null) {
+                gatheringService.setCatalog(next);
+                if (attributeService != null) attributeService.markAllDirty(); // forged gear's numbers may have changed
+                if (attributeEffects != null) attributeEffects.refreshAll();
+            }
         }
         if (defenseBarManager != null && combatConfig != null) {
             defenseBarManager.applyCombatConfig(combatConfig);

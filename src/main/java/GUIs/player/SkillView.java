@@ -227,7 +227,12 @@ public final class SkillView {
                     rows.put("Essence regeneration", new String[]{Fmt.mult(now.manaRegenMultiplier()), Fmt.mult(next.manaRegenMultiplier())});
                     rows.put("Spell damage (mobs)", new String[]{Fmt.mult(now.spellDamageMultiplier()), Fmt.mult(next.spellDamageMultiplier())});
                 }
-                case FORTUNE -> rows.put("Fortune", null);
+                case FORTUNE -> {
+                    Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
+                    rows.put("Extra ore chance", new String[]{
+                            Fmt.pct(Gathering.GatherRules.bonusChance(now.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax())),
+                            Fmt.pct(Gathering.GatherRules.bonusChance(next.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax()))});
+                }
             }
         }
         for (SpeedRow r : speedRows(statWeights(svc.rules(), skill))) {

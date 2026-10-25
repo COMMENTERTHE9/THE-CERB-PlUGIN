@@ -24,6 +24,12 @@ bot.on('kicked', r => { console.log('KICKED', JSON.stringify(r)); process.exit(2
 bot.on('error', e => { console.log('ERROR', e.message); process.exit(2); });
 
 async function cmd(c, wait = 1200) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
+/** Blade Mastery's level and XP as the server has them (/cerb skill ... xp 0 adds nothing). */
+async function bladeXp() {
+  const at = await cmd(`/cerb skill ${NAME} Blade_Mastery xp 0`, 900);
+  const m = (saw(/is now level \d+ \(\d+ XP\)/, at) || '').match(/level (\d+) \((\d+) XP\)/);
+  return m ? { level: Number(m[1]), xp: Number(m[2]) } : { level: NaN, xp: NaN };
+}
 const mobsNear = (names, r = 8) => Object.values(bot.entities).filter(e => names.includes(e.name) && e.position.distanceTo(bot.entity.position) < r);
 const labelsNear = (r = 8) => Object.values(bot.entities).filter(e => e.name === 'text_display' && e.position.distanceTo(bot.entity.position) < r).map(e => text(e.metadata));
 const emptyHotbar = () => { for (let i = 0; i < 8; i++) if (!bot.inventory.slots[36 + i]) return i; return 0; };
@@ -79,14 +85,17 @@ bot.once('spawn', async () => {
     const sw = bot.inventory.slots.findIndex((it, i) => it && it.name === 'iron_sword' && i >= 36 && i <= 44);
     if (sw >= 0) bot.setQuickBarSlot(sw - 36);
     await sleep(300);
+    const bmBefore = await bladeXp();
     at = await cmd('/summon minecraft:zombie ~2 ~ ~ {NoAI:1b}', 2500);
     const zLabels = labelsNear();
     check('Spawned zombie gets an HP label', zLabels.some(l => /Zombie.*❤.*Lv\d+/.test(l)), zLabels.join(' | '));
     const killed = await killNearest(['zombie']);
     await sleep(1000);
-    const xpMsg = saw(/^\+(\d+) Blade Mastery XP$/, at);
-    const xp = xpMsg ? Number(xpMsg.match(/\d+/)[0]) : NaN;
-    check('Sword kill grants bounded Blade Mastery XP', killed && xp > 0 && xp < 10000, xpMsg || 'no XP message');
+    const hud = actionBar; // kill XP shows on the HUD (the real-time XP display), not in chat
+    const bmAfter = await bladeXp();
+    const gained = bmAfter.level > bmBefore.level || bmAfter.xp > bmBefore.xp;
+    check('Sword kill grants Blade Mastery XP, shown on the HUD', killed && gained && /\+\d+ Blade Mastery/.test(hud),
+        `L${bmBefore.level} ${bmBefore.xp} XP -> L${bmAfter.level} ${bmAfter.xp} XP; HUD ${hud}`);
 
     at = await cmd('/cerb spawn elite_zombie', 2500);
     const eLabels = labelsNear();

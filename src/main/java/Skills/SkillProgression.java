@@ -85,6 +85,11 @@ public final class SkillProgression {
         return Math.max(0, Math.min(xp, ceiling));
     }
 
+    /** The whole XP an award of {@code gained} adds (fractions are dropped; garbage adds nothing). */
+    public static long wholeXp(double gained) {
+        return toWholeXp(gained);
+    }
+
     private static long toWholeXp(double gained) {
         if (Double.isNaN(gained) || gained <= 0) return 0L;
         if (gained >= Integer.MAX_VALUE) return Integer.MAX_VALUE;

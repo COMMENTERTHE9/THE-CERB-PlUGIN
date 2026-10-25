@@ -20,6 +20,10 @@ commands:
     description: Your classes, abilities and loadouts.
     usage: /<command> [info] | abilities [class] | equip [loadout] <a1-a5|p1-p3|k> <ability|none> | loadout <n> | name <n> <name>
     aliases: [classes]
+  xpdisplay:
+    description: How XP gains show on your HUD - compact, detailed or off.
+    usage: /<command> [compact|detailed|off]
+    aliases: [xphud]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

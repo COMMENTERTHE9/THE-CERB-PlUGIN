@@ -112,9 +112,37 @@ public final class SkillDefinitions {
 
     // ── Runtime state ────────────────────────────────────────────
 
-    private static volatile List<SkillDef> ALL = defaults();
+    /** The catalog after skills.yml's overrides, before generated training lines. */
+    private static volatile List<SkillDef> BASE = defaults();
+    /** Skills whose training skills.yml sets itself (generated lines never replace those). */
+    private static volatile Set<String> TRAINING_SET_BY_CONFIG = Set.of();
+    /** Training worked out from other configs (resources.yml: gathering and forging), by skill. */
+    private static volatile Map<String, List<String>> GENERATED = Map.of();
+    private static volatile List<SkillDef> ALL = BASE;
 
     public static List<SkillDef> all() { return ALL; }
+
+    /**
+     * Training lines for skills trained through another config (resources.yml's gathering and
+     * forging XP), so the numbers shown are the ones in use. skills.yml's own training text still wins.
+     */
+    public static void setGeneratedTraining(Map<String, List<String>> lines) {
+        GENERATED = Map.copyOf(lines);
+        ALL = withGenerated(BASE);
+    }
+
+    private static List<SkillDef> withGenerated(List<SkillDef> base) {
+        Map<String, List<String>> gen = GENERATED;
+        Set<String> fixed = TRAINING_SET_BY_CONFIG;
+        if (gen.isEmpty()) return base;
+        List<SkillDef> out = new ArrayList<>(base.size());
+        for (SkillDef d : base) {
+            List<String> t = gen.get(d.name());
+            out.add(t == null || fixed.contains(d.name()) ? d
+                    : new SkillDef(d.name(), d.description(), t, d.icon(), d.category(), d.effects()));
+        }
+        return List.copyOf(out);
+    }
 
     public static List<SkillDef> byCategory(SkillCategory cat) {
         return ALL.stream().filter(s -> s.category == cat).collect(Collectors.toList());
@@ -142,8 +170,10 @@ public final class SkillDefinitions {
 
         List<SkillDef> out = new ArrayList<>();
         Map<String, String> renames = new HashMap<>(SkillNames.DEFAULT_RENAMES);
+        Set<String> trainingSet = new HashSet<>();
         for (SkillDef def : defaults()) {
             ConfigurationSection s = gui == null ? null : gui.getConfigurationSection(def.name());
+            if (s != null && (s.isList("training") || s.isString("guide"))) trainingSet.add(def.name());
             out.add(s == null ? def : override(def, s, renames));
         }
 
@@ -159,7 +189,9 @@ public final class SkillDefinitions {
         }
 
         SkillNames.setRenames(renames);
-        ALL = List.copyOf(out);
+        BASE = List.copyOf(out);
+        TRAINING_SET_BY_CONFIG = Set.copyOf(trainingSet);
+        ALL = withGenerated(BASE);
         log.info("[SkillDefs] Loaded " + out.size() + " skill definitions ("
                 + byCategory(SkillCategory.COMBAT).size() + " combat, "
                 + byCategory(SkillCategory.MAGIC).size() + " magic, "
@@ -192,6 +224,12 @@ public final class SkillDefinitions {
     }
 
     // ── The catalog ──────────────────────────────────────────────
+
+    /** The chance a piece forged at Smithing {@code level} comes out {@code q} or better (resources.yml's odds). */
+    private static double forged(Gathering.Quality q, int level) {
+        Gathering.GatheringCatalog.QualityRules r = Gathering.GatheringCatalog.current().quality();
+        return Gathering.Quality.chanceAtLeast(q, level, r.oddsAt1(), r.oddsAt100());
+    }
 
     private static String xp(double v) {
         return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
@@ -260,8 +298,8 @@ public final class SkillDefinitions {
                 SkillEffect.planned("Shields, wards and barriers"))));
 
         // ── Utility ──
-        d.add(new SkillDef("Mining", "Working stone and ore.", List.of(), Material.DIAMOND_PICKAXE, U,
-                List.of(SkillEffect.planned("Better ore yields and faster mining"))));
+        // Mining and Smithing train through resources.yml: their training lines come from it (setGeneratedTraining).
+        d.add(new SkillDef("Mining", "Working stone and ore.", List.of(), Material.DIAMOND_PICKAXE, U, List.of()));
         d.add(new SkillDef("Farming", "Growing and harvesting crops.", List.of(), Material.DIAMOND_HOE, U,
                 List.of(SkillEffect.planned("Better crop yields"))));
         d.add(new SkillDef("Woodcutting", "Felling trees.", List.of(), Material.DIAMOND_AXE, U,
@@ -270,8 +308,9 @@ public final class SkillDefinitions {
                 List.of(SkillEffect.planned("Rarer catches"))));
         d.add(new SkillDef("Crafting", "Making tools and goods.", List.of(), Material.CRAFTING_TABLE, U,
                 List.of(SkillEffect.planned("Advanced recipes"))));
-        d.add(new SkillDef("Smithing", "Working metal at the anvil.", List.of(), Material.ANVIL, U,
-                List.of(SkillEffect.planned("Better anvil results"))));
+        d.add(new SkillDef("Smithing", "Smelting metal and forging gear.", List.of(), Material.ANVIL, U, List.of(
+                SkillEffect.live("Chance of Superior or better forged gear", (cfg, lvl) -> forged(Gathering.Quality.SUPERIOR, lvl), PCT),
+                SkillEffect.live("Chance of Masterwork forged gear", (cfg, lvl) -> forged(Gathering.Quality.MASTERWORK, lvl), PCT))));
         d.add(new SkillDef("Alchemy", "Brewing potions.", List.of(), Material.BREWING_STAND, U,
                 List.of(SkillEffect.planned("Stronger potions"))));
         d.add(new SkillDef("Enchanting", "Binding enchantments to gear.", List.of(), Material.ENCHANTING_TABLE, U,

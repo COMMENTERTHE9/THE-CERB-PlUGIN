@@ -88,6 +88,14 @@ public final class GatheringCatalog {
 
     public static GatheringCatalog empty() { return from(null); }
 
+    private static volatile GatheringCatalog current = empty();
+
+    /** The catalog in use (menus read it for their numbers); empty until the plugin loads resources.yml. */
+    public static GatheringCatalog current() { return current; }
+
+    /** Put {@code c} in use. */
+    public static void setCurrent(GatheringCatalog c) { current = c != null ? c : empty(); }
+
     /** The resource a block of {@code m} is, or null. */
     public ResourceDef resource(Material m) { return m == null ? null : byBlock.get(m); }
     public Map<String, ResourceDef> resources() { return resources; }
@@ -141,9 +149,60 @@ public final class GatheringCatalog {
         return null;
     }
 
+    /**
+     * "How to train" lines for the skill pages, from these definitions (so the numbers players read
+     * are the ones in use), by skill.
+     */
+    public Map<String, List<String>> trainingLines() {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        Map<String, List<ResourceDef>> bySkill = new LinkedHashMap<>();
+        for (ResourceDef r : resources.values()) bySkill.computeIfAbsent(r.skill(), k -> new ArrayList<>()).add(r);
+        bySkill.forEach((skill, list) -> {
+            List<String> parts = new ArrayList<>();
+            for (ResourceDef r : list) parts.add(r.id().replace('_', ' ') + " " + number(r.xp()));
+            List<String> lines = new ArrayList<>();
+            lines.add("Break natural blocks by hand in survival: " + String.join(", ", parts) + " XP.");
+            if (weakGap > 0) {
+                lines.add("Each block has a level (stone 1, deeper ores more); " + weakGap + "+ levels above it you get "
+                        + Math.round(weakFactor * 100) + "% of its XP.");
+            }
+            lines.add("Blocks placed by players, made by lava and water, or moved by pistons give nothing. Silk Touch keeps the XP.");
+            out.put(skill, lines);
+        });
+        if (!smelting.isEmpty()) {
+            List<String> parts = new ArrayList<>();
+            smelting.forEach((m, xp) -> parts.add(m.name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " + number(xp)));
+            out.computeIfAbsent(smeltingSkill, k -> new ArrayList<>())
+                    .add("Take metal out of a furnace or blast furnace: " + String.join(", ", parts) + " XP each.");
+        }
+        if (!perUnit.isEmpty()) {
+            List<String> parts = new ArrayList<>();
+            perUnit.forEach((metal, xp) -> parts.add(metal + " " + number(xp)));
+            out.computeIfAbsent(forgingSkill, k -> new ArrayList<>()).add("Craft tools, weapons and armor: per unit of metal (a sword takes 2, "
+                    + "a chestplate 8): " + String.join(", ", parts) + " XP. Storage blocks and other reversible recipes give nothing.");
+        }
+        if (netheriteUpgrade > 0) {
+            out.computeIfAbsent(forgingSkill, k -> new ArrayList<>())
+                    .add("Upgrade gear to netherite at a smithing table: " + number(netheriteUpgrade) + " XP.");
+        }
+        return out;
+    }
+
+    private static String number(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
+    }
+
     // ── loading ───────────────────────────────────────────────────
 
     public static GatheringCatalog from(ConfigurationSection root) {
+        return from(root, java.util.function.UnaryOperator.identity());
+    }
+
+    /**
+     * @param skills a skill name as written → the skill's real name, or null when there is none (so a
+     *               typo never creates a skill nobody can see)
+     */
+    public static GatheringCatalog from(ConfigurationSection root, java.util.function.UnaryOperator<String> skills) {
         List<String> problems = new ArrayList<>();
         Map<String, ItemDef> items = new LinkedHashMap<>();
         ConfigurationSection is = root == null ? null : root.getConfigurationSection("items");
@@ -177,8 +236,10 @@ public final class GatheringCatalog {
             ConfigurationSection s = rs.getConfigurationSection(id);
             if (s == null) { problems.add("resource " + id + ": not a section"); continue; }
             List<String> why = new ArrayList<>();
-            String skill = s.getString("skill");
-            if (skill == null || skill.isBlank()) why.add("no skill");
+            String written = s.getString("skill");
+            String skill = written == null || written.isBlank() ? null : skills.apply(written.trim());
+            if (written == null || written.isBlank()) why.add("no skill");
+            else if (skill == null) why.add("unknown skill " + written);
             Set<Material> blocks = java.util.EnumSet.noneOf(Material.class);
             for (String b : s.getStringList("blocks")) {
                 Material m = material(b);
@@ -211,7 +272,7 @@ public final class GatheringCatalog {
         }
 
         ConfigurationSection sm = root == null ? null : root.getConfigurationSection("smelting");
-        String smeltingSkill = sm == null ? "Smithing" : sm.getString("skill", "Smithing");
+        String smeltingSkill = skill(sm, "smelting", skills, problems);
         Map<Material, Double> smelting = new EnumMap<>(Material.class);
         ConfigurationSection sx = sm == null ? null : sm.getConfigurationSection("xp");
         if (sx != null) for (String k : sx.getKeys(false)) {
@@ -222,7 +283,7 @@ public final class GatheringCatalog {
         }
 
         ConfigurationSection fg = root == null ? null : root.getConfigurationSection("forging");
-        String forgingSkill = fg == null ? "Smithing" : fg.getString("skill", "Smithing");
+        String forgingSkill = skill(fg, "forging", skills, problems);
         Map<String, Double> perUnit = new LinkedHashMap<>();
         ConfigurationSection pu = fg == null ? null : fg.getConfigurationSection("per-unit");
         if (pu != null) for (String k : pu.getKeys(false)) {
@@ -241,7 +302,7 @@ public final class GatheringCatalog {
         double netherite = fg == null ? 0 : Math.max(0, Math.min(10_000, fg.getDouble("netherite-upgrade", 0)));
 
         ConfigurationSection q = root == null ? null : root.getConfigurationSection("quality");
-        QualityRules quality = new QualityRules(q == null ? "Smithing" : q.getString("skill", "Smithing"),
+        QualityRules quality = new QualityRules(skill(q, "quality", skills, problems),
                 weights(q, "odds.at-level-1", new double[] {100, 0, 0, 0}, problems),
                 weights(q, "odds.at-level-100", new double[] {100, 0, 0, 0}, problems),
                 weights(q, "weapon-power", new double[4], problems),
@@ -269,6 +330,17 @@ public final class GatheringCatalog {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    /** {@code s}'s {@code skill:} (Smithing when unset or unknown). */
+    private static String skill(ConfigurationSection s, String where, java.util.function.UnaryOperator<String> skills, List<String> problems) {
+        String written = s == null ? null : s.getString("skill");
+        if (written == null || written.isBlank()) written = "Smithing";
+        String real = skills.apply(written.trim());
+        if (real != null) return real;
+        problems.add(where + ": unknown skill " + written + " - using Smithing");
+        String smithing = skills.apply("Smithing");
+        return smithing != null ? smithing : "Smithing";
     }
 
     private static int num(Object v, int dflt) {

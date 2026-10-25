@@ -91,7 +91,11 @@ public final class AttributeView {
                 out.add(g + "Mana regeneration: " + w + Fmt.mult(s.manaRegenMultiplier()));
                 out.add(g + "Spell damage: " + w + Fmt.mult(s.spellDamageMultiplier()));
             }
-            case FORTUNE -> out.add(g + "Will raise luck and magic find.");
+            case FORTUNE -> {
+                Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
+                double chance = Gathering.GatherRules.bonusChance(s.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax());
+                out.add(g + "Extra ore when mining: " + w + Fmt.pct(chance) + g + " (max " + Fmt.pct(gc.fortuneMax()) + ")");
+            }
         }
         return out;
     }

@@ -39,6 +39,22 @@ public class MobKillListener implements Listener {
         this.mobRegistry   = mobRegistry;
     }
 
+    /** The reduced-XP hint, at most once a minute per player (it used to follow every weak kill). */
+    private final java.util.Map<java.util.UUID, Long> greyHint = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private boolean greyHintDue(Player p) {
+        long now = System.currentTimeMillis();
+        Long last = greyHint.get(p.getUniqueId());
+        if (last != null && now - last < 60_000) return false;
+        greyHint.put(p.getUniqueId(), now);
+        return true;
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+        greyHint.remove(e.getPlayer().getUniqueId());
+    }
+
     // -----------------------------------------
     // Award dynamic XP on mob kill
     // -----------------------------------------
@@ -80,14 +96,13 @@ public class MobKillListener implements Listener {
             int mobLevel = mobRegistry.getLevel(mob);
             int skillLevel = skillManager.getSkillLevel(player, skillName);
             xpGained = Attributes.KillXp.compute(mobLevel, ctx.xpMultiplier(), skillLevel, killCfg);
-            if (Attributes.KillXp.isGreyKill(mobLevel, skillLevel, killCfg)) {
+            if (Attributes.KillXp.isGreyKill(mobLevel, skillLevel, killCfg) && greyHintDue(player)) {
                 player.sendMessage(ChatColor.GRAY + "(Low-level mob: reduced XP. Fight stronger enemies for full XP.)");
             }
         } else {
             xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
         }
-        skillManager.addXpAndCheckLevelUp(skillName, xpGained, player);
-        player.sendMessage(ChatColor.GREEN + "+" + (long) Math.floor(xpGained) + " " + Skills.SkillNames.display(skillName) + " XP");
+        skillManager.addXpAndCheckLevelUp(skillName, xpGained, player); // shown on the HUD by the XP display (Skills.XpDisplay)
         // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
         Classes.ClassService classes = plugin.getClassService();
         // Only enemies pay class XP (as casts already did): farm animals can't be bred into class ranks.

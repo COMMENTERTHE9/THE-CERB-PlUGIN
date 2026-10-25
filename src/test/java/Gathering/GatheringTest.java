@@ -135,7 +135,11 @@ class GatheringTest {
         set = PlacedIndex.remove(set, 7);
         assertArrayEquals(new int[] {3, 9}, set);
         assertSame(set, PlacedIndex.remove(set, 100));
-        assertArrayEquals(new int[] {1, 2, 5}, PlacedIndex.clean(new int[] {5, -1, 2, 1, 2, 1 << 20}), "a damaged save is cleaned");
+        assertArrayEquals(new int[] {1, 2, 5}, PlacedIndex.clean(new int[] {5, -1, 2, 1, 2, 1 << 20}, 384), "a damaged save is cleaned");
+        int[] fine = {1, 2, 5};
+        assertSame(fine, PlacedIndex.clean(fine, 384), "a clean save is used as it is");
+        int high = PlacedIndex.pack(0, 2000, 0, -64);
+        assertArrayEquals(new int[] {high}, PlacedIndex.clean(new int[] {high}, 4064), "a taller world keeps its high blocks");
         assertFalse(PlacedIndex.contains(null, 1));
     }
 
@@ -188,6 +192,96 @@ class GatheringTest {
         }
         assertEquals(0, bad.smeltXp(Material.IRON_INGOT));
         assertTrue(GatheringCatalog.empty().resources().isEmpty());
+    }
+
+    @Test
+    void theRuleTable() {
+        GatherRules.Method M = GatherRules.Method.MANUAL, C = GatherRules.Method.CREATIVE, A = GatherRules.Method.AUTOMATED;
+        // decide(method, placed, custom, toolFits, vanillaDrops, silk, fortune)
+        assertEquals(new GatherRules.Decision(true, true, false, false), GatherRules.decide(M, false, false, true, true, false, true), "a natural ore by hand: XP and the bonus");
+        assertEquals(new GatherRules.Decision(true, false, false, false), GatherRules.decide(M, false, false, true, true, true, true), "Silk Touch: XP, no bonus");
+        assertEquals(new GatherRules.Decision(true, false, false, false), GatherRules.decide(M, false, false, true, true, false, false), "stone: XP, never a bonus");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(M, true, false, true, true, false, true), "placed: nothing");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(C, false, false, true, true, false, true), "creative: nothing");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(A, false, false, true, true, false, true), "a machine: drops only");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(M, false, false, true, false, false, true), "vanilla drops nothing (iron ore, wooden pickaxe): nothing");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(M, false, false, false, true, false, true), "the wrong tool for a vanilla resource: nothing, the break goes on");
+        assertEquals(new GatherRules.Decision(false, false, false, true), GatherRules.decide(M, false, true, false, true, false, true), "a natural custom ore and the wrong tool: refused");
+        assertEquals(new GatherRules.Decision(true, true, true, false), GatherRules.decide(M, false, true, true, false, false, true), "the right tool: XP, bonus, custom drops");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(M, true, true, false, true, false, true), "a placed custom block: its vanilla drops, nothing else");
+        assertEquals(new GatherRules.Decision(false, false, true, false), GatherRules.decide(A, false, true, true, true, false, true), "a machine with the right tool: custom drops, no XP");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(C, false, true, false, true, false, true), "creative breaks anything, for nothing");
+        assertEquals(GatherRules.Decision.NOTHING, GatherRules.decide(null, false, false, true, true, false, true));
+    }
+
+    @Test
+    void skillNamesAreCheckedAndTrainingLinesComeFromTheFile() throws Exception {
+        YamlConfiguration y = new YamlConfiguration();
+        y.loadFromString("""
+                resources:
+                  ok:   { skill: mining, blocks: [STONE], xp: 1 }
+                  typo: { skill: Minning, blocks: [DIRT], xp: 1 }
+                smelting: { skill: Smithing, xp: { IRON_INGOT: 2 } }
+                """);
+        GatheringCatalog c = GatheringCatalog.from(y, s -> s.equalsIgnoreCase("mining") ? "Mining" : s.equals("Smithing") ? "Smithing" : null);
+        assertEquals("Mining", c.resource(Material.STONE).skill(), "the skill's real name, whatever the case");
+        assertNull(c.resource(Material.DIRT));
+        assertTrue(String.join("\n", c.problems()).contains("unknown skill Minning"), c.problems().toString());
+
+        java.util.Map<String, List<String>> lines = shipped().trainingLines();
+        assertTrue(lines.get("Mining").get(0).contains("iron ore 8"), lines.get("Mining").toString());
+        assertTrue(lines.get("Mining").get(1).contains("25%"), "the weak-resource rule");
+        assertTrue(lines.get("Smithing").get(0).contains("iron ingot 2"), lines.get("Smithing").toString());
+        assertTrue(lines.get("Smithing").stream().anyMatch(l -> l.contains("netherite") && l.contains("50 XP")));
+    }
+
+    @Test
+    void qualityChancesForTheSkillPage() {
+        double[] at1 = {85, 13, 2, 0}, at100 = {20, 40, 28, 12};
+        assertEquals(1.0, Quality.chanceAtLeast(Quality.COMMON, 1, at1, at100), 1e-9);
+        assertEquals(0.02, Quality.chanceAtLeast(Quality.SUPERIOR, 1, at1, at100), 1e-9);
+        assertEquals(0.0, Quality.chanceAtLeast(Quality.MASTERWORK, 1, at1, at100), 1e-9);
+        assertEquals(0.40, Quality.chanceAtLeast(Quality.SUPERIOR, 100, at1, at100), 1e-9);
+        assertEquals(0.12, Quality.chanceAtLeast(Quality.MASTERWORK, 100, at1, at100), 1e-9);
+        assertEquals(0.0, Quality.chanceAtLeast(Quality.FINE, 50, new double[4], new double[4]), "no odds: nothing");
+    }
+
+    @Test
+    void forgedGearFeedsTheEngineOnlyWhereItCounts() {
+        GatheringCatalog.QualityRules q = GatheringCatalog.empty().quality();
+        q = new GatheringCatalog.QualityRules("Smithing", q.oddsAt1(), q.oddsAt100(), new double[] {0, 3, 6, 10},
+                new double[] {0, 1, 2, 4}, new double[] {0, 3, 6, 10});
+        EquipmentSource.Piece sword = new EquipmentSource.Piece(GatheringCatalog.Gear.WEAPON, Attributes.WeaponClass.SWORD, Quality.MASTERWORK, "Masterwork iron sword");
+        EquipmentSource.Piece axe = new EquipmentSource.Piece(GatheringCatalog.Gear.WEAPON_AND_TOOL, Attributes.WeaponClass.AXE, Quality.FINE, "Fine iron axe");
+        EquipmentSource.Piece pick = new EquipmentSource.Piece(GatheringCatalog.Gear.TOOL, Attributes.WeaponClass.OTHER, Quality.SUPERIOR, "Superior iron pickaxe");
+        EquipmentSource.Piece helm = new EquipmentSource.Piece(GatheringCatalog.Gear.ARMOR, Attributes.WeaponClass.OTHER, Quality.FINE, "Fine iron helmet");
+        EquipmentSource.Piece boots = new EquipmentSource.Piece(GatheringCatalog.Gear.ARMOR, Attributes.WeaponClass.OTHER, Quality.MASTERWORK, "Masterwork iron boots");
+
+        List<Attributes.Contribution> s = EquipmentSource.contributions(new EquipmentSource.Worn(sword, List.of(helm, boots)), q);
+        assertEquals(3, s.size(), s.toString());
+        Attributes.Contribution power = s.get(0);
+        assertEquals(Attributes.Attribute.POWER, power.attribute());
+        assertEquals(10, power.amount());
+        assertEquals(Attributes.WeaponClass.SWORD, power.weapon(), "Power for swords only");
+        assertEquals(5, s.stream().filter(c -> c.attribute() == Attributes.Attribute.FORTITUDE).mapToDouble(Attributes.Contribution::amount).sum(), 1e-9, "1 + 4 Fortitude");
+
+        List<Attributes.Contribution> a = EquipmentSource.contributions(new EquipmentSource.Worn(axe, List.of()), q);
+        assertEquals(2, a.size(), "an axe is a weapon and a tool");
+        assertEquals(3, a.stream().filter(c -> c.attribute() == Attributes.Attribute.FORTUNE).mapToDouble(Attributes.Contribution::amount).sum(), 1e-9);
+
+        List<Attributes.Contribution> t = EquipmentSource.contributions(new EquipmentSource.Worn(pick, List.of()), q);
+        assertEquals(List.of(Attributes.Attribute.FORTUNE), t.stream().map(Attributes.Contribution::attribute).toList(), "a pickaxe: Fortune only");
+        assertEquals(6, t.get(0).amount());
+
+        assertEquals(List.of(), EquipmentSource.contributions(EquipmentSource.Worn.NOTHING, q));
+        // A held armor piece adds nothing; worn armor never counts as the weapon.
+        assertEquals(List.of(), EquipmentSource.contributions(new EquipmentSource.Worn(helm, List.of()), q));
+        // Through the engine: the caps hold whatever gear adds.
+        Attributes.AttributeSnapshot snap = Attributes.AttributeCalculator.compute(
+                EquipmentSource.contributions(new EquipmentSource.Worn(sword, List.of(boots, boots, boots, boots)), q), Attributes.AttributeRules.DEFAULTS);
+        assertEquals(10, snap.power(Attributes.WeaponClass.SWORD), 1e-9);
+        assertEquals(0, snap.power(Attributes.WeaponClass.AXE), 1e-9);
+        assertEquals(16, snap.get(Attributes.Attribute.FORTITUDE), 1e-9);
     }
 
     @Test

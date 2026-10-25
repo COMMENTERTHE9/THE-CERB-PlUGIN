@@ -29,7 +29,7 @@ public class CerbTabCompleter implements TabCompleter {
             "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
-            "speed", "spawn", "mobs"
+            "speed", "spawn", "mobs", "gather"
     );
 
     private static final List<String> ON_OFF = List.of("on", "off");
@@ -82,6 +82,7 @@ public class CerbTabCompleter implements TabCompleter {
 
             // spawn <mobId>
             case "spawn" -> args.length == 2 ? filterMobIds(args[1]) : List.of();
+            case "gather" -> completeGather(args);
 
             // No further args
             default -> List.of();
@@ -141,5 +142,19 @@ public class CerbTabCompleter implements TabCompleter {
         return options.stream()
                 .filter(s -> s.toLowerCase().startsWith(lower))
                 .collect(Collectors.toList());
+    }
+
+    private List<String> completeGather(String[] args) {
+        var svc = plugin.getGatheringService();
+        if (args.length == 2) return filter(GatherCommand.SUBS, args[1]);
+        if (args.length == 3 && svc != null) {
+            return switch (args[1].toLowerCase(java.util.Locale.ROOT)) {
+                case "tool" -> filter(List.copyOf(svc.catalog().tools().keySet()), args[2]);
+                case "item" -> filter(List.copyOf(svc.catalog().items().keySet()), args[2]);
+                case "quality" -> filter(List.of("common", "fine", "superior", "masterwork", "none"), args[2]);
+                default -> List.of();
+            };
+        }
+        return List.of();
     }
 }

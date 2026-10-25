@@ -26,7 +26,7 @@ public class CerbCommand implements CommandExecutor {
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
-                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs>";
+                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|gather>";
     private final CerberusPlugin plugin;
 
     public CerbCommand(CerberusPlugin plugin) {
@@ -201,6 +201,11 @@ public class CerbCommand implements CommandExecutor {
             case "spawn":
                 if (!(sender instanceof Player sw)) { sender.sendMessage(ChatColor.RED + "Run /cerb spawn in-game (it spawns at your position)."); break; }
                 handleSpawn(sw, args);
+                break;
+
+            case "gather":
+                if (!(sender instanceof Player gp)) { sender.sendMessage(ChatColor.RED + "Run /cerb gather in-game."); break; }
+                new GatherCommand(plugin).run(gp, args);
                 break;
 
             default:

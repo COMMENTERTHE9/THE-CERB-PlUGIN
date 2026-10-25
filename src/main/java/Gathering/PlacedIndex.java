@@ -5,7 +5,8 @@ import java.util.Arrays;
 /**
  * Block positions inside one chunk, packed into ints and kept as a sorted array: the form placed
  * resource blocks are saved in (chunk data) and looked up from. Pure, unit-tested.
- * Packing: {@code (y - minY) << 8 | (x & 15) << 4 | (z & 15)}, 17 bits for a 384-high world.
+ * Packing: {@code (y - minY) << 8 | (x & 15) << 4 | (z & 15)}, 17 bits for a 384-high world
+ * (more for a taller one: the world's height decides what a saved value may be).
  */
 public final class PlacedIndex {
 
@@ -52,9 +53,11 @@ public final class PlacedIndex {
         return out;
     }
 
-    /** A saved array made safe: sorted, without duplicates or values outside 0 to 2^17. */
-    public static int[] clean(int[] saved) {
+    /** A saved array made safe: sorted, without duplicates or values outside a world {@code height} blocks high. */
+    public static int[] clean(int[] saved, int height) {
         if (saved == null) return new int[0];
-        return Arrays.stream(saved).filter(v -> v >= 0 && v < (1 << 17)).sorted().distinct().toArray();
+        long limit = (long) Math.max(0, height) << 8;
+        int[] out = Arrays.stream(saved).filter(v -> v >= 0 && v < limit).sorted().distinct().toArray();
+        return out.length == saved.length && Arrays.equals(out, saved) ? saved : out;
     }
 }

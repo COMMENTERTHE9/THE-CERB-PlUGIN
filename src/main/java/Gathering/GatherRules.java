@@ -29,6 +29,39 @@ public final class GatherRules {
     }
 
     /**
+     * What breaking a resource block earns.
+     *
+     * @param xp          the resource's XP is paid
+     * @param bonus       the Fortune bonus may add one item
+     * @param customDrops the resource's own (custom) drops replace the block's vanilla drops
+     * @param refuse      the break is stopped: a natural custom resource and the wrong tool
+     */
+    public record Decision(boolean xp, boolean bonus, boolean customDrops, boolean refuse) {
+        public static final Decision NOTHING = new Decision(false, false, false, false);
+    }
+
+    /**
+     * The rule table of docs/design/GATHERING.md ("Extraction methods", "What can't be farmed") in
+     * one place. Only a natural block, broken by hand with a tool that fits, pays; a placed block
+     * gives back what vanilla gives and nothing more (its custom drops would make items from
+     * nothing); Silk Touch keeps the XP but never the bonus.
+     *
+     * @param custom       the resource has drops of its own (a custom ore)
+     * @param toolFits     the tool is of the kind and tier the resource needs
+     * @param vanillaDrops vanilla drops something with this tool (an iron ore and a wooden pickaxe: no)
+     * @param fortune      the resource can give a bonus drop at all
+     */
+    public static Decision decide(Method method, boolean placed, boolean custom, boolean toolFits, boolean vanillaDrops,
+                                  boolean silk, boolean fortune) {
+        if (method == null) return Decision.NOTHING;
+        boolean natural = !placed;
+        if (custom && natural && !toolFits && method == Method.MANUAL) return new Decision(false, false, false, true);
+        boolean customDrops = custom && natural && toolFits && method != Method.CREATIVE;
+        boolean xp = method.xp && natural && toolFits && (custom || vanillaDrops);
+        return new Decision(xp, xp && method.bonus && fortune && !silk, customDrops, false);
+    }
+
+    /**
      * XP for gathering a resource worth {@code xp} at {@code level}, by a player at
      * {@code skillLevel}: a weak resource (the player {@code gap} or more levels above it) pays
      * {@code factor} of it, as a weak mob's kill does.

@@ -49,6 +49,17 @@ public enum Quality {
         return out;
     }
 
+    /** The chance of rolling {@code q} or better at {@code level} (0 when the odds are all zero). */
+    public static double chanceAtLeast(Quality q, int level, double[] atLevel1, double[] atLevel100) {
+        double[] w = odds(level, atLevel1, atLevel100);
+        double total = 0, good = 0;
+        for (int i = 0; i < w.length; i++) {
+            total += w[i];
+            if (i >= q.ordinal()) good += w[i];
+        }
+        return total > 0 ? good / total : 0;
+    }
+
     /** Roll a quality from {@code weights} with {@code r} in [0, 1). All-zero weights roll Common. */
     public static Quality roll(double[] weights, double r) {
         double total = 0;
