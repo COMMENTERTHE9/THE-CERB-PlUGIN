@@ -49,9 +49,17 @@ public final class MobLabelManager implements Listener {
         final Tier tier;
         final String typeName;
         final double maxHp;
-        LabelState(UUID labelId, int level, Tier tier, String typeName, double maxHp) {
+        /** "Lv50 Zombie": never changes, built once. */
+        final Component prefix;
+        /** The label entity (found again from the mob's passengers if this one is gone). Mob's thread only. */
+        TextDisplay label;
+        /** The HP part last shown, so a hit that doesn't change the text sends nothing. */
+        String shownHp;
+        LabelState(UUID labelId, int level, Tier tier, String typeName, double maxHp, Component prefix,
+                   TextDisplay label, String shownHp) {
             this.labelId = labelId; this.level = level; this.tier = tier;
             this.typeName = typeName; this.maxHp = maxHp;
+            this.prefix = prefix; this.label = label; this.shownHp = shownHp;
         }
     }
 
@@ -89,8 +97,10 @@ public final class MobLabelManager implements Listener {
             final String customName = mob.getCustomName();
             final String typeName = (customName != null && !customName.isBlank())
                     ? customName : prettify(mob.getType().name());
+            final Component prefix = prefix(level, tier, typeName);
+            final String hp = hpText(maxHp, fraction);
             TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
-                td.text(buildText(level, tier, typeName, maxHp, fraction));
+                td.text(prefix.append(Component.text(hp, NamedTextColor.RED)));
                 td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
                 td.setSeeThrough(true);                             // no block-occlusion hide
                 td.setShadowed(false);
@@ -114,7 +124,7 @@ public final class MobLabelManager implements Listener {
                 label.remove();
                 return;
             }
-            states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp));
+            states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp, prefix, label, hp));
         }, null); // retired=null: if the mob is gone before next tick, just skip (nothing spawned yet)
     }
 
@@ -136,9 +146,16 @@ public final class MobLabelManager implements Listener {
         if (mob == null) return;
         LabelState st = states.get(mob.getUniqueId());
         if (st == null) return;
-        TextDisplay td = findLabel(mob); // read off the mob's passengers — Folia-safe, no Bukkit.getEntity
+        String hp = hpText(st.maxHp, fraction);
+        if (hp.equals(st.shownHp)) return;                 // e.g. "3.2K" before and after the hit
+        TextDisplay td = st.label;
+        if (td == null || !td.isValid() || td.getVehicle() != mob) {
+            td = findLabel(mob); // read off the mob's passengers — Folia-safe, no Bukkit.getEntity
+            st.label = td;
+        }
         if (td != null && td.isValid()) {
-            td.text(buildText(st.level, st.tier, st.typeName, st.maxHp, fraction));
+            td.text(st.prefix.append(Component.text(hp, NamedTextColor.RED)));
+            st.shownHp = hp;
         }
     }
 
@@ -173,11 +190,16 @@ public final class MobLabelManager implements Listener {
 
     // ── Text ──────────────────────────────────────────────────────
 
-    private Component buildText(int level, Tier tier, String typeName, double maxHp, double fraction) {
-        long shownHp = (long) Math.ceil(maxHp * Math.max(0.0, Math.min(1.0, fraction)));
+    /** "Lv50 Zombie" in gray and the tier's color: the part of a label that never changes. */
+    private Component prefix(int level, Tier tier, String typeName) {
         return Component.text("Lv" + level + " ", NamedTextColor.GRAY)
-                .append(Component.text(typeName, tierColor(tier)))
-                .append(Component.text("  " + compact(shownHp) + "❤", NamedTextColor.RED));
+                .append(Component.text(typeName, tierColor(tier)));
+    }
+
+    /** "  3.2K❤": the live HP part. */
+    private static String hpText(double maxHp, double fraction) {
+        long shownHp = (long) Math.ceil(maxHp * Math.max(0.0, Math.min(1.0, fraction)));
+        return "  " + compact(shownHp) + "❤";
     }
 
     private TextColor tierColor(Tier tier) {

@@ -1,11 +1,30 @@
 package Manager;
 
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerHUDManager {
+    /**
+     * The action bar fades after about three seconds; the HUD task resends it every second, so an
+     * unchanged bar sent less than this long ago is not sent again (hits refresh it many times a second).
+     */
+    private static final long RESEND_MS = 900;
+
+    /** Per player: the last bar sent and when, and the last luck figure with its text. */
+    private static final class Sent {
+        String text = "";
+        long at;
+        double effectiveness = Double.NaN;
+        String effectivenessText = "";
+    }
+
+    private final Map<UUID, Sent> sent = new ConcurrentHashMap<>();
+
     private PlayerManaManager manaManager;
     private PlayerDefenseManager defenseManager;
     private PlayerVirtualHealthManager healthManager;
@@ -54,6 +73,12 @@ public class PlayerHUDManager {
         ChatColor manaColor = getManaColor(manaPct);
         ChatColor effectivenessColor = getEffectivenessColor(effectiveness);
 
+        Sent last = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        if (effectiveness != last.effectiveness) {               // rarely changes: format it once
+            last.effectiveness = effectiveness;
+            last.effectivenessText = String.format("%.2f%%★   ", effectiveness * 100);
+        }
+
         // Build HUD string
         StringBuilder hudBuilder = new StringBuilder();
         
@@ -69,11 +94,21 @@ public class PlayerHUDManager {
         // Add health, effectiveness, and mana
         // Realm magnitudes reach billions: exact below 10,000, compact above (Numbers.hud).
         hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ")
-                .append(String.format("%s%.2f%%★   ", effectivenessColor, effectiveness * 100))
+                .append(effectivenessColor).append(last.effectivenessText)
                 .append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
 
-        // Send the action bar message to the player
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hudBuilder.toString()));
+        String text = hudBuilder.toString();
+        long now = System.currentTimeMillis();
+        if (text.equals(last.text) && now - last.at < RESEND_MS) return;
+        last.text = text;
+        last.at = now;
+        // Adventure straight to the client (the old Spigot path round-tripped the text through JSON).
+        player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(text));
+    }
+
+    /** Forget a player's HUD state (on quit). */
+    public void removePlayer(UUID playerId) {
+        sent.remove(playerId);
     }
 
     private ChatColor getHealthColor(double healthPct) {

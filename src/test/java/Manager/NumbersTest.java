@@ -23,6 +23,16 @@ class NumbersTest {
     }
 
     @Test
+    void groupedMatchesStringFormatExactly() {
+        for (long n = -20_000; n <= 20_000; n++) {
+            assertEquals(String.format(java.util.Locale.ROOT, "%,d", n), Numbers.grouped(n), "n=" + n);
+        }
+        for (long n : new long[]{999_999, 1_000_000, -1_234_567_890L, Long.MAX_VALUE, Long.MIN_VALUE}) {
+            assertEquals(String.format(java.util.Locale.ROOT, "%,d", n), Numbers.grouped(n), "n=" + n);
+        }
+    }
+
+    @Test
     void hudShowsExactSmallValuesAndCompactLargeOnes() {
         assertEquals("102", Numbers.hud(102.4));
         assertEquals("9,850", Numbers.hud(9850));

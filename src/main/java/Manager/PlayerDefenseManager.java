@@ -64,11 +64,14 @@ public class PlayerDefenseManager {
      * Call on join, armor change, skill level up.
      */
     public void updateDefense(Player player) {
+        // Runs at the start of every hit on the player: read each skill level once.
+        int heavyArmor = skillManager != null ? skillManager.getSkillLevel(player, "Heavy Armor Training") : 0;
+        int survival = skillManager != null ? skillManager.getSkillLevel(player, "Survival") : 0;
         Attributes.AttributeSnapshot fort = fortitude(player);
         double armorSum = calculateArmorFromGear(player);
-        double skillBonus = calculateSkillArmorBonus(player);
+        double skillBonus = combatConfig != null ? heavyArmorBonus(combatConfig, heavyArmor) : 0.0;
         double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
-        pushPvpBaseline(player, Math.min(cap, armorSum + skillBonus));
+        pushPvpBaseline(player, Math.min(cap, armorSum + skillBonus), survival, heavyArmor);
         double fortArmor = 0.0;
         if (fort != null) {
             fortArmor = fort.armorBonus();                       // Fortitude adds on top of gear + Heavy Armor Training
@@ -88,20 +91,18 @@ public class PlayerDefenseManager {
         }
 
         // Push elemental resistances from Survival skill (+ Fortitude)
-        applyElementalResistances(player, fort);
+        applyElementalResistances(player, fort, survival);
 
         // Push defense bar bonus from Heavy Armor Training (+ Fortitude), scaled to the realm
         double realm = attributes != null ? attributes.get(player.getUniqueId()).realmMultiplier() : 1.0;
-        applyDefenseBarBonus(player, fort, realm);
+        applyDefenseBarBonus(player, fort, realm, heavyArmor);
     }
 
     /**
      * Defense as it was before Attributes 2.0 (no Fortitude, no Vitality, no realm), which PvP
      * hits are worked out with unless attributes.yml integration.pvp-defense is true.
      */
-    private void pushPvpBaseline(Player player, double armor) {
-        int survival = skillManager != null ? skillManager.getSkillLevel(player, "Survival") : 0;
-        int heavyArmor = skillManager != null ? skillManager.getSkillLevel(player, "Heavy Armor Training") : 0;
+    private void pushPvpBaseline(Player player, double armor, int survival, int heavyArmor) {
         double bar = defenseBarManager != null ? defenseBarManager.getBaseMaxPoints() : 0.0;
         if (combatConfig != null) bar += heavyArmorBarBonus(combatConfig, heavyArmor);
         virtualHealthManager.setPvpBaseline(player, new PlayerVirtualHealthManager.PvpBaseline(armor,
@@ -121,14 +122,6 @@ public class PlayerDefenseManager {
             }
         }
         return total;
-    }
-
-    /** Calculate armor bonus from Heavy Armor Training skill. */
-    private double calculateSkillArmorBonus(Player player) {
-        if (skillManager == null) return 0.0;
-
-        if (combatConfig == null) return 0.0;
-        return heavyArmorBonus(combatConfig, skillManager.getSkillLevel(player, "Heavy Armor Training"));
     }
 
     // ── The skill formulas, shared with the Player Menu skill pages ──────
@@ -176,11 +169,10 @@ public class PlayerDefenseManager {
      * Survival skill grants elemental resistances (fire, cold, drowning).
      * These are pushed to PlayerVirtualHealthManager's per-type resistance maps.
      */
-    private void applyElementalResistances(Player player, @Nullable Attributes.AttributeSnapshot fort) {
+    private void applyElementalResistances(Player player, @Nullable Attributes.AttributeSnapshot fort, int survivalLevel) {
         if (skillManager == null) return;
 
         // No early return at Survival 0: Fortitude from other skills (Heavy Armor...) still counts.
-        int survivalLevel = skillManager.getSkillLevel(player, "Survival");
 
         // Fortitude adds the same amount to each, within the attribute resist limit.
         double fortResist = fort != null ? fort.resist() : 0.0;
@@ -195,11 +187,10 @@ public class PlayerDefenseManager {
      * Heavy Armor Training grants bonus defense bar max points; Fortitude scales the base bar; the
      * realm multiplies the whole bar (it absorbs hits measured in the realm's magnitude).
      */
-    private void applyDefenseBarBonus(Player player, @Nullable Attributes.AttributeSnapshot fort, double realm) {
+    private void applyDefenseBarBonus(Player player, @Nullable Attributes.AttributeSnapshot fort, double realm, int hatLevel) {
         if (skillManager == null || combatConfig == null || defenseBarManager == null) return;
 
         double base = defenseBarManager.getBaseMaxPoints();
-        int hatLevel = skillManager.getSkillLevel(player, "Heavy Armor Training");
         double bar = base + heavyArmorBarBonus(combatConfig, hatLevel);
         if (fort != null) bar += base * (fort.defenseBarMultiplier() - 1.0);
         bar *= (Double.isFinite(realm) && realm > 0 ? realm : 1.0);

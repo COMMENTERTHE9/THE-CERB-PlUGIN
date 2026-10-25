@@ -13,6 +13,8 @@ import org.bukkit.inventory.meta.SkullMeta;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Shared look and feedback for Cerberus menus, so every screen reads the same way:
@@ -32,8 +34,38 @@ public final class Ui {
 
     // ── Items ────────────────────────────────────────────────────
 
+    /**
+     * Finished items by (material, name, lore). Menus redraw the same tiles over and over, and
+     * turning legacy text into item text is most of an item's cost (Bukkit runs a regular
+     * expression over every line; docs/PERFORMANCE.md). Only copies are handed out, so callers
+     * may still change what they get (glow, amount, skull owner). Cleared when full.
+     */
+    private static final int ITEM_CACHE_MAX = 2048;
+    private static final Map<ItemKey, ItemStack> ITEMS = new ConcurrentHashMap<>();
+
+    private record ItemKey(Material material, String name, List<String> lore) {}
+
     /** Item with a name and lore; hides vanilla tooltips (attributes, enchants...). */
     public static ItemStack item(Material material, String name, List<String> lore) {
+        List<String> lines = lore == null || lore.isEmpty() ? List.of() : copyWithoutNulls(lore);
+        if (lines == null) return build(material, name, lore); // a null line: not cacheable
+        ItemKey key = new ItemKey(material, name, lines);
+        ItemStack cached = ITEMS.get(key);
+        if (cached == null) {
+            cached = build(material, name, lines);
+            if (ITEMS.size() >= ITEM_CACHE_MAX) ITEMS.clear();
+            ITEMS.put(key, cached);
+        }
+        return cached.clone();
+    }
+
+    /** An immutable copy, or null when a line is null. */
+    private static List<String> copyWithoutNulls(List<String> lore) {
+        for (String s : lore) if (s == null) return null;
+        return List.copyOf(lore);
+    }
+
+    private static ItemStack build(Material material, String name, List<String> lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;

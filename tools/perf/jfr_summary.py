@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Summarise a JFR recording per Cerberus method (CPU samples and allocations).
 
-Usage: jfr_summary.py <recording.jfr> [seconds]
+Usage: jfr_summary.py <recording.jfr> [seconds] [sample-period-ms]
 
-- CPU: every jdk.ExecutionSample is one sampled moment of a running thread (10 ms apart per
-  thread with settings=profile). A sample counts for Cerberus when any Cerberus frame is on the
+- CPU: every jdk.ExecutionSample is one sampled moment of a running thread (profile.sh records
+  one per millisecond per running thread; JFR's stock "profile" settings use 10 ms). A sample counts for Cerberus when any Cerberus frame is on the
   stack; it is attributed to the Cerberus frame nearest the top ("self + the server/library code
   it called") and, separately, to the outermost Cerberus frame (the entry point, usually an event
   handler or a scheduled task).
@@ -14,7 +14,7 @@ import collections, json, subprocess, sys
 
 PKGS = ("Attributes.", "Commands.", "CustomEntities.", "CustomItems.", "CustomTags.", "DefensiveMagic.",
         "GUIs.", "Listener.", "Manager.", "Skills.", "Spells.", "Traps.", "cerberus.")
-PERIOD_MS = 10.0
+PERIOD_MS = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 
 
 def frames(ev):

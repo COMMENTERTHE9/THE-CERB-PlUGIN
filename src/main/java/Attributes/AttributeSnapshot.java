@@ -131,16 +131,19 @@ public final class AttributeSnapshot {
         return Math.min(rules.limits().armor(), g + armorBonus);
     }
 
+    /** Largest first; equal amounts by label, so the order never depends on how sources were stored. */
+    private static final Comparator<Contribution> LARGEST_FIRST = Comparator.comparingDouble(Contribution::amount).reversed()
+            .thenComparing(Contribution::label, Comparator.nullsLast(Comparator.naturalOrder()));
+
     /** Everything that fed {@code a}, largest first. */
     public List<Contribution> sources(Attribute a) {
-        return contributions.stream().filter(x -> x.attribute() == a)
-                .sorted(Comparator.comparingDouble(Contribution::amount).reversed()).toList();
+        return contributions.stream().filter(x -> x.attribute() == a).sorted(LARGEST_FIRST).toList();
     }
 
     /** Direct contributions to {@code s}, largest first. */
     public List<Contribution> sources(Stat s) {
         return contributions.stream().filter(x -> x.stat() == s)
-                .sorted(Comparator.comparingDouble(Contribution::amount).reversed()).toList();
+                .sorted(LARGEST_FIRST).toList();
     }
 
     public List<Contribution> contributions() { return contributions; }

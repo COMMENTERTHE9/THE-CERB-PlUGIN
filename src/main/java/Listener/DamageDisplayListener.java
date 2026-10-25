@@ -10,6 +10,9 @@ import org.bukkit.entity.Display.Billboard;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
+import org.bukkit.util.Transformation;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -152,7 +155,7 @@ public class DamageDisplayListener implements Listener {
         int displayTicks = isCritical
                 ? (combatConfig != null ? combatConfig.displayCritDamageNumberTicks : 30)
                 : (combatConfig != null ? combatConfig.displayDamageNumberTicks : 20);
-        animateDisplay(display, location.clone(), isCritical, displayTicks);
+        animateDisplay(display, isCritical, displayTicks);
     }
 
     /** Show a grey "BLOCKED" indicator for fully absorbed hits. */
@@ -166,7 +169,7 @@ public class DamageDisplayListener implements Listener {
             textDisplay.setViewRange(16.0f);
             textDisplay.setPersistent(false);
         });
-        animateDisplay(display, location.clone(), false, 15);
+        animateDisplay(display, false, 15);
     }
 
     private Component formatDamageText(double damage, CustomDamageType type, boolean isCritical) {
@@ -180,32 +183,29 @@ public class DamageDisplayListener implements Listener {
                 .decoration(TextDecoration.BOLD, isCritical);
     }
 
-    private void animateDisplay(TextDisplay display, Location startLoc, boolean isCritical, int displayTime) {
-        final int[] ticks = {0};
-        final double[] horizontalOffset = {0};
-        Bukkit.getRegionScheduler().runAtFixedRate(plugin, startLoc, task -> {
-            if (ticks[0] >= displayTime || !display.isValid()) {
-                display.remove();
-                task.cancel();
-                return;
-            }
+    /**
+     * Rise, then settle and shrink away, animated by the client (display interpolation): two
+     * transformation updates per number instead of a teleport every tick plus visibility
+     * blinking (docs/PERFORMANCE.md). Crits rise higher and sway.
+     */
+    private void animateDisplay(TextDisplay display, boolean isCritical, int displayTime) {
+        int up = Math.max(2, displayTime / 2);
+        int down = Math.max(1, displayTime - up);
+        float peak = isCritical ? 0.8f : 0.5f;
+        float sway = isCritical ? 0.1f : 0f;
+        // An interpolation can't start in the tick the entity spawned in: begin one tick later.
+        display.getScheduler().runDelayed(plugin, t -> moveTo(display, sway, peak, 1f, up - 1), null, 1L);
+        display.getScheduler().runDelayed(plugin, t -> moveTo(display, -sway, peak * 0.3f, 0.4f, down), null, up);
+        display.getScheduler().runDelayed(plugin, t -> display.remove(), null, displayTime);
+    }
 
-            double progress = (double) ticks[0] / displayTime;
-            double height = Math.sin(progress * Math.PI) * (isCritical ? 0.8 : 0.5);
-
-            if (isCritical) {
-                horizontalOffset[0] = Math.sin(progress * Math.PI * 4) * 0.1;
-            }
-
-            Location newLoc = startLoc.clone().add(horizontalOffset[0], height, 0);
-            display.teleportAsync(newLoc);
-
-            if (ticks[0] > displayTime * 0.7) {
-                display.setVisibleByDefault(ticks[0] % 2 == 0);
-            }
-
-            ticks[0]++;
-        }, 1L, 1L);
+    /** Glide (client-side) to this offset and size over {@code ticks}. */
+    private static void moveTo(TextDisplay display, float x, float y, float scale, int ticks) {
+        if (!display.isValid()) return;
+        display.setInterpolationDelay(0);
+        display.setInterpolationDuration(Math.max(1, ticks));
+        display.setTransformation(new Transformation(new Vector3f(x, y, 0f), new AxisAngle4f(0f, 0f, 0f, 1f),
+                new Vector3f(scale, scale, scale), new AxisAngle4f(0f, 0f, 0f, 1f)));
     }
 
     private Location getRandomizedLocation(LivingEntity entity) {

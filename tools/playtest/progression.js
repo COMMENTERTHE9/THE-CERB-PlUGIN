@@ -33,6 +33,9 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
 const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos === 'game_info') actionBar = m; else chat.push(m); });
+// The HUD comes as the dedicated action-bar packet (Paper's sendActionBar), which this mineflayer
+// version doesn't turn into a message event: read it directly.
+bot._client.on('action_bar', p => { try { actionBar = require('prismarine-chat')(bot.registry).fromNotch(p.text).toString(); } catch (e) { /* keep last */ } });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
 
 // Text of a chat component as mineflayer exposes it (NBT compound, JSON string, or JSON object).
@@ -603,6 +606,7 @@ async function rightClickOn(piece) {
 
 async function defenseSetup(full) {
   await cmd('/gamemode survival'); await cmd('/difficulty normal'); await cmd('/time set day');
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 800); // a stray mob hit would be read as the test hit
   for (const p of PIECES) await cmd('/clear @s netherite_' + p, 300);
   for (const sk of DEF_SKILLS) await cmd(`/cerb skill ${NAME} ${sk} level ${full ? 100 : 1}`, 500);
   if (full) for (const p of PIECES) await rightClickOn(p);
@@ -650,6 +654,16 @@ async function pvp() {
   await new Promise(r => other.once('spawn', r));
   await sleep(2500);
   await cmd(`/gamemode survival ${T}`, 500); await cmd('/gamemode survival', 500); await cmd('/difficulty normal', 400);
+  // Daylight and no mobs around: a zombie's hits would skew the numbers, and Fireball explodes on the first mob it meets.
+  const clearMobs = () => cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 800);
+  await cmd('/time set day', 400); await clearMobs();
+  // Both on a cleared pad: spawn points vary, and a bot that lands in a hillside suffocates (its hits get skipped).
+  const sp = bot.spawnPoint || bot.entity.position;
+  const PX = Math.floor(sp.x) + 8, PY = Math.floor(sp.y) + 1, PZ = Math.floor(sp.z);
+  await cmd(`/fill ${PX - 2} ${PY} ${PZ - 2} ${PX + 3} ${PY + 4} ${PZ + 6} air`, 600);
+  await cmd(`/fill ${PX - 2} ${PY - 1} ${PZ - 2} ${PX + 3} ${PY - 1} ${PZ + 6} stone`, 600);
+  await cmd(`/tp @s ${PX + 0.5} ${PY} ${PZ + 0.5} 0 0`, 1000);
+  await cmd(`/tp ${T} ${PX + 0.5} ${PY} ${PZ + 3.5}`, 1000);
   // No armor on either: what Fortitude adds to armor (+20% at 200 Fortitude) is then plain to see.
   for (const p of PIECES) { await cmd(`/clear ${T} netherite_${p}`, 250); await cmd(`/clear @s netherite_${p}`, 250); }
   for (const who of [T, NAME]) for (const sk of SK) await cmd(`/cerb skill ${who} ${sk} level 100`, 450);
@@ -670,11 +684,13 @@ async function pvp() {
   const hp1 = await hp(NAME);
   const lifesteal = Number((pvpHit.trace.match(/Lifesteal: ([\d.]+)/) || [])[1]);
   // A fire spell from a player (/damage "by" a player arrives as a plain melee hit): Fireball at the defender.
+  await cmd(`/tp @s ${PX + 0.5} ${PY} ${PZ + 0.5} 0 0`, 1000);
+  await cmd(`/tp ${T} ${PX + 0.5} ${PY} ${PZ + 3.5}`, 1000);
+  await clearMobs();
   await cmd('/clear @s blaze_rod', 300);
   await cmd('/givetestitem fireball', 900);
   const wand = bot.inventory.items().find(it => it.name === 'blaze_rod');
   if (wand) await bot.equip(wand, 'hand');
-  await cmd(`/tp ${T} ~3 ~ ~`, 1000);
   await cmd(`/cerb heal ${T}`, 900);
   let pvpFire = parseTrace('');
   const tgt = Object.values(bot.entities).find(e => e.type === 'player' && e.username === T);
@@ -766,6 +782,7 @@ async function mastery() {
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 400);
   await cmd(`/cerb skill ${NAME} Weapon_Mastery level 1`, 400);
   await cmd('/kill @e[type=zombie,distance=..10]', 500);
+  for (const w of ['netherite_sword', 'netherite_axe', 'rotten_flesh', 'iron_ingot']) await cmd('/clear @s ' + w, 250);
 }
 
 async function defenseCap() {

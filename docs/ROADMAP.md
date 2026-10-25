@@ -29,8 +29,8 @@ Before any significant new system or major feature, examine the code it touches 
 | Step | What | State |
 |---|---|---|
 | 0 | Finish the current milestone (owner decisions on the 75% cap, PvP, Weapon Mastery; playtest checklist) | Done 2026-10-25 |
-| 1 | Performance assessment and targeted optimization (then repeated at the start of each later milestone) | Next |
-| 2 | Decisions A–E (below), as small testable changes | |
+| 1 | Performance assessment and targeted optimization (then repeated at the start of each later milestone) | Done 2026-10-25: `docs/PERFORMANCE.md` (Cerberus time: menu clicks −66 to −69%, combat −17 to −37%, hits taken −21 to −30%) |
+| 2 | Decisions A–E (below), as small testable changes | Next |
 | 3 | Player Menu 2.1: animations and feedback | |
 | 4 | Classes and abilities **design**: review the roster and the weapon archetypes; architecture and phased plan | |
 | 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | |

@@ -7,6 +7,7 @@
 //   menu   - each bot browses the Player Menu as fast as a hurried player: hub -> Skills -> Combat ->
 //            Blade Mastery -> next -> back -> home -> Stats -> back -> close
 //   mixed  - the bots split across the three
+//   idle   - the bots just stand there (per-player background cost: HUD, regen, saves)
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -106,7 +107,8 @@ async function menu(b, deadline) {
   console.log(`LOAD START ${new Date().toISOString()} bots=${bots.length} seconds=${SECONDS} mode=${MODE}`);
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
-    const run = m === 'combat' ? combat(b, deadline) : m === 'hurt' ? hurt(b, deadline, controller) : menu(b, deadline);
+    const run = m === 'combat' ? combat(b, deadline) : m === 'hurt' ? hurt(b, deadline, controller)
+        : m === 'menu' ? menu(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);

@@ -17,6 +17,9 @@ const saw = (re, since) => chat.slice(since).find(m => re.test(m));
 
 const bot = mineflayer.createBot({ host, port: Number(port), username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos === 'game_info') actionBar = m; else chat.push(m); });
+// The HUD comes as the dedicated action-bar packet (Paper's sendActionBar), which this mineflayer
+// version doesn't turn into a message event: read it directly.
+bot._client.on('action_bar', p => { try { actionBar = require('prismarine-chat')(bot.registry).fromNotch(p.text).toString(); } catch (e) { /* keep last */ } });
 bot.on('kicked', r => { console.log('KICKED', JSON.stringify(r)); process.exit(2); });
 bot.on('error', e => { console.log('ERROR', e.message); process.exit(2); });
 
@@ -49,6 +52,11 @@ bot.once('spawn', async () => {
     await goHome();
     // Mobs left over from other runs would hit us and block the /kill check (hit invulnerability).
     bot.chat('/kill @e[type=!player,type=!text_display,distance=..48]'); await sleep(800);
+    // Leftovers from other test runs (weapons, mob drops) fill the hotbar; the horse check needs an empty hand.
+    for (const junk of ['rotten_flesh', 'iron_ingot', 'leather', 'iron_sword', 'iron_axe', 'netherite_sword', 'netherite_axe', 'blaze_rod', 'carrot', 'potato'])
+      { bot.chat('/clear @s ' + junk); await sleep(250); }
+    // The world spawn can sit above the ground, so arriving there may cost a little fall damage: start full.
+    bot.chat('/cerb heal ' + NAME); await sleep(1500);
     check('HUD action bar shows health and mana', /(\d+)\/\1♥/.test(actionBar) && /✎/.test(actionBar), actionBar);
     const head = bot.inventory.slots[44];
     check('Player Menu head in hotbar slot 9', !!head && head.name === 'player_head' && /Player Menu/.test(text(head.customName)));
@@ -94,7 +102,14 @@ bot.once('spawn', async () => {
     check('/cerb skill sets a skill level', !!saw(/Blade Mastery is now level 25/, at), chat.slice(at).join(' / '));
     await cmd('/cerb skill ' + NAME + ' Blade_Mastery level 1', 1000);
 
-    await cmd('/summon minecraft:horse ~2 ~ ~ {Tame:1b,NoAI:1b}', 2500);
+    // On a cleared pad (sandbox only): next to spawn the ground two blocks over may be a step up,
+    // and a horse summoned inside a block can't be mounted.
+    const sp = bot.spawnPoint || bot.entity.position;
+    const PX = Math.floor(sp.x) + 8, PY = Math.floor(sp.y) + 1, PZ = Math.floor(sp.z);
+    await cmd(`/fill ${PX - 2} ${PY} ${PZ - 2} ${PX + 3} ${PY + 4} ${PZ + 6} air`, 600);
+    await cmd(`/fill ${PX - 2} ${PY - 1} ${PZ - 2} ${PX + 3} ${PY - 1} ${PZ + 6} stone`, 600);
+    await cmd(`/tp @s ${PX + 0.5} ${PY} ${PZ + 0.5} 0 0`, 1200);
+    await cmd('/summon minecraft:horse ~ ~ ~2 {Tame:1b,NoAI:1b}', 2500);
     const horse = mobsNear(['horse'])[0];
     bot.setQuickBarSlot(emptyHotbar());
     if (horse) { await bot.lookAt(horse.position.offset(0, 1, 0), true); bot.mount(horse); await sleep(2000); }

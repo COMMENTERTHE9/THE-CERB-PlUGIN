@@ -2,7 +2,7 @@
 
 *Last updated 2026-10-25 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
-**Current milestone:** the owner's decisions of 2026-10-25 are in: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis, all verified in game on the cloud sandbox. The owner has playtested Player Menu 2.0; the Admin Control Panel and Attributes checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 1 of `docs/ROADMAP.md`, the performance assessment**, then decisions A–E, menu animations, and the classes and abilities design.
+**Current milestone:** the owner's decisions of 2026-10-25 are in: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis, all verified in game on the cloud sandbox. The owner has playtested Player Menu 2.0; the Admin Control Panel and Attributes checks are in `docs/PLAYTEST_CHECKLIST.md`. Step 1 of `docs/ROADMAP.md`, the performance assessment, is done. `docs/PERFORMANCE.md` has the details: Cerberus's server time dropped 66–69% for menu clicks, 17–37% in combat and 21–30% for hits taken, verified with the same reproducible loads. **Next: decisions A–E**, then menu animations, and the classes and abilities design.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -102,6 +102,27 @@ Details and measurements in `docs/ATTRIBUTES_ENGINE.md`. All Played on the sandb
 | **75% total damage reduction**, applied to resistance × armor only (the defense bar is a draining pool, not a reduction) | not enforced; a raised resist limit let 82% through the reduction layers | capped at 75% (`ReductionCap` trace step). Default play unchanged: today's maximum is 70% (fire hit 100 → 30 → bar 21 → 9 on both builds) |
 | **PvP unchanged for now** | the defender's Vitality, Fortitude and realm counted in PvP: defensive skills 100 lost 1.5% of health per player hit | PvP hits use the pre-attribute defense as the same share: 6.0% per hit, exactly what a 100-health defender loses. This also covers a player's pets, potion clouds and TNT, burn and poison ticks during a PvP fight, and PvP lifesteal (same share). PvE unchanged. `attributes.integration.pvp-defense: false` |
 | **Weapon Mastery kept** | — | Bounded: at most +25 Power on any weapon (125 total), at most 21.8% ahead of an equal-level mob, crits inside the ×6 budget (`WeaponMasteryStackingTest`). Level-100 zombie: sword BM 100 7.0–7.7 swings, + WM 100 6.7–7.0; axe WM 100 alone 4.3. Proposal for the imbalance (axes etc. reach 125 with one skill) is recorded, not built. |
+
+## Done: performance assessment (Step 1, 2026-10-25)
+
+`docs/PERFORMANCE.md`. Reproducible loads (`tools/playtest/load.js`, 9 bots in one region) profiled with Java Flight Recorder (`tools/perf/profile.sh`):
+
+| Workload | Cerberus, ms per tick, before → after (two runs) |
+|---|---|
+| Menu browsing (~27 clicks/s) | 0.51 → 0.16–0.17 |
+| Combat | 0.15 → 0.09–0.12 |
+| Being hit | 0.19 → 0.14–0.15 |
+| Idle | 0.04 → 0.02–0.03 |
+
+Regression on the optimized build, all passed:
+- menu nav 63, safety 18, perf 2;
+- admin main 40, attrs 14;
+- progression defense 7, PvP 12, survive 4, stats 14, speed 13, mastery 3, kill XP 4, magic 2;
+- smoke 11.
+
+Several harness checks were made robust to sandbox drift: a raised world spawn, a hotbar full of leftovers, and mobs left near spawn.
+
+The biggest find: every menu click opened a new window, and vanilla then re-ran its advancement checks over the whole inventory (about 60% of a click). Screens now redraw in the open window. Also: cached menu items, a cheaper HUD, smarter mob labels, and damage numbers animated by the client. The server spends 6–7 ms of its 50 ms tick budget under these loads, of which Cerberus is a small part.
 
 ## Roadmap
 

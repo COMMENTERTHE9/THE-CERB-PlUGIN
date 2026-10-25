@@ -12,6 +12,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayDeque;
@@ -169,8 +170,22 @@ public final class MenuManager implements Listener {
 
     private void show(Player player, Menu menu) {
         if (!allowed(player, menu)) { deny(player); return; }
+        int size = Math.max(1, Math.min(6, menu.rows())) * 9;
+        // Already looking at one of our windows of the same size: draw the new screen into it
+        // and retitle it. Opening a new window per click made vanilla re-check every
+        // inventory-change advancement against the whole player inventory: about 60% of a
+        // menu click's server time (docs/PERFORMANCE.md).
+        InventoryView view = player.getOpenInventory();
+        Inventory top = view.getTopInventory();
+        if (top.getHolder() instanceof MenuHolder open && open.viewerId().equals(player.getUniqueId())
+                && top.getSize() == size) {
+            boolean retitle = open.switchTo(menu);
+            render(player, menu, top, open);
+            if (retitle) view.setTitle(menu.title());
+            return;
+        }
         MenuHolder holder = new MenuHolder(menu, player.getUniqueId());
-        Inventory inv = Bukkit.createInventory(holder, Math.max(1, Math.min(6, menu.rows())) * 9, menu.title());
+        Inventory inv = Bukkit.createInventory(holder, size, menu.title());
         holder.attach(inv);
         render(player, menu, inv, holder);
         player.openInventory(inv);
@@ -222,6 +237,9 @@ public final class MenuManager implements Listener {
         }
 
         long now = System.currentTimeMillis();
+        // Just switched screens in this window: a click arriving within the player's round trip
+        // was aimed at the previous screen (a new window used to drop it by window id).
+        if (now - holder.switchedAt() < Math.max(CLICK_DEBOUNCE_MS, player.getPing() + 50L)) return;
         Long prev = lastClick.put(player.getUniqueId(), now);
         if (prev != null && now - prev < CLICK_DEBOUNCE_MS) return; // accidental double-fire
 

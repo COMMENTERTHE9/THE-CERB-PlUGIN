@@ -24,7 +24,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Player Menu 2.0 (2026-10-25): hub + Skills / Stats / Ascension / Equipment / Bestiary / World / Guide on the shared menu framework (`GUIs/player/`, `tools/playtest/menu.js`); honest skill catalog (`GUIs/SkillDefinitions.java`); 4 display-name renames (`Skills/SkillNames.java`; internal names = DB keys, unchanged)
 - ✅ Speed stats, attribute expansion increment 1 (2026-10-25): attack / bow draw / movement speed + spell cooldown in the engine, paused during PvP (`docs/design/ATTRIBUTE_EXPANSION.md`, `progression.js speed`)
 - ✅ Owner decisions 2026-10-25: 75% damage-reduction cap on resistance × armor (`Manager/DefenseMath`; the defense bar is a pool, not counted), PvP plays as before Attributes 2.0 (`integration.pvp-defense: false`), Weapon Mastery stacking analysed (`WeaponMasteryStackingTest`); playtest list `docs/PLAYTEST_CHECKLIST.md`
-- ⬜ Next: **`docs/ROADMAP.md`** Step 1 (performance baseline), then decisions A–E, Player Menu 2.1 animations, classes & abilities design → prototype
+- ✅ Step 1 performance pass (`docs/PERFORMANCE.md`): menus redraw in the open window (vanilla's advancement re-check per new window was ~60% of a click), item cache, HUD/labels/damage numbers; loads `tools/playtest/load.js` + profiler `tools/perf/profile.sh`
+- ⬜ Next: **`docs/ROADMAP.md`** Step 2 (decisions A–E), then Player Menu 2.1 animations, classes & abilities design → prototype
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -38,7 +39,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions
-- **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches, fixing confirmed bottlenecks, and measuring again (`docs/ROADMAP.md`). No speculative rewrites.
+- **Performance first:** every significant milestone starts by measuring a reproducible baseline for the systems it touches (`tools/playtest/load.js` + `tools/perf/profile.sh`, method in `docs/PERFORMANCE.md`), fixing confirmed bottlenecks, and measuring again. No speculative rewrites. Menus: change screens with `MenuManager.open/replace` (same-size screens redraw in place); never open raw inventories per click.
 - **Folia threading:** snapshot on the entity/region thread → async I/O → reschedule back. Never touch Bukkit entity/player APIs off-thread.
 - New content ships as **config** (mobs.yml / combat.yml / *.yml + a registry), not code.
 - Pure-function math (curves, formulas) must have **unit tests**; run `mvnw.cmd test` (any JDK >= 21).

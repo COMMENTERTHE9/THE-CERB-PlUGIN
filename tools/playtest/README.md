@@ -31,6 +31,7 @@ node smoke.js                             # PASS/FAIL per check, non-zero exit o
 | `progression.js defense-cap` | The 75% cap binding. Needs a temporarily raised `attributes.limits.resist` (e.g. 0.75) in the sandbox's `plugins/CerberusPlugin/attributes.yml` + `/cerb reload`; restore it afterwards |
 | `progression.js pvp` | PvP as before Attributes 2.0 (spawns `CerbTarget`): pre-attribute armor and resistance (Fireball), hits scaled to the defender's health so the share lost matches a 100-health defender, lifesteal restoring the same share, burn ticks during the PvP tag (and not after it); PvE unchanged |
 | `progression.js mastery` | Weapon Mastery with the specialized skills: Power multiplier and swings to kill a level-100 zombie (sword BM 100 + WM 1 / 100, axe WM 100) |
+| `load.js <bots> <seconds> <mode>` | Reproducible load for performance baselines (`combat`, `hurt`, `menu`, `mixed`, `idle`): bots in one region next to spawn; profile meanwhile with `tools/perf/profile.sh` (`docs/PERFORMANCE.md`). Ops the load bots for the run and deops them after. |
 | `progression.js offswitch` | With `attributes.integration.pve-offense: false` + `/cerb reload`, old swing counts return |
 
 Never point these at a server with real players or online-mode=true.

@@ -30,7 +30,25 @@ public final class Numbers {
     /** HUD values: exact whole numbers below 10,000 ("102", "9,850"), compact above ("12.3K", "1.7B"). */
     public static String hud(double v) {
         if (Double.isNaN(v) || Double.isInfinite(v)) return "?";
-        if (Math.abs(v) < 10_000) return String.format(Locale.ROOT, "%,d", Math.round(v));
+        if (Math.abs(v) < 10_000) return grouped(Math.round(v));
         return compact(v);
+    }
+
+    /**
+     * A whole number with "," every three digits: the same text as
+     * {@code String.format(Locale.ROOT, "%,d", n)}, without building a formatter per call (the
+     * HUD formats six numbers per player per update; docs/PERFORMANCE.md).
+     */
+    public static String grouped(long n) {
+        String s = Long.toString(n);
+        int start = s.charAt(0) == '-' ? 1 : 0;
+        int digits = s.length() - start;
+        if (digits <= 3) return s;
+        StringBuilder b = new StringBuilder(s.length() + digits / 3);
+        b.append(s, 0, start);
+        int first = digits % 3 == 0 ? 3 : digits % 3;
+        b.append(s, start, start + first);
+        for (int i = start + first; i < s.length(); i += 3) b.append(',').append(s, i, i + 3);
+        return b.toString();
     }
 }
