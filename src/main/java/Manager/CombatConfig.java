@@ -51,6 +51,8 @@ public class CombatConfig {
     public double defBarMaxAbsorption;
     public double defBarRegenRate;
     public long defBarRegenDelayMs;
+    /** Share of the fire resistance each kind of fire damage gets (combat.yml fire-resistance). */
+    private java.util.Map<CustomDamageType, Double> fireCoverage = defaultFireCoverage();
 
     // ── Health Regen ─────────────────────────────────────────────
     public double healthRegenBaseRate;
@@ -157,6 +159,7 @@ public class CombatConfig {
         defBarMaxAbsorption  = pos("defense-bar.max-absorption",  0.70);
         defBarRegenRate      = pos("defense-bar.regen-rate",      15.0);
         defBarRegenDelayMs   = config.getLong("defense-bar.regen-delay-ms", 7000);
+        fireCoverage = fireCoverageFrom(config.getConfigurationSection("fire-resistance"));
 
         // ── Health Regen ─────────────────────────────────────────
         healthRegenBaseRate       = pos("health-regen.base-rate",          2.0);
@@ -243,6 +246,43 @@ public class CombatConfig {
         allScalingParams.put(cleanName, result);
 
         return result;
+    }
+
+    /** Share of the fire resistance a hit of {@code type} gets (0 for anything that isn't fire). */
+    public double fireCoverage(CustomDamageType type) {
+        return fireCoverage.getOrDefault(type, 0.0);
+    }
+
+    /**
+     * The combat.yml {@code fire-resistance:} section as damage type -> share (0..1); missing keys
+     * use the defaults. Static so tests can read the shipped file exactly as the server does.
+     */
+    static java.util.Map<CustomDamageType, Double> fireCoverageFrom(ConfigurationSection s) {
+        java.util.Map<CustomDamageType, Double> m = defaultFireCoverage();
+        if (s == null) return m;
+        java.util.function.BiConsumer<String, CustomDamageType[]> read = (key, types) -> {
+            if (!s.contains(key)) return;
+            double v = s.getDouble(key);
+            double share = Double.isFinite(v) ? Math.max(0.0, Math.min(1.0, v)) : 0.0;
+            for (CustomDamageType t : types) m.put(t, share);
+        };
+        read.accept("standing-in-fire", new CustomDamageType[]{CustomDamageType.FIRE});
+        read.accept("burning", new CustomDamageType[]{CustomDamageType.FIRE_TICK});
+        read.accept("fire-spells", new CustomDamageType[]{CustomDamageType.PYROMANCY, CustomDamageType.BURN_DOT});
+        read.accept("campfire", new CustomDamageType[]{CustomDamageType.CAMPFIRE});
+        read.accept("magma-block", new CustomDamageType[]{CustomDamageType.HOT_FLOOR});
+        read.accept("lava", new CustomDamageType[]{CustomDamageType.LAVA});
+        return m;
+    }
+
+    private static java.util.Map<CustomDamageType, Double> defaultFireCoverage() {
+        java.util.Map<CustomDamageType, Double> m = new java.util.EnumMap<>(CustomDamageType.class);
+        for (CustomDamageType t : new CustomDamageType[]{CustomDamageType.FIRE, CustomDamageType.FIRE_TICK,
+                CustomDamageType.PYROMANCY, CustomDamageType.BURN_DOT, CustomDamageType.CAMPFIRE, CustomDamageType.HOT_FLOOR}) {
+            m.put(t, 1.0);
+        }
+        m.put(CustomDamageType.LAVA, 0.5);
+        return m;
     }
 
     /**

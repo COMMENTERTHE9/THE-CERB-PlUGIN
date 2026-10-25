@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0 + Attributes 2.0
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 20 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
+*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. About 30 minutes. Everything below was checked on the cloud sandbox server; this list is for your own world.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -42,6 +42,17 @@
 | 2 | **PvP as before** (needs a second player) | Survivability says *PvP: these bonuses don't count yet*. With combat debug on, a hit from a player shows `PvP(as before attributes)` and, if your max health is above 100, `HealthShare(x…)`. You lose the same share of health per hit as before Attributes 2.0, and the same goes for burning or poison during the fight and for lifesteal. Speed bonuses still pause for 15 s after PvP. |
 | 3 | **Weapon Mastery.** At Blade Mastery 100, set Weapon Mastery 1 and then 100, and hit a level-100 zombie | Power 100 → 125 (×6.0 → ×7.25 in the trace): up to one swing fewer (about 7–7.7 → 6.7–7). An axe at Weapon Mastery 100 alone also shows ×7.25. |
 
-## 4. Afterwards
+## 4. Decisions A–E (Step 2)
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | **Shelves.** Put items on one to three shelves side by side, power them (a redstone block behind), hold anything but the head, right-click a shelf | Your hotbar swaps with the shelves (one shelf: slots 7–9; three: the whole row), except the Player Menu head in slot 9 and, if it's in your hotbar, the Admin Control Panel chest: they stay put, and the shelf items meant for their slots stay on the shelf. No message, nothing dropped. |
+| 2 | **Fire.** Survival, Heavy Armor Training and Defensive Magic at 100, `/cerb combatdebug`, survival mode. Stand in fire, then keep burning after stepping out; stand on a magma block (not sneaking) and on a lit campfire; touch lava for a moment | The trace starts with `ElemResist(FIRE 50%)`, `ElemResist(FIRE_TICK 50%)`, `(HOT_FLOOR 50%)`, `(CAMPFIRE 50%)` and, for lava, `(LAVA 25%)`. Damage still gets through: there is no immunity. |
+| 3 | **Arrows train defense.** Survival mode, Survival at a low level, read its XP with `/cerb skill YourName Survival xp 0` (it adds nothing). Let a skeleton hit you a few times, then read it again | Survival gains 1 XP per arrow that hurts you; with an iron, diamond or netherite piece on, Heavy Armor Training gains XP too. Arrows from a dispenser give nothing. |
+| 4 | **Spears.** Kill a zombie with a spear. A spear jabs targets 2 to 4.5 blocks away, so stand back a little | Chat says `+N Weapon Mastery XP`, and nothing else for that kill (no Heavy Armor Training XP, even in heavy armor). With `/cerb combatdebug`, hits show `Power(Spears, …)`. |
+| 5 | **Speed in PvP** (needs a second player) | As before: after a player hits you, your attack and movement speed bonuses pause for 15 seconds. |
+| 6 | **Admin double-click.** Players → you → Skills, then double-click a skill quickly | The skill editor opens; the level does not change. Only a click on a button in the editor changes it. |
+
+## 5. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

@@ -857,25 +857,84 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     /**
-     * A powered shelf swaps the player's hotbar with its items (vanilla 1.21.9+): one shelf takes
-     * slots 7-9, three take all nine, so the Player Menu head (slot 9) would end up on the shelf.
-     * Powered shelves therefore can't swap while the hotbar holds a menu item; unpowered shelves
-     * work as usual (placing the head itself on one is already refused).
+     * A powered shelf swaps its items with the end of the hotbar (vanilla 1.21.9+, measured: one
+     * shelf swaps slots 7-9, two chained shelves 4-9, three all nine). The Player Menu head (slot 9)
+     * and an operator's admin chest must never go onto a shelf, but the shelf should still work for
+     * everything else (owner decision B). So they are lifted out of the hotbar just before the swap
+     * and put back on the player's next tick; whatever shelf item landed in their slot goes back to
+     * the shelf slot it came from (or to the player, never lost). Meanwhile they exist only
+     * server-side, so nobody can take them off a shelf or duplicate them.
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onPoweredShelf(PlayerInteractEvent e) {
         if (e.getAction() != Action.RIGHT_CLICK_BLOCK || e.getClickedBlock() == null) return;
         if (!(e.getClickedBlock().getBlockData() instanceof org.bukkit.block.data.type.Shelf shelf) || !shelf.isPowered()) return;
-        org.bukkit.inventory.PlayerInventory inv = e.getPlayer().getInventory();
+        Player player = e.getPlayer();
+        if (shelfSwaps.containsKey(player.getUniqueId())) return;          // already lifted this tick (off-hand event)
+        org.bukkit.inventory.PlayerInventory inv = player.getInventory();
+        if (isProtectedMenuItem(inv.getItemInMainHand())) return;           // using the head itself: its own handler opens the menu
+        Map<Integer, ItemStack> lifted = new HashMap<>();
         for (int i = 0; i < 9; i++) {
-            if (isProtectedMenuItem(inv.getItem(i))) {
-                e.setCancelled(true);
-                if (e.getHand() == org.bukkit.inventory.EquipmentSlot.HAND) {
-                    e.getPlayer().sendMessage(ChatColor.YELLOW + "A powered shelf would swap your hotbar, Player Menu head included. Unpower it to use it.");
+            ItemStack it = inv.getItem(i);
+            if (isProtectedMenuItem(it)) { lifted.put(i, it.clone()); inv.setItem(i, null); }
+        }
+        if (lifted.isEmpty()) return;
+        List<org.bukkit.block.Block> row = shelfRow(e.getClickedBlock(), shelf.getFacing());
+        Map<org.bukkit.block.Block, ItemStack[]> before = new HashMap<>();
+        for (org.bukkit.block.Block b : row) {
+            if (b.getState() instanceof org.bukkit.block.Shelf st) before.put(b, cloneAll(st.getInventory().getContents()));
+        }
+        shelfSwaps.put(player.getUniqueId(), Boolean.TRUE);
+        player.getScheduler().run(this, t -> {
+            shelfSwaps.remove(player.getUniqueId());
+            for (Map.Entry<Integer, ItemStack> l : lifted.entrySet()) {
+                ItemStack landed = inv.getItem(l.getKey());
+                inv.setItem(l.getKey(), l.getValue());
+                if (landed != null && !landed.getType().isAir() && !returnToShelf(landed, before)) {
+                    for (ItemStack left : inv.addItem(landed).values()) player.getWorld().dropItem(player.getLocation(), left);
                 }
-                return;
+            }
+        }, () -> shelfSwaps.remove(player.getUniqueId()));
+    }
+
+    /** Players whose menu items are lifted out for a powered-shelf swap right now. */
+    private final Map<UUID, Boolean> shelfSwaps = new ConcurrentHashMap<>();
+
+    /** The clicked shelf and up to two shelves on each side in its row (a chain is at most three). */
+    private static List<org.bukkit.block.Block> shelfRow(org.bukkit.block.Block clicked, org.bukkit.block.BlockFace facing) {
+        int dx = facing == org.bukkit.block.BlockFace.NORTH || facing == org.bukkit.block.BlockFace.SOUTH ? 1 : 0;
+        int dz = 1 - dx;
+        List<org.bukkit.block.Block> row = new ArrayList<>();
+        for (int k = -2; k <= 2; k++) {
+            org.bukkit.block.Block b = clicked.getRelative(k * dx, 0, k * dz);
+            if (b.getBlockData() instanceof org.bukkit.block.data.type.Shelf) row.add(b);
+        }
+        return row;
+    }
+
+    /** Put a shelf item that landed in a menu item's slot back into the shelf slot it left (now empty). */
+    private static boolean returnToShelf(ItemStack landed, Map<org.bukkit.block.Block, ItemStack[]> before) {
+        for (Map.Entry<org.bukkit.block.Block, ItemStack[]> en : before.entrySet()) {
+            if (!Bukkit.isOwnedByCurrentRegion(en.getKey().getLocation())) continue;
+            if (!(en.getKey().getState() instanceof org.bukkit.block.Shelf st)) continue;
+            org.bukkit.inventory.Inventory si = st.getInventory();
+            ItemStack[] was = en.getValue();
+            for (int s = 0; s < Math.min(was.length, si.getSize()); s++) {
+                ItemStack now = si.getItem(s);
+                if ((now == null || now.getType().isAir()) && was[s] != null && was[s].isSimilar(landed)
+                        && was[s].getAmount() == landed.getAmount()) {
+                    si.setItem(s, landed);
+                    return true;
+                }
             }
         }
+        return false;
+    }
+
+    private static ItemStack[] cloneAll(ItemStack[] items) {
+        ItemStack[] out = new ItemStack[items.length];
+        for (int i = 0; i < items.length; i++) out[i] = items[i] == null ? null : items[i].clone();
+        return out;
     }
 
     /** Middle-click pick-block must not move the head (or the admin chest) in or out of its slot. */

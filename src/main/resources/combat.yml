@@ -27,6 +27,17 @@ armor:
     netherite: 0.06
   max-reduction: 0.40
 
+# Fire resistance (Survival + Fortitude) covers these kinds of fire, each with a share of it:
+# 1.0 = the full resistance, 0.5 = half, 0 = none. Still bounded by attributes.yml limits.resist
+# and the 75% total damage-reduction cap. PvP keeps its pre-Attributes-2.0 rules.
+fire-resistance:
+  standing-in-fire: 1.0   # inside fire blocks
+  burning: 1.0            # on fire afterwards (also Fire Aspect, Flame, Fireball's afterburn)
+  fire-spells: 1.0        # Pyromancy and spell burns
+  campfire: 1.0
+  magma-block: 1.0
+  lava: 0.5               # lava stays dangerous: half the resistance
+
 defense-bar:
   base-max-points: 300
   max-absorption: 0.70

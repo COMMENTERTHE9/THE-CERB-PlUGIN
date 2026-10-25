@@ -6,6 +6,8 @@
 //   safety - (op) with the menu open: shift/number-key/drop/double clicks move nothing; outside it the head
 //            can't be dropped, swapped, placed, framed or put on an armor stand; one head after rejoin/respawn
 //   perf   - (op) browsing every screen three times opens no database connection and rebuilds no snapshot
+//   shelves - (op) decision B: three chained powered shelves swap the whole hotbar except the head and the admin chest;
+//            the shelf items meant for those two slots stay on the shelves; nothing is lost or duplicated
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'nav';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -131,8 +133,8 @@ async function nav() {
   check('Untrainable skill page says so', /Nothing in the game trains this skill yet/.test(flat(20)) && /In development/.test(flat(20)), flat(20));
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(sv); await waitTitle(SCREEN('Survival'));
-  check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*not yet burning afterwards, lava/.test(flat(24)), flat(24));
-  check('Survival page: live resistances with values', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take damage from mob attacks, falls, fire/.test(flat(20)) && /projectiles don't count yet/.test(flat(20)), flat(24));
+  check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*Flames, burning afterwards, campfires, magma blocks and fire spells; lava only partly/.test(flat(24)), flat(24));
+  check('Survival page: live resistances with values; projectiles train it', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take damage from mob attacks, falls, fire/.test(flat(20)) && /projectiles from mobs or players included/.test(flat(20)), flat(20));
   if (isOp()) check('Survival 4 shows 4.0% fire resistance, 5.0% next', /Fire resistance ● Live Now: 4\.0% next level 5\.0%/.test(flat(24)), flat(24));
 
   await click(49);
@@ -400,20 +402,31 @@ async function safety() {
   await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} air`, 300);
   for (const f of fillers.concat(['stone'])) await cmd('/clear @s ' + f, 150);
 
-  // A powered shelf would swap the hotbar (slots 7-9) with its contents
+  // A powered shelf swaps its three items with hotbar slots 7-9 (vanilla). It must still work, but the
+  // head must stay in slot 9 and the shelf item meant for slot 9 must stay on the shelf (decision B).
+  for (const f of ['diamond', 'emerald', 'gold_ingot']) await cmd('/clear @s ' + f, 150);
   await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 3} redstone_block`, 400);
-  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} oak_shelf[facing=north,powered=true]`, 600);
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} oak_shelf[facing=north,powered=true]{Items:[{Slot:0b,id:"minecraft:diamond",count:1},{Slot:1b,id:"minecraft:emerald",count:1},{Slot:2b,id:"minecraft:gold_ingot",count:1}]}`, 600);
   const shelf = bot.blockAt(pos.offset(0, 0, 2));
-  const sw = bot.inventory.slots.findIndex((it, i) => it && it.name === 'diamond_sword' && i >= 36 && i <= 43);
-  if (sw >= 0) bot.setQuickBarSlot(sw - 36);
+  // Keep the test hermetic: whatever sits in hotbar slots 7-8 really goes onto the shelf.
+  for (const s7 of [42, 43]) {
+    if (!bot.inventory.slots[s7]) continue;
+    const free = bot.inventory.slots.findIndex((x, i) => !x && i >= 9 && i <= 35);
+    if (free >= 0) { await bot.moveSlotItem(s7, free); await sleep(300); }
+  }
+  const hand = bot.inventory.slots.findIndex((it, i) => i >= 37 && i <= 41 && (!it || it.name === 'diamond_sword'));
+  if (hand >= 0) bot.setQuickBarSlot(hand - 36);
   await sleep(300);
-  const atShelf = chat.length;
+  const has = n => bot.inventory.slots.some(it => it && it.name === n);
   try { await bot.lookAt(shelf.position.offset(0.5, 0.5, 0), true); await bot.activateBlock(shelf, { x: 0, y: 0, z: -1 }); } catch (e) { console.log('  shelf: ' + e.message); }
-  await sleep(900);
-  check('Powered shelf: refused while the hotbar holds the head, and says why', /^oak_shelf/.test(shelf ? shelf.name : '') && headInSlot9() && heads() === 1 && !!saw(/powered shelf would swap your hotbar/, atShelf),
-      (shelf ? shelf.name : 'no shelf') + ', ' + chat.slice(atShelf).join(' / '));
+  await sleep(1200);
+  const hb = i => { const it = bot.inventory.slots[36 + i]; return it ? it.name : '-'; };
+  check('Powered shelf works: its items reach hotbar slots 7-8, the head stays in slot 9, the third item stays on the shelf',
+      /^oak_shelf/.test(shelf ? shelf.name : '') && hb(6) === 'diamond' && hb(7) === 'emerald' && headInSlot9() && heads() === 1 && !has('gold_ingot'),
+      `${shelf ? shelf.name : 'no shelf'}: slots 7-9 = ${hb(6)}, ${hb(7)}, ${hb(8)}; gold in inventory: ${has('gold_ingot')}`);
   await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} air`, 300);
   await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 3} air`, 300);
+  for (const f of ['diamond', 'emerald', 'gold_ingot']) await cmd('/clear @s ' + f, 150);
   await cmd('/kill @e[type=item,distance=..16]', 400);
 
   now = await rejoinCounts();
@@ -426,6 +439,84 @@ async function safety() {
   check('After death and respawn: exactly one head, in slot 9', heads() === 1 && headInSlot9(), heads() + ' heads');
   check('Death dropped nothing', itemsOnGround() === 0, 'ground ' + itemsOnGround());
   for (const it of ['diamond_sword', 'dirt']) await cmd('/clear @s ' + it, 300);
+  await cmd('/gamemode creative', 400);
+}
+
+// ── shelves ───────────────────────────────────────────────────────
+
+async function shelves() {
+  const sp = bot.spawnPoint || bot.entity.position;
+  const X = Math.floor(sp.x) + 8, Y = Math.floor(sp.y) + 1, Z = Math.floor(sp.z);
+  await cmd(`/fill ${X - 3} ${Y} ${Z - 2} ${X + 3} ${Y + 4} ${Z + 6} air`, 600);
+  await cmd(`/fill ${X - 3} ${Y - 1} ${Z - 2} ${X + 3} ${Y - 1} ${Z + 6} stone`, 600);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 1500);
+  await cmd('/gamemode survival', 600);
+  // A known hotbar: clear everything; on rejoin the admin chest lands in slot 1 and the head in slot 9.
+  await cmd('/clear @s', 800);
+  await cmd('/kill @e[type=item,distance=..16]', 400);
+  bot.quit(); await sleep(2500); await connect(); await sleep(3000);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 1500);
+  const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks', 'jungle_planks', 'acacia_planks', 'dark_oak_planks', 'cherry_planks'];
+  for (const pl of PLANKS) await cmd('/give @s ' + pl + ' 1', 300);
+  await sleep(600);
+  const hb = () => bot.inventory.slots.slice(36, 45).map(it => it ? it.name : '-');
+  const count = n => bot.inventory.slots.reduce((a, it) => a + (it && it.name === n ? it.count : 0), 0);
+  const before = hb();
+  const panel = before.indexOf('ender_chest');
+  check('Setup: admin chest and head in the hotbar, the other 7 slots filled', panel >= 0 && before[8] === 'player_head'
+      && before.filter(n => /_planks$/.test(n)).length === 7, before.join(' '));
+
+  // Three chained shelves facing the bot, powered by redstone blocks behind them, nine different items.
+  const SHELF = [['diamond', 'emerald', 'gold_ingot'], ['iron_ingot', 'coal', 'redstone'], ['lapis_lazuli', 'quartz', 'amethyst_shard']];
+  for (let dx = -1; dx <= 1; dx++) await cmd(`/setblock ${X + dx} ${Y} ${Z + 3} redstone_block`, 200);
+  for (let dx = -1; dx <= 1; dx++) {
+    const items = SHELF[dx + 1].map((id, sl) => `{Slot:${sl}b,id:"minecraft:${id}",count:1}`).join(',');
+    await cmd(`/setblock ${X + dx} ${Y} ${Z + 2} oak_shelf[facing=north,powered=true]{Items:[${items}]}`, 300);
+  }
+  await sleep(600);
+  const pos = bot.entity.position.floored();
+  const middle = bot.blockAt(pos.offset(0, 0, 2));
+  bot.setQuickBarSlot(panel === 1 ? 2 : 1); await sleep(300); // hold a plank
+  const at = chat.length;
+  try { await bot.lookAt(middle.position.offset(0.5, 0.5, 0), true); await bot.activateBlock(middle, { x: 0, y: 0, z: -1 }); } catch (e) { console.log('  shelf: ' + e.message); }
+  await sleep(1500);
+  const after = hb();
+  const shelfItems = SHELF.flat();
+  const swapped = after.filter((n, i) => i !== panel && i !== 8 && shelfItems.includes(n));
+  const stayed = shelfItems.filter(n => !after.includes(n));
+  console.log(`  hotbar before: ${before.join(' ')}`);
+  console.log(`  hotbar after:  ${after.join(' ')}`);
+  check('Positive: the 7 ordinary slots swapped with the shelves', /^oak_shelf/.test(middle ? middle.name : '') && swapped.length === 7 && !after.some(n => /_planks$/.test(n)),
+      `${swapped.length} shelf items in the hotbar`);
+  check('Negative: the admin chest and the head stayed in their slots, one of each', after[panel] === 'ender_chest' && after[8] === 'player_head'
+      && count('ender_chest') === 1 && heads() === 1, `slot ${panel + 1} ${after[panel]}, slot 9 ${after[8]}, ${count('ender_chest')} chest(s), ${heads()} head(s)`);
+  check('Negative: the 2 shelf items meant for those slots stayed on the shelves (not in the inventory, not on the ground)',
+      stayed.length === 2 && stayed.every(n => count(n) === 0) && itemsOnGround() === 0, `on the shelves: ${stayed.join(', ')}; ground ${itemsOnGround()}`);
+  check('No refusal message any more', !saw(/powered shelf would swap/i, at), chat.slice(at).join(' / '));
+
+  const server = await rejoinCounts();
+  const want = { player_head: 1, ender_chest: 1 };
+  for (const n of swapped) want[n] = 1;
+  const diff = sameCounts(want, server);
+  check('Server view after rejoin: exactly the head, the admin chest and the 7 swapped items', diff.length === 0, diff.join(', ') || 'identical');
+
+  // Break the shelves: their contents drop. Everything must be there exactly once: 7 planks + the 2 kept items.
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z - 2 + 0.5} 0 0`, 1200); // out of pickup range of the drops
+  for (let dx = -1; dx <= 1; dx++) await cmd(`/setblock ${X + dx} ${Y} ${Z + 2} air destroy`, 300);
+  await sleep(1500);
+  const dropped = {};
+  for (const e of Object.values(bot.entities)) {
+    if (e.name !== 'item' || e.position.distanceTo(bot.entity.position) > 12) continue;
+    const it = e.getDroppedItem(); if (it) dropped[it.name] = (dropped[it.name] || 0) + it.count;
+  }
+  const expectDrops = { oak_shelf: 3 };
+  for (const n of PLANKS.concat(stayed)) expectDrops[n] = 1;
+  const dd = sameCounts(expectDrops, dropped);
+  check('Nothing lost or duplicated: the shelves held the 7 planks and the 2 kept items', dd.length === 0, dd.join(', ') || JSON.stringify(dropped));
+
+  for (let dx = -1; dx <= 1; dx++) await cmd(`/setblock ${X + dx} ${Y} ${Z + 3} air`, 150);
+  await cmd('/kill @e[type=item,distance=..16]', 400);
+  for (const n of shelfItems) await cmd('/clear @s ' + n, 120);
   await cmd('/gamemode creative', 400);
 }
 
@@ -466,6 +557,7 @@ async function perf() {
     else if (phase === 'names') await names();
     else if (phase === 'safety') await safety();
     else if (phase === 'perf') await perf();
+    else if (phase === 'shelves') await shelves();
     else console.log('unknown phase ' + phase);
   } catch (e) {
     check('phase ran without errors', false, e.stack);

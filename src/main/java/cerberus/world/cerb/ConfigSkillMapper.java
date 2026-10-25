@@ -146,6 +146,8 @@ public class ConfigSkillMapper {
             }
         }
 
+        addSpearRuleIfMissing(newTriggers);
+
         // Sort by priority (lower first)
         newTriggers.sort(Comparator.comparingInt(SkillTrigger::priority));
 
@@ -159,6 +161,24 @@ public class ConfigSkillMapper {
 
         log.info("[SkillMapper] Loaded " + triggers.size() + " trigger rules ("
                 + exactOnlyCount + " exact-only, " + regexCount + " with regex)");
+    }
+
+    /**
+     * Spears train Weapon Mastery (owner decision E), the skill whose Power they already use.
+     * A skills.yml written before spears existed has no rule for them: add one in memory (the file
+     * is not changed; a rule of your own for spears wins).
+     */
+    static void addSpearRuleIfMissing(List<SkillTrigger> triggers) {
+        for (SkillTrigger t : triggers) if (t.matches("IRON_SPEAR")) return;
+        for (int i = 0; i < triggers.size(); i++) {
+            SkillTrigger t = triggers.get(i);
+            if (!t.skillName().equals("Weapon Mastery")) continue;
+            List<Pattern> rx = new ArrayList<>(t.regexPatterns());
+            rx.add(Pattern.compile(".*_SPEAR"));
+            triggers.set(i, new SkillTrigger(t.skillName(), t.priority(), t.exactMaterials(), List.copyOf(rx)));
+            log.info("[SkillMapper] skills.yml has no rule for spears: spear kills train Weapon Mastery (built-in default)");
+            return;
+        }
     }
 
     // ── Lookup ───────────────────────────────────────────────────

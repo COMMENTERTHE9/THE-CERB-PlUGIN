@@ -461,11 +461,18 @@ public class PlayerVirtualHealthManager {
 
     private double getTypeSpecificResistance(Player player, CustomDamageType damageType) {
         return switch (damageType) {
-            case FIRE, BURN_DOT, PYROMANCY -> getPlayerFireResistance(player);
+            // Fire resistance covers every kind of fire, each with its share (combat.yml fire-resistance).
+            case FIRE, FIRE_TICK, BURN_DOT, PYROMANCY, CAMPFIRE, HOT_FLOOR, LAVA ->
+                    getPlayerFireResistance(player) * fireCoverage(damageType);
             case FREEZE, FREEZE_DOT, CRYOMANCY -> getPlayerColdResistance(player);
             case DROWNING -> getPlayerDrowningResistance(player);
             default -> 0.0;
         };
+    }
+
+    private double fireCoverage(CustomDamageType type) {
+        if (combatConfig != null) return combatConfig.fireCoverage(type);
+        return type == CustomDamageType.FIRE || type == CustomDamageType.BURN_DOT || type == CustomDamageType.PYROMANCY ? 1.0 : 0.0;
     }
 
     private long getDamageInvincibilityMillis() {

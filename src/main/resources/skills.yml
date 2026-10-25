@@ -51,6 +51,7 @@ skill-triggers:
         - "TRIDENT"
       material-regex:
         - ".*_AXE"
+        - ".*_SPEAR"
 
   Ranged Precision:
     priority: 30

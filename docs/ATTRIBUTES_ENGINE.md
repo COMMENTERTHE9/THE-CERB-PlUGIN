@@ -72,7 +72,7 @@ The weights follow the design's "drives / existing system" table. The tuning goa
 
 A hit passes three layers in `PlayerVirtualHealthManager.applyResolvedDamage`, which applies one `DefenseMath.resolve` result (the same function the unit tests check):
 
-1. **Resistance** to its damage type: fire (standing in fire, fire spells), cold, drowning. Survival + Fortitude, at most 50% each (`limits.resist`).
+1. **Resistance** to its damage type: fire, cold, drowning. Survival + Fortitude, at most 50% each (`limits.resist`). Fire resistance covers each kind of fire with a share set in `combat.yml fire-resistance` (below).
 2. **Armor**: gear (per piece, `combat.yml armor`) + Heavy Armor Training + Fortitude, at most 40%, less the attacking mob's tier armor penetration.
 3. **The defense bar**: takes `max-absorption (70%) × how full it is` of what is left and drains by that many points; it refills 7 s after the last hit.
 
@@ -85,6 +85,30 @@ Resistance and armor are **damage reductions**: they remove a share and cost not
 | Fire hit with a raised resist limit (sandbox only): 70% × 40% = 82% | 18 → bar 12.6 → 5.4 | **25** (capped at 75%) → bar 17.5 → 7.5 |
 
 Defense is recalculated at the start of every hit (the HUD listener), so armor put on by right-click or taken off counts at once (checked).
+
+### Fire resistance by kind of fire (owner decision C, 2026-10-25)
+
+Fire resistance used to cover only standing in fire and fire spells. It now covers each kind of fire, with a share of the resistance from `combat.yml fire-resistance`. Each share is clamped to 0..1 and stays inside `limits.resist` and the 75% cap.
+
+| Kind (damage type) | Share | Measured at fire resistance 50%, armor 40% (`progression.js fire`) |
+|---|---|---|
+| Standing in fire (FIRE), fire spells (PYROMANCY, BURN_DOT) | 1.0 | 50%: 100 → 50 → armor 30 → bar 9 |
+| Burning afterwards (FIRE_TICK: Fire Aspect, Flame, Fireball's afterburn) | 1.0 | 50% (was 0%) |
+| Campfire (CAMPFIRE) | 1.0 | 50% (was 0%), standing on a real campfire |
+| Magma block (HOT_FLOOR) | 1.0 | 50% (was 0%), standing on a real magma block |
+| Lava (LAVA) | 0.5 | 25% (was 0%): lava stays dangerous |
+| Anything else | 0 | none |
+
+PvP keeps its pre-Attributes rules: there, only standing in fire and fire spells get the (old) resistance, as before. The server names campfire and magma damage only when a real block caused it; `/damage … minecraft:campfire` arrives as generic damage, so tests use real blocks.
+
+### Defensive XP (owner decision D, 2026-10-25)
+
+A hit that lands trains Survival (1 XP) and, while wearing at least one heavy piece, Heavy Armor Mastery (half the damage taken, up to 10). That already held for melee hits; it now holds for projectiles too, with these conditions (`VirtualHealthListener.handleProjectileHit`):
+- **the shooter is a living mob or another player:** not a dispenser, not yourself (your own arrow or splash potion);
+- **the hit landed:** a hit ignored by the invulnerability window (for example the rest of a volley) trains nothing;
+- **it did damage:** a fully dodged hit trains nothing. 0-damage projectiles (snowballs, eggs, fishing hooks) never reach plugins: the server drops them.
+
+A hit fully absorbed by defense still trains the minimum, as melee always did. Checked by `progression.js projectile` (7 checks: skeleton arrows train both skills; dispenser, own potion, second arrow of a volley and a 0-damage hit train nothing). Idle farming (standing in a mob trap) is not blocked, for melee or projectiles; that is an open owner decision (`docs/STATUS.md`).
 
 **Open, for the owner:** a single hit bigger than `bar size ÷ 0.70` (≈ 430 for a 300-point bar) is still taken at the full rate, so the bar absorbs more than it holds (measured: a 1,000-damage hit on a full ~310-point bar took 688). Today only extreme hits reach that (a max-level charged creeper), and they are lethal at base health either way. Limiting the bar to its points would make Fortitude's bigger bar matter more against big hits and make telegraphed boss hits dangerous as designed, but it is a balance change: not made without your decision.
 
@@ -116,7 +140,7 @@ The old PvP skill bonuses themselves are untouched (next section).
 
 ## Weapon Mastery and the specialized weapon skills (owner decision 2026-10-25: kept)
 
-Each weapon class has a specialized skill giving 1 Power per level: Blade Mastery (swords), Ranged Precision (bows), Martial Expertise (unarmed), Weapon Mastery (axes, maces, tridents, spears). Weapon Mastery also gives **0.25 Power per level to every weapon**. Power multiplies damage by `1 + 0.05 × Power` and is meant to track a level-L mob's HP, `1 + 0.05 × (L − 1)`.
+Each weapon class has a specialized skill giving 1 Power per level: Blade Mastery (swords), Ranged Precision (bows), Martial Expertise (unarmed), Weapon Mastery (axes, maces, tridents, spears). The same classification decides which skill a kill trains (`skills.yml`): since owner decision E, a spear kill trains Weapon Mastery (before, it fell back to Heavy Armor Mastery while spear hits already used Weapon Mastery's Power). Older `skills.yml` files get the spear rule in memory at load (`ConfigSkillMapper.addSpearRuleIfMissing`; the file is not changed, and a spear rule of your own wins). Checked by `progression.js spear`. Weapon Mastery also gives **0.25 Power per level to every weapon**. Power multiplies damage by `1 + 0.05 × Power` and is meant to track a level-L mob's HP, `1 + 0.05 × (L − 1)`.
 
 | Level (each skill) | Specialized skill alone | + Weapon Mastery (other weapons) | Axe / mace / trident / spear, Weapon Mastery alone | Equal-level mob HP |
 |---|---|---|---|---|

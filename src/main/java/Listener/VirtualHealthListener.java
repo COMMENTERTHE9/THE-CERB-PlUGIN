@@ -402,6 +402,16 @@ public class VirtualHealthListener implements Listener {
                 combatSkillProcessor.applyPostDamageEffects(ctx);
             }
 
+            // Defender XP from projectiles (owner decision D), like melee hits, but only for a real
+            // defensive encounter: shot by a mob or another player (not yourself, not a dispenser),
+            // a hit that landed (an ignored hit returned above) and did damage.
+            if (combatSkillProcessor != null && shooter instanceof LivingEntity && !shooter.getUniqueId().equals(player.getUniqueId())
+                    && modifiedDmg > 0) {
+                double damageTaken = ctx.defense().getFinalDamage() / ctx.defense().getHealthScale();
+                if (damageTaken <= 0) damageTaken = modifiedDmg * 0.1; // minimum XP even if fully mitigated (as melee)
+                combatSkillProcessor.awardDefenderHitXp(player, damageTaken);
+            }
+
             Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
 
             if (resolution.lethal()) {

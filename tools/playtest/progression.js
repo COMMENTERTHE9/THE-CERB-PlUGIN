@@ -23,6 +23,12 @@
 //             Armor), Survival resistance, and take the share of health a 100-health defender lost
 //   defense-cap - the 75% cap binding: needs a TEMPORARILY raised limits.resist (e.g. 0.75) in the sandbox
 //             server's plugins/CerberusPlugin/attributes.yml (then /cerb reload); fire resist 70% + armor 40% = 82% -> 75%
+//   fire    - decision C: Survival's fire resistance on every kind of fire (/damage in_fire, on_fire, lava; standing
+//             on a real campfire and magma block), lava at half; a non-fire hit gets none; still under the 75% cap
+//   projectile - decision D: a skeleton's arrows train Survival and Heavy Armor Mastery; a dispenser's arrows, your
+//             own harming potion, a second arrow inside the invulnerability window and a 0-damage hit train nothing
+//   spear   - decision E: a spear kill pays Weapon Mastery XP (once: no Heavy Armor Mastery XP on top), and spear
+//             hits use Weapon Mastery's Power (x7.25 at Weapon Mastery 100, as axes)
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -797,6 +803,231 @@ async function defenseCap() {
   await defenseCleanup();
 }
 
+// ── Step 2 decisions (docs/ROADMAP.md) ───────────────────────────
+
+/** A skill's level and XP into it, as the server has them (/cerb skill ... xp 0 adds nothing). */
+async function skillXp(skill) {
+  const at = await cmd(`/cerb skill ${NAME} ${skill} xp 0`, 900);
+  const m = (saw(/is now level \d+ \(\d+ XP\)/, at) || '').match(/level (\d+) \((\d+) XP\)/);
+  return m ? { level: Number(m[1]), xp: Number(m[2]) } : { level: NaN, xp: NaN };
+}
+const grew = (a, b) => b.level > a.level || (b.level === a.level && b.xp > a.xp);
+const same = (a, b) => a.level === b.level && a.xp === b.xp;
+const xpText = (a, b) => `L${a.level} ${a.xp} XP -> L${b.level} ${b.xp} XP`;
+
+/** The resistance named in a trace's ElemResist step ("ElemResist(HOT_FLOOR 50%)" -> 0.5), 0 if none. */
+const resistNote = t => { const m = (t.trace || '').match(/ElemResist\(\w+ ([\d.]+)%\)/); return m ? Number(m[1]) / 100 : 0; };
+
+/**
+ * The first combat trace while standing on a real block. The server names campfire and magma damage
+ * only when a block caused it: /damage minecraft:campfire or hot_floor has no block and arrives as CUSTOM.
+ */
+async function blockTrace(kind) {
+  const p = bot.entity.position.floored();
+  await cmd(`/cerb heal ${NAME}`, 900);
+  const at = chat.length;
+  if (kind === 'magma') await cmd(`/setblock ${p.x} ${p.y - 1} ${p.z} magma_block`, 200);
+  else await cmd(`/setblock ${p.x} ${p.y} ${p.z} campfire[lit=true]`, 200);
+  let line = '';
+  for (let i = 0; i < 30 && !line; i++) { await sleep(100); line = chat.slice(at).find(m => /\[Combat\].*Final/.test(m)) || ''; }
+  if (kind === 'magma') await cmd(`/setblock ${p.x} ${p.y - 1} ${p.z} stone`, 300);
+  else await cmd(`/setblock ${p.x} ${p.y} ${p.z} air`, 300);
+  await cmd(`/tp @s ${p.x + 0.5} ${p.y} ${p.z + 0.5}`, 600);
+  return parseTrace(line);
+}
+
+async function fire() {
+  await defenseSetup(true); // full netherite + Survival / Heavy Armor / Defensive Magic 100: fire resistance 50%, armor 40%
+  // A stone pad at spawn height: the magma check replaces the block underfoot, the campfire check the feet block.
+  const sp = bot.spawnPoint || bot.entity.position;
+  const X = Math.floor(sp.x) - 8, Y = Math.floor(sp.y) + 1, Z = Math.floor(sp.z) - 8;
+  await cmd(`/fill ${X - 2} ${Y} ${Z - 2} ${X + 2} ${Y + 3} ${Z + 2} air`, 500);
+  await cmd(`/fill ${X - 2} ${Y - 1} ${Z - 2} ${X + 2} ${Y - 1} ${Z + 2} stone`, 500);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5}`, 1500);
+  const FULL = 0.5;
+  const kinds = [
+    ['Standing in fire', 1, () => hitTrace('minecraft:in_fire')],
+    ['Burning afterwards', 1, () => hitTrace('minecraft:on_fire')],
+    ['Campfire (real block)', 1, () => blockTrace('campfire')],
+    ['Magma block (real block)', 1, () => blockTrace('magma')],
+    ['Lava', 0.5, () => hitTrace('minecraft:lava')],
+    ['Not fire (control)', 0, () => hitTrace('minecraft:generic')],
+  ];
+  const got = [];
+  console.log('  Kind of damage            resistance   trace');
+  for (const [label, share, run] of kinds) {
+    const t = await run();
+    got.push(t);
+    console.log(`  ${label.padEnd(26)}${pct(resistNote(t)).padEnd(13)}${t.trace.replace(/^.*?Incoming/, 'Incoming') || '(no trace)'}`);
+  }
+  kinds.forEach(([label, share], i) => check(`${label}: ${pct(FULL * share)} resistance`, !!got[i].trace && near(resistNote(got[i]), FULL * share), pct(resistNote(got[i]))));
+  check('Bounded: resistance x armor stays under the 75% cap (no cap step), damage still gets through', got.every(t => !t.capped && t.final > 0));
+  await defenseCleanup();
+}
+
+async function projectile() {
+  let hurts = 0;
+  bot.on('entityHurt', e => { if (e === bot.entity) hurts++; });
+  await cmd('/difficulty normal', 400); await cmd('/time set day', 400);
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 800);
+  // A floating stone pad at spawn height (no fall damage: falling trains Survival too).
+  const sp = bot.spawnPoint || bot.entity.position;
+  const X = Math.floor(sp.x) - 8, Y = Math.floor(sp.y) + 1, Z = Math.floor(sp.z);
+  await cmd(`/fill ${X - 3} ${Y} ${Z - 3} ${X + 3} ${Y + 4} ${Z + 9} air`, 600);
+  await cmd(`/fill ${X - 3} ${Y - 1} ${Z - 3} ${X + 3} ${Y - 1} ${Z + 9} stone`, 600);
+  await cmd('/gamemode creative', 300);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 1500); // yaw 0 = facing +z
+  await rightClickOn('chestplate'); // one heavy piece: Heavy Armor Mastery trains from hits
+  await cmd('/gamemode survival', 400);
+  await cmd(`/cerb heal ${NAME}`, 600);
+  const reset = async () => { for (const s of ['Survival', 'Heavy_Armor_Training']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400); };
+  const read = async () => ({ sv: await skillXp('Survival'), ham: await skillXp('Heavy_Armor_Training') });
+
+  // 1. A skeleton (Power V bow, so each arrow does real damage through the bar) shoots the bot.
+  await reset();
+  let before = await read();
+  hurts = 0;
+  await cmd(`/summon skeleton ${X + 0.5} ${Y} ${Z + 7.5} {Rotation:[180f,0f],equipment:{mainhand:{id:"minecraft:bow",count:1,components:{"minecraft:enchantments":{"minecraft:power":5}}}}}`, 500);
+  for (let t = 0; t < 30 && hurts < 3; t++) await sleep(500);
+  const arrows = hurts;
+  await cmd('/kill @e[type=skeleton,distance=..30]', 600);
+  await cmd('/kill @e[type=arrow,distance=..30]', 400);
+  let after = await read();
+  console.log(`  skeleton: ${arrows} arrow hits; Survival ${xpText(before.sv, after.sv)}; Heavy Armor ${xpText(before.ham, after.ham)}`);
+  check('A skeleton\'s arrows train Survival', arrows > 0 && grew(before.sv, after.sv), `${arrows} hits, ${xpText(before.sv, after.sv)}`);
+  check('... and Heavy Armor Mastery (wearing a netherite chestplate)', arrows > 0 && grew(before.ham, after.ham), xpText(before.ham, after.ham));
+
+  // 2. A dispenser's arrows (no living shooter): nothing.
+  await cmd(`/cerb heal ${NAME}`, 600);
+  await reset();
+  before = await read();
+  hurts = 0;
+  await cmd(`/setblock ${X} ${Y} ${Z + 3} dispenser[facing=north]{Items:[{Slot:0b,id:"minecraft:arrow",count:16}]}`, 500);
+  for (let i = 0; i < 3; i++) {
+    await cmd(`/setblock ${X} ${Y + 1} ${Z + 3} redstone_block`, 600);
+    await cmd(`/setblock ${X} ${Y + 1} ${Z + 3} air`, 900);
+  }
+  await sleep(800);
+  const dispensed = hurts;
+  await cmd(`/setblock ${X} ${Y} ${Z + 3} air`, 300);
+  await cmd('/kill @e[type=arrow,distance=..30]', 400);
+  after = await read();
+  check('A dispenser\'s arrows train nothing', dispensed > 0 && same(before.sv, after.sv) && same(before.ham, after.ham),
+      `${dispensed} hits; Survival ${xpText(before.sv, after.sv)}; Heavy Armor ${xpText(before.ham, after.ham)}`);
+
+  // 3. Your own splash potion of harming: nothing.
+  await cmd(`/cerb heal ${NAME}`, 600);
+  await reset();
+  before = await read();
+  hurts = 0;
+  await equip('splash_potion[potion_contents={potion:"minecraft:harming"}]');
+  const potion = bot.inventory.slots.findIndex((it, i) => it && it.name === 'splash_potion' && i >= 36 && i <= 44);
+  if (potion >= 0) bot.setQuickBarSlot(potion - 36);
+  await bot.look(bot.entity.yaw, -Math.PI / 2, true); await sleep(300);
+  bot.activateItem(); await sleep(250); bot.deactivateItem();
+  await sleep(1800);
+  const own = hurts;
+  after = await read();
+  check('Your own harming potion trains nothing', own > 0 && same(before.sv, after.sv) && same(before.ham, after.ham),
+      `${own} hits; Survival ${xpText(before.sv, after.sv)}; Heavy Armor ${xpText(before.ham, after.ham)}`);
+  await cmd('/clear @s splash_potion', 300);
+
+  // 4. Exactly timed arrows: /damage by a summoned arrow whose owner is a no-AI skeleton makes the same event as a
+  //    real arrow. Two at once (a volley): the second lands in the invulnerability window and trains nothing. A hit
+  //    that does no damage trains nothing either (snowballs, eggs and fishing hooks never even reach plugins:
+  //    the server drops 0-damage hits on players).
+  await cmd(`/summon skeleton ${X + 0.5} ${Y} ${Z + 6.5} {NoAI:1b}`, 1200);
+  const sk = Object.values(bot.entities).find(e => e.name === 'skeleton' && e.uuid);
+  const ints = sk ? sk.uuid.replace(/-/g, '').match(/.{8}/g).map(h => parseInt(h, 16) | 0) : [];
+  await cmd(`/summon arrow ${X + 0.5} ${Y + 3} ${Z + 2.5} {NoGravity:1b,Owner:[I;${ints.join(',')}]}`, 900);
+  const shot = amount => `/damage ${NAME} ${amount} minecraft:arrow by @e[type=arrow,limit=1,sort=nearest] from @e[type=skeleton,limit=1,sort=nearest]`;
+  await cmd(`/cerb heal ${NAME}`, 1200);
+  await reset();
+  before = await read();
+  hurts = 0;
+  bot.chat(shot(20)); bot.chat(shot(20)); // big enough that Heavy Armor's XP (half the damage taken, whole points) shows
+  await sleep(1500);
+  const volley = hurts;
+  after = await read();
+  check('Two arrows at once: only the first trains (the second hits during the invulnerability window)',
+      !!sk && after.sv.level === 1 && after.sv.xp - before.sv.xp === 1 && after.ham.xp > before.ham.xp,
+      `${volley} hit(s) shown; Survival ${xpText(before.sv, after.sv)}; Heavy Armor ${xpText(before.ham, after.ham)}`);
+  before = after;
+  await cmd(shot(0), 1500);
+  after = await read();
+  check('A hit that does no damage trains nothing', same(before.sv, after.sv) && same(before.ham, after.ham),
+      `Survival ${xpText(before.sv, after.sv)}; Heavy Armor ${xpText(before.ham, after.ham)}`);
+  before = after;
+  await cmd(shot(20), 1500);
+  after = await read();
+  check('Control: the next arrow after the window trains again', after.sv.xp - before.sv.xp === 1, `Survival ${xpText(before.sv, after.sv)}`);
+
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 600);
+  await cmd('/clear @s netherite_chestplate', 400);
+  await reset();
+  await cmd(`/cerb heal ${NAME}`, 500);
+  await cmd('/gamemode creative', 400);
+}
+
+/**
+ * Jab a no-AI zombie with a spear until it dies (or `max` jabs). A spear doesn't attack like a sword: the client
+ * sends a "stab" action (player action 7), then the arm swing, and the server hits whatever is 2 to 4.5 blocks
+ * away along the aim line, so the zombie is placed 3 blocks ahead. (A normal attack with a spear does nothing.)
+ */
+async function stabOne(level, max = 200, delay = 1000) {
+  await cmd('/kill @e[type=zombie,distance=..12]', 600);
+  await bot.look(bot.entity.yaw, 0, true);
+  const at = await cmd(`/cerb spawn zombie ${level} noai`, 1500);
+  await cmd('/tp @e[type=zombie,limit=1,sort=nearest] ^ ^ ^3', 900);
+  const target = mobsNear('zombie', 6)[0];
+  if (!target) return { stabs: 0, xp: NaN, msg: 'mob did not spawn' };
+  let stabs = 0;
+  for (; stabs < max; stabs++) {
+    const m = bot.entities[target.id];
+    if (!m || !m.isValid) break;
+    await bot.lookAt(m.position.offset(0, m.height * 0.6, 0), true);
+    bot._client.write('block_dig', { status: 7, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 });
+    bot.swingArm(); // after the stab: a swing first would reset the attack timer and the stab would be refused
+    await sleep(delay);
+  }
+  await sleep(800);
+  const msg = saw(/^\+(\d+) \S.* XP$/, at);
+  return { stabs, xp: msg ? Number(msg.match(/^\+(\d+)/)[1]) : NaN, msg };
+}
+
+async function spear() {
+  await cmd('/gamemode creative'); await cmd('/time set night'); // a zombie in daylight burns: the kill must be the spear's (creative: night mobs ignore the bot)
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..20]', 600);
+  for (const s of ['Weapon_Mastery', 'Heavy_Armor_Training', 'Blade_Mastery', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400);
+  // Heavy armor on: a kill with a weapon no skill claimed used to fall back to Heavy Armor Mastery XP.
+  await rightClickOn('chestplate');
+  check('Got an iron spear', await equip('iron_spear'));
+  const wm0 = await skillXp('Weapon_Mastery'), ham0 = await skillXp('Heavy_Armor_Training');
+  await debugOn(true);
+  const at = chat.length;
+  const r = await stabOne(1);
+  await debugOn(false);
+  const wm1 = await skillXp('Weapon_Mastery'), ham1 = await skillXp('Heavy_Armor_Training');
+  const rewards = chat.slice(at).filter(m => /^\+\d+ \S.* XP$/.test(m));
+  console.log(`  spear kill: ${r.stabs} jabs; ${rewards.join(' / ') || 'no XP message'}; Weapon Mastery ${xpText(wm0, wm1)}; Heavy Armor ${xpText(ham0, ham1)}`);
+  check('A spear kill pays Weapon Mastery XP', /Weapon Mastery XP$/.test(r.msg || '') && grew(wm0, wm1), `${r.msg}; ${xpText(wm0, wm1)}`);
+  check('One reward per kill: no Heavy Armor Mastery XP on top', rewards.length === 1 && same(ham0, ham1), `${rewards.join(' / ')}; Heavy Armor ${xpText(ham0, ham1)}`);
+  const t1 = chat.slice(at).find(m => /Power\(Spears/.test(m)) || '';
+  check('Spear hits use Weapon Mastery\'s Power', /Power\(Spears, Power [\d.]+ -> x[\d.]+\)/.test(t1), t1.slice(0, 160) || 'no Power(Spears) step');
+  // The same classification for the combat bonus: Weapon Mastery 100 gives spears x7.25, as axes.
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 100`, 900);
+  await debugOn(true);
+  const at2 = chat.length;
+  await stabOne(100, 2);
+  await debugOn(false);
+  const pm = (chat.slice(at2).find(m => /Power\(Spears/.test(m)) || '').match(/Power\(Spears, Power ([\d.]+) -> x([\d.]+)\)/);
+  check('Weapon Mastery 100: spears get Power 125 (x7.25), as axes', !!pm && near(Number(pm[2]), 7.25, 0.011), pm ? `Power ${pm[1]} -> x${pm[2]}` : 'no trace');
+  for (const s of ['Weapon_Mastery', 'Heavy_Armor_Training', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400);
+  await cmd('/kill @e[type=zombie,distance=..12]', 500);
+  await cmd('/time set day', 300);
+  for (const w of ['iron_spear', 'netherite_chestplate', 'rotten_flesh', 'iron_ingot', 'carrot', 'potato']) await cmd('/clear @s ' + w, 250);
+}
+
 // Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
 // inside a hillside suffocate mid-check.
 async function goHome() {
@@ -831,6 +1062,9 @@ bot.once('spawn', async () => {
     else if (phase === 'defense-cap') await defenseCap();
     else if (phase === 'pvp') await pvp();
     else if (phase === 'mastery') await mastery();
+    else if (phase === 'fire') await fire();
+    else if (phase === 'projectile') await projectile();
+    else if (phase === 'spear') await spear();
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');
       await equip('netherite_sword');

@@ -75,7 +75,26 @@ The server is far from its limit (6–7 ms of the 50 ms budget) and Cerberus is 
 - **The combo popup** spawns a text entity per hit after the third hit. Small; throttle it if combat entities grow.
 - **Player-head menu items** look up the skin profile; Paper caches it, but watch it on new players.
 
+## Review follow-up: admin screens get their own window
+
+An independent review of this work found that redrawing screens in place had weakened one protection. A new window used to drop every click aimed at the previous screen, exactly. In place, a click sent just before the new screen arrived could land on it: a lagging admin double-clicking a skill could press "+10 levels" on the editor (reproduced: 3 of 4 such clicks applied it). Now:
+- admin and confirm screens, whose buttons change something at once, always open in a fresh window (`Menu.reuseWindow()`), so that exact protection is back (0 of 4, `admin.js staleclick`);
+- read-only Player Menu screens keep the fast redraw, and ignore clicks for about one round trip after a switch (ping + 150 ms, 250 ms to 1 s; it was ping + 50 ms).
+
+The `menu` workload is unchanged (Player Menu only; 225 clicks per bot, none dropped).
+
+## Step 2 check (decisions A–E, 2026-10-25)
+
+Same loads, warm server, two runs each. Cerberus, ms per tick:
+
+| Workload | Step 1 after | Step 2 |
+|---|---|---|
+| Combat | 0.092–0.121 | 0.111–0.141 |
+| Being hit | 0.136–0.152 | 0.142–0.158 |
+| Menu browsing | 0.159–0.172 | 0.152 |
+
+Within the budget. None of the Step 2 code appears among the costly frames: the fire-coverage lookup, the projectile XP rule, the shelf swap and the spear rule run only on their own events. The same functions as before lead (mob labels, damage numbers, HUD), and the spread matches the run-to-run noise above.
+
 ## Budgets for the next milestones
 
-- **Step 2 (damage-pipeline decisions A–E):** the `combat` and `hurt` workloads must stay within today's after-numbers plus noise.
-- **Step 3 (menu animations):** animation work must stay off the click path. The `menu` workload must not lose more than half of today's gain (Cerberus ≤ ~0.25 ms per tick). An idle open menu must cost nothing measurable.
+- **Step 3 (menu animations):** animation work must stay off the click path. The `menu` workload must not lose more than half of the Step 1 gain (Cerberus ≤ ~0.25 ms per tick). An idle open menu must cost nothing measurable.

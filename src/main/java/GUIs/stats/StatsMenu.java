@@ -236,8 +236,9 @@ public final class StatsMenu extends PlayerMenu {
                 .stat("  Defense bar", bar == null ? "?" : num(bar.getMaximum()) + " points")
                 .stat("  Fire / cold / drowning", Fmt.pct(vh.getPlayerFireResistance(p)) + " / "
                         + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)))
-                .raw(ChatColor.DARK_GRAY + "  Fire: standing in fire and fire spells;")
-                .raw(ChatColor.DARK_GRAY + "  not yet burning, lava or magma.")
+                .raw(ChatColor.DARK_GRAY + "  Fire: flames, burning, campfires, magma")
+                .raw(ChatColor.DARK_GRAY + "  and fire spells; lava at "
+                        + Fmt.pct(plugin.getCombatConfig().fireCoverage(Manager.CustomDamageType.LAVA)) + " of it.")
                 .raw(ChatColor.DARK_GRAY + "  Resistance and armor together block at")
                 .raw(ChatColor.DARK_GRAY + "  most " + Fmt.pct(s.rules().limits().totalMitigation()) + " of a hit; the bar is extra.");
         if (!s.rules().switches().pvpDefense()) {

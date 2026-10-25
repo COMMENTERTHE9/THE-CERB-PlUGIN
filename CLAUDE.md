@@ -25,7 +25,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Speed stats, attribute expansion increment 1 (2026-10-25): attack / bow draw / movement speed + spell cooldown in the engine, paused during PvP (`docs/design/ATTRIBUTE_EXPANSION.md`, `progression.js speed`)
 - ✅ Owner decisions 2026-10-25: 75% damage-reduction cap on resistance × armor (`Manager/DefenseMath`; the defense bar is a pool, not counted), PvP plays as before Attributes 2.0 (`integration.pvp-defense: false`), Weapon Mastery stacking analysed (`WeaponMasteryStackingTest`); playtest list `docs/PLAYTEST_CHECKLIST.md`
 - ✅ Step 1 performance pass (`docs/PERFORMANCE.md`): menus redraw in the open window (vanilla's advancement re-check per new window was ~60% of a click), item cache, HUD/labels/damage numbers; loads `tools/playtest/load.js` + profiler `tools/perf/profile.sh`
-- ⬜ Next: **`docs/ROADMAP.md`** Step 2 (decisions A–E), then Player Menu 2.1 animations, classes & abilities design → prototype
+- ✅ Step 2, decisions A–E (`docs/STATUS.md`): PvP speed pause kept; powered shelves work (menu items lifted out for the swap tick); fire resistance per kind of fire (`combat.yml fire-resistance`); projectile hits train Survival/Heavy Armor; spears train Weapon Mastery. Admin/confirm screens always get a fresh window (`Menu.reuseWindow()`), fixing a stale-click bug from Step 1
+- ⬜ Next: **`docs/ROADMAP.md`** Step 3, Player Menu 2.1 animations, then classes & abilities design → prototype
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
