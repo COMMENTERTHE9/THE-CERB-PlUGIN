@@ -7,15 +7,17 @@ import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.NamespacedKey;
-import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
@@ -34,8 +36,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * cost) with {@link Display.Billboard#CENTER} so it always squarely faces the player.
  * The text updates live as the mob's virtual HP drains.
  *
+ * <p>A mob a player can ride has one seat, which the label would take: its label steps aside
+ * when a player right-clicks the mob and comes back once nobody rides it.
+ *
  * <p>Folia-safe: attach/refresh/remove run only from handlers that fire on the mob's
- * owning region thread (spawn / damage / death / remove). The map is concurrent.
+ * owning region thread (spawn / damage / death / remove / interact / dismount). The map is
+ * concurrent.
  */
 public final class MobLabelManager implements Listener {
 
@@ -44,22 +50,23 @@ public final class MobLabelManager implements Listener {
 
     /** Cached at spawn so refresh never re-resolves the mob (resolve() fires events). */
     private static final class LabelState {
-        final UUID labelId;
         final int level;
         final Tier tier;
         final String typeName;
         final double maxHp;
         /** "Lv50 Zombie": never changes, built once. */
         final Component prefix;
-        /** The label entity (found again from the mob's passengers if this one is gone). Mob's thread only. */
+        /**
+         * The label entity (found again from the mob's passengers if this one is gone); null while
+         * it steps aside for a rider. Mob's thread only.
+         */
         TextDisplay label;
         /** The HP part last shown, so a hit that doesn't change the text sends nothing. */
         String shownHp;
-        LabelState(UUID labelId, int level, Tier tier, String typeName, double maxHp, Component prefix,
-                   TextDisplay label, String shownHp) {
-            this.labelId = labelId; this.level = level; this.tier = tier;
+        LabelState(int level, Tier tier, String typeName, double maxHp, Component prefix) {
+            this.level = level; this.tier = tier;
             this.typeName = typeName; this.maxHp = maxHp;
-            this.prefix = prefix; this.label = label; this.shownHp = shownHp;
+            this.prefix = prefix;
         }
     }
 
@@ -81,7 +88,6 @@ public final class MobLabelManager implements Listener {
     /** @param fraction the mob's current HP fraction [0,1] — lets a reloaded damaged mob show its real HP. */
     public void attach(LivingEntity mob, int level, Tier tier, double maxHp, double fraction) {
         if (mob == null) return;
-        if (isRideable(mob)) return; // the label rides as a passenger and would take the seat
         if (states.containsKey(mob.getUniqueId())) return; // idempotent — never double-label
 
         // DEFER one tick onto the mob's region thread. During CreatureSpawnEvent the mob is NOT
@@ -91,47 +97,56 @@ public final class MobLabelManager implements Listener {
             if (!mob.isValid()) return;                         // died/despawned before next tick
             if (states.containsKey(mob.getUniqueId())) return;  // re-check after the tick gap
 
-            World world = mob.getWorld();
             // Display name: a registry mob's custom name ("High Health Zombie") as-is, else the
             // prettified entity type ("Zombie"). Stored ready-to-show for refresh().
             final String customName = mob.getCustomName();
             final String typeName = (customName != null && !customName.isBlank())
                     ? customName : prettify(mob.getType().name());
-            final Component prefix = prefix(level, tier, typeName);
-            final String hp = hpText(maxHp, fraction);
-            TextDisplay label = world.spawn(mob.getLocation(), TextDisplay.class, td -> {
-                td.text(prefix.append(Component.text(hp, NamedTextColor.RED)));
-                td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
-                td.setSeeThrough(true);                             // no block-occlusion hide
-                td.setShadowed(false);
-                td.setDefaultBackground(false);
-                td.setBackgroundColor(Color.fromARGB(64, 0, 0, 0)); // subtle translucent backdrop
-                td.setTextOpacity((byte) 255);
-                td.setAlignment(TextDisplay.TextAlignment.CENTER);
-                td.setBrightness(new Display.Brightness(15, 15));   // full-bright at night/in caves
-                td.setViewRange(1.0f);
-                td.setTransformation(new Transformation(
-                        new Vector3f(0f, 0.7f, 0f),                 // float above the head
-                        new AxisAngle4f(0f, 0f, 0f, 1f),
-                        new Vector3f(1f, 1f, 1f),
-                        new AxisAngle4f(0f, 0f, 0f, 1f)));
-                td.setPersistent(false);                            // never saved → anti-orphan/anti-dup
-                td.setInvulnerable(true);
-                td.getPersistentDataContainer().set(ownerKey, PersistentDataType.BYTE, (byte) 1);
-            });
-
-            if (!mob.addPassenger(label)) {  // mount failed (mob moved region / died this tick)
-                label.remove();
+            LabelState st = new LabelState(level, tier, typeName, maxHp, prefix(level, tier, typeName));
+            if (hasRider(mob)) { // a player is on it: the label comes back when they get off
+                states.put(mob.getUniqueId(), st);
                 return;
             }
-            states.put(mob.getUniqueId(), new LabelState(label.getUniqueId(), level, tier, typeName, maxHp, prefix, label, hp));
+            if (mount(mob, st, fraction)) states.put(mob.getUniqueId(), st);
         }, null); // retired=null: if the mob is gone before next tick, just skip (nothing spawned yet)
     }
 
+    /** Spawn {@code st}'s label and mount it on {@code mob}; false when the mount failed. Mob's thread. */
+    private boolean mount(LivingEntity mob, LabelState st, double fraction) {
+        final String hp = hpText(st.maxHp, fraction);
+        TextDisplay label = mob.getWorld().spawn(mob.getLocation(), TextDisplay.class, td -> {
+            td.text(st.prefix.append(Component.text(hp, NamedTextColor.RED)));
+            td.setBillboard(Display.Billboard.CENTER);          // ALWAYS faces the camera
+            td.setSeeThrough(true);                             // no block-occlusion hide
+            td.setShadowed(false);
+            td.setDefaultBackground(false);
+            td.setBackgroundColor(Color.fromARGB(64, 0, 0, 0)); // subtle translucent backdrop
+            td.setTextOpacity((byte) 255);
+            td.setAlignment(TextDisplay.TextAlignment.CENTER);
+            td.setBrightness(new Display.Brightness(15, 15));   // full-bright at night/in caves
+            td.setViewRange(1.0f);
+            td.setTransformation(new Transformation(
+                    new Vector3f(0f, 0.7f, 0f),                 // float above the head
+                    new AxisAngle4f(0f, 0f, 0f, 1f),
+                    new Vector3f(1f, 1f, 1f),
+                    new AxisAngle4f(0f, 0f, 0f, 1f)));
+            td.setPersistent(false);                            // never saved → anti-orphan/anti-dup
+            td.setInvulnerable(true);
+            td.getPersistentDataContainer().set(ownerKey, PersistentDataType.BYTE, (byte) 1);
+        });
+
+        if (!mob.addPassenger(label)) {  // mount failed (mob moved region / died this tick)
+            label.remove();
+            return false;
+        }
+        st.label = label;
+        st.shownHp = hp;
+        return true;
+    }
+
     /**
-     * Mobs a player can sit on. The label is mounted as a passenger, and these mobs accept only
-     * one passenger, so a labelled horse/pig/strider/camel/happy ghast/nautilus could not be
-     * ridden or tamed. They keep their scaled HP pool; they just get no floating label.
+     * Mobs a player can sit on. The label is mounted as a passenger, and these mobs have one seat
+     * (a camel two), so the label steps aside for a rider ({@link #onRiderInteract}).
      */
     public static boolean isRideable(org.bukkit.entity.Entity e) {
         return e instanceof org.bukkit.entity.AbstractHorse   // horse, donkey, mule, llama, camel
@@ -139,6 +154,47 @@ public final class MobLabelManager implements Listener {
                 || e instanceof org.bukkit.entity.HappyGhast
                 || e instanceof org.bukkit.entity.AbstractNautilus
                 || e instanceof org.bukkit.entity.CamelHusk;
+    }
+
+    /**
+     * A rideable mob's label takes its seat, so it steps aside when a player right-clicks the mob,
+     * before vanilla mounts them (it checks the seat first). It comes back at once if nobody got
+     * on (they fed, saddled or leashed it), else when the rider gets off ({@link #onDismount}).
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onRiderInteract(PlayerInteractEntityEvent event) {
+        if (!(event.getRightClicked() instanceof LivingEntity mob) || !isRideable(mob)) return;
+        LabelState st = states.get(mob.getUniqueId());
+        if (st == null) return;
+        TextDisplay td = findLabel(mob);
+        if (td != null) {
+            td.leaveVehicle(); // the seat is free now, not when the removal is processed
+            td.remove();
+        }
+        st.label = null;
+        mob.getScheduler().runDelayed(plugin, t -> restore(mob), null, 2L);
+    }
+
+    /** A player got off a labelled mob: its label comes back. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onDismount(EntityDismountEvent event) {
+        if (!(event.getEntity() instanceof Player) || !(event.getDismounted() instanceof LivingEntity mob)) return;
+        if (!states.containsKey(mob.getUniqueId())) return;
+        mob.getScheduler().runDelayed(plugin, t -> restore(mob), null, 1L);
+    }
+
+    /** Put a stepped-aside label back, unless a player rides the mob or it has one. Mob's thread. */
+    private void restore(LivingEntity mob) {
+        LabelState st = states.get(mob.getUniqueId());
+        if (st == null || !mob.isValid() || hasRider(mob) || findLabel(mob) != null) return;
+        MobVirtualHealthManager pools = plugin.getMobVirtualHealthManager();
+        mount(mob, st, pools != null && pools.has(mob) ? pools.fraction(mob) : 1.0);
+    }
+
+    /** True when a player rides {@code mob} (mobs riding it, a skeleton on its horse, share the label fine). */
+    private static boolean hasRider(Entity mob) {
+        for (Entity p : mob.getPassengers()) if (p instanceof Player) return true;
+        return false;
     }
 
     /** Update the HP shown on the label. {@code fraction} = remaining/max in [0,1]. */

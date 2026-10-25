@@ -1,6 +1,5 @@
 package Listener;
 
-import Manager.MobLabelManager;
 
 import Manager.CombatConfig;
 import Manager.MobHealthScaling;
@@ -130,7 +129,7 @@ public class MobScalingListener implements Listener {
         boolean registryMob = entity.getPersistentDataContainer().has(
                 registry.getMobIdKey(), org.bukkit.persistence.PersistentDataType.STRING);
         if (scaling.isShowLevelInName() && (unnamed || registryMob)) {
-            if (!unnamed && !MobLabelManager.isRideable(entity)) entity.setCustomNameVisible(false);
+            if (!unnamed) entity.setCustomNameVisible(false);
             plugin.getMobLabelManager().attach(entity, level, tier, maxHealth, mvh.fraction(entity));
         }
     }
