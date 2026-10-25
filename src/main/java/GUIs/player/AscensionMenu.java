@@ -74,8 +74,9 @@ public final class AscensionMenu extends PlayerMenu {
         }
 
         v.set(31, Ui.item(Material.KNOWLEDGE_BOOK, ChatColor.GOLD + "What a realm does", Ui.lore()
-                .text("Your realm multiplies your damage,")
-                .text("health, defense bar and regeneration.")
+                .text("Your realm multiplies your damage")
+                .text("against creatures, and your health,")
+                .text("defense bar and regeneration.")
                 .gap().text("Creatures of a realm have health on")
                 .text("the same scale, so a fight between")
                 .text("equal realms takes about as many hits")

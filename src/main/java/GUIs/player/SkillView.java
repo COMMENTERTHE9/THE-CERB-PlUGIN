@@ -207,7 +207,7 @@ public final class SkillView {
                 case POWER -> {
                     if (w.weapon() != null) {
                         WeaponClass wc = w.weapon();
-                        rows.put(wc.singular + " damage", new String[]{Fmt.mult(now.powerMultiplier(wc)), Fmt.mult(next.powerMultiplier(wc))});
+                        rows.put(wc.singular + " damage (mobs)", new String[]{Fmt.mult(now.powerMultiplier(wc)), Fmt.mult(next.powerMultiplier(wc))});
                     } else { // all-weapon Power: OTHER carries no weapon-only Power, so this is the shared part
                         rows.put("Power for every weapon", new String[]{one(now.power(WeaponClass.OTHER)), one(next.power(WeaponClass.OTHER))});
                     }

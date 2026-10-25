@@ -57,8 +57,9 @@ public final class EquipmentMenu extends PlayerMenu {
 
         // Totals, using the same parts PlayerDefenseManager adds up
         double skill = PlayerDefenseManager.heavyArmorBonus(cc, plugin.getSkillManager().getSkillLevel(p.getUniqueId(), "Heavy Armor Training"));
-        double fort = s.armorBonus();
-        double cap = Math.min(cc.armorMaxReduction, s.rules().limits().armor());
+        boolean fortOn = s.rules().switches().fortitude();    // same switch PlayerDefenseManager reads
+        double fort = fortOn ? s.armorBonus() : 0.0;
+        double cap = fortOn ? Math.min(cc.armorMaxReduction, s.rules().limits().armor()) : cc.armorMaxReduction;
         double total = plugin.getPlayerVirtualHealthManager().getArmorReduction(p);
         boolean heavy = PlayerDefenseManager.wearsHeavyArmor(p);
         v.set(MenuView.HEADER, Ui.item(Material.ARMOR_STAND, ChatColor.GOLD + "" + ChatColor.BOLD + "Your equipment", Ui.lore()
@@ -105,12 +106,12 @@ public final class EquipmentMenu extends PlayerMenu {
             return Ui.item(item.getType(), ChatColor.WHITE + hand + ": " + Fmt.title(item.getType().name()), l.build());
         }
         if (wc != WeaponClass.OTHER) {
-            l.stat("Power", Fmt.one(s.power(wc)) + "  ->  " + Fmt.mult(s.powerMultiplier(wc)) + " damage");
+            l.stat("Power", Fmt.one(s.power(wc)) + "  ->  " + Fmt.mult(s.powerMultiplier(wc)) + " damage vs creatures");
         } else {
             l.text("Not a weapon: only all-weapon Power").text("applies to hits with it.");
         }
         var mapper = plugin.getSkillMapper();
-        String trains = mapper == null ? "" : mapper.resolve(item.getType().name());
+        String trains = mapper == null ? "" : mapper.resolveKillSkill(item.getType().name());
         if (!trains.isEmpty()) l.stat("Kills train", SkillNames.display(trains));
         else l.text("Kills with it train no skill, except")
                 .text(SkillNames.display("Heavy Armor Training") + " in heavy armor.");

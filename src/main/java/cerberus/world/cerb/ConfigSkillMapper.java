@@ -189,6 +189,15 @@ public class ConfigSkillMapper {
         return "";
     }
 
+    /**
+     * The skill a kill with {@code materialName} in hand trains through these rules, or "" (no rule,
+     * or kill XP for spell focus items turned off). The heavy-armor fallback is not included.
+     */
+    public String resolveKillSkill(String materialName) {
+        String skill = resolve(materialName);
+        return !skill.isEmpty() && isMagicSkill(skill) && !awardKillXpForSpellFocus ? "" : skill;
+    }
+
     /** Whether kill XP should be awarded for spell focus items. */
     public boolean shouldAwardKillXpForSpellFocus() {
         return awardKillXpForSpellFocus;

@@ -25,6 +25,22 @@ public final class PlayerTheme {
     public static final ChatColor DEFENSE = ChatColor.GRAY;
     public static final ChatColor REALM = ChatColor.LIGHT_PURPLE;
 
+    /**
+     * The step between realms as configured (combat.yml tier-multiplier): "x8" when every step is
+     * the same, else the range ("x6 to x10").
+     */
+    public static String realmStep(Manager.MobHealthScaling scaling) {
+        double lo = Double.MAX_VALUE, hi = 0;
+        Manager.Realm[] r = Manager.Realm.values();
+        for (int i = 1; i < r.length; i++) {
+            double step = scaling.realmMultiplier(r[i].tier()) / scaling.realmMultiplier(r[i - 1].tier());
+            lo = Math.min(lo, step);
+            hi = Math.max(hi, step);
+        }
+        if (!(hi > 0)) return "x1";
+        return hi - lo < 0.01 * hi ? "x" + Manager.Numbers.compact(hi) : "x" + Manager.Numbers.compact(lo) + " to x" + Manager.Numbers.compact(hi);
+    }
+
     /** "✦ Skills" — every player screen title. */
     public static String title(String screen) {
         return ChatColor.DARK_GRAY + "✦ " + ChatColor.DARK_RED + "" + ChatColor.BOLD + screen;

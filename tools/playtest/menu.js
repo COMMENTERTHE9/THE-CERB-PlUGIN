@@ -103,7 +103,7 @@ async function nav() {
   check('Progress strip is labelled', /Level \d+ → \d+: \d+%|Max level/.test(slotName(10)) && slotName(10) === slotName(16), slotName(10));
   check('How to train: kills with swords, XP per mob level', /Kill mobs while holding: any sword\./.test(flat(20)) && /Lv1 \d+ · Lv25 \d+ · Lv50 \d+ · Lv100 \d+/.test(flat(20)), flat(20));
   check('Attributes & speed: per level, now, and what it does', /Each level gives: \+1 Power \(swords\) \+0\.3% sword attack speed/.test(flat(22))
-      && /Sword damage: x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22))
+      && /Sword damage \(mobs\): x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22))
       && /Attack speed: ● Active/.test(flat(22)) && /pause during PvP/.test(flat(22)), flat(22));
   check('Indented lines keep their indent', (slot(22).customLore || []).map(plain).some(l => /^  \+1 Power/.test(l)), slotLore(22));
   check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(24)), flat(24));
@@ -131,7 +131,8 @@ async function nav() {
   check('Untrainable skill page says so', /Nothing in the game trains this skill yet/.test(flat(20)) && /In development/.test(flat(20)), flat(20));
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(sv); await waitTitle(SCREEN('Survival'));
-  check('Survival page: live resistances with values', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take damage from anything/.test(flat(20)), flat(24));
+  check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*not yet burning afterwards, lava/.test(flat(24)), flat(24));
+  check('Survival page: live resistances with values', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take damage from mob attacks, falls, fire/.test(flat(20)) && /projectiles don't count yet/.test(flat(20)), flat(24));
   if (isOp()) check('Survival 4 shows 4.0% fire resistance, 5.0% next', /Fire resistance ● Live Now: 4\.0% next level 5\.0%/.test(flat(24)), flat(24));
 
   await click(49);
@@ -241,6 +242,13 @@ const itemsOnGround = () => Object.values(bot.entities).filter(e => e.name === '
 const headInSlot9 = () => !!bot.inventory.slots[44] && bot.inventory.slots[44].name === 'player_head';
 
 async function safety() {
+  // A small cleared pad next to world spawn (sandbox world only): respawns land at random points nearby,
+  // so fixed offsets would otherwise hit terrain (a chest under a block won't open, frames pop off).
+  const sp = bot.spawnPoint || bot.entity.position;
+  const X = Math.floor(sp.x) + 8, Y = Math.floor(sp.y) + 1, Z = Math.floor(sp.z);
+  await cmd(`/fill ${X - 2} ${Y} ${Z - 2} ${X + 3} ${Y + 4} ${Z + 5} air`, 600);
+  await cmd(`/fill ${X - 2} ${Y - 1} ${Z - 2} ${X + 3} ${Y - 1} ${Z + 5} stone`, 600);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 1500); // yaw 0 = facing +z
   await cmd('/gamemode survival', 600);
   // Leftovers from earlier kill tests fill the hotbar; the control items below need free hotbar slots.
   for (const junk of ['rotten_flesh', 'leather', 'potato', 'wheat_seeds', 'dirt', 'carved_pumpkin', 'diamond_sword']) await cmd('/clear @s ' + junk, 300);
@@ -340,6 +348,73 @@ async function safety() {
   await cmd('/kill @e[type=item_frame,distance=..8]', 400);
   await cmd('/kill @e[type=item,distance=..16]', 400);
   await cmd(`/setblock ${pos.x} ${pos.y + 1} ${pos.z + 3} air`, 300);
+
+  // Own inventory, no menu open (window 0: hotbar slot 9 is window slot 44)
+  for (const [sl, b, m] of [[44, 0, 0], [44, 0, 1], [9, 8, 2], [44, 0, 4], [44, 1, 4], [44, 0, 6]]) {
+    try { await bot.clickWindow(sl, b, m); } catch (e) {}
+    await sleep(300);
+  }
+  try { if (bot.inventory.selectedItem) await bot.clickWindow(-999, 0, 0); } catch (e) {}
+  await sleep(600);
+  check('Own inventory: pick up / shift / number key / drop leave the head in slot 9', headInSlot9() && heads() === 1 && itemsOnGround() === 0, heads() + ' heads');
+
+  // A chest: shift-click the head in, or number-key it into a chest slot
+  await cmd(`/setblock ${pos.x + 1} ${pos.y} ${pos.z + 2} chest`, 600);
+  const chestBlock = bot.blockAt(pos.offset(1, 0, 2));
+  let chestOk = false;
+  try {
+    const win = await bot.openContainer(chestBlock);
+    const headSlot = win.inventoryStart + 27 + 8;   // hotbar slot 9 below the chest's 27 slots
+    for (const [sl, b, m] of [[headSlot, 0, 1], [0, 8, 2], [headSlot, 0, 0], [5, 0, 0]]) {
+      try { await bot.clickWindow(sl, b, m); } catch (e) {}
+      await sleep(300);
+    }
+    await sleep(500);
+    chestOk = win.containerItems().length === 0;
+    bot.closeWindow(win);
+  } catch (e) { console.log('  chest: ' + e.message); }
+  await sleep(600);
+  check('Chest: the head cannot be shift-clicked or number-keyed into it', chestOk && headInSlot9() && heads() === 1, chestOk ? 'chest empty' : 'chest not empty or did not open');
+  await cmd(`/setblock ${pos.x + 1} ${pos.y} ${pos.z + 2} air`, 400);
+  await cmd('/kill @e[type=item,distance=..16]', 400);
+
+  // Pick-block with a full hotbar and slot 9 selected: the server would swap the head out
+  const fillers = ['oak_planks', 'birch_planks', 'spruce_planks', 'jungle_planks', 'acacia_planks', 'dark_oak_planks', 'mangrove_planks', 'cherry_planks', 'bamboo_planks'];
+  let fi = 0;
+  for (let i = 36; i < 44; i++) if (!bot.inventory.slots[i]) { await cmd('/give @s ' + fillers[fi++] + ' 1', 300); }
+  await cmd('/give @s stone 1', 600); // goes to the main inventory: the hotbar is full
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} stone`, 500);
+  bot.setQuickBarSlot(8); await sleep(300);
+  bot._client.write('pick_item_from_block', { position: { x: pos.x, y: pos.y, z: pos.z + 2 }, includeData: false });
+  await sleep(900);
+  check('Pick-block with slot 9 selected leaves the head in slot 9', headInSlot9() && heads() === 1, 'slot 9 = ' + (bot.inventory.slots[44] && bot.inventory.slots[44].name));
+  // Control: with an ordinary item selected (a filler plank: not the head, not the admin chest) the same packet swaps
+  const plain = bot.inventory.slots.findIndex((it, i) => i >= 36 && i <= 43 && it && /_planks$/.test(it.name));
+  if (plain >= 0) bot.setQuickBarSlot(plain - 36);
+  await sleep(300);
+  bot._client.write('pick_item_from_block', { position: { x: pos.x, y: pos.y, z: pos.z + 2 }, includeData: false });
+  await sleep(900);
+  check('Control: pick-block swaps stone into an ordinary selected slot (the test reaches the server)',
+      plain >= 0 && !!bot.inventory.slots[plain] && bot.inventory.slots[plain].name === 'stone',
+      'slot ' + (plain - 35) + ' = ' + (plain >= 0 && bot.inventory.slots[plain] && bot.inventory.slots[plain].name));
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} air`, 300);
+  for (const f of fillers.concat(['stone'])) await cmd('/clear @s ' + f, 150);
+
+  // A powered shelf would swap the hotbar (slots 7-9) with its contents
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 3} redstone_block`, 400);
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} oak_shelf[facing=north,powered=true]`, 600);
+  const shelf = bot.blockAt(pos.offset(0, 0, 2));
+  const sw = bot.inventory.slots.findIndex((it, i) => it && it.name === 'diamond_sword' && i >= 36 && i <= 43);
+  if (sw >= 0) bot.setQuickBarSlot(sw - 36);
+  await sleep(300);
+  const atShelf = chat.length;
+  try { await bot.lookAt(shelf.position.offset(0.5, 0.5, 0), true); await bot.activateBlock(shelf, { x: 0, y: 0, z: -1 }); } catch (e) { console.log('  shelf: ' + e.message); }
+  await sleep(900);
+  check('Powered shelf: refused while the hotbar holds the head, and says why', /^oak_shelf/.test(shelf ? shelf.name : '') && headInSlot9() && heads() === 1 && !!saw(/powered shelf would swap your hotbar/, atShelf),
+      (shelf ? shelf.name : 'no shelf') + ', ' + chat.slice(atShelf).join(' / '));
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 2} air`, 300);
+  await cmd(`/setblock ${pos.x} ${pos.y} ${pos.z + 3} air`, 300);
+  await cmd('/kill @e[type=item,distance=..16]', 400);
 
   now = await rejoinCounts();
   diff = sameCounts(base, now);

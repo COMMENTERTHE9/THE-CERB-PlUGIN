@@ -84,8 +84,9 @@ public final class PlayerHubMenu extends PlayerMenu {
         v.button(13, Ui.glow(Ui.item(Material.NETHER_STAR, PlayerTheme.REALM + "✦ Realm: " + realm.displayName, Ui.lore()
                 .stat("Realm", "R" + realm.number + " of " + Realm.values().length + ChatColor.DARK_GRAY + "  (" + realm.epithet + ")")
                 .stat("Realm magnitude", "x" + Numbers.compact(s.realmMultiplier()) + (testRealm ? "  (test realm from an admin)" : ""))
-                .gap().text("Each realm is a step of x8 in power:")
-                .text("damage, health and defense all scale.")
+                .gap().text("Each realm is a step of " + PlayerTheme.realmStep(plugin.getCombatConfig().mobHealthScaling) + ":")
+                .text("damage against creatures, health")
+                .text("and defense all scale.")
                 .gap().raw(Availability.State.IN_DEVELOPMENT.label + ChatColor.GRAY + ": breakthroughs to the next realm")
                 .text("are not built yet. Everyone is " + plugin.getPlayerRealms().defaultRealm().displayName + " for now.")
                 .hint("Click for the realm ladder").build()), true), c -> openSection(c.player(), "ascension"));

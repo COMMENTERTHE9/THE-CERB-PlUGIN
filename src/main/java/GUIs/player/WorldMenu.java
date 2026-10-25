@@ -53,7 +53,7 @@ public final class WorldMenu extends PlayerMenu {
             danger.stat("Next level", Fmt.grouped(Math.round(level * perLevel)) + " blocks from spawn");
         }
         danger.gap().text("Rarer creatures belong to higher")
-                .text("realms: x8 health per realm.");
+                .text("realms: " + PlayerTheme.realmStep(scaling) + " health per realm.");
         v.set(20, Ui.item(Material.ZOMBIE_HEAD, ChatColor.RED + "Danger", danger.build()));
 
         ChunkDiscoveryManager chunks = plugin.getChunkDiscoveryManager();

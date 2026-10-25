@@ -854,6 +854,39 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         return false;
     }
 
+    /**
+     * A powered shelf swaps the player's hotbar with its items (vanilla 1.21.9+): one shelf takes
+     * slots 7-9, three take all nine, so the Player Menu head (slot 9) would end up on the shelf.
+     * Powered shelves therefore can't swap while the hotbar holds a menu item; unpowered shelves
+     * work as usual (placing the head itself on one is already refused).
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onPoweredShelf(PlayerInteractEvent e) {
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK || e.getClickedBlock() == null) return;
+        if (!(e.getClickedBlock().getBlockData() instanceof org.bukkit.block.data.type.Shelf shelf) || !shelf.isPowered()) return;
+        org.bukkit.inventory.PlayerInventory inv = e.getPlayer().getInventory();
+        for (int i = 0; i < 9; i++) {
+            if (isProtectedMenuItem(inv.getItem(i))) {
+                e.setCancelled(true);
+                if (e.getHand() == org.bukkit.inventory.EquipmentSlot.HAND) {
+                    e.getPlayer().sendMessage(ChatColor.YELLOW + "A powered shelf would swap your hotbar, Player Menu head included. Unpower it to use it.");
+                }
+                return;
+            }
+        }
+    }
+
+    /** Middle-click pick-block must not move the head (or the admin chest) in or out of its slot. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPickItem(io.papermc.paper.event.player.PlayerPickItemEvent e) {
+        org.bukkit.inventory.PlayerInventory inv = e.getPlayer().getInventory();
+        int src = e.getSourceSlot(), dst = e.getTargetSlot();
+        if ((src >= 0 && src < inv.getSize() && isProtectedMenuItem(inv.getItem(src)))
+                || (dst >= 0 && dst < inv.getSize() && isProtectedMenuItem(inv.getItem(dst)))) {
+            e.setCancelled(true);
+        }
+    }
+
     /** Right-clicking a mob, item frame, villager... with the head opens the menu instead of giving the head away. */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onInteractEntityWithMenuItem(PlayerInteractEntityEvent e) {

@@ -219,7 +219,8 @@ public final class SkillDefinitions {
                 SkillEffect.planned("Better arrow accuracy"))));
         d.add(new SkillDef("Heavy Armor Training", "Fighting in iron, diamond and netherite armor.",
                 List.of("Take damage while wearing at least one iron, diamond or netherite armor piece: "
-                                + "XP equal to half the damage, up to " + xp(CombatSkillProcessor.HEAVY_ARMOR_XP_MAX) + " per hit.",
+                                + "XP equal to half the damage, up to " + xp(CombatSkillProcessor.HEAVY_ARMOR_XP_MAX)
+                                + " per hit (arrows and other projectiles don't count yet).",
                         "Kill mobs with a weapon that no other skill trains (spears, tools...) while wearing such armor."),
                 Material.NETHERITE_CHESTPLATE, C, List.of(
                 SkillEffect.live("Extra armor (damage reduction)", PlayerDefenseManager::heavyArmorBonus, PCT),
@@ -301,11 +302,13 @@ public final class SkillDefinitions {
         d.add(new SkillDef("Lockpicking", "Opening what is locked.", List.of(), Material.IRON_DOOR, U,
                 List.of(SkillEffect.planned("Open locked chests and doors"))));
         d.add(new SkillDef("Survival", "Enduring the wild: fire, cold and deep water.",
-                List.of("Take damage from anything (mobs, falls, fire, drowning...): "
-                        + xp(CombatSkillProcessor.SURVIVAL_HIT_XP) + " XP per hit."),
+                List.of("Take damage from mob attacks, falls, fire, drowning and the like: "
+                        + xp(CombatSkillProcessor.SURVIVAL_HIT_XP) + " XP per hit (arrows and other projectiles don't count yet)."),
                 Material.FLINT_AND_STEEL, U, List.of(
-                SkillEffect.live("Fire resistance", (c, l) -> PlayerDefenseManager.survivalFireResist(l), PCT),
-                SkillEffect.live("Cold resistance", (c, l) -> PlayerDefenseManager.survivalColdResist(l), PCT),
+                new SkillEffect("Fire resistance", EffectStatus.LIVE, (c, l) -> PlayerDefenseManager.survivalFireResist(l), PCT,
+                        "Standing in fire and fire spells; not yet burning afterwards, lava, magma or campfires."),
+                new SkillEffect("Cold resistance", EffectStatus.LIVE, (c, l) -> PlayerDefenseManager.survivalColdResist(l), PCT,
+                        "Freezing in powder snow and frost spells."),
                 SkillEffect.live("Drowning resistance", (c, l) -> PlayerDefenseManager.survivalDrowningResist(l), PCT))));
         return d;
     }

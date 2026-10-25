@@ -54,7 +54,8 @@ public final class GuideMenu extends PlayerMenu {
                 "When you die you respawn at once and keep your items."));
         v.set(29, topic(Material.NETHER_STAR, "Realms",
                 Realm.values().length + " realms, from " + Realm.values()[0].displayName + " to "
-                        + Realm.values()[Realm.values().length - 1].displayName + ". Each realm is x8 the one before.",
+                        + Realm.values()[Realm.values().length - 1].displayName + ". Each realm is "
+                        + PlayerTheme.realmStep(plugin.getCombatConfig().mobHealthScaling) + " the one before.",
                 "Everyone is " + plugin.getPlayerRealms().defaultRealm().displayName
                         + " for now: rising to the next realm is not built yet."));
         v.set(31, topic(Material.HEART_OF_THE_SEA, "Essence and spells",

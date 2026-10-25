@@ -58,7 +58,8 @@ public final class StatsMenu extends PlayerMenu {
                         + ChatColor.GRAY + "  (" + realm.realm().epithet + ")")
                 .stat("Realm magnitude", Fmt.mult(realm.multiplier()) + (testRealm ? "  (test realm set by an admin)" : ""))
                 .raw(ChatColor.DARK_GRAY + "  Breakthroughs to higher realms are not built yet.")
-                .stat("Total skill level", Fmt.grouped(GUIs.player.SkillView.totalLevel(plugin, id)))
+                .stat("Total skill level", plugin.getSkillManager().hasLoadedSkills(id)
+                        ? Fmt.grouped(GUIs.player.SkillView.totalLevel(plugin, id)) : "loading...")
                 .gap().text("Your attributes grow by themselves").text("as your skills level up.").build()));
 
         if (!svc.isTracked(id)) {
@@ -234,7 +235,9 @@ public final class StatsMenu extends PlayerMenu {
                 .stat("  Armor reduction", Fmt.pct(vh.getArmorReduction(p)) + " (max " + Fmt.pct(s.rules().limits().armor()) + ")")
                 .stat("  Defense bar", bar == null ? "?" : num(bar.getMaximum()) + " points")
                 .stat("  Fire / cold / drowning", Fmt.pct(vh.getPlayerFireResistance(p)) + " / "
-                        + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)));
+                        + Fmt.pct(vh.getPlayerColdResistance(p)) + " / " + Fmt.pct(vh.getPlayerDrowningResistance(p)))
+                .raw(ChatColor.DARK_GRAY + "  Fire: standing in fire and fire spells;")
+                .raw(ChatColor.DARK_GRAY + "  not yet burning, lava or magma.");
         return Ui.item(Material.TOTEM_OF_UNDYING, ChatColor.RED + "Survivability", l.build());
     }
 
@@ -283,10 +286,12 @@ public final class StatsMenu extends PlayerMenu {
         KillXp.Params kx = plugin.getAttributesConfig().killXp();
         var mapper = plugin.getSkillMapper();
         String material = wc == WeaponClass.SPEAR ? "IRON_SPEAR" : held == Material.AIR ? "AIR" : held.name();
-        String skill = mapper == null ? "" : mapper.resolve(material);
+        String skill = mapper == null ? "" : mapper.resolveKillSkill(material);
         Ui.Lore l = Ui.lore();
         if (skill.isEmpty()) {
-            l.text("Kills with this weapon type don't").text("train a skill yet.");
+            l.text("Kills with this weapon type train no")
+                    .text("skill, except " + Skills.SkillNames.display("Heavy Armor Training") + " while")
+                    .text("you wear heavy armor.");
         } else if (!kx.enabled()) {
             l.text("Kill XP v2 is turned off on this server.");
         } else {
