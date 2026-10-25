@@ -121,27 +121,46 @@ public final class ClassProfile {
     /** The stored document carried {@code stored}: every later snapshot must be stamped above it. */
     public void stampAfter(long stored) { saveStamp = Math.max(saveStamp, stored); }
 
-    /** The saved form (YAML). {@code now} decides which cooldowns are long enough to keep. */
-    public String toYaml(long now) {
-        YamlConfiguration y = new YamlConfiguration();
-        y.set("version", VERSION);
+    /**
+     * Everything that gets saved, copied at one moment (cheap: a few small maps; loadouts are
+     * immutable). Taken on the player's thread; turning it into text ({@link Snapshot#toYaml}) can
+     * then happen anywhere, off the tick.
+     */
+    public record Snapshot(Map<String, Progress> classes, List<Loadout> loadouts, int active, Map<String, Long> cooldowns) {
+
+        /** The saved form (YAML). Pure: safe on any thread. */
+        public String toYaml() {
+            YamlConfiguration y = new YamlConfiguration();
+            y.set("version", VERSION);
+            for (Map.Entry<String, Progress> e : classes.entrySet()) {
+                y.set("classes." + e.getKey() + ".rank", e.getValue().rank());
+                y.set("classes." + e.getKey() + ".xp", e.getValue().xp());
+            }
+            for (int i = 0; i < loadouts.size(); i++) {
+                Loadout l = loadouts.get(i);
+                String k = "loadouts." + i + ".";
+                y.set(k + "name", l.name());
+                y.set(k + "actives", blanks(l.actives()));
+                y.set(k + "passives", blanks(l.passives()));
+                y.set(k + "keystone", l.keystone() == null ? "" : l.keystone());
+            }
+            y.set("active", active);
+            cooldowns.forEach((key, end) -> y.set("cooldowns." + key.replace(':', '~'), end));
+            return y.saveToString();
+        }
+    }
+
+    /** What would be saved now: progress (dormant classes included), loadouts, the active one, cooldowns with 3 s or more left. */
+    public Snapshot snapshot(long now) {
         Map<String, Progress> all = new LinkedHashMap<>(dormant);
         all.putAll(classes);
-        for (Map.Entry<String, Progress> e : all.entrySet()) {
-            y.set("classes." + e.getKey() + ".rank", e.getValue().rank());
-            y.set("classes." + e.getKey() + ".xp", e.getValue().xp());
-        }
-        for (int i = 0; i < loadouts.size(); i++) {
-            Loadout l = loadouts.get(i);
-            String k = "loadouts." + i + ".";
-            y.set(k + "name", l.name());
-            y.set(k + "actives", blanks(l.actives()));
-            y.set(k + "passives", blanks(l.passives()));
-            y.set(k + "keystone", l.keystone() == null ? "" : l.keystone());
-        }
-        y.set("active", active);
-        cooldowns.saved(now, 3_000).forEach((key, end) -> y.set("cooldowns." + key.replace(':', '~'), end));
-        return y.saveToString();
+        return new Snapshot(Collections.unmodifiableMap(all), List.copyOf(loadouts), active,
+                Collections.unmodifiableMap(cooldowns.saved(now, 3_000)));
+    }
+
+    /** The saved form (YAML). {@code now} decides which cooldowns are long enough to keep. */
+    public String toYaml(long now) {
+        return snapshot(now).toYaml();
     }
 
     /**

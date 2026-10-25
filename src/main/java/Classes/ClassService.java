@@ -154,7 +154,7 @@ public final class ClassService implements AttributeSource {
         ClassProfile prof = profiles.remove(id);
         if (prof != null) {
             long now = System.currentTimeMillis();
-            write(id, prof.toYaml(now), prof.nextStamp(now));
+            write(id, prof.snapshot(now), prof.nextStamp(now));
         }
         saveQueued.remove(id);
         forgetRuntime(id);
@@ -228,9 +228,9 @@ public final class ClassService implements AttributeSource {
     }
 
     /**
-     * Save soon: at most one snapshot per player per second, taken on the player's thread (building
-     * the document costs about 0.07 ms, too much to repeat for every XP gain) and written on the
-     * same single writer thread as loads and quit saves, so the database sees them in order. Quit and
+     * Save soon: at most one snapshot per player per second, copied on the player's thread and
+     * turned into text and written on the same single writer thread as loads and quit saves, so the
+     * database sees them in order and the tick never builds the document. Quit and
      * shutdown write at once ({@link #unload}, {@link #shutdown}); a pending save of a player who
      * left is dropped by the scheduler, after the quit save already wrote everything.
      */
@@ -242,9 +242,7 @@ public final class ClassService implements AttributeSource {
             ClassProfile prof = profiles.get(id);
             if (prof == null) return;
             long now = System.currentTimeMillis();
-            String data = prof.toYaml(now);
-            long stamp = prof.nextStamp(now);
-            write(id, data, stamp);
+            write(id, prof.snapshot(now), prof.nextStamp(now)); // a cheap copy here; the text is built on the writer
         }, () -> saveQueued.remove(id), SAVE_DELAY_TICKS);
         if (task == null) saveQueued.remove(id); // leaving: the quit save covers it
     }
@@ -253,11 +251,11 @@ public final class ClassService implements AttributeSource {
     private final java.util.Set<UUID> saveQueued = ConcurrentHashMap.newKeySet();
     private static final long SAVE_DELAY_TICKS = 20;
 
-    private void write(UUID id, String data, long stamp) {
+    private void write(UUID id, ClassProfile.Snapshot snap, long stamp) {
         try {
-            writer.execute(() -> db.saveClassData(id, ClassProfile.VERSION, data, stamp));
+            writer.execute(() -> db.saveClassData(id, ClassProfile.VERSION, snap.toYaml(), stamp));
         } catch (java.util.concurrent.RejectedExecutionException e) {
-            db.saveClassData(id, ClassProfile.VERSION, data, stamp); // shutting down: write here
+            db.saveClassData(id, ClassProfile.VERSION, snap.toYaml(), stamp); // shutting down: write here
         }
     }
 

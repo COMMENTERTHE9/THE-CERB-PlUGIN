@@ -169,6 +169,31 @@ class ClassCoreTest {
     }
 
     @Test
+    void cooldownTextMatchesTheOldFormat() {
+        for (long ms : new long[]{0, 49, 50, 999, 1234, 2050, 29_960, 59_999}) {
+            assertEquals(String.format(java.util.Locale.ROOT, "%.1f s", Math.round(ms / 100.0) / 10.0), AbilityCaster.seconds(ms), "ms " + ms);
+        }
+    }
+
+    @Test
+    void aSnapshotSavesTheSameDocument() {
+        ClassCatalog cat = shipped();
+        ClassProfile p = new ClassProfile();
+        p.learn("warrior");
+        p.setRank("warrior", 7);
+        p.setLoadout(0, Loadout.empty("A").withActive(0, "cleave"));
+        p.cooldowns().commit(cat.ability("charge"), 10_000, cat.groupMs(), 1_000);
+        ClassProfile.Snapshot snap = p.snapshot(2_000);
+        p.setRank("warrior", 9); // later changes don't leak into a snapshot already taken
+        String text = snap.toYaml();
+        List<String> repairs = new java.util.ArrayList<>();
+        ClassProfile back = ClassProfile.fromYaml(text, cat, 2_000, repairs);
+        assertEquals(7, back.rank("warrior"), repairs.toString());
+        assertEquals("cleave", back.loadouts().get(0).actives().get(0));
+        assertEquals(9_000, back.cooldowns().remaining(cat.ability("charge"), 2_000));
+    }
+
+    @Test
     void exclusiveTagsAllowOnlyOnePerTag() throws Exception {
         ClassCatalog cat = of("classes:\n  a: {}\n  b: {}\n", """
                 abilities:

@@ -119,7 +119,7 @@ public final class AbilityCaster {
             }
         }
         long left = prof.cooldowns().remaining(a, now);
-        if (left > 0) return fail(p, a.displayName() + ": " + String.format(Locale.ROOT, "%.1f s", left / 1000.0));
+        if (left > 0) return fail(p, a.displayName() + ": " + seconds(left));
         if (a.essenceCost() > 0 && !mana.spendMana(p, ManaType.BASIC, a.essenceCost())) {
             return fail(p, a.displayName() + ": not enough Essence (" + Math.round(a.essenceCost()) + ")");
         }
@@ -133,6 +133,12 @@ public final class AbilityCaster {
         sound(p, a);
         run(p, prof, a, 0, null, false);
         return true;
+    }
+
+    /** "2.1 s" for 2,050 ms (rounded to tenths). Pressing a key on cooldown is common: no Formatter for it. */
+    static String seconds(long ms) {
+        long tenths = (Math.max(0, ms) + 50) / 100;
+        return tenths / 10 + "." + tenths % 10 + " s";
     }
 
     /** "a blade or an axe": what an ability needs in hand, for messages. */
