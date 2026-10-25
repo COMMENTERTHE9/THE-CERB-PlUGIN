@@ -32,8 +32,8 @@ Before any significant new system or major feature, examine the code it touches 
 | 1 | Performance assessment and targeted optimization (then repeated at the start of each later milestone) | Done 2026-10-25: `docs/PERFORMANCE.md` (Cerberus time: menu clicks −66 to −69%, combat −17 to −37%, hits taken −21 to −30%) |
 | 2 | Decisions A–E (below), as small testable changes | Done 2026-10-25: `docs/STATUS.md` (each verified in game, before and after; within the performance budget) |
 | 3 | Player Menu 2.1: animations and feedback | Done 2026-10-25: `docs/STATUS.md` (21 in-game checks; within the performance budget; an idle open menu costs nothing) |
-| 4 | Classes and abilities **design**: review the roster and the weapon archetypes; architecture and phased plan | Next |
-| 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | |
+| 4 | Classes and abilities **design**: review the roster and the weapon archetypes; architecture and phased plan | Done 2026-10-25: `docs/design/CLASSES.md` (eight owner decisions in its §10, each with a recommendation) |
+| 5 | **Prototype** the ability system with 2–3 distinct trees (suggested: Warrior, Mage, Duelist), verified in game | Next: in progress, built on the §10 recommendations until the owner decides |
 | 6 | Scale up classes and abilities incrementally, keeping quality, identity, fair progression and performance | |
 
 Rules for every step: routine engineering decisions are made by the lead developer; material design conflicts, scope changes and destructive operations go to the owner with a recommendation. Work stays on the development branch; nothing merges into `master` automatically. The owner's world, characters, inventories and databases are never touched by tests; risky changes are tried on the separate development server.

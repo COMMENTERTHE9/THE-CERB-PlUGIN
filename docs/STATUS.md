@@ -8,7 +8,9 @@
 - **Step 2**, decisions A–E: speed bonuses stay off in PvP, powered shelves work again, Survival's fire resistance covers every kind of fire, projectiles train Survival and Heavy Armor Mastery, and spears train Weapon Mastery.
 - **Step 3**, Player Menu 2.1: a short opening animation, a light sweeping the header between screens, page-turn sounds, the skill bar filling up, and "since you last looked" progress with one chime and one level-up flash. It stays within the performance budget, and an idle open menu costs nothing.
 
-The owner has playtested Player Menu 2.0; the remaining checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 4, the classes and abilities design**, then the prototype.
+- **Step 4**, the classes and abilities design: `docs/design/CLASSES.md`.
+
+The owner has playtested Player Menu 2.0; the remaining checks are in `docs/PLAYTEST_CHECKLIST.md`. **Next: Step 5, the Warrior / Mage / Duelist prototype**, built on the design's recommendations until the owner decides.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -212,3 +214,14 @@ Checked in game: an animation interrupted by a fast click writes nothing into th
 7. **Ranged mobs ignore mob level.** Melee mob damage scales with the mob's level and tier (`combat.yml mob-damage-scaling`); arrows, fireballs and other mob projectiles do vanilla damage at any level. A level-100 skeleton shoots like a level-1 one. Recommendation: scale mob projectiles the same way, as a separate small change, because it makes ranged mobs much more dangerous.
 8. **Idle damage farms.** Defensive XP (melee and now projectiles) has no idle check: a player standing in a mob trap still trains Survival and Heavy Armor Mastery, as before Step 2. Recommendation: one rule for all defensive XP, for example none after a minute without player input (the server tracks this), when gathering or anti-grind work comes up.
 9. **Environmental damage is vanilla-sized.** Falls, fire and lava deal vanilla amounts against a 100–300 health pool: lava costs 1–4% of health per hit where vanilla's 20 hearts lose 20%. Fire resistance now lowers that further. If lava and falls should stay dangerous, scale environmental damage with max health; that is a separate design decision.
+10. **Classes and abilities:** eight decisions in `docs/design/CLASSES.md` §10, each with a recommendation:
+    - abilities = the designed Techniques;
+    - how to cast;
+    - unlock by rank;
+    - slot counts;
+    - abilities in PvP;
+    - skill-based class entry;
+    - the roster;
+    - weapon display names.
+
+    The prototype uses the recommendations until you decide.
