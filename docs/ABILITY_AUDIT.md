@@ -29,7 +29,7 @@
 
 Key = the default control scheme (quick keys) in the loadout each phase uses. With a bow, right and left swap.
 
-**In numbers**, on the final build: `controls` 26, `combos` 13, `warrior` 20, `mage` 20, `duelist` 14, `mixed` 17, `fixes` 20 (the review's findings), `persist` 4. That makes 134 checks, all passing.
+**In numbers**, on the final build: `controls` 26, `combos` 13, `warrior` 20, `mage` 23, `duelist` 14, `mixed` 17, `fixes` 20 (the review's findings), `persist` 4. That makes 137 checks, all passing.
 
 ### Warrior
 
@@ -50,7 +50,7 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 | **Arcane Bolt** (active, rank 1) | Instant bolt at the enemy you look at, 8 blocks, 1.4x spell hit (Essence scaling), 15 Essence, 1.5 s; focus | Hits a zombie 6 blocks away once (8.4 → 10.0 with Essence), costs exactly 15, draws a beam; 0.7 blocks off: still hits; 2.5 blocks off, 10 blocks away, or behind a wall: "no target within 8 blocks", no Essence, no cooldown; blaze rod, breeze rod and stick all work; sword: "needs a focus"; almost no Essence: "needs 15 Essence", no cooldown. **The owner's report:** the Fireball Wand now casts it (it cast its own spell before), and still casts its own Fireball when no right-click ability fits a focus (Cleave on right-click used to make it do nothing) | ✅ after fixes |
 | **Fireball** (active, rank 3) | The Fireball spell, mobs only, flies through players; 20 Essence, 2 s; focus | Q: flies and bursts on a zombie (1 hit), costs exactly 20, the rod stays in hand | ✅ |
 | **Frost Nova** (active, rank 5) | Circle 4 blocks, 0.8x spell hit, Slowness II 3 s, up to 8; 30 Essence, 8 s | Hits the 3 zombies within 4 blocks, not the one 6 away; all 3 slowed (`/cerb mobs`); costs exactly 30 | ✅ |
-| **Blink** (active, rank 8) | Teleport up to 6 blocks where you look, never into blocks; 20 Essence, 6 s; movement lockout | Moved 6.00 blocks, costs 20; wall 3 blocks ahead: stops 2 blocks in (never inside); facing a wall: "Blink: no room", nothing spent | ✅ |
+| **Blink** (active, rank 8) | Teleport up to 6 blocks where you look, never into blocks; 20 Essence, 6 s; movement lockout | Moved 6.00 blocks, costs 20. Wall 3 blocks ahead: stops at 2.00 (never inside). Facing a wall, or looking at your own feet: "Blink: no room", nothing spent. **Looking down at open ground** (the owner's playtest: it said "no room" there): lands on the floor where you look, 2.2 blocks at 30° down, the full 5.9 at 10° down | ✅ after fix |
 | **Essence Flow** (passive, rank 2) | +15% Essence regeneration | 3 s from empty: 226 vs 201 without | ✅ |
 | **Spell Focus** (passive, rank 6) | +8 Essence | Max mana 1,100 → 1,180 | ✅ |
 | **Glass Cannon** (keystone, rank 12) | +25% spell damage, 15% less max health | Arcane Bolt's spell multiplier x2.32 → x2.57 (+0.25, read from the trace); max health 102 → 87 | ✅ |
@@ -112,6 +112,8 @@ Key = the default control scheme (quick keys) in the loadout each phase uses. Wi
 
    Now only enemies count, with the kill-XP grey-mob share (`ClassRanks.castXp`, unit-tested).
 9. **A negative bonus read "+-4.6%"**: a keystone's slower attacks on the Skill, Stats and admin pages (found by the regression suite). Signed bonuses now show one sign.
+10. **Blink said "no room" looking down at open ground** (the owner's playtest). It walked the feet along the look direction, straight into the floor. Now it follows the sight line and stands you on the ground under it, checking the whole body (0.6 by 1.8 blocks) at the landing spot.
+11. **"Arcane Bolt needs a focus" didn't say what a focus is** (the owner's playtest). It now reads "needs a focus (blaze rod, breeze rod or stick)", and the menus say the same.
 
 ## Independent review
 

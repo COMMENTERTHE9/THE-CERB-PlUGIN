@@ -720,7 +720,7 @@ async function mage() {
   }
   await hold('iron_sword'); await fresh();
   t = Date.now(); await rclick(); await sleep(600);
-  check('With a sword: "Arcane Bolt needs a focus", nothing spent', !!flashed(t, /Arcane Bolt needs a focus/), JSON.stringify(flashes(t)));
+  check('With a sword: "Arcane Bolt needs a focus (blaze rod, breeze rod or stick)", nothing spent', !!flashed(t, /Arcane Bolt needs a focus \(blaze rod, breeze rod or stick\)/), JSON.stringify(flashes(t)));
   await hold('blaze_rod'); await fresh();
   await lookAt(zombies()[0]);
   bot.chat(`/cerb mana ${NAME} 0`); await sleep(60); // press at once: Essence regenerates about 70 per second
@@ -768,6 +768,23 @@ async function mage() {
   e1 = await essence();
   check('Facing the wall: "Blink: no room", no Essence spent', !!flashed(t, /Blink: no room/) && near(e0, e1, 3), `${JSON.stringify(flashes(t))}; Essence ${e0} -> ${e1}`);
   await cmd(`/fill ${X - 2} ${Y} ${Z + 3} ${X + 2} ${Y + 3} ${Z + 3} air`, 400);
+  // Looking down at open ground (the owner's playtest: "Blink: no room" there): it lands on the floor where you look.
+  await fresh(); await stand(0, -6); await face(SOUTH, -Math.PI / 6); // 30° down: the sight line meets the floor ~2.8 blocks ahead
+  p0 = pos(); t = Date.now();
+  await sneaking(rclick); await sleep(800);
+  let dz = pos().z - p0.z, dy = pos().y - p0.y;
+  check('Looking 30° down at open ground: Blink lands on the floor where you look', !!flashed(t, /✦ Blink/) && dz >= 1.8 && dz <= 3.2 && Math.abs(dy) < 0.2,
+    `${JSON.stringify(flashes(t))}; forward ${dz.toFixed(2)}, up ${dy.toFixed(2)}`);
+  await fresh(); await stand(0, -6); await face(SOUTH, -Math.PI / 18); // 10° down: the floor is past 6 blocks
+  p0 = pos(); t = Date.now();
+  await sneaking(rclick); await sleep(800);
+  dz = pos().z - p0.z; dy = pos().y - p0.y;
+  check('Looking 10° down: the full 6 blocks, on the floor', !!flashed(t, /✦ Blink/) && dz >= 5.4 && dz <= 6.1 && Math.abs(dy) < 0.2, `forward ${dz.toFixed(2)}, up ${dy.toFixed(2)}`);
+  await fresh(); await stand(0, -6); await face(SOUTH, -Math.PI / 2 + 0.02); // at your own feet
+  e0 = await essence(); t = Date.now();
+  await sneaking(rclick); await sleep(700);
+  e1 = await essence();
+  check('Looking straight down at your feet: "Blink: no room", nothing spent', !!flashed(t, /Blink: no room/) && near(e0, e1, 3), `${JSON.stringify(flashes(t))}; Essence ${e0} -> ${e1}`);
   // Passives and keystone.
   await stand(0, 0);
   const v0 = await statsValues();

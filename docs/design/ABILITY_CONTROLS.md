@@ -168,7 +168,7 @@ A refused cast spends nothing: no Essence, cooldown or Momentum. Area abilities 
 | Cooldown | `Cleave 2.4 s` | A soft tick |
 | Too little Essence | `Arcane Bolt needs 15 Essence` | A fizzle and a puff of smoke |
 | No Momentum to spend | `Execute needs 1 Momentum` | A low note |
-| Wrong item | `Arcane Bolt needs a focus` | A low note |
+| Wrong item | `Arcane Bolt needs a focus (blaze rod, breeze rod or stick)`, `Execute needs a blade, an axe, a polearm or a blunt weapon` | A low note |
 | No target, no room | `Arcane Bolt: no target within 8 blocks`, `Blink: no room` | A whiff |
 | Not unlocked | `Execute unlocks at Warrior rank 6` | A low note |
 | Nothing on the key | `Nothing on Sneak + F · set it in Classes & Abilities` | A low note |

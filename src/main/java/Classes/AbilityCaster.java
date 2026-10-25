@@ -467,21 +467,52 @@ public final class AbilityCaster {
      * Where a Blink lands: as far as its distance toward where you look, stopping before the first
      * block (never into one) and inside the caster's region. Null when there is no room at all.
      */
+    /**
+     * Where a Blink lands: up to its distance along where you look, never into or through blocks.
+     * The sight line walks forward from the eye until it meets a block. Under each point of it, the
+     * ground within two blocks is where you would stand; with no ground that close, you are in the
+     * air there. So looking at the floor lands on the floor where you look, looking ahead keeps your
+     * height and hops a one-block wall, and looking up (or off a ledge) leaves you to fall. Null when
+     * no spot is at least a block away (a wall in your face, looking at your own feet).
+     */
     private static Location blinkDestination(Player p, EffectSpec.Blink b) {
         Location start = p.getLocation();
-        Vector dir = p.getEyeLocation().getDirection().normalize();
+        Location eye = p.getEyeLocation();
+        double eyeHeight = eye.getY() - start.getY();
+        Vector dir = eye.getDirection().normalize();
         Location best = null;
-        for (double s = 0.5; s <= b.distance() + 1.0e-9; s += 0.5) {
-            Location feet = start.clone().add(dir.clone().multiply(s));
-            if (!Bukkit.isOwnedByCurrentRegion(feet)) break;
-            Block f = feet.getBlock();
-            if (!f.isPassable() || !f.getRelative(BlockFace.UP).isPassable()) break; // never into blocks
-            best = feet;
+        for (double s = 0.25; s <= b.distance() + 1.0e-9; s += 0.25) {
+            Location sight = eye.clone().add(dir.clone().multiply(s));
+            if (!Bukkit.isOwnedByCurrentRegion(sight) || !sight.getBlock().isPassable()) break; // the sight line meets a block
+            Location feet = null;
+            for (int down = 1; down <= 2; down++) { // the ground under this point: stand on it
+                Block g = sight.getBlock().getRelative(BlockFace.DOWN, down);
+                if (!g.isPassable()) {
+                    feet = sight.clone();
+                    feet.setY(g.getY() + 1.0);
+                    break;
+                }
+            }
+            if (feet == null) feet = sight.clone().subtract(0, eyeHeight, 0); // nothing under it: in the air
+            if (standsFree(feet)) best = feet; // else no room to stand here: look further
         }
-        if (best == null) return null;
+        if (best == null || best.distance(start) < 1.0) return null;
         best.setYaw(start.getYaw());
         best.setPitch(start.getPitch());
         return best;
+    }
+
+    /** True when a player's body (0.6 wide, 1.8 tall) standing at {@code feet} touches no solid block. */
+    private static boolean standsFree(Location feet) {
+        for (double dx : new double[]{-0.3, 0.3}) {
+            for (double dz : new double[]{-0.3, 0.3}) {
+                for (double dy : new double[]{0.0, 0.9, 1.79}) {
+                    Location corner = feet.clone().add(dx, dy, dz);
+                    if (!Bukkit.isOwnedByCurrentRegion(corner) || !corner.getBlock().isPassable()) return false;
+                }
+            }
+        }
+        return true;
     }
 
     private boolean blink(Player p, EffectSpec.Blink b, Location checked) {

@@ -285,7 +285,7 @@ On top of that, the test Fireball Wand caught every right-click before the abili
 - **Feedback for every press**, on the HUD (it now has a message slot) with a sound per reason. It covers casts, cooldowns, Essence, the wrong item, no target or no room, no Momentum, not unlocked, an empty key and switching. Nothing goes to chat. An **ability bar** (boss bar, `/class bar auto|on|off`) shows keys, readiness and Momentum.
 - **Checks before anything is spent:** a refused cast costs no Essence, cooldown or Momentum. Single-target abilities get aim assist (0.75 blocks) and a visible bolt.
 
-**Audited (Phase 2, `docs/ABILITY_AUDIT.md`):** all 21 abilities one by one, with real key presses and effects measured in the world. 134 checks in eight phases, all passing on the final build: controls 26, combos 13, warrior 20, mage 20, duelist 14, mixed 17, the review's fixes 20, persistence 4. Every "nothing happens" check has a positive control. The harness (`tools/playtest/abilities.js`) handles the test client's limits instead of hiding them:
+**Audited (Phase 2, `docs/ABILITY_AUDIT.md`):** all 21 abilities one by one, with real key presses and effects measured in the world. 137 checks in eight phases, all passing on the final build: controls 26, combos 13, warrior 20, mage 23, duelist 14, mixed 17, the review's fixes 20, persistence 4. Every "nothing happens" check has a positive control. The harness (`tools/playtest/abilities.js`) handles the test client's limits instead of hiding them:
 - the 1.21.9+ motion packet;
 - item-use rotation in degrees;
 - no Q-drop prediction;
@@ -325,6 +325,12 @@ After the review's fixes, every suite they touch passed again on the final build
 The suite also found two real bugs, both fixed:
 - the Fireball Wand doing nothing with Cleave on right-click;
 - the "+-4.6%" display.
+
+**The owner's first look at the new controls** (screenshots, 2026-10-25). Two things fixed the same day:
+- **Blink said "no room" looking down at open ground.** It moved the feet along the look direction, which points into the floor. It now follows your sight line and stands you on the ground where you look.
+- **"Arcane Bolt needs a focus" didn't say what a focus is.** It now reads "needs a focus (blaze rod, breeze rod or stick)".
+
+The usability playtest continues.
 
 **Performance** (`docs/PERFORMANCE.md`; 9 bots, two runs each, the same method as before):
 - **Ability load:** Cerberus at 0.053 / 0.038 ms per tick after, against 0.053 / 0.024 before. Within the run-to-run spread.

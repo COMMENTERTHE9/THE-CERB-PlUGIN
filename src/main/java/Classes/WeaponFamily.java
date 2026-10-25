@@ -43,9 +43,19 @@ public enum WeaponFamily {
         }
     }
 
-    /** "a blade", "an axe": for "needs a blade" messages. */
+    /**
+     * "a blade", "an axe": for "needs a blade" messages. A focus names the items that are one, so a
+     * player told "needs a focus" knows what to hold.
+     */
     public String withArticle() {
-        String w = name().toLowerCase(Locale.ROOT);
-        return (w.matches("^[aeiou].*") ? "an " : "a ") + w;
+        return switch (this) {
+            case BLUNT -> "a blunt weapon";
+            case UNARMED -> "an empty hand";
+            case FOCUS -> "a focus (blaze rod, breeze rod or stick)";
+            default -> {
+                String w = name().toLowerCase(Locale.ROOT);
+                yield (w.matches("^[aeiou].*") ? "an " : "a ") + w;
+            }
+        };
     }
 }

@@ -119,6 +119,14 @@ class ClassCoreTest {
     }
 
     @Test
+    void wrongItemMessagesSayWhatToHold() {
+        ClassCatalog cat = shipped();
+        assertEquals("a focus (blaze rod, breeze rod or stick)", AbilityCaster.needs(cat.ability("arcane_bolt")));
+        assertEquals("a blade, an axe, a polearm or a blunt weapon", AbilityCaster.needs(cat.ability("execute")));
+        assertEquals("a blade", AbilityCaster.needs(cat.ability("flurry")));
+    }
+
+    @Test
     void weaponFamiliesFromVanillaItems() {
         assertEquals(WeaponFamily.BLADE, WeaponFamily.ofMaterial("NETHERITE_SWORD"));
         assertEquals(WeaponFamily.AXE, WeaponFamily.ofMaterial("IRON_AXE"));

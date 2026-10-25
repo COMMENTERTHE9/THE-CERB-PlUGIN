@@ -83,7 +83,7 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 | 3 | Sword in hand, three zombies close in front. **Right-click.** | `✦ Cleave · 3 hit`. Right-click again at once: `Cleave 3.8 s` and a soft tick. |
 | 4 | **Sneak + right-click** at a zombie straight after the Cleave. | `✦ Execute · x2.2 · 3 Momentum`, a heavier impact. Again with no Momentum: `Execute needs 1 Momentum`, nothing spent. *(New: Execute is a finisher, so it no longer wastes its cooldown on a plain hit.)* |
 | 5 | **F**. | `✦ War Cry · +15% damage · 8 s` and a ring around you. **The sword stays in your hand.** |
-| 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits: `Blink 1.2 s`. Later, Sneak + F blinks you 6 blocks. |
+| 6 | Look at open ground. **Q**, then **Sneak + F**. | Charge dashes you forward (the sword flickers for a moment, but is never dropped). Blink right after it waits: `Blink 1.2 s`. Later, Sneak + F blinks you where you look: up to 6 blocks ahead, or onto the spot on the ground you look at. |
 | 7 | Swap the sword for a **pickaxe, a block or food**. Press R, F, Q. | All vanilla: you mine, place, eat, swap and drop as usual. |
 | 8 | Sword in hand: right-click a **door, a chest, a villager, a horse**. | They open, trade or mount as usual. With Sneak, right-click casts instead (vanilla also skips them while sneaking). |
 | 8b | A **shield in the off hand**, then right-click; also try bread or a torch there. With an axe, right-click a log. | The shield blocks, the bread is eaten, the torch is placed: the off hand's own use wins, and the right-click abilities show dark on the bar. F and Q still cast. The axe strips the log. *(Your call: should shield fighters lose right-click abilities, or the shield's block?)* |
@@ -98,7 +98,7 @@ Only Warrior, Mage and Duelist exist; the rest of the roster is design only. **T
 | 12 | Aim well beside it, at one 10 blocks away, or behind a wall. | `Arcane Bolt: no target within 8 blocks`, a whiff. **No Essence and no cooldown spent.** |
 | 13 | **F** with zombies around you; **Q** at a zombie. | Frost Nova damages and slows those within 4 blocks; Fireball bursts on the first zombie (20 Essence). |
 | 14 | Spend your Essence (`/cerb mana YourName 0`), then right-click. | `Arcane Bolt needs 15 Essence`, a fizzle. |
-| 15 | A sword instead of the rod. Right-click. | `Arcane Bolt needs a focus`, a low note. |
+| 15 | A sword instead of the rod. Right-click. | `Arcane Bolt needs a focus (blaze rod, breeze rod or stick)`, a low note. |
 | 16 | `/givetestitem fireball` (the Fireball Wand) with Arcane Bolt on right-click. | The wand now casts **Arcane Bolt**; before, it always cast its own Fireball. When no right-click ability fits a focus (say Cleave on A1, nothing on A4), it casts its Fireball as before. |
 
 ### 6c. Click combos (the option, Wynncraft-like)
