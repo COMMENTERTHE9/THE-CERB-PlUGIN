@@ -23,6 +23,7 @@ public final class AttributeEffects {
     private final PlayerVirtualHealthManager health;
     private final PlayerDefenseManager defense;
     private final PlayerManaManager mana;
+    private SecondaryEffects secondary;
 
     public AttributeEffects(JavaPlugin plugin, AttributeService attributes, PlayerVirtualHealthManager health,
                             PlayerDefenseManager defense, PlayerManaManager mana) {
@@ -33,12 +34,15 @@ public final class AttributeEffects {
         this.mana = mana;
     }
 
+    public void setSecondaryEffects(SecondaryEffects secondary) { this.secondary = secondary; }
+
     /** Re-apply everything for one player. Call on the player's region thread. */
     public void refresh(Player player) {
         if (!attributes.isTracked(player.getUniqueId())) return; // not loaded, or already left
         applyMaxHealth(player);
         defense.updateDefense(player);
         applyMana(player);
+        if (secondary != null) secondary.apply(player);           // attack and movement speed
     }
 
     /** Schedule {@link #refresh} on the player's own thread (safe from any thread). */

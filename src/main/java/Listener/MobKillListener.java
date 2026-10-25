@@ -96,10 +96,8 @@ public class MobKillListener implements Listener {
 
         Player player = event.getPlayer();
 
-        // Apply Navigation speed bonus on every qualifying move (passive effect)
-        if (skillManager.getSkill("Navigation") instanceof UtilitySkill nav) {
-            nav.applyEffect(player);
-        }
+        // Movement speed now comes from the attribute engine (Agility + Pathfinding), applied once per
+        // change by SecondaryEffects; the old per-step Navigation bonus ignored the player's level.
 
         // Award Navigation XP on chunk discovery (not on every move)
         if (!event.getFrom().getChunk().equals(event.getTo().getChunk())) {

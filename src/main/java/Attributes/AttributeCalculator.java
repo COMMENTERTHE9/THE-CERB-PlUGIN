@@ -23,6 +23,7 @@ public final class AttributeCalculator {
         double[] classPower = new double[nClass];
         double[] stat = new double[nStat];
         double[] classDamage = new double[nClass];
+        double[] classAttackSpeed = new double[nClass];
         List<Contribution> kept = new ArrayList<>(input.size());
         int ignored = 0;
 
@@ -35,6 +36,8 @@ public final class AttributeCalculator {
                 else general[c.attribute().ordinal()] += c.amount();
             } else if (c.stat() == Stat.DAMAGE && c.weapon() != null) {
                 classDamage[c.weapon().ordinal()] += c.amount();
+            } else if (c.stat() == Stat.ATTACK_SPEED && c.weapon() != null) {
+                classAttackSpeed[c.weapon().ordinal()] += c.amount();
             } else {
                 stat[c.stat().ordinal()] += c.amount();
             }
@@ -75,8 +78,37 @@ public final class AttributeCalculator {
         double regen = floor(1.0 + d.essenceRegen() * ess + stat[Stat.MANA_REGEN.ordinal()]);
         double spell = floor(1.0 + d.essenceSpell() * ess + stat[Stat.SPELL_DAMAGE.ordinal()]);
 
+        // Speed and handling: driver attribute + skill contributions, then diminishing returns to the cap.
+        AttributeRules.Secondary sec = rules.secondary();
+        double[] secondaryRaw = new double[nStat], secondary = new double[nStat];
+        for (Stat st : Stat.SECONDARY) {
+            AttributeRules.SecondaryStat def = sec.get(st);
+            double raw = totals[def.driver().ordinal()] * def.perPoint() + stat[st.ordinal()];
+            secondaryRaw[st.ordinal()] = raw;
+            secondary[st.ordinal()] = def.enabled() ? diminish(raw, def.cap()) : 0.0;
+        }
+        AttributeRules.SecondaryStat as = sec.get(Stat.ATTACK_SPEED);
+        double[] attackSpeedRaw = new double[nClass], attackSpeed = new double[nClass];
+        for (WeaponClass w : WeaponClass.values()) {
+            double raw = secondaryRaw[Stat.ATTACK_SPEED.ordinal()] + classAttackSpeed[w.ordinal()];
+            attackSpeedRaw[w.ordinal()] = raw;
+            attackSpeed[w.ordinal()] = as.enabled() ? diminish(raw, as.cap()) : 0.0;
+        }
+
         return new AttributeSnapshot(rules, realm, totals, power, damageBonus, critChance, critMult, lifesteal,
-                maxHp, armor, bar, resist, mana, regen, spell, kept, ignored);
+                maxHp, armor, bar, resist, mana, regen, spell, secondary, secondaryRaw, attackSpeed, attackSpeedRaw,
+                kept, ignored);
+    }
+
+    /**
+     * Diminishing returns toward {@code cap}: {@code cap x (1 - e^(-raw/cap))}. Slope 1 at zero, so
+     * small bonuses count in full; raw = cap gives 63% of the cap, 2 x cap 86%; never above the cap.
+     * A negative raw value (a slow) passes through, limited to -50%.
+     */
+    public static double diminish(double raw, double cap) {
+        if (!Double.isFinite(raw) || !(cap > 0)) return 0.0;
+        if (raw <= 0) return Math.max(-0.5, raw);
+        return cap * (1.0 - Math.exp(-raw / cap));
     }
 
     private static double clamp(double v, double lo, double hi) {

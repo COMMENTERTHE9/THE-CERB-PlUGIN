@@ -93,6 +93,11 @@ public final class AttributeService {
         return !wired ? Effect.NOT_YET : on ? Effect.ACTIVE : Effect.SWITCHED_OFF;
     }
 
+    /** Whether a speed/handling stat is applied (secondary.stats.<stat>.enabled). */
+    public Effect secondaryEffect(Stat stat) {
+        return rules.get().secondary().get(stat).enabled() ? Effect.ACTIVE : Effect.SWITCHED_OFF;
+    }
+
     /** Current snapshot. Never null; neutral for players who aren't loaded. */
     public AttributeSnapshot get(UUID player) {
         AttributeRules r = rules.get();

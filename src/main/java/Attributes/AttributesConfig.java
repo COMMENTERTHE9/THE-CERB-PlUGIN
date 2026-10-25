@@ -84,7 +84,7 @@ public final class AttributesConfig {
      */
     public static AttributeRules parseRules(ConfigurationSection s, AttributeRules.Curves curves, Consumer<String> problems) {
         AttributeRules def = AttributeRules.DEFAULTS;
-        if (s == null) return new AttributeRules(def.skillWeights(), def.caps(), def.derived(), def.limits(), curves, def.switches());
+        if (s == null) return new AttributeRules(def.skillWeights(), def.caps(), def.derived(), def.limits(), curves, def.switches(), def.secondary());
 
         Map<String, List<AttributeRules.SkillWeight>> weights = new LinkedHashMap<>();
         ConfigurationSection sk = section(s, "skills");
@@ -150,7 +150,66 @@ public final class AttributesConfig {
                 s.getBoolean("integration.essence", ds.essence()),
                 s.getBoolean("integration.realm-magnitude", ds.realmMagnitude()));
 
-        return new AttributeRules(weights, caps, derived, limits, curves, switches);
+        return new AttributeRules(weights, caps, derived, limits, curves, switches, parseSecondary(section(s, "secondary"), problems));
+    }
+
+    /** The {@code secondary:} section (speed and handling stats); missing parts use the defaults. */
+    static AttributeRules.Secondary parseSecondary(ConfigurationSection s, Consumer<String> problems) {
+        AttributeRules.Secondary def = AttributeRules.DEFAULT_SECONDARY;
+        if (s == null) return def;
+        Map<Stat, AttributeRules.SecondaryStat> stats = new EnumMap<>(Stat.class);
+        ConfigurationSection st = section(s, "stats");
+        for (Stat stat : Stat.SECONDARY) {
+            AttributeRules.SecondaryStat d = def.get(stat);
+            String key = stat == Stat.MOVE_SPEED ? "movement-speed" : stat.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+            ConfigurationSection one = st == null ? null : section(st, key);
+            if (one == null) { stats.put(stat, d); continue; }
+            Attribute driver = Attribute.parse(one.getString("driver", d.driver().name()));
+            if (driver == null) {
+                problems.accept("secondary.stats." + key + ".driver '" + one.getString("driver") + "' is not an attribute - using " + d.driver().displayName);
+                driver = d.driver();
+            }
+            double cap = num(one, "cap", d.cap(), problems);
+            if (cap <= 0 || cap > 2.0) {
+                problems.accept("secondary.stats." + key + ".cap must be in (0, 2] - using " + d.cap());
+                cap = d.cap();
+            }
+            stats.put(stat, new AttributeRules.SecondaryStat(one.getBoolean("enabled", d.enabled()), driver,
+                    num(one, "per-point", d.perPoint(), problems), cap));
+        }
+        Map<String, List<AttributeRules.StatWeight>> weights = new LinkedHashMap<>();
+        ConfigurationSection sk = section(s, "skills");
+        if (sk == null) {
+            weights.putAll(def.skillWeights());
+        } else {
+            for (String skill : sk.getKeys(false)) {
+                List<AttributeRules.StatWeight> list = new ArrayList<>();
+                for (Map<?, ?> m : sk.getMapList(skill)) {
+                    Stat stat = Stat.parse(String.valueOf(m.get("stat")));
+                    Object per = m.get("per-level");
+                    Object weapon = m.get("weapon");
+                    String weaponName = weapon == null ? "" : String.valueOf(weapon).trim();
+                    boolean allWeapons = weaponName.isEmpty() || weaponName.equalsIgnoreCase("all");
+                    WeaponClass w = allWeapons ? null : WeaponClass.parse(weaponName);
+                    if (stat == null || !stat.isSecondary() || !(per instanceof Number n) || !Double.isFinite(n.doubleValue())) {
+                        problems.accept("secondary.skills." + skill + ": entry " + m + " needs a speed stat and per-level - skipped");
+                        continue;
+                    }
+                    if (!allWeapons && w == null) {
+                        problems.accept("secondary.skills." + skill + ": unknown weapon '" + weapon + "' - skipped");
+                        continue;
+                    }
+                    list.add(new AttributeRules.StatWeight(stat, n.doubleValue(), w));
+                }
+                if (!list.isEmpty()) weights.put(skill, List.copyOf(list));
+            }
+        }
+        int tag = s.getInt("pvp-tag-seconds", def.pvpTagSeconds());
+        if (tag < 1 || tag > 600) {
+            problems.accept("secondary.pvp-tag-seconds must be 1-600 - using " + def.pvpTagSeconds());
+            tag = def.pvpTagSeconds();
+        }
+        return new AttributeRules.Secondary(stats, weights, s.getBoolean("in-pvp", def.inPvp()), tag);
     }
 
     /**

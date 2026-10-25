@@ -123,6 +123,11 @@ public final class AttributeView {
         return out;
     }
 
+    /** Status of a speed stat: on (pausing in PvP unless configured otherwise) or switched off. */
+    public static String secondaryLabel(AttributeService.Effect e) {
+        return e == AttributeService.Effect.ACTIVE ? ChatColor.GREEN + "● Active" : ChatColor.YELLOW + "○ Turned off on this server (attributes.yml)";
+    }
+
     public static String effectLabel(AttributeService.Effect e, Attribute a) {
         return switch (e) {
             case ACTIVE -> ChatColor.GREEN + "● Active" + (a == Attribute.POWER || a == Attribute.AGILITY ? " (fighting mobs)" : "");

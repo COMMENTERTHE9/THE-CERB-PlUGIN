@@ -124,16 +124,19 @@ public final class SkillDetailMenu extends PlayerMenu {
 
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {
         List<AttributeRules.SkillWeight> weights = SkillView.weights(rules, d.name());
+        List<AttributeRules.StatWeight> speed = SkillView.statWeights(rules, d.name());
         Attribute main = SkillView.mainAttribute(rules, d.name());
         Ui.Lore l = Ui.lore();
-        if (weights.isEmpty()) {
-            l.text("This skill gives no attribute").text("points.");
-            return Ui.item(Material.GRAY_DYE, ChatColor.GRAY + "Attributes", l.build());
+        if (weights.isEmpty() && speed.isEmpty()) {
+            l.text("This skill gives no attribute").text("points or speed.");
+            return Ui.item(Material.GRAY_DYE, ChatColor.GRAY + "Attributes & speed", l.build());
         }
         l.text("Each level gives:");
         for (AttributeRules.SkillWeight w : weights) l.raw(PlayerTheme.indent(SkillView.weightLine(w, w.perLevel(), false)));
+        SkillView.speedLines(speed, 1, false).forEach(x -> l.raw(PlayerTheme.indent(x)));
         l.gap().text("From this skill now (level " + pr.level() + "):");
         for (AttributeRules.SkillWeight w : weights) l.raw(PlayerTheme.indent(SkillView.weightLine(w, w.perLevel() * pr.level(), false)));
+        SkillView.speedLines(speed, pr.level(), false).forEach(x -> l.raw(PlayerTheme.indent(x)));
         int next = Math.min(SkillProgression.MAX_LEVEL, pr.level() + 1);
         l.gap().text(pr.max() ? "What they do for you:" : "What they do (now → next level):");
         for (String line : SkillView.outcomes(svc, id, d.name(), next)) l.raw(PlayerTheme.indent(line));
@@ -144,7 +147,12 @@ public final class SkillDetailMenu extends PlayerMenu {
                 l.raw(w.attribute().color + w.attribute().displayName + ": " + AttributeView.effectLabel(svc.effect(w.attribute()), w.attribute()));
             }
         }
-        return Ui.item(AttributeView.icon(main), ChatColor.GOLD + "Attributes", l.build());
+        java.util.Set<Attributes.Stat> seenStats = java.util.EnumSet.noneOf(Attributes.Stat.class);
+        for (AttributeRules.StatWeight w : speed) {
+            if (seenStats.add(w.stat())) l.raw(ChatColor.AQUA + w.stat().displayName + ": " + AttributeView.secondaryLabel(svc.secondaryEffect(w.stat())));
+        }
+        if (!speed.isEmpty() && !rules.secondary().inPvp()) l.raw(ChatColor.DARK_GRAY + "Speed bonuses pause during PvP combat.");
+        return Ui.item(main != null ? AttributeView.icon(main) : Material.FEATHER, ChatColor.GOLD + "Attributes & speed", l.build());
     }
 
     private ItemStack upcomingTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr, double realm) {
@@ -160,6 +168,13 @@ public final class SkillDetailMenu extends PlayerMenu {
             l.raw(ChatColor.YELLOW + "At level " + target + ChatColor.DARK_GRAY + "  ("
                     + Fmt.grouped(xpToGo + xpBetween(pr.level() + 1, target)) + " XP away)");
             for (AttributeRules.SkillWeight w : weights) l.raw(PlayerTheme.indent(SkillView.weightLine(w, w.perLevel() * target, false)));
+            List<AttributeRules.StatWeight> speed = SkillView.statWeights(rules, d.name());
+            if (!speed.isEmpty()) { // effective values (after diminishing returns), from the engine
+                Attributes.AttributeSnapshot at = AttributeView.withSkillLevel(svc, id, d.name(), target);
+                for (SkillView.SpeedRow r : SkillView.speedRows(speed)) {
+                    l.raw(PlayerTheme.indent(ChatColor.AQUA + r.label() + ": +" + GUIs.menu.Fmt.pct(r.value(at))));
+                }
+            }
             for (SkillEffect e : d.effects()) {
                 String val = SkillView.effectValue(plugin, e, target, realm);
                 if (val != null) l.raw(ChatColor.GRAY + "  " + e.label() + ": " + ChatColor.WHITE + val
@@ -167,7 +182,7 @@ public final class SkillDetailMenu extends PlayerMenu {
             }
             l.gap();
         }
-        if (weights.isEmpty() && d.effects().stream().allMatch(e -> e.value() == null)) {
+        if (weights.isEmpty() && SkillView.statWeights(rules, d.name()).isEmpty() && d.effects().stream().allMatch(e -> e.value() == null)) {
             l.text("Levels raise your total skill level;").text("this skill has no live bonus yet.");
         }
         return Ui.item(Material.EXPERIENCE_BOTTLE, ChatColor.GREEN + "Next levels", l.build());

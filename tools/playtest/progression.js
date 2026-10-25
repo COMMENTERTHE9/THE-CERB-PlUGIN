@@ -10,6 +10,9 @@
 //             zombie; Primordial magnitudes (billions) display and compute cleanly; back to default
 //   perf    - 20 hits on a mob cause no attribute rebuilds (snapshot stays cached; only level-ups rebuild)
 //   offswitch - with attributes.yml integration.pve-offense: false, Blade Mastery 100 kills like Blade Mastery 1
+//   speed   - speed stats measured in game: attack interval by Blade/Weapon Mastery (server attribute value and
+//             damage at a fixed swing rhythm), bow draw (power and critical arrows by draw time), movement speed,
+//             spell cooldown (Fireball intervals), and the PvP pause (spawns CerbTarget as a second player)
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'killxp';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -36,6 +39,10 @@ const slotName = i => { const it = bot.currentWindow && bot.currentWindow.slots[
 const slotLore = i => { const it = bot.currentWindow && bot.currentWindow.slots[i]; return it && it.customLore ? it.customLore.map(plain).join(' | ') : ''; };
 async function waitTitle(re, ms = 4000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (bot.currentWindow && re.test(title())) return true; await sleep(100); } return false; }
 async function click(i, wait = 800) { await bot.clickWindow(i, 0, 0); await sleep(wait); }
+
+/** "Swords: P -> xM damage" from a Power tile; M must equal 1 + 0.05 * P (both as displayed). */
+const swordPower = lore => { const m = (lore || '').match(/Swords: ([\d.]+) +-> +x([\d.]+) damage/); return m ? { p: Number(m[1]), m: Number(m[2]) } : null; };
+const consistent = sp => !!sp && Math.abs(sp.m - (1 + 0.05 * sp.p)) < 0.011;
 
 async function cmd(c, wait = 1000) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
 const saw = (re, since) => chat.slice(since).find(m => re.test(m));
@@ -133,7 +140,10 @@ async function stats() {
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
   await cmd(`/cerb skill ${NAME} Critical_Strike level 1`);
   check('Player Menu -> Stats opens', await openStats(), title());
-  check('Power tile shows sword Power from Blade Mastery 1', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)) && /Blade Mastery 1: \+1\.0 \(swords\)/.test(slotLore(10)), slotLore(10));
+  // Other phases leave Weapon Mastery (+0.25 Power for all weapons) at level 1 or more, and levels can't go back
+  // to 0: check that the displayed numbers agree with each other instead of hard-coding a total.
+  const sp1 = swordPower(slotLore(10));
+  check('Power tile shows sword Power from Blade Mastery 1', consistent(sp1) && sp1.p >= 1 && /Blade Mastery 1: \+1\.0 \(swords\)/.test(slotLore(10)), slotLore(10));
   check('Power tile says which skills feed it', /Gained from.*Blade Mastery \+1 \(swords\).*Weapon Mastery \+0\.25/.test(slotLore(10)), slotLore(10));
   check('Agility tile shows crit from Critical Strike', /Crit chance: 1[0-9]\.[0-9]%/.test(slotLore(11)), slotLore(11));
   check('Power is marked active against mobs', /Active \(fighting mobs\)/.test(slotLore(10)), slotLore(10));
@@ -148,9 +158,11 @@ async function stats() {
   const viaCommand = /Stats & Attributes/.test(title());
   check('/stats opens the page', viaCommand, title());
   if (!viaCommand) return;
-  check('A level change shows immediately (Blade Mastery 50 -> Power 50, x3.50)', /Swords: 50\.0 +-> +x3\.50 damage/.test(slotLore(10)), slotLore(10));
-  check('Weapon tile reads the held sword', /Holding: Netherite Sword.*Power: 50\.0 +-> +x3\.50 damage.*Keeps pace with level-51 mobs/.test(slotLore(29)), slotLore(29));
-  check('Next-level tile previews Blade Mastery 51', /Blade Mastery 50 -> 51:.*x3\.50 -> x3\.55/.test(slotLore(38)), slotLore(38));
+  const sp50 = swordPower(slotLore(10));
+  check('A level change shows immediately (Blade Mastery 50: +49 Power, multiplier follows)', consistent(sp50) && sp1 && Math.abs(sp50.p - sp1.p - 49) < 0.11, slotLore(10));
+  check('Weapon tile reads the held sword', /Holding: Netherite Sword.*Power: 5\d\.\d +-> +x3\.\d\d damage.*Keeps pace with level-5\d mobs/.test(slotLore(29)), slotLore(29));
+  const nl = slotLore(38).match(/Blade Mastery 50 -> 51:.*Sword damage x([\d.]+) -> x([\d.]+)/);
+  check('Next-level tile previews Blade Mastery 51 (+0.05)', !!nl && Math.abs(Number(nl[2]) - Number(nl[1]) - 0.05) < 0.011, slotLore(38));
   check('Kill XP tile lists XP per mob level', /Trains: Blade Mastery \(level 50\).*Level 1: 10 .*reduced.*Level 50: 334/.test(slotLore(40)), slotLore(40));
   await click(45, 1200);
   check('Back returns to the Player Menu', await waitTitle(/Player Menu/), title());
@@ -354,6 +366,178 @@ async function realm() {
   check('Default restored: Awakened, max health 102', /R2 Awakened/.test(v.header) && v.health === '102', v.health);
 }
 
+/** Server-side attribute value (/attribute works on Folia; mineflayer mislabels 1.21.11 attributes). */
+async function attr(name) {
+  const at = await cmd(`/attribute @s minecraft:${name} get`, 800);
+  const m = chat.slice(at).map(x => x.match(/The value of attribute .+ for entity \S+ is ([-\d.E]+)/)).find(Boolean);
+  return m ? Number(m[1]) : NaN;
+}
+async function hasModifier(name, key) {
+  const at = await cmd(`/attribute @s minecraft:${name} modifier value get ${key}`, 800);
+  return chat.slice(at).some(x => /The value of modifier/.test(x));
+}
+
+async function speed() {
+  const out = {};
+  await cmd('/gamemode survival', 500);
+  await cmd('/time set day', 300);
+  await cmd('/kill @e[type=zombie,distance=..30]', 500);
+  for (const s of ['Blade_Mastery', 'Weapon_Mastery', 'Ranged_Precision', 'Navigation', 'Spell_Weaving']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 300);
+
+  // 1. Attack speed: the server's attack-speed value with a sword in hand, by Blade Mastery level
+  check('Got a netherite sword', await equip('netherite_sword'));
+  const swords = [];
+  for (const bm of [1, 50, 100]) {
+    await cmd(`/cerb skill ${NAME} Blade_Mastery level ${bm}`, 1200);
+    const v = await attr('attack_speed');
+    swords.push({ bm, v, ticks: 20 / v });
+    console.log(`  Blade Mastery ${bm}: ${v.toFixed(3)} attacks/s = a full-strength swing every ${(20 / v).toFixed(2)} ticks (${(1 / v).toFixed(3)} s)`);
+  }
+  out.swords = swords;
+  check('Sword interval shortens with Blade Mastery (12.5 -> 11.2 -> 10.6 ticks)', Math.abs(swords[0].ticks - 12.5) < 0.1
+      && Math.abs(swords[1].ticks - 11.2) < 0.1 && Math.abs(swords[2].ticks - 10.6) < 0.1, swords.map(r => r.ticks.toFixed(2)).join(' / '));
+  check('Never faster than the 10-tick hit window', swords.every(r => r.ticks >= 10));
+
+  check('Got an iron axe', await equip('iron_axe'));
+  await sleep(500);
+  const axe1 = await attr('attack_speed');
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 100`, 1200);
+  const axe100 = await attr('attack_speed');
+  console.log(`  Iron axe (Blade Mastery 100): Weapon Mastery 1 ${axe1.toFixed(3)}/s, Weapon Mastery 100 ${axe100.toFixed(3)}/s`);
+  check('Blade Mastery does not speed up axes; Weapon Mastery does', axe1 < 0.92 && axe100 > axe1 * 1.15, axe1.toFixed(3) + ' -> ' + axe100.toFixed(3));
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 1`, 400);
+  out.axe = { axe1, axe100 };
+
+  // 2. The same thing as damage: swing every 0.55 s at a sturdy mob; vanilla scales a hit by how charged it is
+  await equip('netherite_sword');
+  const rhythm = {};
+  for (const bm of [1, 100]) {
+    await cmd(`/cerb skill ${NAME} Blade_Mastery level ${bm}`, 1000);
+    await cmd('/kill @e[type=zombie,distance=..30]', 500);
+    await cmd('/cerb spawn elite_zombie 1 noai', 1500); // a RARE pool (3.2K): survives ten hits at Blade Mastery 100
+    const z = mobsNear('zombie', 6)[0];
+    await cmd('/cerb combatdebug', 400);
+    const at = chat.length;
+    if (z) {
+      await bot.lookAt(z.position.offset(0, z.height * 0.6, 0), true);
+      for (let i = 0; i < 10; i++) { bot.attack(bot.entities[z.id] || z); await sleep(550); }
+    }
+    await sleep(600);
+    await cmd('/cerb combatdebug', 400);
+    const raws = chat.slice(at).map(m => m.match(/Power\([^,]+, Power ([\d.]+) -> x([\d.]+)\): ([\d.]+)/)).filter(Boolean)
+        .map(m => Number(m[3]) / Number(m[2])).slice(1); // the first swing starts fully charged
+    const avg = raws.reduce((a, b) => a + b, 0) / Math.max(1, raws.length);
+    rhythm[bm] = { avg, n: raws.length, raws };
+    console.log(`  Blade Mastery ${bm}, a swing every 0.55 s: ${raws.length} hits, vanilla damage per hit ${raws.map(x => x.toFixed(1)).join(' ')} (avg ${avg.toFixed(2)} of 8)`);
+  }
+  out.rhythm = rhythm;
+  check('At a 0.55 s rhythm Blade Mastery 100 hits are fully charged, Blade Mastery 1 hits are not', rhythm[1].n >= 5 && rhythm[100].n >= 5
+      && rhythm[100].avg > rhythm[1].avg + 0.4 && rhythm[100].avg > 7.6, `${rhythm[1].avg.toFixed(2)} vs ${rhythm[100].avg.toFixed(2)}`);
+  await cmd('/kill @e[type=zombie,distance=..30]', 500);
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 400);
+
+  // 3. Bow draw: power and critical arrows by draw time, Ranged Precision 1 / 50 / 100
+  await cmd('/clear @s bow', 300); await cmd('/clear @s arrow', 300);
+  await cmd('/give @s bow', 500); await cmd('/give @s arrow 32', 700);
+  const bow = bot.inventory.items().find(it => it.name === 'bow');
+  if (bow) await bot.equip(bow, 'hand');
+  await bot.look(bot.entity.yaw, 0.15, true);
+  await cmd('/cerb combatdebug', 400);
+  const draws = [];
+  for (const rp of [1, 50, 100]) {
+    await cmd(`/cerb skill ${NAME} Ranged_Precision level ${rp}`, 1000);
+    for (const hold of [600, 850]) {
+      const at = chat.length;
+      // The critical flag (entity data 8, bit 1) is cleared when the arrow lands: read the first packets.
+      let crit = false;
+      const onPacket = (data, meta) => {
+        if (meta.name !== 'entity_metadata' || !bot.entities[data.entityId] || bot.entities[data.entityId].name !== 'arrow') return;
+        for (const m of data.metadata || []) if (m.key === 8 && (m.value & 1)) crit = true;
+      };
+      bot._client.on('packet', onPacket);
+      bot.activateItem(); await sleep(hold); bot.deactivateItem();
+      await sleep(900);
+      bot._client.removeListener('packet', onPacket);
+      const line = chat.slice(at).find(m => /^\[Draw\]/.test(m)) || '';
+      const m = line.match(/drew ([\d.]+) s: power ([\d.]+) -> ([\d.]+)/);
+      draws.push({ rp, hold, drew: m ? Number(m[1]) : NaN, before: m ? Number(m[2]) : NaN, after: m ? Number(m[3]) : NaN, crit });
+      console.log(`  Ranged Precision ${rp}, held ${hold} ms: ${line || 'no [Draw] line'}  | arrow critical: ${crit}`);
+    }
+  }
+  await cmd('/cerb combatdebug', 400);
+  await cmd('/kill @e[type=arrow,distance=..60]', 400);
+  out.draws = draws;
+  const d = (rp, hold) => draws.find(x => x.rp === rp && x.hold === hold) || {};
+  check('Ranged Precision 100 turns a ~0.6 s draw into ~0.7 power (vanilla ~0.5)', d(100, 600).after > d(100, 600).before + 0.12 && d(1, 600).after - d(1, 600).before < 0.02,
+      `RP1 ${d(1, 600).before}->${d(1, 600).after}, RP100 ${d(100, 600).before}->${d(100, 600).after}`);
+  check('Ranged Precision 100 shoots a critical arrow from a ~0.85 s draw; Ranged Precision 1 does not', d(100, 850).crit === true && d(1, 850).crit === false,
+      `RP1 ${d(1, 850).crit}, RP100 ${d(100, 850).crit}`);
+  await cmd(`/cerb skill ${NAME} Ranged_Precision level 1`, 400);
+  await cmd('/clear @s bow', 300); await cmd('/clear @s arrow', 300);
+
+  // 4. Movement speed (server attribute; base 0.1)
+  const mv = {};
+  for (const pf of [1, 100]) {
+    await cmd(`/cerb skill ${NAME} Navigation level ${pf}`, 1200);
+    mv[pf] = await attr('movement_speed');
+    console.log(`  Pathfinding ${pf}: movement speed ${mv[pf].toFixed(5)} (+${((mv[pf] / 0.1 - 1) * 100).toFixed(1)}%)`);
+  }
+  out.move = mv;
+  check('Pathfinding raises movement speed, within the +20% cap', mv[100] > mv[1] * 1.05 && mv[100] <= 0.1 * 1.2 + 1e-9, `${mv[1]} -> ${mv[100]}`);
+  await cmd(`/cerb skill ${NAME} Navigation level 1`, 400);
+
+  // 5. Spell cooldown: Fireball every N ms while clicking constantly, Spell Weaving 1 / 100
+  await cmd('/clear @s blaze_rod', 300);
+  await cmd('/givetestitem fireball', 800);
+  const wand = bot.inventory.items().find(it => it.name === 'blaze_rod');
+  if (wand) await bot.equip(wand, 'hand');
+  await bot.lookAt(bot.entity.position.offset(0.2, 60, 0.2), true);
+  const cd = {};
+  for (const sw of [1, 100]) {
+    await cmd(`/cerb skill ${NAME} Spell_Weaving level ${sw}`, 1200);
+    await cmd(`/cerb mana ${NAME}`, 600);
+    // The Fireball is drawn with particles (no entity); each successful cast says so in chat.
+    const times = [];
+    const onChat = (m, pos) => { if (pos !== 'game_info' && /You cast Fireball!/.test(m)) times.push(Date.now()); };
+    bot.on('messagestr', onChat);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 4200) { bot.activateItem(); await sleep(40); bot.deactivateItem(); await sleep(40); }
+    await sleep(500);
+    bot.removeListener('messagestr', onChat);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    const avg = gaps.reduce((a, b) => a + b, 0) / Math.max(1, gaps.length);
+    cd[sw] = { casts: times.length, avg };
+    console.log(`  Spell Weaving ${sw}: ${times.length} Fireballs in 4.2 s, every ${avg.toFixed(0)} ms on average`);
+  }
+  out.cooldown = cd;
+  check('Spell Weaving shortens the Fireball cooldown', cd[1].casts >= 3 && cd[100].avg < cd[1].avg - 120, `${cd[1].avg.toFixed(0)} ms -> ${cd[100].avg.toFixed(0)} ms`);
+  await cmd(`/cerb skill ${NAME} Spell_Weaving level 1`, 400);
+  await cmd('/clear @s blaze_rod', 300);
+
+  // 6. PvP: a hit from another player pauses the bonuses for the tag, then they come back
+  await equip('netherite_sword');
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 100`, 1200);
+  check('Before PvP: the attack-speed bonus is on', await hasModifier('attack_speed', 'cerberus:attack_speed'));
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  other.on('messagestr', () => {});
+  await new Promise(r => other.once('spawn', r));
+  await sleep(2500);
+  other.chat('/gamemode survival'); await sleep(400);
+  await cmd('/tp CerbTarget ' + NAME, 1000);
+  const me = Object.values(other.entities).find(e => e.type === 'player' && e.username === NAME);
+  if (me) { await other.lookAt(me.position.offset(0, 1.5, 0), true); other.attack(me); }
+  await sleep(1200);
+  const paused = !(await hasModifier('attack_speed', 'cerberus:attack_speed')) && !(await hasModifier('movement_speed', 'cerberus:movement_speed'));
+  check('Hit by a player: attack and movement bonuses pause (PvP stays vanilla)', paused);
+  await sleep(15500);
+  check('After the 15 s tag: the bonuses are back', await hasModifier('attack_speed', 'cerberus:attack_speed'));
+  other.quit();
+  await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 400);
+  await cmd(`/cerb heal ${NAME}`, 400);
+  await cmd('/gamemode creative', 400);
+  return out;
+}
+
 // Every phase starts at world spawn: other phases teleport the bot, and test mobs spawned
 // inside a hillside suffocate mid-check.
 async function goHome() {
@@ -382,6 +566,7 @@ bot.once('spawn', async () => {
     }
     else if (phase === 'persist') await persist();
     else if (phase === 'perf') await perf();
+    else if (phase === 'speed') await speed();
     else if (phase === 'realm') await realm();
     else if (phase === 'offswitch') {
       await cmd('/gamemode creative');

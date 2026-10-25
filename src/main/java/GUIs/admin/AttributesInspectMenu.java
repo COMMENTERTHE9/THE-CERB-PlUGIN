@@ -78,7 +78,13 @@ final class AttributesInspectMenu extends AdminMenu {
                 .stat("Crit", Fmt.pct(s.critChance()) + " for " + Fmt.mult(s.critMultiplier()))
                 .stat("Lifesteal", Fmt.pct(s.lifesteal()))
                 .stat("Max health / mana", Fmt.mult(s.maxHpMultiplier()) + " / " + Fmt.mult(s.maxManaMultiplier()))
-                .stat("Spell damage vs mobs", Fmt.mult(s.spellDamageMultiplier()));
+                .stat("Spell damage vs mobs", Fmt.mult(s.spellDamageMultiplier()))
+                .gap().text("Speed and handling (after diminishing returns):")
+                .stat("  Attack speed (sword / axe)", "+" + Fmt.pct(s.attackSpeed(WeaponClass.SWORD)) + " / +" + Fmt.pct(s.attackSpeed(WeaponClass.AXE)))
+                .stat("  Bow draw / movement", "+" + Fmt.pct(s.secondary(Attributes.Stat.DRAW_SPEED)) + " / +" + Fmt.pct(s.secondary(Attributes.Stat.MOVE_SPEED)))
+                .stat("  Spell cooldown recovery", "+" + Fmt.pct(s.secondary(Attributes.Stat.COOLDOWN_RECOVERY)))
+                .stat("  PvP", plugin.getSecondaryEffects() != null && plugin.getSecondaryEffects().paused(targetId)
+                        ? "tagged: bonuses paused" : rules.secondary().inPvp() ? "bonuses apply in PvP" : "not tagged (bonuses pause when tagged)");
         v.set(13, Ui.item(Material.BLAZE_POWDER, ChatColor.GOLD + "Combat outcomes", out.build()));
 
         v.button(29, Ui.item(Material.COMPARATOR, ChatColor.GREEN + "Simulator",

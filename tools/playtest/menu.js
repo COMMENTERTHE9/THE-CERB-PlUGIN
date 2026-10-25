@@ -92,8 +92,9 @@ async function nav() {
 
   await click(20);
   check('Combat category opens', await waitTitle(SCREEN('Combat Skills')), title());
-  check('Blade Mastery tile: level, attribute, effects, training', /^Blade Mastery\s+Lv \d+$/.test(slotName(10))
-      && /\+1 Power \(swords\) per level/.test(flat(10)) && /1 vs players/.test(flat(10)) && /Trains by kills: any sword/.test(flat(10)), slotName(10) + ' | ' + flat(10));
+  check('Blade Mastery tile: level, attribute, speed, effects, training', /^Blade Mastery\s+Lv \d+$/.test(slotName(10))
+      && /\+1 Power \(swords\) per level/.test(flat(10)) && /\+0\.3% sword attack speed per level/.test(flat(10))
+      && /1 vs players/.test(flat(10)) && /Trains by kills: any sword/.test(flat(10)), slotName(10) + ' | ' + flat(10));
   check('Heavy Armor Mastery tile says its former name', /^Heavy Armor Mastery/.test(slotName(14)) && /Formerly Heavy Armor Training/.test(slotLore(14)), slotName(14) + ' | ' + slotLore(14));
 
   await click(10);
@@ -101,9 +102,11 @@ async function nav() {
   check('Skill header: category and level', /Combat Skills/.test(slotLore(4)) && /Level \d+ \/ 100/.test(slotLore(4)), slotLore(4));
   check('Progress strip is labelled', /Level \d+ → \d+: \d+%|Max level/.test(slotName(10)) && slotName(10) === slotName(16), slotName(10));
   check('How to train: kills with swords, XP per mob level', /Kill mobs while holding: any sword\./.test(flat(20)) && /Lv1 \d+ · Lv25 \d+ · Lv50 \d+ · Lv100 \d+/.test(flat(20)), flat(20));
-  check('Attributes: per level, now, and what it does', /Each level gives: \+1 Power \(swords\)/.test(flat(22)) && /Sword damage: x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Active/.test(flat(22)), flat(22));
+  check('Attributes & speed: per level, now, and what it does', /Each level gives: \+1 Power \(swords\) \+0\.3% sword attack speed/.test(flat(22))
+      && /Sword damage: x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22))
+      && /Attack speed: ● Active/.test(flat(22)) && /pause during PvP/.test(flat(22)), flat(22));
   check('Indented lines keep their indent', (slot(22).customLore || []).map(plain).some(l => /^  \+1 Power/.test(l)), slotLore(22));
-  check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(24)) && /Faster sword attacks ○ Not active yet/.test(flat(24)), flat(24));
+  check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(24)), flat(24));
   check('Next levels: milestones with XP', /At level \d+ +\([\d,]+ XP away\)/.test(slotLore(31)), slotLore(31));
   check('Browse arrows name the neighbours', /Martial Expertise ▶/.test(slotName(43)) && /◀ Critical Strike/.test(slotName(37)), slotName(37) + ' / ' + slotName(43));
   await click(43);
@@ -121,8 +124,8 @@ async function nav() {
   check('Field Medicine (formerly First Aid) is honest: no training yet', fm >= 0 && /Formerly First Aid/.test(slotLore(fm)) && /No way to train it yet/.test(slotLore(fm)), fm >= 0 ? slotLore(fm) : 'missing');
   await click(pf);
   await waitTitle(SCREEN('Pathfinding'));
-  check('Pathfinding page: chunk XP and the movement bonus marked not active', /Enter a chunk you have never visited: 5 XP/.test(flat(20))
-      && /Faster movement ○ Not active yet Being rebuilt/.test(flat(24)) && /Formerly Navigation/.test(flat(4)), flat(20) + ' || ' + flat(24));
+  check('Pathfinding page: chunk XP, and movement speed from the attribute engine', /Enter a chunk you have never visited: 5 XP/.test(flat(20))
+      && /\+0\.1% movement speed/.test(flat(22)) && /Movement speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22)) && /Formerly Navigation/.test(flat(4)), flat(20) + ' || ' + flat(22));
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(fm); await waitTitle(SCREEN('Field Medicine'));
   check('Untrainable skill page says so', /Nothing in the game trains this skill yet/.test(flat(20)) && /In development/.test(flat(20)), flat(20));

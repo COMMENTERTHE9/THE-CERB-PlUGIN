@@ -25,6 +25,16 @@ public final class SkillAttributes {
                 out.add(Contribution.attribute(SOURCE_PREFIX + skill, Skills.SkillNames.display(skill) + " " + level, w.attribute(), amount, w.weapon()));
             }
         }
+        for (Map.Entry<String, List<AttributeRules.StatWeight>> e : rules.secondary().skillWeights().entrySet()) {
+            String skill = e.getKey();
+            int level = Math.max(0, levels.getOrDefault(skill, 0));
+            if (level == 0) continue;
+            for (AttributeRules.StatWeight w : e.getValue()) {
+                double amount = w.perLevel() * level;
+                if (amount == 0) continue;
+                out.add(Contribution.stat(SOURCE_PREFIX + skill, Skills.SkillNames.display(skill) + " " + level, w.stat(), amount, w.weapon()));
+            }
+        }
         AttributeRules.Curves cv = rules.curves();
         if (cv.lifestealSkill() != null) {
             int level = Math.max(0, levels.getOrDefault(cv.lifestealSkill(), 0));

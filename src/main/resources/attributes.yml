@@ -88,3 +88,27 @@ attributes:
     fortitude: true         # armor, defense bar, resistances
     essence: true           # mana and spell damage
     realm-magnitude: true   # realm multiplies damage, health, defense bar, regen (no effect at Awakened)
+
+  # ── Speed and handling (docs/design/ATTRIBUTE_EXPANSION.md) ─────────
+  # raw = driver attribute x per-point + skill contributions (per level, below)
+  # effective = cap x (1 - e^(-raw / cap)): small bonuses count in full, never above the cap.
+  secondary:
+    # false: these bonuses pause while a player is in PvP combat (hit or was hit by a player
+    # within pvp-tag-seconds), so PvP stays vanilla. true applies them in PvP too (owner decision).
+    in-pvp: false
+    pvp-tag-seconds: 15
+    stats:
+      attack-speed:      { enabled: true, driver: agility, per-point: 0.001,  cap: 0.25 } # +25%: a sword reaches 2 hits/s, the mob hit-immunity limit
+      draw-speed:        { enabled: true, driver: agility, per-point: 0.001,  cap: 0.50 } # bows: full power at 0.67 s instead of 1.0 s
+      movement-speed:    { enabled: true, driver: agility, per-point: 0.0005, cap: 0.20 } # +20% = Speed I
+      cooldown-recovery: { enabled: true, driver: essence, per-point: 0.002,  cap: 0.50 } # spell cooldown / (1 + this)
+    skills:
+      Blade Mastery:    [ { stat: attack-speed, per-level: 0.003, weapon: sword } ]
+      Weapon Mastery:
+        - { stat: attack-speed, per-level: 0.003, weapon: axe }
+        - { stat: attack-speed, per-level: 0.003, weapon: mace }
+        - { stat: attack-speed, per-level: 0.003, weapon: trident }
+        - { stat: attack-speed, per-level: 0.003, weapon: spear }
+      Ranged Precision: [ { stat: draw-speed, per-level: 0.004 } ]
+      Navigation:       [ { stat: movement-speed, per-level: 0.001 } ]
+      Spell Weaving:    [ { stat: cooldown-recovery, per-level: 0.003 } ]

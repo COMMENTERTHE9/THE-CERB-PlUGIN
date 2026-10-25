@@ -27,6 +27,7 @@ public final class SkillSource implements AttributeSource {
     public Map<String, Integer> levels(UUID player, AttributeRules rules) {
         Map<String, Integer> levels = new HashMap<>();
         for (String skill : rules.skillWeights().keySet()) levels.put(skill, skills.getSkillLevel(player, skill));
+        for (String skill : rules.secondary().skillWeights().keySet()) levels.putIfAbsent(skill, skills.getSkillLevel(player, skill));
         String ls = rules.curves().lifestealSkill();
         if (ls != null) levels.put(ls, skills.getSkillLevel(player, ls));
         return levels;

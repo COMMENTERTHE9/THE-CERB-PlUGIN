@@ -26,12 +26,14 @@ public class CustomItemListener implements Listener {
 
     private final SpellManager spellManager;
     private final NamespacedKey spellKey;
+    private final JavaPlugin plugin;
     private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
     private static final long COOLDOWN_MS = 1000; // 1 second between casts
 
     public CustomItemListener(SpellManager spellManager, JavaPlugin plugin) {
         this.spellManager = spellManager;
         this.spellKey = new NamespacedKey(plugin, "cerb_spell");
+        this.plugin = plugin;
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -56,7 +58,9 @@ public class CustomItemListener implements Listener {
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
         Long lastCast = cooldowns.get(uuid);
-        if (lastCast != null && (now - lastCast) < COOLDOWN_MS) {
+        long cooldown = plugin instanceof cerberus.world.cerb.CerberusPlugin cp && cp.getSecondaryEffects() != null
+                ? cp.getSecondaryEffects().cooldownMs(uuid, COOLDOWN_MS) : COOLDOWN_MS; // Essence + Spell Weaving
+        if (lastCast != null && (now - lastCast) < cooldown) {
             return; // silently ignore — no spam message
         }
         cooldowns.put(uuid, now);

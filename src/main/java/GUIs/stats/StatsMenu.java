@@ -18,6 +18,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -93,6 +94,7 @@ public final class StatsMenu extends PlayerMenu {
         Material shown = selected == null && holdingWeapon ? hand.getType() : representative(wc);
         v.button(29, weaponTile(s, wc, shown, selected == null && holdingWeapon, svc.effect(Attribute.POWER)),
                 c -> { selected = next(wc, c.type() == org.bukkit.event.inventory.ClickType.RIGHT ? -1 : 1); menus.refresh(c.player()); });
+        v.set(22, speedTile(p, s, svc, wc, selected == null && holdingWeapon));
         v.set(31, survivalTile(p, s, svc));
         v.set(33, magicTile(p, s, svc));
 
@@ -143,6 +145,77 @@ public final class StatsMenu extends PlayerMenu {
         l.hint("Left/right click: other weapon types");
         Material icon = held == Material.AIR || held == Material.STICK ? Material.NETHERITE_SWORD : held;
         return Ui.item(icon, ChatColor.GOLD + (inHand ? "Your weapon" : "Weapon: " + wc.displayName), l.build());
+    }
+
+    /**
+     * Speed and handling: attack speed for the weapon type shown (the real attack-speed value when
+     * that weapon is in hand, else computed from that item's own vanilla speed), bow draw time,
+     * movement speed and spell cooldown, each with its sources and cap.
+     */
+    private ItemStack speedTile(Player p, AttributeSnapshot s, AttributeService svc, WeaponClass wc, boolean inHand) {
+        var sec = plugin.getSecondaryEffects();
+        boolean paused = sec != null && sec.paused(p.getUniqueId());
+        AttributeRules.Secondary rules = s.rules().secondary();
+        Ui.Lore l = Ui.lore();
+
+        double as = s.attackSpeed(wc);
+        l.raw(ChatColor.AQUA + "Attack speed" + ChatColor.GRAY + " (" + wc.displayName.toLowerCase(java.util.Locale.ROOT) + "): "
+                + ChatColor.WHITE + "+" + Fmt.pct(as));
+        l.raw(ChatColor.DARK_GRAY + "  sources " + Fmt.pct(s.attackSpeedRaw(wc)) + ", max " + Fmt.pct(rules.get(Attributes.Stat.ATTACK_SPEED).cap()));
+        double perSecond = attacksPerSecond(p, wc, inHand, paused ? 0 : as);
+        if (perSecond > 0) {
+            l.raw(ChatColor.GRAY + "  " + String.format(java.util.Locale.ROOT, "%.2f attacks/s: a full swing every %.2f s", perSecond, 1 / perSecond)
+                    + (inHand ? "" : ChatColor.DARK_GRAY + " (iron)"));
+        }
+        double ds = s.secondary(Attributes.Stat.DRAW_SPEED);
+        l.raw(ChatColor.AQUA + "Bow draw speed: " + ChatColor.WHITE + "+" + Fmt.pct(ds)
+                + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  full power in %.2f s", Attributes.BowDraw.fullDrawSeconds(paused ? 0 : ds)));
+        l.raw(ChatColor.AQUA + "Movement speed: " + ChatColor.WHITE + "+" + Fmt.pct(s.secondary(Attributes.Stat.MOVE_SPEED)));
+        double cd = s.secondary(Attributes.Stat.COOLDOWN_RECOVERY);
+        long fireball = sec == null ? 1000 : sec.cooldownMs(p.getUniqueId(), 1000);
+        l.raw(ChatColor.AQUA + "Spell cooldown recovery: " + ChatColor.WHITE + "+" + Fmt.pct(cd)
+                + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  Fireball every %.2f s", fireball / 1000.0));
+        l.gap().text("Raised by Agility (Essence for spells)")
+                .text("and by the skill behind each action:")
+                .text("Blade Mastery, Weapon Mastery, Ranged")
+                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving.");
+        l.gap();
+        if (paused) l.raw(ChatColor.YELLOW + "⏸ Paused: you are in PvP combat");
+        else {
+            List<String> off = new java.util.ArrayList<>();
+            for (Attributes.Stat st : Attributes.Stat.SECONDARY) if (svc.secondaryEffect(st) != AttributeService.Effect.ACTIVE) off.add(st.displayName.toLowerCase(java.util.Locale.ROOT));
+            l.raw(off.isEmpty() ? ChatColor.GREEN + "● Active" : ChatColor.YELLOW + "○ Turned off: " + String.join(", ", off));
+            if (!rules.inPvp()) l.raw(ChatColor.DARK_GRAY + "Pauses during PvP combat.");
+        }
+        l.raw(ChatColor.DARK_GRAY + "Not built yet: crossbow reload, knockback")
+                .raw(ChatColor.DARK_GRAY + "resistance, gathering and casting speed.");
+        return Ui.item(Material.FEATHER, ChatColor.AQUA + "Speed & handling", l.build());
+    }
+
+    /**
+     * Attacks per second with {@code bonus}: the live attack-speed attribute when that weapon is in
+     * hand (it already includes the bonus), else the player's base speed plus the iron weapon's
+     * own vanilla speed modifier, times the bonus. 0 when it doesn't apply (bows).
+     */
+    private static double attacksPerSecond(Player p, WeaponClass wc, boolean inHand, double bonus) {
+        org.bukkit.attribute.AttributeInstance a = p.getAttribute(org.bukkit.attribute.Attribute.ATTACK_SPEED);
+        if (a == null || wc == WeaponClass.BOW || wc == WeaponClass.OTHER) return 0;
+        if (inHand) return a.getValue();
+        Material m = switch (wc) {
+            case SWORD -> Material.IRON_SWORD;
+            case AXE -> Material.IRON_AXE;
+            case MACE -> Material.MACE;
+            case TRIDENT -> Material.TRIDENT;
+            case SPEAR -> Material.matchMaterial("IRON_SPEAR");
+            default -> null;
+        };
+        double speed = a.getBaseValue();
+        if (m != null) {
+            for (var mod : m.getDefaultAttributeModifiers(org.bukkit.inventory.EquipmentSlot.HAND).get(org.bukkit.attribute.Attribute.ATTACK_SPEED)) {
+                if (mod.getOperation() == org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER) speed += mod.getAmount();
+            }
+        }
+        return speed > 0 ? speed * (1 + bonus) : 0;
     }
 
     private ItemStack survivalTile(Player p, AttributeSnapshot s, AttributeService svc) {

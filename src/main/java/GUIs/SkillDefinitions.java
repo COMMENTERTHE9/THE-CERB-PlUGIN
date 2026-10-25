@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  * the constants the gameplay code uses); every effect carries a status, and an effect's numbers
  * come from the gameplay formula itself ({@link EffectValue}), never from a copy here. Kill XP
  * routing is described live from skills.yml by the skill pages, so it is not repeated here.
+ * Attribute points and speed bonuses (attack, draw, movement, cooldown) come from attributes.yml
+ * and are shown from the attribute engine, so they are not listed as effects here either.
  *
  * <p>Skills keep their internal names (database rows, config keys, commands); the name players
  * read comes from {@link SkillNames}. skills.yml {@code skill-gui.<skill>} can override the icon,
@@ -203,8 +205,7 @@ public final class SkillDefinitions {
         // ── Combat ──
         d.add(new SkillDef("Blade Mastery", "The art of the sword: footwork, edge and timing.",
                 List.of(), Material.DIAMOND_SWORD, C, List.of(
-                SkillEffect.pvp("Extra sword damage", CombatSkillProcessor::bladeMasteryBonus, PCT),
-                SkillEffect.planned("Faster sword attacks"))));
+                SkillEffect.pvp("Extra sword damage", CombatSkillProcessor::bladeMasteryBonus, PCT))));
         d.add(new SkillDef("Martial Expertise", "Fighting with bare hands.",
                 List.of(), Material.IRON_SWORD, C, List.of(
                 SkillEffect.planned("Knockback resistance"),
@@ -250,7 +251,7 @@ public final class SkillDefinitions {
         d.add(new SkillDef("Spell Weaving", "Casting through a wand, rod or staff.",
                 List.of("Cast a spell successfully: " + xp(SpellManager.SPELL_WEAVING_CAST_XP) + " XP."),
                 Material.END_ROD, M, List.of(
-                SkillEffect.planned("Faster casting and cheaper spells"))));
+                SkillEffect.planned("Cheaper spells"))));
         d.add(new SkillDef("Mana Regeneration", "Recovering Essence after spending it.",
                 List.of(), Material.LAPIS_LAZULI, M, List.of()));
         d.add(new SkillDef("Defensive Magic", "Shields, wards and barriers.",
@@ -292,8 +293,7 @@ public final class SkillDefinitions {
                 List.of(SkillEffect.planned("Better villager prices"))));
         d.add(new SkillDef("Navigation", "Finding your way through unknown land.",
                 List.of("Enter a chunk you have never visited: " + xp(ChunkDiscoveryManager.XP_PER_CHUNK) + " XP."),
-                Material.COMPASS, U,
-                List.of(SkillEffect.planned("Faster movement", "Being rebuilt: the old bonus ignores your level."))));
+                Material.COMPASS, U, List.of()));
         d.add(new SkillDef("Animal Taming", "Taming and breeding animals.", List.of(), Material.LEAD, U,
                 List.of(SkillEffect.planned("Faster taming"))));
         d.add(new SkillDef("Riding", "Handling mounts.", List.of(), Material.SADDLE, U,

@@ -35,6 +35,10 @@ const findSlotWith = (nameRe, loreRe) => { const w = bot.currentWindow; if (!w) 
 const findSlot = re => { const w = bot.currentWindow; if (!w) return -1; for (let i = 0; i < w.inventoryStart; i++) if (w.slots[i] && re.test(plain(w.slots[i].customName))) return i; return -1; };
 async function waitTitle(re, ms = 4000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (bot.currentWindow && re.test(title())) return true; await sleep(100); } return false; }
 async function click(i, wait = 700) { await bot.clickWindow(i, 0, 0); await sleep(wait); }
+/** "Swords: P -> xM damage" from a Power tile; M must equal 1 + 0.05 * P (both as displayed). */
+const swordPower = lore => { const m = (lore || '').match(/Swords: ([\d.]+) +-> +x([\d.]+) damage/); return m ? { p: Number(m[1]), m: Number(m[2]) } : null; };
+const consistent = sp => !!sp && Math.abs(sp.m - (1 + 0.05 * sp.p)) < 0.011;
+
 async function cmd(c, wait = 1200) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
 const saw = (re, since) => chat.slice(since).some(m => re.test(m));
 
@@ -278,7 +282,8 @@ async function attrs() {
   check('Attributes section lists players, you first', await waitTitle(/Attributes$/) && new RegExp(NAME).test(slotName(10)), slotName(10));
   await click(10, 900);
   check('Inspector opens for yourself', await waitTitle(new RegExp('Attributes: ' + NAME)), title());
-  check('Inspector shows the same Power tile as the Stats page', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)), slotLore(10));
+  const before = slotLore(10);
+  check('Inspector shows the same Power tile as the Stats page', consistent(swordPower(before)) && /Gained from \(per skill level\)/.test(before), before);
   check('Rules tile shows integrations and limits', /PvE offense.*: on/.test(slotLore(40)) && /Offense budget: x6\.00/.test(slotLore(40)), slotLore(40));
 
   // Simulator: Blade Mastery at 100, then confirm nothing really changed
@@ -286,9 +291,10 @@ async function attrs() {
   check('Simulator opens', await waitTitle(/Attribute simulator/), title());
   for (let i = 0; i < 25 && !/^Blade Mastery$/.test(slotName(22)); i++) await click(25, 500);
   await click(43, 900); // preset level 100
-  check('Simulator: Blade Mastery 100 would take swords to x6.00', /Swords: x1\.05 -> x6\.00/.test(slotLore(10)) && /changes/.test(slotName(10)), slotName(10) + ' | ' + slotLore(10));
+  const sim = slotLore(10).match(/Swords: x([\d.]+) -> x([\d.]+)/);
+  check('Simulator: Blade Mastery 100 adds 99 sword Power (+4.95)', !!sim && Math.abs(Number(sim[2]) - Number(sim[1]) - 4.95) < 0.011 && /changes/.test(slotName(10)), slotName(10) + ' | ' + slotLore(10));
   await click(45, 900); // back
-  check('Simulating changed nothing', /Swords: 1\.0 +-> +x1\.05 damage/.test(slotLore(10)), slotLore(10));
+  check('Simulating changed nothing', slotLore(10) === before, slotLore(10));
 
   // Dev buffs: +100 Vitality, check max health, clear
   await click(31, 900);

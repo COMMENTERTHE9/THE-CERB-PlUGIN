@@ -18,6 +18,8 @@ public final class AttributeSnapshot {
     private final double critChance, critMultiplier, lifesteal;
     private final double maxHpMultiplier, armorBonus, defenseBarMultiplier, resist;
     private final double maxManaMultiplier, manaRegenMultiplier, spellDamageMultiplier;
+    private final double[] secondary, secondaryRaw;        // per Stat (speed/handling stats only)
+    private final double[] attackSpeed, attackSpeedRaw;    // per WeaponClass
     private final List<Contribution> contributions;
     private final int ignored;
 
@@ -25,6 +27,7 @@ public final class AttributeSnapshot {
                       double critChance, double critMultiplier, double lifesteal,
                       double maxHpMultiplier, double armorBonus, double defenseBarMultiplier, double resist,
                       double maxManaMultiplier, double manaRegenMultiplier, double spellDamageMultiplier,
+                      double[] secondary, double[] secondaryRaw, double[] attackSpeed, double[] attackSpeedRaw,
                       List<Contribution> contributions, int ignored) {
         this.rules = rules;
         this.realm = realm;
@@ -41,6 +44,10 @@ public final class AttributeSnapshot {
         this.maxManaMultiplier = maxManaMultiplier;
         this.manaRegenMultiplier = manaRegenMultiplier;
         this.spellDamageMultiplier = spellDamageMultiplier;
+        this.secondary = secondary;
+        this.secondaryRaw = secondaryRaw;
+        this.attackSpeed = attackSpeed;
+        this.attackSpeedRaw = attackSpeedRaw;
         this.contributions = List.copyOf(contributions);
         this.ignored = ignored;
     }
@@ -56,6 +63,20 @@ public final class AttributeSnapshot {
     public RealmContext realm() { return realm; }
 
     public double realmMultiplier() { return realm.multiplier(); }
+
+    /**
+     * A speed/handling stat after diminishing returns and its cap (0.12 = +12%); 0 when the stat
+     * is switched off. For attack speed use {@link #attackSpeed(WeaponClass)}: it is per weapon.
+     */
+    public double secondary(Stat s) { return secondary[s.ordinal()]; }
+
+    /** The same stat before diminishing returns (what the sources add up to). */
+    public double secondaryRaw(Stat s) { return secondaryRaw[s.ordinal()]; }
+
+    /** Attack speed bonus for hits with {@code c}: all-weapon part plus that weapon's skill. */
+    public double attackSpeed(WeaponClass c) { return attackSpeed[c.ordinal()]; }
+
+    public double attackSpeedRaw(WeaponClass c) { return attackSpeedRaw[c.ordinal()]; }
 
     /** Attribute total. For Power this is the all-weapon part; see {@link #power(WeaponClass)}. */
     public double get(Attribute a) { return totals[a.ordinal()]; }

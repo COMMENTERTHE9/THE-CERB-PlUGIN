@@ -13,10 +13,18 @@ import java.util.Map;
  *
  * @param skillWeights attribute points per skill level, by exact skill name
  * @param caps         ceiling for each attribute total (a safety rail, not the balance lever)
+ * @param secondary    speed and handling stats (attack speed, draw speed, movement, cooldown recovery)
  */
 public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
                              Map<Attribute, Double> caps,
-                             Derived derived, Limits limits, Curves curves, Switches switches) {
+                             Derived derived, Limits limits, Curves curves, Switches switches,
+                             Secondary secondary) {
+
+    /** Rules with the default speed and handling stats. */
+    public AttributeRules(Map<String, List<SkillWeight>> skillWeights, Map<Attribute, Double> caps,
+                          Derived derived, Limits limits, Curves curves, Switches switches) {
+        this(skillWeights, caps, derived, limits, curves, switches, DEFAULT_SECONDARY);
+    }
 
     /** {@code perLevel} points of {@code attribute} per skill level; {@code weapon} null = all weapons. */
     public record SkillWeight(Attribute attribute, double perLevel, WeaponClass weapon) {}
@@ -41,6 +49,33 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
     /** Kill switches: each integration can be turned off without touching the others. */
     public record Switches(boolean pveOffense, boolean vitality, boolean fortitude, boolean essence,
                            boolean realmMagnitude) {}
+
+    /**
+     * One speed/handling stat: {@code driver} x {@code perPoint} plus skill contributions gives the
+     * raw value; the effective value is {@code cap x (1 - e^(-raw/cap))} (diminishing returns).
+     */
+    public record SecondaryStat(boolean enabled, Attribute driver, double perPoint, double cap) {
+        public static final SecondaryStat OFF = new SecondaryStat(false, Attribute.AGILITY, 0, 0.01);
+    }
+
+    /** Per skill level, for a speed/handling stat; {@code weapon} limits attack speed to one weapon type. */
+    public record StatWeight(Stat stat, double perLevel, WeaponClass weapon) {}
+
+    /**
+     * Speed and handling stats (docs/design/ATTRIBUTE_EXPANSION.md).
+     *
+     * @param inPvp         false: the bonuses pause while a player is PvP-tagged (PvP stays vanilla)
+     * @param pvpTagSeconds how long hitting or being hit by a player counts as PvP
+     */
+    public record Secondary(Map<Stat, SecondaryStat> stats, Map<String, List<StatWeight>> skillWeights,
+                            boolean inPvp, int pvpTagSeconds) {
+        public Secondary {
+            stats = Map.copyOf(stats);
+            skillWeights = Map.copyOf(skillWeights);
+        }
+
+        public SecondaryStat get(Stat s) { return stats.getOrDefault(s, SecondaryStat.OFF); }
+    }
 
     public AttributeRules {
         skillWeights = Map.copyOf(skillWeights);
@@ -99,6 +134,24 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
             "Weapon Mastery",
             new ScalingParams(0.0, 0.03, 0.08, 50, 0.30, 0.40));
     public static final Switches DEFAULT_SWITCHES = new Switches(true, true, true, true, true);
+
+    public static final Secondary DEFAULT_SECONDARY;
+    static {
+        Map<Stat, SecondaryStat> stats = new java.util.EnumMap<>(Stat.class);
+        stats.put(Stat.ATTACK_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.001, 0.25));
+        stats.put(Stat.DRAW_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.001, 0.50));
+        stats.put(Stat.MOVE_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0005, 0.20));
+        stats.put(Stat.COOLDOWN_RECOVERY, new SecondaryStat(true, Attribute.ESSENCE, 0.002, 0.50));
+        Map<String, List<StatWeight>> w = new LinkedHashMap<>();
+        w.put("Blade Mastery", List.of(new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.SWORD)));
+        w.put("Weapon Mastery", List.of(
+                new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.AXE), new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.MACE),
+                new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.TRIDENT), new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.SPEAR)));
+        w.put("Ranged Precision", List.of(new StatWeight(Stat.DRAW_SPEED, 0.004, null)));
+        w.put("Navigation", List.of(new StatWeight(Stat.MOVE_SPEED, 0.001, null)));
+        w.put("Spell Weaving", List.of(new StatWeight(Stat.COOLDOWN_RECOVERY, 0.003, null)));
+        DEFAULT_SECONDARY = new Secondary(stats, w, false, 15);
+    }
 
     public static final AttributeRules DEFAULTS = new AttributeRules(DEFAULT_SKILL_WEIGHTS, Map.of(),
             DEFAULT_DERIVED, DEFAULT_LIMITS, DEFAULT_CURVES, DEFAULT_SWITCHES);

@@ -238,6 +238,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Attributes.AttributesConfig attributesConfig;
     private Attributes.AttributeService attributeService;
     private Manager.AttributeEffects attributeEffects;
+    private Manager.SecondaryEffects secondaryEffects;
+    private Manager.PvpTag pvpTag;
+
+    /** Attack/draw/movement speed and spell cooldown from the attribute engine. */
+    public Manager.SecondaryEffects getSecondaryEffects() { return secondaryEffects; }
+    public Manager.PvpTag getPvpTag() { return pvpTag; }
     private Attributes.BuffSource attributeBuffs;
     private Attributes.PlayerRealms playerRealms;
 
@@ -361,6 +367,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         playerDefenseManager.setAttributeService(attributeService);
         attributeEffects = new Manager.AttributeEffects(this, attributeService, playerVirtualHealthManager, playerDefenseManager,
                 playerManaManager);
+        // Speed and handling stats (attack/draw/movement speed, spell cooldown), paused during PvP by default
+        secondaryEffects = new Manager.SecondaryEffects(this, attributeService);
+        pvpTag = new Manager.PvpTag(this, () -> attributeService.rules().secondary().pvpTagSeconds(), secondaryEffects::apply);
+        secondaryEffects.setPvpTag(pvpTag);
+        secondaryEffects.setDebug(this::isCombatDebugEnabled);
+        attributeEffects.setSecondaryEffects(secondaryEffects);
         skillManager.setLevelListener(new SkillManager.LevelListener() {
             @Override public void loaded(java.util.UUID p) { attributeService.track(p); attributeEffects.refreshLater(p); }
             @Override public void changed(java.util.UUID p) { attributeService.markDirty(p); attributeEffects.refreshLater(p); }
@@ -464,6 +476,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
         // ── Other ──
         pm.registerEvents(new CustomItemListener(spellManager, this), this);
+        pm.registerEvents(secondaryEffects, this);
+        pm.registerEvents(pvpTag, this);
         this.damageDisplayListener = new DamageDisplayListener(this);
         damageDisplayListener.setCombatConfig(combatConfig);
         pm.registerEvents(damageDisplayListener, this);

@@ -26,6 +26,7 @@ node smoke.js                             # PASS/FAIL per check, non-zero exit o
 | `progression.js stats` | Player Menu → Stats page values, live update after a level change |
 | `progression.js persist` | `PERSIST=set`, restart the server, `PERSIST=check`: attributes identical after restart |
 | `progression.js perf` | Hits don't rebuild attribute snapshots |
+| `progression.js speed` | Speed stats measured in game: server attack-speed value by Blade/Weapon Mastery level, hits at a fixed 0.55 s rhythm (charged vs not), bow power and critical arrows by draw time and Ranged Precision, movement speed by Pathfinding, Fireball cooldown by Spell Weaving, and the PvP pause (spawns `CerbTarget`) |
 | `progression.js offswitch` | With `attributes.integration.pve-offense: false` + `/cerb reload`, old swing counts return |
 
 Never point these at a server with real players or online-mode=true.

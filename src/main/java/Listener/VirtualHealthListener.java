@@ -347,12 +347,24 @@ public class VirtualHealthListener implements Listener {
         sendCombatDebugTrace(ctx);
     }
 
+    /**
+     * An arrow shot with extra draw speed flew faster and hits harder; against a player that bonus
+     * is taken back (unless attributes.yml secondary.in-pvp is true).
+     */
+    private double vanillaDrawDamage(Projectile projectile, double dmg) {
+        var sec = plugin.getSecondaryEffects();
+        if (sec == null || plugin.getAttributeService().rules().secondary().inPvp()) return dmg;
+        Double scale = projectile.getPersistentDataContainer().get(sec.drawScaleKey(), org.bukkit.persistence.PersistentDataType.DOUBLE);
+        return scale != null && scale > 1.0 && Double.isFinite(scale) ? dmg / scale : dmg;
+    }
+
     private void handleProjectileHit(Projectile projectile, Entity target, EntityDamageEvent event) {
         double dmg = event.getDamage();
         Entity shooter = projectile.getShooter() instanceof Entity e ? e : null;
 
         if (target instanceof Player player) {
             Player attackerPlayer = (shooter instanceof Player p) ? p : null;
+            if (attackerPlayer != null) dmg = vanillaDrawDamage(projectile, dmg); // PvP stays vanilla unless configured
             CombatContext ctx = new CombatContext(attackerPlayer, player, CustomDamageType.PROJECTILE, dmg);
 
             if (combatSkillProcessor != null && attackerPlayer != null) {

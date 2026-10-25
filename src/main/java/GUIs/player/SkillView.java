@@ -134,6 +134,60 @@ public final class SkillView {
         return rules.skillWeights().getOrDefault(skill, List.of());
     }
 
+    /** One speed stat a skill raises, with the weapon types it applies to (Weapon Mastery: four). */
+    record SpeedRow(Attributes.Stat stat, List<WeaponClass> weapons) {
+        String label() {
+            if (stat != Attributes.Stat.ATTACK_SPEED) return stat.displayName;
+            if (weapons.isEmpty()) return "Attack speed";
+            List<String> names = new ArrayList<>();
+            for (WeaponClass w : weapons) names.add(names.isEmpty() ? w.singular : w.singular.toLowerCase(Locale.ROOT));
+            return String.join("/", names) + " attack speed";
+        }
+
+        /** Effective value in {@code s} (the first weapon stands for the group: same weights). */
+        double value(AttributeSnapshot s) {
+            return stat == Attributes.Stat.ATTACK_SPEED ? s.attackSpeed(weapons.isEmpty() ? WeaponClass.OTHER : weapons.get(0)) : s.secondary(stat);
+        }
+    }
+
+    /** Group a skill's speed weights per stat. */
+    static List<SpeedRow> speedRows(List<AttributeRules.StatWeight> ws) {
+        Map<Attributes.Stat, List<WeaponClass>> by = new LinkedHashMap<>();
+        for (AttributeRules.StatWeight w : ws) {
+            List<WeaponClass> list = by.computeIfAbsent(w.stat(), k -> new ArrayList<>());
+            if (w.weapon() != null && !list.contains(w.weapon())) list.add(w.weapon());
+        }
+        List<SpeedRow> out = new ArrayList<>();
+        by.forEach((st, list) -> out.add(new SpeedRow(st, list)));
+        return out;
+    }
+
+    /** Speed bonuses per level from this skill (attack, draw, movement speed, cooldown recovery). */
+    static List<AttributeRules.StatWeight> statWeights(AttributeRules rules, String skill) {
+        return rules.secondary().skillWeights().getOrDefault(skill, List.of());
+    }
+
+    /**
+     * Speed lines for a skill, one per stat and amount: Weapon Mastery's four attack-speed
+     * weights read "+0.3% axe/mace/trident/spear attack speed". {@code levels} multiplies the
+     * per-level amount (1 = per level, the skill level = from this skill now).
+     */
+    static List<String> speedLines(List<AttributeRules.StatWeight> ws, double levels, boolean perLevel) {
+        Map<String, List<AttributeRules.StatWeight>> by = new LinkedHashMap<>();
+        for (AttributeRules.StatWeight w : ws) by.computeIfAbsent(w.stat() + "/" + w.perLevel(), k -> new ArrayList<>()).add(w);
+        List<String> out = new ArrayList<>();
+        for (List<AttributeRules.StatWeight> group : by.values()) {
+            AttributeRules.StatWeight first = group.get(0);
+            List<String> weapons = new ArrayList<>();
+            for (AttributeRules.StatWeight w : group) if (w.weapon() != null) weapons.add(w.weapon().singular.toLowerCase(Locale.ROOT));
+            out.add(ChatColor.AQUA + "+" + Fmt.pct(first.perLevel() * levels).replace(".0%", "%") + " "
+                    + (weapons.isEmpty() ? "" : String.join("/", weapons) + " ")
+                    + first.stat().displayName.toLowerCase(Locale.ROOT)
+                    + (perLevel ? ChatColor.DARK_GRAY + " per level" : ""));
+        }
+        return out;
+    }
+
     static String weightLine(AttributeRules.SkillWeight w, double amount, boolean perLevel) {
         return w.attribute().color + "+" + one(amount) + " " + w.attribute().displayName
                 + ChatColor.GRAY + (w.weapon() != null ? " (" + w.weapon().displayName.toLowerCase(Locale.ROOT) + ")" : "")
@@ -175,6 +229,9 @@ public final class SkillView {
                 }
                 case FORTUNE -> rows.put("Fortune", null);
             }
+        }
+        for (SpeedRow r : speedRows(statWeights(svc.rules(), skill))) {
+            rows.put(r.label(), new String[]{"+" + Fmt.pct(r.value(now)), "+" + Fmt.pct(r.value(next))});
         }
         List<String> out = new ArrayList<>();
         rows.forEach((label, v) -> {
@@ -247,9 +304,9 @@ public final class SkillView {
         l.gap();
         levelLines(l, pr);
         l.gap();
-        for (AttributeRules.SkillWeight w : weights(plugin.getAttributeService().rules(), d.name())) {
-            l.raw(weightLine(w, w.perLevel(), true));
-        }
+        AttributeRules rules = plugin.getAttributeService().rules();
+        for (AttributeRules.SkillWeight w : weights(rules, d.name())) l.raw(weightLine(w, w.perLevel(), true));
+        speedLines(statWeights(rules, d.name()), 1, true).forEach(l::raw);
         l.raw(effectSummary(d));
         l.raw(trainingSummary(plugin, d));
         l.hint("Click for details");
