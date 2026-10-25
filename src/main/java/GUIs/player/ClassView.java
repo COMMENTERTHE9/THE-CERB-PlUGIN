@@ -83,6 +83,7 @@ final class ClassView {
         if (a.isActive()) {
             l.stat("Needs", hand(a))
                     .stat("Cooldown", String.format(Locale.ROOT, "%.1f s", a.cooldownMs() / 1000.0));
+            if (a.strikeCooldownMs() > 0) l.stat("Strike", String.format(Locale.ROOT, "every %.1f s; it moves you any time", a.strikeCooldownMs() / 1000.0));
             if (a.essenceCost() > 0) l.stat("Essence", String.valueOf(Math.round(a.essenceCost())));
             if (!a.groups().isEmpty()) l.stat("Shares a lockout with", String.join(", ", a.groups()) + " abilities");
         } else {

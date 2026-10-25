@@ -331,32 +331,58 @@ public final class ClassService implements AttributeSource {
     private volatile java.util.function.Supplier<Attributes.KillXp.Params> killXp = () -> Attributes.KillXp.Params.DEFAULTS;
     /** A mob's level (the registry's tag); set by the plugin. */
     private volatile java.util.function.ToIntFunction<org.bukkit.entity.LivingEntity> levelOf = e -> 1;
-    /** The last enemy a player hit or was hit by: its level and when (a self cast in that fight is paid for it). */
-    private record Foe(int level, long at) {}
-    private final Map<UUID, Foe> lastFoe = new ConcurrentHashMap<>();
+    /** What a mob's kill pays (its cast-XP budget, before the weak-mob rule); set by the plugin. */
+    private volatile java.util.function.ToDoubleFunction<org.bukkit.entity.LivingEntity> killXpOf = e -> CAST_XP;
+    /** The cast XP each mob has paid: at most what its kill pays. */
+    private final CastXpLedger castLedger = new CastXpLedger();
+
+    /** An enemy a cast reached or a fight is with: its id, level and cast-XP budget. */
+    public record Foe(UUID id, int level, double budget) {}
+    /** The last enemy a player hit or was hit by, and when (a self cast in that fight is charged to it). */
+    private record FightFoe(Foe foe, long at) {}
+    private final Map<UUID, FightFoe> lastFoe = new ConcurrentHashMap<>();
 
     public void setKillXp(java.util.function.Supplier<Attributes.KillXp.Params> killXp) { this.killXp = killXp; }
 
     public void setLevelOf(java.util.function.ToIntFunction<org.bukkit.entity.LivingEntity> levelOf) { this.levelOf = levelOf; }
 
+    public void setKillXpOf(java.util.function.ToDoubleFunction<org.bukkit.entity.LivingEntity> killXpOf) { this.killXpOf = killXpOf; }
+
     /** A mob's level as the registry tagged it (1 when untagged). */
     public int levelOf(org.bukkit.entity.LivingEntity mob) { return Math.max(1, levelOf.applyAsInt(mob)); }
 
-    /** A hit dealt or taken (any thread); {@code foeLevel} > 0 when the other side is an enemy of that level. */
-    public void markCombat(UUID player, int foeLevel) {
+    /** {@code mob} as a foe: id, level and cast-XP budget. On the thread that owns the mob. */
+    public Foe foe(org.bukkit.entity.LivingEntity mob) {
+        return new Foe(mob.getUniqueId(), levelOf(mob), Math.max(0, killXpOf.applyAsDouble(mob)));
+    }
+
+    /** A hit dealt or taken (any thread); {@code foe} is the enemy on the other side, null for anything else. */
+    public void markCombat(UUID player, Foe foe) {
         markCombat(player);
-        if (foeLevel > 0) lastFoe.put(player, new Foe(foeLevel, System.currentTimeMillis()));
+        if (foe != null) lastFoe.put(player, new FightFoe(foe, System.currentTimeMillis()));
     }
 
     /**
-     * The level of the enemy in this player's current fight (the last one hit or hit by, within
-     * {@link #COMBAT_MS}), or 0 when the fight has none: hitting a cow or an armor stand, or a PvP
+     * The enemy in this player's current fight (the last one hit or hit by, within
+     * {@link #COMBAT_MS}), or null when the fight has none: hitting a cow or an armor stand, or a PvP
      * tag, is "combat" for the loadout lock but pays no class XP.
      */
-    public int fightFoeLevel(UUID player) {
-        Foe f = lastFoe.get(player);
-        return f != null && System.currentTimeMillis() - f.at() < COMBAT_MS ? f.level() : 0;
+    public Foe fightFoe(UUID player) {
+        FightFoe f = lastFoe.get(player);
+        return f != null && System.currentTimeMillis() - f.at() < COMBAT_MS ? f.foe() : null;
     }
+
+    /** The level of the enemy in this player's current fight, or 0 (see {@link #fightFoe}). */
+    public int fightFoeLevel(UUID player) {
+        Foe f = fightFoe(player);
+        return f == null ? 0 : f.level();
+    }
+
+    /** A mob died (any thread): its cast-XP entry ends a few seconds later, after the cast that killed it has paid. */
+    public void forgetMob(UUID mob) { castLedger.died(mob, System.currentTimeMillis()); }
+
+    /** What a mob has paid in cast XP so far (diagnostics, tests). */
+    public double castXpPaidBy(UUID mob) { return castLedger.spent(mob); }
 
     /** The level a class's own skills are at: the highest of its entry skills (what a weak mob is measured against). */
     int classSkillLevel(UUID player, ClassDef c) {
@@ -367,13 +393,18 @@ public final class ClassService implements AttributeSource {
     }
 
     /**
-     * Class XP for a cast that reached an enemy of level {@code foeLevel} (the strongest it reached;
-     * 0 = unknown): kill XP's weak-mob share, {@link ClassRanks#castXp}. Player's thread.
+     * Class XP for a cast that reached {@code foe} (the strongest enemy it reached): kill XP's
+     * weak-mob share ({@link ClassRanks#castXp}), and never more than the mob still has in its
+     * budget (what its kill pays, {@link CastXpLedger}): a mob kept alive in a cage runs dry.
+     * Player's thread.
      */
-    public void awardCastXp(Player p, String classId, int foeLevel) {
+    public void awardCastXp(Player p, String classId, Foe foe) {
+        if (foe == null) return;
         ClassDef c = catalog.classDef(classId);
         int own = c == null ? 0 : classSkillLevel(p.getUniqueId(), c);
-        awardXp(p, classId, ClassRanks.castXp(CAST_XP, foeLevel, own, killXp.get()));
+        double xp = ClassRanks.castXp(CAST_XP, foe.level(), own, killXp.get());
+        double paid = castLedger.pay(foe.id(), xp, foe.budget(), System.currentTimeMillis());
+        if (paid > 0) awardXp(p, classId, paid);
     }
 
     /** A mob died to this player (any thread): part of its XP goes to the classes used in the fight. */

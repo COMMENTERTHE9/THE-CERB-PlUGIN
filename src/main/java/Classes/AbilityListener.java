@@ -509,12 +509,18 @@ public final class AbilityListener implements Listener {
     public void onCombat(EntityDamageByEntityEvent e) {
         Entity source = e.getDamager() instanceof Projectile pr && pr.getShooter() instanceof Entity shooter ? shooter : e.getDamager();
         if (source == e.getEntity() || !(e.getEntity() instanceof LivingEntity target)) return;
-        if (source instanceof Player p) { service.markCombat(p.getUniqueId(), foeLevel(target)); bar.touchIfShown(p); }
-        if (target instanceof Player p && source instanceof LivingEntity src) { service.markCombat(p.getUniqueId(), foeLevel(src)); bar.touchIfShown(p); }
+        if (source instanceof Player p) { service.markCombat(p.getUniqueId(), foe(target)); bar.touchIfShown(p); }
+        if (target instanceof Player p && source instanceof LivingEntity src) { service.markCombat(p.getUniqueId(), foe(src)); bar.touchIfShown(p); }
     }
 
-    /** An enemy's level for class XP, 0 for anything else (or a mob this region doesn't own). */
-    private int foeLevel(LivingEntity e) {
-        return e instanceof Enemy && !(e instanceof Player) && org.bukkit.Bukkit.isOwnedByCurrentRegion(e) ? service.levelOf(e) : 0;
+    /** An enemy as a foe for class XP (its level and cast-XP budget), null for anything else (or a mob this region doesn't own). */
+    private ClassService.Foe foe(LivingEntity e) {
+        return e instanceof Enemy && !(e instanceof Player) && org.bukkit.Bukkit.isOwnedByCurrentRegion(e) ? service.foe(e) : null;
+    }
+
+    /** A mob died: its cast-XP entry ends. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMobDeath(org.bukkit.event.entity.EntityDeathEvent e) {
+        if (!(e.getEntity() instanceof Player)) service.forgetMob(e.getEntity().getUniqueId());
     }
 }

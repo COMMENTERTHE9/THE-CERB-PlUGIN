@@ -275,6 +275,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Classes.ClassCatalog loadClassCatalog() {
         File classesFile = new File(getDataFolder(), "classes.yml");
         File abilitiesFile = new File(getDataFolder(), "abilities.yml");
+        for (String name : new String[] {"classes.yml", "abilities.yml"}) refreshShipped(name);
         if (!classesFile.exists()) saveResource("classes.yml", false);
         if (!abilitiesFile.exists()) saveResource("abilities.yml", false);
         YamlConfiguration classesYml = new YamlConfiguration();
@@ -289,8 +290,29 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         }
         Classes.ClassCatalog catalog = Classes.ClassCatalog.from(classesYml, abilitiesYml);
         for (String problem : catalog.problems()) getLogger().warning("[Classes] " + problem);
+        for (String note : catalog.notes()) getLogger().info("[Classes] " + note);
         getLogger().info("[Classes] " + catalog.classes().size() + " classes and " + catalog.abilities().size() + " abilities loaded");
         return catalog;
+    }
+
+    /**
+     * A shipped config file nobody edited is brought up to the current version (ShippedConfig): an
+     * update's new numbers reach servers installed earlier, while a file with the owner's own
+     * edits is kept as it is.
+     */
+    private void refreshShipped(String name) {
+        try {
+            ShippedConfig.Result r = ShippedConfig.refresh(getDataFolder(), name, getResource(name));
+            if (r == ShippedConfig.Result.REFRESHED) {
+                getLogger().info("[Config] " + name + " was an unedited copy of an earlier version: updated to this version's ("
+                        + "the old copy is " + name + ".old)");
+            } else if (r == ShippedConfig.Result.EDITED) {
+                getLogger().info("[Config] " + name + " has edits of your own, so it is kept as it is (this version's defaults: "
+                        + "rename it and restart to get them)");
+            }
+        } catch (java.io.IOException e) {
+            getLogger().warning("[Config] could not check " + name + " against this version's (" + e.getMessage() + "); it is kept as it is");
+        }
     }
 
     /** combat.yml's crit / lifesteal curves for the attribute engine (defaults until it is loaded). */
@@ -525,6 +547,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         abilityCaster.setSpellCooldown((id, ms) -> secondaryEffects.cooldownMs(id, ms));
         classService.setKillXp(() -> getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS);
         classService.setLevelOf(mobRegistry::getLevel);
+        // A mob's cast-XP budget is what its kill pays (kill XP v2, before the weak-mob rule).
+        classService.setKillXpOf(mob -> Attributes.KillXp.compute(mobRegistry.getLevel(mob), mobRegistry.xpMultiplierOf(mob), 0,
+                getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS));
         Classes.CastFeedback castFeedback = new Classes.CastFeedback(playerHUDManager);
         abilityCaster.setFeedback(castFeedback);
         Classes.AbilityBar abilityBar = new Classes.AbilityBar(this, classService, playerManaManager);

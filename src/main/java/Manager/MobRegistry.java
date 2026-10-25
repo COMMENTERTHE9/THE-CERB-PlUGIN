@@ -136,6 +136,14 @@ public class MobRegistry {
         return result;
     }
 
+    /**
+     * The mob's XP multiplier (its mobs.yml entry, else its tier's default), without the
+     * identification event {@link #resolve} fires: cheap enough for every hit.
+     */
+    public double xpMultiplierOf(LivingEntity entity) {
+        return resolveInternal(entity).xpMultiplier();
+    }
+
     private MobContext resolveInternal(LivingEntity entity) {
         // 1. PDC tag — highest priority, O(1)
         String pdcId = entity.getPersistentDataContainer()

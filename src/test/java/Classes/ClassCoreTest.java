@@ -63,7 +63,8 @@ class ClassCoreTest {
             assertEquals(2, passives, c.id() + " passives");
             assertEquals(1, keystones, c.id() + " keystone");
         }
-        assertEquals(2000L, cat.groupMs().get("movement"));
+        assertEquals(List.of(), cat.notes(), "the shipped files already keep every rule: nothing lowered");
+        assertEquals(1200L, cat.groupMs().get("movement"));
         assertEquals(Set.of("movement"), cat.ability("blink").groups());
         assertEquals(Set.of(WeaponFamily.FOCUS), cat.ability("arcane_bolt").weapons());
         assertEquals(1, AbilityCaster.momentumNeeded(cat.ability("execute")), "Execute needs Momentum to spend");
@@ -119,6 +120,89 @@ class ClassCoreTest {
     }
 
     @Test
+    void movementComesBackIn1point2SecondsAtMost() throws Exception {
+        // The owner's rule (2026-10-25): every dash and blink, and the lockout they share, 1.2 s at most.
+        ClassCatalog cat = shipped();
+        for (AbilityDef a : cat.abilities().values()) {
+            if (!a.isMovement()) continue;
+            assertTrue(a.cooldownMs() <= ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS, a.id() + " " + a.cooldownMs() + " ms");
+            for (String g : a.groups()) assertTrue(cat.groupMs().getOrDefault(g, 0L) <= ClassCatalog.MOVEMENT_MAX_COOLDOWN_MS, g);
+        }
+        assertEquals(Set.of("charge", "blink", "lunge"), Set.copyOf(cat.abilities().values().stream().filter(AbilityDef::isMovement).map(AbilityDef::id).toList()));
+        assertTrue(cat.ability("blink").cooldownMs() < 500, "Blink under half a second (the owner's ask)");
+        // The strike and stun keep the pace they had: a quick dash is not a quick stun or a free hit.
+        assertEquals(10_000, cat.ability("charge").strikeCooldownMs());
+        assertEquals(7_000, cat.ability("lunge").strikeCooldownMs());
+        assertEquals(0, cat.ability("blink").strikeCooldownMs(), "nothing to strike");
+        assertFalse(cat.ability("cleave").isMovement());
+
+        // A server's files written before the rule (Blink 6 s, Charge 10 s, Lunge 7 s, lockout 2 s) play the same.
+        String oldAbilities = edit(edit(edit(SHIPPED_ABILITIES, "cooldown: 0\\.4s", "cooldown: 6s"),
+                "cooldown: 1\\.2s\n    strike-cooldown: 10s", "cooldown: 10s"), "cooldown: 1\\.2s\n    strike-cooldown: 7s", "cooldown: 7s");
+        String oldClasses = edit(SHIPPED_CLASSES, "movement: 1\\.2s", "movement: 2s");
+        ClassCatalog old = of(oldClasses, oldAbilities);
+        assertEquals(List.of(), old.problems());
+        assertEquals(1200, old.ability("blink").cooldownMs());
+        assertEquals(1200, old.ability("charge").cooldownMs());
+        assertEquals(10_000, old.ability("charge").strikeCooldownMs(), "its old cooldown keeps pacing the strike");
+        assertEquals(1200, old.ability("lunge").cooldownMs());
+        assertEquals(7_000, old.ability("lunge").strikeCooldownMs());
+        assertEquals(1200L, old.groupMs().get("movement"));
+        String notes = String.join("\n", old.notes());
+        assertEquals(4, old.notes().size(), notes);
+        assertTrue(notes.contains("ability charge") && notes.contains("was 10 s") && notes.contains("strike keeps every 10 s"), notes);
+        assertTrue(notes.contains("group movement") && notes.contains("was 2 s"), notes);
+
+        // Bounds: movement may be as quick as the gap between casts, nothing else under 1 s; strike-cooldown only where it means something.
+        ClassCatalog b = of(ONE_CLASS, """
+                abilities:
+                  hop:     { class: warrior, kind: active, cooldown: 400ms, effects: [ { blink: { distance: 4 } } ] }
+                  skip:    { class: warrior, kind: active, cooldown: 300ms, effects: [ { blink: { distance: 4 } } ] }
+                  jab:     { class: warrior, kind: active, cooldown: 900ms, effects: [ { damage: { coefficient: 1.0 } } ] }
+                  slash:   { class: warrior, kind: active, cooldown: 4s, strike-cooldown: 8s, effects: [ { damage: { coefficient: 1.0 } } ] }
+                  glide:   { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 5s, effects: [ { dash: { distance: 4 } } ] }
+                  rush:    { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 500ms, effects: [ { dash: { distance: 4 } }, { damage: { coefficient: 1.0 } } ] }
+                  bash:    { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 6s, effects: [ { dash: { distance: 4, stun-seconds: 1 } } ] }
+                """);
+        assertEquals(Set.of("hop", "bash"), b.abilities().keySet(), String.join("\n", b.problems()));
+        String why = String.join("\n", b.problems());
+        assertTrue(why.contains("skip") && why.contains("400 ms floor"), why);
+        assertTrue(why.contains("jab") && why.contains("1000 ms floor"), why);
+        assertTrue(why.contains("slash") && why.contains("for movement abilities"), why);
+        assertTrue(why.contains("glide") && why.contains("nothing to strike"), why);
+        assertTrue(why.contains("rush") && why.contains("outside"), why);
+    }
+
+    @Test
+    void aSharedLockoutHoldsTheOthersNotTheAbilityThatStartedIt() {
+        ClassCatalog cat = shipped();
+        AbilityDef blink = cat.ability("blink"), charge = cat.ability("charge");
+        CooldownBook book = new CooldownBook();
+        book.commit(blink, blink.cooldownMs(), cat.groupMs(), 0);
+        assertEquals(0, book.remaining(blink, 400), "Blink again after its own 0.4 s");
+        assertEquals(800, book.remaining(charge, 400), "Charge waits for the movement lockout");
+        assertEquals(0, book.remaining(charge, 1200), "...1.2 s at most");
+        book.commit(charge, charge.cooldownMs(), cat.groupMs(), 1200);
+        assertEquals(1200, book.remaining(blink, 1200), "and the other way round");
+        // A lockout restored after a relog doesn't know who started it: it holds every ability of the group.
+        CooldownBook restored = new CooldownBook();
+        restored.restore(Map.of("group:movement", 2000L, "strike:charge", 9000L, "nonsense", 9000L), 1000);
+        assertEquals(1000, restored.remaining(blink, 1000));
+        assertEquals(8000, restored.strikeRemaining(charge, 1000), "a resting strike survives a relog");
+        // The strike's own clock.
+        CooldownBook s = new CooldownBook();
+        assertEquals(0, s.strikeRemaining(charge, 0));
+        s.commitStrike(charge, charge.strikeCooldownMs(), 0);
+        assertEquals(10_000 - 1200, s.strikeRemaining(charge, 1200), "Charge at 1.2 s: moves only, strike in 8.8 s");
+        assertEquals(0, s.strikeRemaining(charge, 10_000));
+        s.commitStrike(blink, 0, 0);
+        assertEquals(0, s.strikeRemaining(blink, 0), "no strike clock: every cast strikes");
+        assertTrue(s.saved(1200, 5_000).containsKey("strike:charge"), "saved like a cooldown");
+        s.clear();
+        assertEquals(0, s.strikeRemaining(charge, 1200));
+    }
+
+    @Test
     void wrongItemMessagesSayWhatToHold() {
         ClassCatalog cat = shipped();
         assertEquals("a focus (blaze rod, breeze rod or stick)", AbilityCaster.needs(cat.ability("arcane_bolt")));
@@ -154,6 +238,50 @@ class ClassCoreTest {
         assertEquals(new ClassRanks.Result(ClassRanks.MAX_RANK, 0, 49), ClassRanks.award(1, 0, Double.MAX_VALUE));
         assertEquals(new ClassRanks.Result(3, 10, 0), ClassRanks.award(3, 10, Double.NaN));
         assertEquals(new ClassRanks.Result(3, 10, 0), ClassRanks.award(3, 10, -500));
+    }
+
+    @Test
+    void aMobPaysCastXpOnlyUpToWhatItsKillPays() {
+        CastXpLedger ledger = new CastXpLedger();
+        java.util.UUID caged = java.util.UUID.randomUUID(), other = java.util.UUID.randomUUID();
+        double budget = 40; // a level-1 Common mob's kill XP
+        double total = 0;
+        for (int i = 0; i < 100; i++) total += ledger.pay(caged, 6, budget, 1_000);
+        assertEquals(40, total, 1e-9, "a hundred casts at a caged mob pay its kill XP, then nothing");
+        assertEquals(0, ledger.pay(caged, 6, budget, 2_000), "dry");
+        assertEquals(6, ledger.pay(other, 6, budget, 2_000), "another mob has its own budget");
+        CastXpLedger partial = new CastXpLedger();
+        partial.pay(caged, 36, budget, 0);
+        assertEquals(4, partial.pay(caged, 6, budget, 0), "the last payment is what is left");
+        // The cast that kills the mob pays after its death event: the spent budget still counts.
+        ledger.died(caged, 3_000);
+        assertEquals(0, ledger.pay(caged, 6, budget, 3_000), "the killing cast of a dry mob pays nothing");
+        CastXpLedger fought = new CastXpLedger();
+        fought.pay(caged, 36, budget, 0);
+        fought.died(caged, 0);
+        assertEquals(4, fought.pay(caged, 6, budget, 5), "...and the rest of the budget of one with some left");
+        ledger.prune(3_000 + CastXpLedger.DEAD_GRACE_MS);
+        assertEquals(40, ledger.spent(caged), "kept for the grace (a spell still in flight)");
+        ledger.prune(3_000 + CastXpLedger.DEAD_GRACE_MS + 1);
+        assertEquals(0, ledger.spent(caged), "then dropped");
+        assertEquals(6, ledger.spent(other), "a live mob's entry stays");
+        ledger.died(java.util.UUID.randomUUID(), 0); // a mob that never paid: nothing to keep
+        assertEquals(1, ledger.size());
+        // bad input pays nothing and never throws
+        assertEquals(0, ledger.pay(null, 6, budget, 0));
+        assertEquals(0, ledger.pay(other, Double.NaN, budget, 0));
+        assertEquals(0, ledger.pay(other, 6, 0, 0));
+        assertEquals(0, ledger.pay(other, -6, budget, 0));
+        ledger.died(null, 0);
+        // idle entries are dropped
+        ledger.prune(2_000 + CastXpLedger.IDLE_MS + 1);
+        assertEquals(0, ledger.size());
+        // payments sweep old entries now and then by themselves
+        CastXpLedger swept = new CastXpLedger();
+        swept.pay(caged, 6, budget, CastXpLedger.PRUNE_EVERY_MS);
+        swept.died(caged, CastXpLedger.PRUNE_EVERY_MS);
+        swept.pay(other, 6, budget, 2 * CastXpLedger.PRUNE_EVERY_MS + CastXpLedger.DEAD_GRACE_MS);
+        assertEquals(1, swept.size(), "the dead mob's entry went with the next sweep");
     }
 
     @Test
@@ -323,20 +451,21 @@ class ClassCoreTest {
     @Test
     void cooldownsBelongToThePlayerAndSurviveSwitchesAndRelogs() {
         ClassCatalog cat = shipped();
-        AbilityDef blink = cat.ability("blink"), lunge = cat.ability("lunge"), bolt = cat.ability("arcane_bolt");
+        AbilityDef blink = cat.ability("blink"), lunge = cat.ability("lunge"), bolt = cat.ability("arcane_bolt"), cry = cat.ability("war_cry");
         CooldownBook book = new CooldownBook();
         long t = 1_000_000;
         book.commit(blink, blink.cooldownMs(), cat.groupMs(), t);
         assertEquals(CooldownBook.GLOBAL_MS, book.remaining(bolt, t), "a short global gap after any cast");
         assertEquals(0, book.remaining(bolt, t + CooldownBook.GLOBAL_MS));
-        assertEquals(2000, book.remaining(lunge, t), "Lunge shares the movement lockout with Blink");
-        assertEquals(6000, book.remaining(blink, t));
+        assertEquals(1200, book.remaining(lunge, t), "Lunge shares the movement lockout with Blink");
+        assertEquals(400, book.remaining(blink, t));
+        book.commit(cry, cry.cooldownMs(), cat.groupMs(), t);
         // A "switch" does nothing to the book; a relog restores the long ones.
         Map<String, Long> saved = book.saved(t + 1000, 3000);
-        assertEquals(Set.of("ability:blink"), saved.keySet(), "only cooldowns with 3 s or more left are saved");
+        assertEquals(Set.of("ability:war_cry"), saved.keySet(), "only cooldowns with 3 s or more left are saved");
         CooldownBook after = new CooldownBook();
         after.restore(saved, t + 1500);
-        assertEquals(4500, after.remaining(blink, t + 1500));
+        assertEquals(28_500, after.remaining(cry, t + 1500));
         after.restore(Map.of("ability:x", t - 5, "junk", t + 99_999), t + 1500);
         assertEquals(0, after.remaining(bolt, t + 1500), "expired or unknown entries are ignored");
         after.restore(Map.of("ability:arcane_bolt", t + 1000L * 3600_000L), t);

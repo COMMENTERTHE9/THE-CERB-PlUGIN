@@ -149,12 +149,16 @@ public final class AbilityCaster {
         long cooldown = a.essenceCost() > 0
                 ? Math.max(Math.min(a.cooldownMs(), ClassCatalog.MIN_COOLDOWN_MS), spellCooldown.applyAsLong(p.getUniqueId(), a.cooldownMs()))
                 : a.cooldownMs();
+        // A movement ability's strike and stun keep their own pace: in between, a cast only moves you.
+        long strikeLeft = a.strikeCooldownMs() > 0 ? prof.cooldowns().strikeRemaining(a, now) : 0;
         prof.cooldowns().commit(a, cooldown, service.catalog().groupMs(), now);
+        if (strikeLeft == 0) prof.cooldowns().commitStrike(a, a.strikeCooldownMs(), now);
         prof.lastUse.put(a.classId(), now);
         casts.incrementAndGet();
         sound(p, a);
         StringBuilder detail = new StringBuilder();
-        run(p, prof, a, 0, null, 0, aimed, blinkTo, detail);
+        if (strikeLeft > 0) note(detail, "strike in " + seconds(strikeLeft));
+        run(p, prof, a, 0, null, null, aimed, blinkTo, detail, strikeLeft > 0);
         return CastResult.cast(a, detail.toString());
     }
 
@@ -207,7 +211,7 @@ public final class AbilityCaster {
         if (fb != null) fb.event(p, "§6✦ " + a.displayName() + "! §7· §fcountered");
         // Paid like a cast that reached it: enemies only, by their level (a weak one pays the kill-XP share).
         if (attacker instanceof org.bukkit.entity.Enemy && Bukkit.isOwnedByCurrentRegion(attacker)) {
-            service.awardCastXp(p, a.classId(), service.levelOf(attacker));
+            service.awardCastXp(p, a.classId(), service.foe(attacker));
         }
         return true;
     }
@@ -220,7 +224,7 @@ public final class AbilityCaster {
     /**
      * Perform the verbs from index {@code from}. A dash pauses the list until it lands, then the rest
      * runs (and the dash's stun lands on the first enemy in front). When the list is done, the cast
-     * earns class XP if it reached a hostile mob ({@code foe}: the strongest one's level), or if it
+     * earns class XP if it reached a hostile mob ({@code foe}: the strongest one), or if it
      * was a self cast (buff, blink, Feint...) made during a fight with an enemy (paid for that
      * enemy): casting into the air, at farm animals, or in a fight with no enemy in it earns nothing
      * (CLASSES.md §2.2), and trivial mobs pay the kill-XP anti-grind share
@@ -230,32 +234,33 @@ public final class AbilityCaster {
      * {@code blinkTo} the leading Blink's checked landing spot; {@code detail} collects what the
      * first part did ("3 hit", "x2.2 · 3 Momentum") for the cast message (null after a dash).
      */
-    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, int foe,
-                     LivingEntity aimed, Location blinkTo, StringBuilder detail) {
-        if (landed != null && landed.stunSeconds() > 0) foe = Math.max(foe, strongest(stunFirst(p, landed)));
+    private void run(Player p, ClassProfile prof, AbilityDef a, int from, EffectSpec.Dash landed, ClassService.Foe foe,
+                     LivingEntity aimed, Location blinkTo, StringBuilder detail, boolean moveOnly) {
+        if (!moveOnly && landed != null && landed.stunSeconds() > 0) foe = stronger(foe, strongest(stunFirst(p, landed)));
         List<EffectSpec> fx = a.effects();
         boolean self = false;
         int hit = 0;
         for (int i = from; i < fx.size(); i++) {
             EffectSpec e = fx.get(i);
+            if (moveOnly && !AbilityDef.moves(e)) continue; // the strike is resting: just the dash or blink
             boolean leading = i == 0;
             switch (e) {
                 case EffectSpec.Dash d -> {
                     dash(p, d);
                     int next = i + 1;
-                    int soFar = foe;
+                    ClassService.Foe soFar = foe;
                     p.getScheduler().runDelayed(plugin, t -> {
-                        if (p.isValid() && !p.isDead()) run(p, prof, a, next, d, soFar, null, null, null);
+                        if (p.isValid() && !p.isDead()) run(p, prof, a, next, d, soFar, null, null, null, moveOnly);
                     }, null, 7L);
                     return;
                 }
                 case EffectSpec.Damage d -> {
                     List<LivingEntity> hits = damage(p, prof, d, leading ? aimed : null, detail);
                     hit = hits.size();
-                    foe = Math.max(foe, strongest(hits));
+                    foe = stronger(foe, strongest(hits));
                 }
                 case EffectSpec.Blink b -> self |= blink(p, b, leading ? blinkTo : null);
-                case EffectSpec.Status s -> foe = Math.max(foe, strongest(status(p, s)));
+                case EffectSpec.Status s -> foe = stronger(foe, strongest(status(p, s)));
                 case EffectSpec.Buff b -> {
                     service.addBuff(p, a, b);
                     self = true;
@@ -277,8 +282,8 @@ public final class AbilityCaster {
                 case EffectSpec.Spell s -> spells.get().castForAbility(s.name(), p, burst -> spellHit(p, a, burst)); // XP on its hit
             }
         }
-        if (foe == 0 && self) foe = service.fightFoeLevel(p.getUniqueId());
-        if (foe > 0) service.awardCastXp(p, a.classId(), foe);
+        if (foe == null && self) foe = service.fightFoe(p.getUniqueId()); // charged to the fight's enemy
+        if (foe != null) service.awardCastXp(p, a.classId(), foe);
     }
 
     /** Add a part to the cast message ("3 hit"); a null builder (after a dash) takes nothing. */
@@ -308,20 +313,26 @@ public final class AbilityCaster {
      * them: class XP as for a cast that reached the strongest enemy among them, on the caster's thread.
      */
     private void spellHit(Player p, AbilityDef a, List<LivingEntity> hit) {
-        int foe = strongest(hit);
-        if (foe > 0) p.getScheduler().run(plugin, t -> service.awardCastXp(p, a.classId(), foe), null);
+        ClassService.Foe foe = strongest(hit);
+        if (foe != null) p.getScheduler().run(plugin, t -> service.awardCastXp(p, a.classId(), foe), null);
     }
 
-    /** The level of the strongest hostile mob in {@code hit}, or 0 when none is hostile (no cast XP for farm animals). */
-    private int strongest(List<LivingEntity> hit) {
-        int best = 0;
-        for (LivingEntity e : hit) best = Math.max(best, strongest(e));
+    /** The strongest hostile mob in {@code hit}, or null when none is hostile (no cast XP for farm animals). */
+    private ClassService.Foe strongest(List<LivingEntity> hit) {
+        ClassService.Foe best = null;
+        for (LivingEntity e : hit) best = stronger(best, strongest(e));
         return best;
     }
 
-    private int strongest(LivingEntity e) {
+    private ClassService.Foe strongest(LivingEntity e) {
         return e instanceof org.bukkit.entity.Enemy && Bukkit.isOwnedByCurrentRegion(e) && !Manager.AbilityTargets.unhurtable(e)
-                ? service.levelOf(e) : 0;
+                ? service.foe(e) : null;
+    }
+
+    private static ClassService.Foe stronger(ClassService.Foe a, ClassService.Foe b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return b.level() > a.level() ? b : a;
     }
 
     /**

@@ -157,7 +157,7 @@ class ControlsTest {
     @Test
     void everyOutcomeSaysWhatHappenedOrStaysSilent() {
         AbilityDef bolt = new AbilityDef("arcane_bolt", "mage", "Arcane Bolt", "", AbilityDef.Kind.ACTIVE, 1,
-                Set.of(WeaponFamily.FOCUS), 15, 1500, Set.of(), Set.of(), List.of(), List.of());
+                Set.of(WeaponFamily.FOCUS), 15, 1500, 0, Set.of(), Set.of(), List.of(), List.of());
         assertEquals("§6✦ Arcane Bolt", CastFeedback.text(CastResult.cast(bolt, ""), "Right-click"));
         assertEquals("§6✦ Arcane Bolt §7· §f3 hit", CastFeedback.text(CastResult.cast(bolt, "3 hit"), "Right-click"));
         assertEquals("§7Arcane Bolt §f1.2 s", CastFeedback.text(CastResult.cooldown(bolt, 1_200), "Right-click"));

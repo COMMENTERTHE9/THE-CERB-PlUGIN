@@ -6,9 +6,10 @@ import java.util.Map;
 /**
  * One player's cooldowns (docs/design/CLASSES.md §5.4, §6). They belong to the player, not to a
  * loadout: switching loadouts never resets them, and the long ones are saved across relogs.
- * Keys: "ability:<id>", "group:<name>" (shared lockouts, e.g. every dash and blink) and "global"
- * (a short gap between any two casts). Times are epoch milliseconds. Only touched on the player's
- * thread; not thread-safe on its own.
+ * Keys: "ability:<id>", "group:<name>" (shared lockouts, e.g. every dash and blink: a cast locks
+ * the group's other abilities; its own cooldown covers itself), "strike:<id>" (a movement
+ * ability's strike, on its own clock) and "global" (a short gap between any two casts). Times are
+ * epoch milliseconds. Only touched on the player's thread; not thread-safe on its own.
  */
 public final class CooldownBook {
 
@@ -16,12 +17,19 @@ public final class CooldownBook {
     public static final long GLOBAL_MS = 400;
 
     private final Map<String, Long> until = new HashMap<>();
+    /** group -> the ability whose cast started its lockout (a restored lockout has none: it locks them all). */
+    private final Map<String, String> groupStartedBy = new HashMap<>();
 
-    /** Milliseconds until {@code ability} can be cast (0 = ready): its own cooldown, its groups and the global gap. */
+    /**
+     * Milliseconds until {@code ability} can be cast (0 = ready): its own cooldown, the global gap,
+     * and its groups' lockouts started by another ability of the group.
+     */
     public long remaining(AbilityDef ability, long now) {
         long left = left("global", now);
         left = Math.max(left, left("ability:" + ability.id(), now));
-        for (String g : ability.groups()) left = Math.max(left, left("group:" + g, now));
+        for (String g : ability.groups()) {
+            if (!ability.id().equals(groupStartedBy.get(g))) left = Math.max(left, left("group:" + g, now));
+        }
         return left;
     }
 
@@ -31,8 +39,19 @@ public final class CooldownBook {
         until.put("ability:" + ability.id(), now + Math.max(0, cooldownMs));
         for (String g : ability.groups()) {
             Long ms = groupMs.get(g);
-            if (ms != null && ms > 0) until.merge("group:" + g, now + ms, Math::max);
+            if (ms != null && ms > 0) {
+                until.merge("group:" + g, now + ms, Math::max);
+                groupStartedBy.put(g, ability.id());
+            }
         }
+    }
+
+    /** Milliseconds until a movement ability's strike is back (0 = this cast strikes). */
+    public long strikeRemaining(AbilityDef ability, long now) { return left("strike:" + ability.id(), now); }
+
+    /** The cast struck: its strike rests {@code ms}. */
+    public void commitStrike(AbilityDef ability, long ms, long now) {
+        if (ms > 0) until.put("strike:" + ability.id(), now + ms);
     }
 
     /** Shorten an ability's running cooldown to end at most {@code ms} from now (a successful counter). */
@@ -40,10 +59,10 @@ public final class CooldownBook {
         until.computeIfPresent("ability:" + ability.id(), (k, end) -> Math.min(end, now + Math.max(0, ms)));
     }
 
-    /** Running cooldowns with at least {@code minLeftMs} left, to save (short ones don't matter after a relog). */
     /** Admin and test tool: every cooldown ends now. */
-    public void clear() { until.clear(); }
+    public void clear() { until.clear(); groupStartedBy.clear(); }
 
+    /** Running cooldowns with at least {@code minLeftMs} left, to save (short ones don't matter after a relog). */
     public Map<String, Long> saved(long now, long minLeftMs) {
         Map<String, Long> out = new HashMap<>();
         until.forEach((k, end) -> { if (end - now >= minLeftMs && !k.equals("global")) out.put(k, end); });
@@ -57,7 +76,7 @@ public final class CooldownBook {
     public void restore(Map<String, Long> saved, long now) {
         if (saved == null) return;
         saved.forEach((k, end) -> {
-            if (k != null && (k.startsWith("ability:") || k.startsWith("group:")) && end != null && end > now) {
+            if (k != null && (k.startsWith("ability:") || k.startsWith("group:") || k.startsWith("strike:")) && end != null && end > now) {
                 until.put(k, Math.min(end, now + MAX_RESTORED_MS));
             }
         });

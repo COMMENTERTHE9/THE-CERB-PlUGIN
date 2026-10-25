@@ -27,8 +27,18 @@ public final class ClassCatalog {
     /** ...and for cooldowns of {@link #LONG_COOLDOWN_MS} or more. */
     public static final double MAX_COEFFICIENT_LONG = 6.0;
     public static final long LONG_COOLDOWN_MS = 20_000;
-    /** No active may come back faster than this. */
+    /** No active may come back faster than this, except movement (below). */
     public static final long MIN_COOLDOWN_MS = 1_000;
+    /**
+     * Owner rule (2026-10-25): movement (any active that dashes or blinks) comes back in 1.2 s at
+     * most, its own cooldown and the shared movement lockout both, and may be as quick as the gap
+     * between casts ({@link CooldownBook#GLOBAL_MS}). A longer value in a server's file is lowered
+     * when it loads; when the ability also strikes or stuns, the longer value keeps pacing that part
+     * (its {@code strike-cooldown}), so a quick dash never becomes a quick stun or a free hit.
+     */
+    public static final long MOVEMENT_MAX_COOLDOWN_MS = 1_200;
+    /** The longest a strike-cooldown may be. */
+    public static final long MAX_STRIKE_COOLDOWN_MS = 10 * 60_000L;
     /** Most stacks a class resource (Momentum) holds; the power check counts every damage bonus per stack at this many. */
     public static final int MAX_STACKS = 5;
 
@@ -36,22 +46,25 @@ public final class ClassCatalog {
     private final Map<String, AbilityDef> abilities;
     private final Map<String, Long> groupMs;
     private final List<String> problems;
+    /** Values changed by a rule while loading (the movement rule), for the log. */
+    private final List<String> notes;
     /** class or ability id -> the item its menu tile shows (the optional "icon:" key; a material name). */
     private final Map<String, String> icons;
     /** The ability keys' server settings ({@code controls:} in classes.yml). */
     private final Controls.Settings controls;
 
     private ClassCatalog(Map<String, ClassDef> classes, Map<String, AbilityDef> abilities, Map<String, Long> groupMs,
-                         List<String> problems, Map<String, String> icons, Controls.Settings controls) {
+                         List<String> problems, List<String> notes, Map<String, String> icons, Controls.Settings controls) {
         this.classes = Collections.unmodifiableMap(classes);
         this.abilities = Collections.unmodifiableMap(abilities);
         this.groupMs = Collections.unmodifiableMap(groupMs);
         this.problems = List.copyOf(problems);
+        this.notes = List.copyOf(notes);
         this.icons = Collections.unmodifiableMap(icons);
         this.controls = controls;
     }
 
-    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), Map.of(), Controls.Settings.DEFAULTS); }
+    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), List.of(), Map.of(), Controls.Settings.DEFAULTS); }
 
     /** The ability keys' server settings: default scheme, combo timing, ability bar. */
     public Controls.Settings controls() { return controls; }
@@ -65,6 +78,8 @@ public final class ClassCatalog {
     public Map<String, Long> groupMs() { return groupMs; }
     /** Why entries were refused while loading (empty when everything loaded). */
     public List<String> problems() { return problems; }
+    /** Values a rule changed while loading (a movement cooldown lowered to 1.2 s), for the log. */
+    public List<String> notes() { return notes; }
 
     public ClassDef classDef(String id) { return id == null ? null : classes.get(id); }
     public AbilityDef ability(String id) { return id == null ? null : abilities.get(id); }
@@ -76,6 +91,7 @@ public final class ClassCatalog {
      */
     public static ClassCatalog from(ConfigurationSection classesYml, ConfigurationSection abilitiesYml) {
         List<String> problems = new ArrayList<>();
+        List<String> notes = new ArrayList<>();
         Map<String, Long> groups = new LinkedHashMap<>();
         ConfigurationSection g = classesYml == null ? null : classesYml.getConfigurationSection("groups");
         if (g != null) {
@@ -99,7 +115,7 @@ public final class ClassCatalog {
                 List<String> why = new ArrayList<>();
                 AbilityDef def;
                 try {
-                    def = parseAbility(id, a, why);
+                    def = parseAbility(id, a, why, notes);
                 } catch (RuntimeException ex) { // a wrong type anywhere in the entry: refuse it, never fail the whole load
                     def = null;
                     why.add("unreadable (" + ex.getMessage() + ")");
@@ -129,11 +145,29 @@ public final class ClassCatalog {
             problems.add("ability " + a.id() + ": unknown class " + a.classId());
             return true;
         });
+        // The movement rule: a lockout that movement shares is 1.2 s at most too.
+        for (AbilityDef a : abilities.values()) {
+            if (!a.isMovement()) continue;
+            for (String group : a.groups()) {
+                Long ms = groups.get(group);
+                if (ms != null && ms > MOVEMENT_MAX_COOLDOWN_MS) {
+                    groups.put(group, MOVEMENT_MAX_COOLDOWN_MS);
+                    notes.add("group " + group + ": movement shares it, so it locks for " + seconds(MOVEMENT_MAX_COOLDOWN_MS)
+                            + " at most (was " + seconds(ms) + ")");
+                }
+            }
+        }
         Controls.Settings controls = Controls.Settings.from(classesYml == null ? null : classesYml.getConfigurationSection("controls"));
-        return new ClassCatalog(classes, abilities, groups, problems, icons, controls);
+        return new ClassCatalog(classes, abilities, groups, problems, notes, icons, controls);
     }
 
-    private static AbilityDef parseAbility(String id, ConfigurationSection a, List<String> why) {
+    /** "1.2 s", "10 s". */
+    static String seconds(long ms) {
+        double s = ms / 1000.0;
+        return (s == Math.rint(s) ? String.valueOf((long) s) : String.valueOf(s)) + " s";
+    }
+
+    private static AbilityDef parseAbility(String id, ConfigurationSection a, List<String> why, List<String> notes) {
         String classId = a.getString("class");
         if (classId == null || classId.isBlank()) why.add("no class");
         AbilityDef.Kind kind;
@@ -153,6 +187,7 @@ public final class ClassCatalog {
         double essence = a.getDouble("essence", 0);
         if (!(essence >= 0 && essence <= 10_000)) why.add("essence cost " + essence + " outside 0-10000");
         long cooldown = millis(a.get("cooldown"), 0);
+        long strikeCooldown = millis(a.get("strike-cooldown"), 0);
         List<EffectSpec> effects = new ArrayList<>();
         for (Map<?, ?> m : a.getMapList("effects")) {
             EffectSpec e = parseEffect(m, why);
@@ -163,22 +198,41 @@ public final class ClassCatalog {
             AbilityDef.Passive p = parsePassive(m, why);
             if (p != null) passives.add(p);
         }
+        boolean movement = kind == AbilityDef.Kind.ACTIVE && effects.stream().anyMatch(AbilityDef::moves);
+        boolean strikes = AbilityDef.strikes(effects);
+        String note = null;
+        if (movement && cooldown > MOVEMENT_MAX_COOLDOWN_MS) {
+            // An older file's longer cooldown: the movement comes back in 1.2 s, the strike keeps that pace.
+            if (strikes && strikeCooldown == 0) strikeCooldown = cooldown;
+            note = "ability " + id + ": movement comes back in " + seconds(MOVEMENT_MAX_COOLDOWN_MS) + " at most (cooldown was "
+                    + seconds(cooldown) + (strikes ? "; its strike keeps every " + seconds(strikeCooldown) : "") + ")";
+            cooldown = MOVEMENT_MAX_COOLDOWN_MS;
+        }
+        if (strikeCooldown != 0) {
+            if (!movement) why.add("strike-cooldown is for movement abilities (a dash or a blink)");
+            else if (!strikes) why.add("strike-cooldown, but nothing to strike or stun");
+            else if (strikeCooldown < cooldown || strikeCooldown > MAX_STRIKE_COOLDOWN_MS) {
+                why.add("strike-cooldown " + strikeCooldown + " ms outside the cooldown-" + MAX_STRIKE_COOLDOWN_MS + " ms range");
+            }
+        }
         if (kind == AbilityDef.Kind.ACTIVE) {
             if (effects.isEmpty()) why.add("an active needs effects");
-            if (cooldown < MIN_COOLDOWN_MS) why.add("cooldown under the " + MIN_COOLDOWN_MS + " ms floor");
+            long floor = movement ? CooldownBook.GLOBAL_MS : MIN_COOLDOWN_MS;
+            if (cooldown < floor) why.add("cooldown under the " + floor + " ms floor");
             double total = 0;
             for (EffectSpec e : effects) if (e instanceof EffectSpec.Damage d) total += (d.coefficient() + d.perMomentum() * MAX_STACKS) * d.hits();
             for (EffectSpec e : effects) if (e instanceof EffectSpec.Counter c) {
                 total += c.coefficient();
                 if (c.successCooldownMs() > cooldown) why.add("counter success-cooldown longer than the cooldown");
             }
-            double cap = cooldown >= LONG_COOLDOWN_MS ? MAX_COEFFICIENT_LONG : MAX_COEFFICIENT_SHORT;
+            double cap = Math.max(cooldown, strikeCooldown) >= LONG_COOLDOWN_MS ? MAX_COEFFICIENT_LONG : MAX_COEFFICIENT_SHORT;
             if (total > cap + 1e-9) why.add(String.format(Locale.ROOT, "damage %.2fx a hit over the %.1fx cap for its cooldown", total, cap));
         } else if (passives.isEmpty()) {
             why.add("a passive or keystone needs passives");
         }
+        if (note != null && why.isEmpty()) notes.add(note);
         return new AbilityDef(id, classId == null ? "" : classId, a.getString("name", id), a.getString("description", ""),
-                kind, rank, Collections.unmodifiableSet(weapons), essence, cooldown,
+                kind, rank, Collections.unmodifiableSet(weapons), essence, cooldown, strikeCooldown,
                 Collections.unmodifiableSet(new LinkedHashSet<>(a.getStringList("groups"))),
                 Collections.unmodifiableSet(new LinkedHashSet<>(a.getStringList("exclusive"))),
                 List.copyOf(effects), List.copyOf(passives));

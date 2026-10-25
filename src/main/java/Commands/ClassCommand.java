@@ -183,6 +183,7 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
                 if (!open) line.append(", rank ").append(a.unlockRank());
                 if (a.isActive()) {
                     line.append(", ").append(hand(a)).append(", ").append(String.format(Locale.ROOT, "%.1f s", a.cooldownMs() / 1000.0));
+                    if (a.strikeCooldownMs() > 0) line.append(String.format(Locale.ROOT, " (strike every %.1f s)", a.strikeCooldownMs() / 1000.0));
                     if (a.essenceCost() > 0) line.append(", ").append(Math.round(a.essenceCost())).append(" Essence");
                 }
                 p.sendMessage(line.toString());

@@ -4,6 +4,10 @@
 # Bounds are enforced when the file loads: an active deals at most 3.0x a basic hit per cast
 # (6.0x with a cooldown of 20 s or more) and comes back no faster than 1 s. Effect verbs: damage,
 # dash, blink, status, buff, resource, counter, empower, spell. PROTOTYPE numbers, for tuning in game.
+# Movement (owner rule, 2026-10-25): an active that dashes or blinks comes back in 1.2 s at most (a
+# longer cooldown is lowered when the file loads) and may be as quick as 0.4 s, the gap between any
+# two casts. "strike-cooldown": its strike and stun come back on their own, slower clock; a cast in
+# between only moves you (a quick dash never becomes a quick stun or a free hit).
 # resource "needs": the stacks a cast requires (refused, nothing spent, below it); a spend-all
 # finisher needs 1 unless it says "needs: 0".
 # icon: the item its menu tile shows (a material name; optional).
@@ -26,11 +30,12 @@ abilities:
     class: warrior
     name: Charge
     icon: LEATHER_BOOTS
-    description: "Rush forward; the first enemy in your path is stunned for a second."
+    description: "Rush forward; the first enemy in your path is stunned for a second (every 10 s; in between, Charge only moves you)."
     kind: active
     unlock-rank: 3
     weapons: [blade, axe, polearm, blunt, unarmed]
-    cooldown: 10s
+    cooldown: 1.2s
+    strike-cooldown: 10s
     groups: [movement]
     effects:
       - dash: { distance: 8, stun-seconds: 1.0 }
@@ -133,7 +138,7 @@ abilities:
     kind: active
     unlock-rank: 8
     essence: 20
-    cooldown: 6s
+    cooldown: 0.4s
     groups: [movement]
     effects:
       - blink: { distance: 6 }
@@ -183,11 +188,12 @@ abilities:
     class: duelist
     name: Lunge
     icon: TRIDENT
-    description: "Close the distance and strike."
+    description: "Close the distance and strike (the strike every 7 s; in between, Lunge only moves you)."
     kind: active
     unlock-rank: 3
     weapons: [blade, polearm]
-    cooldown: 7s
+    cooldown: 1.2s
+    strike-cooldown: 7s
     groups: [movement]
     effects:
       - dash: { distance: 5 }
