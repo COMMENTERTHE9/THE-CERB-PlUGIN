@@ -6,8 +6,9 @@
 # dash, blink, status, buff, resource, counter, empower, spell. PROTOTYPE numbers, for tuning in game.
 # Movement (owner rule, 2026-10-25): an active that dashes or blinks comes back in 1.2 s at most (a
 # longer cooldown is lowered when the file loads) and may be as quick as 0.4 s, the gap between any
-# two casts. "strike-cooldown": its strike and stun come back on their own, slower clock; a cast in
-# between only moves you (a quick dash never becomes a quick stun or a free hit).
+# two casts. "strike-cooldown": its strike and stun come back on their own, slower clock (1 s at
+# least, like any active); a cast in between only moves you, so a quick dash never becomes a quick
+# stun or a free hit.
 # resource "needs": the stacks a cast requires (refused, nothing spent, below it); a spend-all
 # finisher needs 1 unless it says "needs: 0".
 # icon: the item its menu tile shows (a material name; optional).

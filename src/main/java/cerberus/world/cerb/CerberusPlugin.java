@@ -272,10 +272,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
      * classes.yml + abilities.yml (written on first install). Null when a file can't be read or
      * parsed: the caller then keeps what it had, so a typo never touches anyone's classes.
      */
-    private Classes.ClassCatalog loadClassCatalog() {
+    private Classes.ClassCatalog loadClassCatalog(boolean startup) {
         File classesFile = new File(getDataFolder(), "classes.yml");
         File abilitiesFile = new File(getDataFolder(), "abilities.yml");
-        for (String name : new String[] {"classes.yml", "abilities.yml"}) refreshShipped(name);
+        // At startup only: a new version arrives with a restart, and a file put back by hand before
+        // /cerb reload stays as put.
+        if (startup) for (String name : new String[] {"classes.yml", "abilities.yml"}) refreshShipped(name);
         if (!classesFile.exists()) saveResource("classes.yml", false);
         if (!abilitiesFile.exists()) saveResource("abilities.yml", false);
         YamlConfiguration classesYml = new YamlConfiguration();
@@ -302,13 +304,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
      */
     private void refreshShipped(String name) {
         try {
-            ShippedConfig.Result r = ShippedConfig.refresh(getDataFolder(), name, getResource(name));
-            if (r == ShippedConfig.Result.REFRESHED) {
+            ShippedConfig.Outcome r = ShippedConfig.refresh(getDataFolder(), name, getResource(name));
+            if (r.result() == ShippedConfig.Result.REFRESHED) {
                 getLogger().info("[Config] " + name + " was an unedited copy of an earlier version: updated to this version's ("
-                        + "the old copy is " + name + ".old)");
-            } else if (r == ShippedConfig.Result.EDITED) {
-                getLogger().info("[Config] " + name + " has edits of your own, so it is kept as it is (this version's defaults: "
-                        + "rename it and restart to get them)");
+                        + "the old copy is kept next to it as " + r.backup() + ")");
+            } else if (r.result() == ShippedConfig.Result.EDITED) {
+                getLogger().info("[Config] " + name + " has edits of your own, so it is kept as it is (for this version's defaults, "
+                        + "move it aside, e.g. to " + name + ".mine, and restart)");
             }
         } catch (java.io.IOException e) {
             getLogger().warning("[Config] could not check " + name + " against this version's (" + e.getMessage() + "); it is kept as it is");
@@ -432,7 +434,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         attributeEffects.setSecondaryEffects(secondaryEffects);
         // Classes and abilities (docs/design/CLASSES.md): one more attribute source (equipped passives,
         // running buffs), loaded per player on join. A broken catalog leaves classes off, touching nothing.
-        Classes.ClassCatalog classCatalog = loadClassCatalog();
+        Classes.ClassCatalog classCatalog = loadClassCatalog(true);
         classService = new Classes.ClassService(this, databaseManager, skillManager, attributeService,
                 () -> pvpTag, classCatalog != null ? classCatalog : Classes.ClassCatalog.empty());
         classService.setAttributesChanged(p -> attributeEffects.refresh(p));
@@ -605,7 +607,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             attributeEffects.refreshAll(); // new weights/limits: re-apply max health and defense
         }
         if (classService != null) {
-            Classes.ClassCatalog next = loadClassCatalog();
+            Classes.ClassCatalog next = loadClassCatalog(false);
             if (next != null) classService.setCatalog(next); // a file that doesn't parse keeps the old catalog
         }
         if (defenseBarManager != null && combatConfig != null) {

@@ -384,6 +384,9 @@ public final class ClassService implements AttributeSource {
     /** What a mob has paid in cast XP so far (diagnostics, tests). */
     public double castXpPaidBy(UUID mob) { return castLedger.spent(mob); }
 
+    /** True while {@code foe} still has cast XP to give (a cast reaching several mobs is charged to one that has). */
+    public boolean canPay(Foe foe) { return foe != null && castLedger.canPay(foe.id(), foe.budget()); }
+
     /** The level a class's own skills are at: the highest of its entry skills (what a weak mob is measured against). */
     int classSkillLevel(UUID player, ClassDef c) {
         int best = 0;
@@ -395,15 +398,17 @@ public final class ClassService implements AttributeSource {
     /**
      * Class XP for a cast that reached {@code foe} (the strongest enemy it reached): kill XP's
      * weak-mob share ({@link ClassRanks#castXp}), and never more than the mob still has in its
-     * budget (what its kill pays, {@link CastXpLedger}): a mob kept alive in a cage runs dry.
-     * Player's thread.
+     * budget, what its kill pays this player ({@link CastXpLedger}; a weak mob's kill pays a
+     * quarter): a mob kept alive in a cage runs dry. Player's thread.
      */
     public void awardCastXp(Player p, String classId, Foe foe) {
         if (foe == null) return;
         ClassDef c = catalog.classDef(classId);
         int own = c == null ? 0 : classSkillLevel(p.getUniqueId(), c);
-        double xp = ClassRanks.castXp(CAST_XP, foe.level(), own, killXp.get());
-        double paid = castLedger.pay(foe.id(), xp, foe.budget(), System.currentTimeMillis());
+        Attributes.KillXp.Params k = killXp.get();
+        double xp = ClassRanks.castXp(CAST_XP, foe.level(), own, k);
+        double budget = ClassRanks.castXp(foe.budget(), foe.level(), own, k); // the weak-mob rule shrinks the budget alike
+        double paid = castLedger.pay(foe.id(), xp, budget, System.currentTimeMillis());
         if (paid > 0) awardXp(p, classId, paid);
     }
 

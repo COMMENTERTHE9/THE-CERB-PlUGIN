@@ -519,7 +519,7 @@ public final class AbilityListener implements Listener {
     }
 
     /** A mob died: its cast-XP entry ends. */
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onMobDeath(org.bukkit.event.entity.EntityDeathEvent e) {
         if (!(e.getEntity() instanceof Player)) service.forgetMob(e.getEntity().getUniqueId());
     }

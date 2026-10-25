@@ -117,8 +117,10 @@ bot.once('spawn', async () => {
     if (horse) { await bot.lookAt(horse.position.offset(0, 1, 0), true); bot.mount(horse); await sleep(2000); }
     check('Tamed horse can be mounted (its label steps out of the seat)', !!bot.vehicle && !horseLabel(), bot.vehicle ? bot.vehicle.name : 'not mounted');
     // Getting off is Sneak since 1.21.2 (this mineflayer's dismount() sends Jump, which a horse ignores or rears to).
+    // This mineflayer also never clears bot.vehicle on 1.21.11, so the label is the evidence: it only comes back
+    // once no player rides the horse.
     if (bot.vehicle) { bot.setControlState('sneak', true); await sleep(600); bot.setControlState('sneak', false); await sleep(1000); }
-    check('...and its label is back once you get off', !bot.vehicle && horseLabel(), `${bot.vehicle ? 'still mounted' : 'off'}; ${labelsNear().join(' | ') || 'no labels'}`);
+    check('...and its label is back once you get off', horseLabel(), labelsNear().join(' | ') || 'no labels');
     await cmd('/summon minecraft:pig ~ ~ ~-2 {NoAI:1b}', 2500);
     check('A pig shows its HP label too', labelsNear().some(l => /Pig/.test(l)), labelsNear().join(' | ') || 'no labels');
     await cmd('/kill @e[type=horse,distance=..16]', 800);

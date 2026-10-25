@@ -8,11 +8,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * How much class cast XP each mob has paid (docs/design/CLASSES.md §11). A mob pays at most its
  * budget, what its kill pays; after that only its kill does. So a strong mob kept alive in a cage
  * runs dry after a few dozen casts instead of paying forever, while a real fight, which ends in a
- * kill, is unchanged. Kept in memory by mob id. A mob's death marks its entry, which is dropped a
- * few seconds later: the cast that killed it, and a spell that bursts on it a moment later, still
- * see what it has paid. Entries idle for half an hour (the mob unloaded or wandered off) are
- * dropped too. A restart forgets it, which costs nothing real. Thread-safe: casts, counters and
- * spell hits run on different region threads.
+ * kill, is unchanged. Kept in memory by mob id. A mob's death marks its entry (one is made if it
+ * paid nothing yet), which is dropped a few seconds later: the cast that killed it, a spell that
+ * bursts on it a moment later and a self cast just after still see it. Entries idle for half an
+ * hour (the mob unloaded or wandered off) are dropped too. A restart forgets it, which costs
+ * nothing real. Thread-safe: casts, counters and spell hits run on different region threads.
  */
 final class CastXpLedger {
 
@@ -41,11 +41,13 @@ final class CastXpLedger {
             paid[0] = Math.max(0, Math.min(xp, budget - before));
             return e != null && e.dead() ? new Entry(before + paid[0], e.at(), true) : new Entry(before + paid[0], now, false);
         });
-        if (now - lastPrune >= PRUNE_EVERY_MS) {
-            lastPrune = now;
-            prune(now);
-        }
+        sweep(now);
         return paid[0];
+    }
+
+    /** True while the mob has budget left (a mob it has never paid has all of it). */
+    boolean canPay(UUID mob, double budget) {
+        return mob != null && budget > 0 && spent(mob) < budget;
     }
 
     /** What the mob has paid so far. */
@@ -54,9 +56,19 @@ final class CastXpLedger {
         return e == null ? 0 : e.spent();
     }
 
-    /** The mob died: its entry is dropped after {@link #DEAD_GRACE_MS}, its budget still spent until then. */
+    /** The mob died: its entry, made now if it paid nothing yet, is dropped after {@link #DEAD_GRACE_MS}. */
     void died(UUID mob, long now) {
-        if (mob != null) spent.computeIfPresent(mob, (id, e) -> new Entry(e.spent(), now, true));
+        if (mob == null) return;
+        spent.compute(mob, (id, e) -> new Entry(e == null ? 0 : e.spent(), now, true));
+        sweep(now);
+    }
+
+    /** Drop old entries now and then (at most every {@link #PRUNE_EVERY_MS}), from payments and deaths alike. */
+    private void sweep(long now) {
+        if (now - lastPrune >= PRUNE_EVERY_MS) {
+            lastPrune = now;
+            prune(now);
+        }
     }
 
     /** Drop dead mobs' entries after the grace and idle ones after {@link #IDLE_MS}. */

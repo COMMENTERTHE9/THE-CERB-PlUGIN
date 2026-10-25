@@ -34,7 +34,8 @@ public final class ClassCatalog {
      * most, its own cooldown and the shared movement lockout both, and may be as quick as the gap
      * between casts ({@link CooldownBook#GLOBAL_MS}). A longer value in a server's file is lowered
      * when it loads; when the ability also strikes or stuns, the longer value keeps pacing that part
-     * (its {@code strike-cooldown}), so a quick dash never becomes a quick stun or a free hit.
+     * (its {@code strike-cooldown}), so a quick dash never becomes a quick stun or a free hit. That
+     * part never comes back faster than {@link #MIN_COOLDOWN_MS}, like any other active.
      */
     public static final long MOVEMENT_MAX_COOLDOWN_MS = 1_200;
     /** The longest a strike-cooldown may be. */
@@ -208,11 +209,13 @@ public final class ClassCatalog {
                     + seconds(cooldown) + (strikes ? "; its strike keeps every " + seconds(strikeCooldown) : "") + ")";
             cooldown = MOVEMENT_MAX_COOLDOWN_MS;
         }
+        // Only the movement may be quicker than 1 s: a strike or stun comes back no faster than any other active's.
+        if (movement && strikes && strikeCooldown == 0 && cooldown < MIN_COOLDOWN_MS) strikeCooldown = MIN_COOLDOWN_MS;
         if (strikeCooldown != 0) {
             if (!movement) why.add("strike-cooldown is for movement abilities (a dash or a blink)");
             else if (!strikes) why.add("strike-cooldown, but nothing to strike or stun");
-            else if (strikeCooldown < cooldown || strikeCooldown > MAX_STRIKE_COOLDOWN_MS) {
-                why.add("strike-cooldown " + strikeCooldown + " ms outside the cooldown-" + MAX_STRIKE_COOLDOWN_MS + " ms range");
+            else if (strikeCooldown < Math.max(cooldown, MIN_COOLDOWN_MS) || strikeCooldown > MAX_STRIKE_COOLDOWN_MS) {
+                why.add("strike-cooldown " + strikeCooldown + " ms outside " + Math.max(cooldown, MIN_COOLDOWN_MS) + "-" + MAX_STRIKE_COOLDOWN_MS + " ms");
             }
         }
         if (kind == AbilityDef.Kind.ACTIVE) {

@@ -159,20 +159,28 @@ public final class MobLabelManager implements Listener {
     /**
      * A rideable mob's label takes its seat, so it steps aside when a player right-clicks the mob,
      * before vanilla mounts them (it checks the seat first). It comes back at once if nobody got
-     * on (they fed, saddled or leashed it), else when the rider gets off ({@link #onDismount}).
+     * on (they fed or leashed it), else when the rider gets off ({@link #onDismount}). Clicks that
+     * can't seat anyone leave it alone: Sneak (a horse's inventory), a spectator, a baby, an
+     * unsaddled pig or strider.
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onRiderInteract(PlayerInteractEntityEvent event) {
         if (!(event.getRightClicked() instanceof LivingEntity mob) || !isRideable(mob)) return;
         LabelState st = states.get(mob.getUniqueId());
-        if (st == null) return;
+        if (st == null || !canSeat(event.getPlayer(), mob)) return;
         TextDisplay td = findLabel(mob);
-        if (td != null) {
-            td.leaveVehicle(); // the seat is free now, not when the removal is processed
-            td.remove();
-        }
+        if (td == null) return; // already aside (the off-hand half of the same click): its return is on the way
+        td.leaveVehicle(); // the seat is free now, not when the removal is processed
+        td.remove();
         st.label = null;
         mob.getScheduler().runDelayed(plugin, t -> restore(mob), null, 2L);
+    }
+
+    /** True when this right-click can seat {@code p} on {@code mob}, as far as the label needs to know. */
+    private static boolean canSeat(Player p, LivingEntity mob) {
+        if (p.isSneaking() || p.getGameMode() == org.bukkit.GameMode.SPECTATOR) return false;
+        if (mob instanceof org.bukkit.entity.Ageable a && !a.isAdult()) return false;
+        return !(mob instanceof org.bukkit.entity.Steerable s) || s.hasSaddle();
     }
 
     /** A player got off a labelled mob: its label comes back. */

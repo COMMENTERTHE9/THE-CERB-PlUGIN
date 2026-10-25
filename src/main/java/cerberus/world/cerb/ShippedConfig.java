@@ -17,7 +17,8 @@ import java.util.Set;
  * afterwards: an update never replaces them, so a change to the shipped numbers would never reach a
  * server installed earlier. A file nobody edited is still an exact copy of a version the plugin
  * shipped (line endings aside); such a copy is replaced by the current version, the old one kept
- * next to it as {@code <name>.old}. A file someone edited is never touched.
+ * next to it as {@code <name>.old} (or {@code .old.2}, {@code .old.3}... when that name is taken:
+ * an existing backup is never overwritten). A file someone edited is never touched.
  */
 public final class ShippedConfig {
 
@@ -31,7 +32,8 @@ public final class ShippedConfig {
             "abilities.yml", Set.of(
                     "80f9a56fe921477b71920c775c8e56566bbe6e55f7fee42a015d2ab0cdf8102e",  // Step 5
                     "a16c0eb2f03daf044144d9a55340623290adcdf8040d6daeae4bdb87e4ffc659",  // Step 5 review fixes
-                    "b97549d20864c35de70aee2f7153a6bd1df0fbb652a4ebdf28162c860d448862"), // Phase 3
+                    "b97549d20864c35de70aee2f7153a6bd1df0fbb652a4ebdf28162c860d448862",  // Phase 3
+                    "b838aacb331535782ae0bb1e06f7732b71a688090ddfd58ee227b3ee71ed7de2"), // the movement rule, first cut
             "classes.yml", Set.of(
                     "c1531ecb45d585cdaed23789845b4b21314956a5f9da9a3736cd35145e22244d",  // Step 5
                     "9f6ff81a335d75f7194ab463e1f6faf9d9a3e26b03db897bf9173ac34c4a5c84")); // Ability controls 2.0
@@ -39,27 +41,50 @@ public final class ShippedConfig {
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }
 
+    /** {@link #refresh}'s outcome, with the backup's file name when it refreshed. */
+    public record Outcome(Result result, String backup) {
+        static final Outcome MISSING = new Outcome(Result.MISSING, null);
+        static final Outcome CURRENT = new Outcome(Result.CURRENT, null);
+        static final Outcome EDITED = new Outcome(Result.EDITED, null);
+    }
+
     /**
      * Replace {@code file} with {@code shipped} when it is an unedited copy of an earlier version
-     * (its hash in {@code earlier}); the old copy is kept as {@code <name>.old}. Anything else is
-     * left as it is.
+     * (its hash in {@code earlier}); the old copy is kept under the first free name of
+     * {@code <name>.old}, {@code <name>.old.2}... Anything else is left as it is.
      */
-    public static Result refresh(File file, byte[] shipped, Set<String> earlier) throws IOException {
-        if (!file.isFile()) return Result.MISSING;
+    public static Outcome refresh(File file, byte[] shipped, Set<String> earlier) throws IOException {
+        if (!file.isFile()) return Outcome.MISSING;
         String have = hash(Files.readAllBytes(file.toPath()));
-        if (have.equals(hash(shipped))) return Result.CURRENT;
-        if (earlier == null || !earlier.contains(have)) return Result.EDITED;
-        File old = new File(file.getParentFile(), file.getName() + ".old");
-        Files.copy(file.toPath(), old.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        if (have.equals(hash(shipped))) return Outcome.CURRENT;
+        if (earlier == null || !earlier.contains(have)) return Outcome.EDITED;
+        File old = backupName(file);
+        if (old == null) return Outcome.EDITED; // a hundred backups already: leave everything alone
+        Files.copy(file.toPath(), old.toPath()); // fails rather than overwrite, should the name be taken meanwhile
         File next = new File(file.getParentFile(), file.getName() + ".new");
         Files.write(next.toPath(), shipped);
-        Files.move(next.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING); // never half-written
-        return Result.REFRESHED;
+        try { // never half-written
+            Files.move(next.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            Files.move(next.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        return new Outcome(Result.REFRESHED, old.getName());
+    }
+
+    /** The first free backup name: {@code <name>.old}, then {@code <name>.old.2} up to {@code .old.100}; null when none is free. */
+    static File backupName(File file) {
+        File first = new File(file.getParentFile(), file.getName() + ".old");
+        if (!first.exists()) return first;
+        for (int n = 2; n <= 100; n++) {
+            File f = new File(file.getParentFile(), file.getName() + ".old." + n);
+            if (!f.exists()) return f;
+        }
+        return null;
     }
 
     /** {@link #refresh} for one of the plugin's own files, with its shipped copy from the jar. */
-    static Result refresh(File dataFolder, String name, InputStream shipped) throws IOException {
-        if (shipped == null) return Result.MISSING;
+    static Outcome refresh(File dataFolder, String name, InputStream shipped) throws IOException {
+        if (shipped == null) return Outcome.MISSING;
         try (InputStream in = shipped) {
             return refresh(new File(dataFolder, name), in.readAllBytes(), EARLIER.get(name));
         }

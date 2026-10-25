@@ -163,14 +163,20 @@ class ClassCoreTest {
                   glide:   { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 5s, effects: [ { dash: { distance: 4 } } ] }
                   rush:    { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 500ms, effects: [ { dash: { distance: 4 } }, { damage: { coefficient: 1.0 } } ] }
                   bash:    { class: warrior, kind: active, cooldown: 1s, strike-cooldown: 6s, effects: [ { dash: { distance: 4, stun-seconds: 1 } } ] }
+                  lunge2:  { class: warrior, kind: active, cooldown: 400ms, effects: [ { dash: { distance: 4 } }, { damage: { coefficient: 3.0 } } ] }
+                  stunner: { class: warrior, kind: active, cooldown: 400ms, strike-cooldown: 500ms, effects: [ { dash: { distance: 4, stun-seconds: 3 } } ] }
                 """);
-        assertEquals(Set.of("hop", "bash"), b.abilities().keySet(), String.join("\n", b.problems()));
+        assertEquals(Set.of("hop", "bash", "lunge2"), b.abilities().keySet(), String.join("\n", b.problems()));
+        assertEquals(400, b.ability("lunge2").cooldownMs(), "it may move every 0.4 s...");
+        assertEquals(ClassCatalog.MIN_COOLDOWN_MS, b.ability("lunge2").strikeCooldownMs(), "...but strikes no faster than 1 s");
+        assertEquals(0, b.ability("hop").strikeCooldownMs(), "nothing to strike: no strike clock");
         String why = String.join("\n", b.problems());
         assertTrue(why.contains("skip") && why.contains("400 ms floor"), why);
         assertTrue(why.contains("jab") && why.contains("1000 ms floor"), why);
         assertTrue(why.contains("slash") && why.contains("for movement abilities"), why);
         assertTrue(why.contains("glide") && why.contains("nothing to strike"), why);
         assertTrue(why.contains("rush") && why.contains("outside"), why);
+        assertTrue(why.contains("stunner") && why.contains("outside 1000-"), why);
     }
 
     @Test
@@ -265,8 +271,19 @@ class ClassCoreTest {
         ledger.prune(3_000 + CastXpLedger.DEAD_GRACE_MS + 1);
         assertEquals(0, ledger.spent(caged), "then dropped");
         assertEquals(6, ledger.spent(other), "a live mob's entry stays");
-        ledger.died(java.util.UUID.randomUUID(), 0); // a mob that never paid: nothing to keep
-        assertEquals(1, ledger.size());
+        // Killed by the first cast (or a War Cry just after a melee kill): its first payment comes after the death.
+        java.util.UUID oneShot = java.util.UUID.randomUUID();
+        ledger.died(oneShot, 13_002);
+        assertTrue(ledger.canPay(oneShot, budget));
+        assertEquals(6, ledger.pay(oneShot, 6, budget, 13_002), "it pays from its whole budget");
+        ledger.prune(13_002 + CastXpLedger.DEAD_GRACE_MS + 1);
+        assertEquals(0, ledger.spent(oneShot), "and its entry goes with the grace, not after half an hour");
+        assertEquals(1, ledger.size(), "the live mob's entry stays");
+        assertFalse(ledger.canPay(caged, 0), "no budget, nothing to pay");
+        CastXpLedger dry = new CastXpLedger();
+        dry.pay(caged, 40, budget, 0);
+        assertFalse(dry.canPay(caged, budget), "a dry mob can't pay: a cast is charged to another one it reached");
+        assertTrue(dry.canPay(other, budget));
         // bad input pays nothing and never throws
         assertEquals(0, ledger.pay(null, 6, budget, 0));
         assertEquals(0, ledger.pay(other, Double.NaN, budget, 0));

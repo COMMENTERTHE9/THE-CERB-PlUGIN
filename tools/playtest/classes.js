@@ -255,6 +255,9 @@ async function mixed() {
   await cmd('/gamemode creative', 400);
   await rank('warrior', 12); await rank('mage', 8); await rank('duelist', 9);
   await sleep(10500); // the switch gap from earlier phases
+  // Fill Loadout 3 while another is in use (an earlier phase may have left 3 in use: then every passive equipped
+  // into it rebuilds the snapshot at once, as it should, and the switch below measures nothing).
+  if ((await info()).active === 3) { await cmd('/class loadout 1', 800); await sleep(10500); }
   const r0 = await castCount();
   const specs = ['a1 riposte', 'a2 charge', 'a3 war_cry', 'a4 blink', 'a5 flurry', 'p1 precision', 'p2 battle_hardened', 'p3 essence_flow', 'k juggernaut'];
   const out = [];

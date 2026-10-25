@@ -329,9 +329,12 @@ public final class AbilityCaster {
                 ? service.foe(e) : null;
     }
 
-    private static ClassService.Foe stronger(ClassService.Foe a, ClassService.Foe b) {
+    /** Of two enemies a cast reached, the one it is charged to: one with cast XP left first, then the higher level. */
+    private ClassService.Foe stronger(ClassService.Foe a, ClassService.Foe b) {
         if (a == null) return b;
         if (b == null) return a;
+        boolean payA = service.canPay(a), payB = service.canPay(b);
+        if (payA != payB) return payA ? a : b; // a boss that ran dry doesn't stop the fresh adds paying
         return b.level() > a.level() ? b : a;
     }
 
