@@ -474,8 +474,8 @@ The first complete gathering loop: find stone and ore → mine it (**Mining XP**
 
 | Suite | Checks |
 |---|---|
-| unit tests | 189 (11 new: the rule table, the XP line, gear contributions, config delivery) |
-| gathering.js: mine, farm, fortune, smelt, forge, upgrade | 13, 11, 7, 6, 14, 4 |
+| unit tests | 191 (13 new: the rule table, the XP line, gear contributions, config delivery) |
+| gathering.js: mine, farm, fortune, smelt, forge, upgrade | 13, 11, 7, 6, 14, 5 |
 | gathering.js: gear, custom, xpdisplay, persistence across a restart | 8, 9, 3, 1 + 4 |
 
 Every miss along the way was in the test, not the plugin: the arena was filled before its chunks loaded, the bot picked up drops before they were counted, `/item replace` doesn't run on this Folia build, and this mineflayer maps the 1.21 smithing table as the old 3-slot one.
@@ -485,8 +485,8 @@ Every miss along the way was in the test, not the plugin: the arena was filled b
 | Suite | Checks |
 |---|---|
 | smoke | 14 |
-| progression.js: killxp, stats, speed, spear | 5, (re-running), (re-running), (re-running) |
-| menu.js: nav, safety, perf | (re-running), 18, 2 |
+| progression.js: killxp, stats, speed, spear | 5, 14, 13, 5 |
+| menu.js: nav, safety, perf | 63, 18, 2 |
 | admin.js: main, attrs | 40, 14 |
 | abilities.js: controls, combos, warrior, mage, duelist, mixed, review fixes | 26, 13, 21, 24, 15, 20, 20 |
 | classes.js: learn, exploits, combat, menu | 7, 22, 10, 15 |
@@ -495,12 +495,12 @@ On the first pass five checks failed, none of them in the plugin:
 - **Two checks still said Fortune does nothing.** Now true the other way round; they look for the extra-ore chance.
 - **The attack-speed and Fireball checks** ran with a class loadout an earlier session had left on the test character (a passive that slows attacks; the wand casting the loadout's ability). The ability phases end by clearing it; after them both pass. The speed check now also pins the skills behind Agility, which other phases raise.
 - **`classes.js learn`** needs a character that has never learned a class (as its notes say); with a new one, 7 of 7.
-- **One spear check** landed no hit on a fresh mob (timing); it passes on a re-run.
+- **The spear checks** first landed no hit on a fresh mob (timing), then, on the re-run, found no spear: other phases had filled the test character's hotbar, and the check only looked there for the spear it was given. It now finds a given item anywhere and moves it to the hotbar; 5 of 5.
 
 **Independent review** (of the code, without my conclusions; it also read the server's own bytecode where vanilla behaviour mattered): no high-severity problem; 3 medium and 12 low, fixed or answered:
 - **Medium:**
   - **A torch on an ore could take the bonus**, a small item duplication: the drop event also carries what blocks attached to the ore drop. The bonus now only goes to an item type the ore itself drops. In game: 20 ores with a torch on each, always 1 torch back.
-  - **A shift-click netherite upgrade paid nothing:** vanilla moves the result first and counts the emptied stack. A shift-click now pays when the result arrives. In game: 50 XP, once.
+  - **A shift-click netherite upgrade paid nothing:** vanilla moves the result first and counts the emptied stack. A shift-click now pays from that very signal (see the second review below). In game: 50 XP, once.
   - **Farms made Smithing renewable**, and gold farms by far: forging paid for any metal, and every craft rolled a quality. Built the protection (above): iron, gold and copper gear pays and gets a quality only from metal you smelted. This was decision 19; it is switchable.
 - **Low, fixed:**
   - **Smelting:** a right-click split paid only the first half, and a number key or F onto an empty slot paid nothing. Smelting is now counted as metal leaves a furnace window, and that one swap from the click. In game: both halves pay, and the number key pays once.
@@ -514,6 +514,12 @@ On the first pass five checks failed, none of them in the plugin:
   - **Gear:** a hit in the same tick as a hotbar scroll or a hand swap used the previous item's quality; scrolls and swaps are read at once.
   - **Equipment after a quit:** a last equipment tick could bring a leaving player's entry back.
 - **Low, answered:** one progression check depends on the reduced-XP hint's once-a-minute timer, which a rejoin resets, so each run starts clean; and the cost of a paying block is measured below.
+
+**Second review** (of the fixes, again without my conclusions): one high, one low and a nit, all fixed:
+- **High: my first shift-click fix could be farmed.** It paid when one more netherite sword was in the inventory a tick later. A shift-click that fails for want of room, with a netherite sword swapped in from the cursor in the same tick, paid 50 XP every time. A shift-click now pays only from vanilla's own signal that its result moved: the statistic raised for no item, by 0, in that window. In game, a new check sends both clicks in one go: on the old build it fails with +50 (so it catches the hole), on the fixed build it passes with +0, and the ordinary shift-click still pays 50 once.
+- **Low: any furnace-shaped screen counted as a furnace.** A plugin's menu in the furnace layout could pay smelting XP. Only a furnace, blast furnace or smoker block's window counts now.
+- **Nit:** a stale Fortune bonus is also cleared when another plugin cancels and then allows a break.
+- **Playtest note:** ingots smelted before this update don't count as smelted (only ingots taken out of a furnace from now on do), so an old stockpile forges plain gear (`docs/PLAYTEST_CHECKLIST.md` §7, 8b).
 
 **Performance:** (being measured).
 

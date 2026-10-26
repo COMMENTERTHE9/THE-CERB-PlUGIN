@@ -41,9 +41,9 @@
 
 | Status | Count | Skills |
 |---|---|---|
-| Functional | 4 | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin) |
+| Functional | 6 (was 4) | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin); **Mining, Smithing** (built after the audit) |
 | Partial | 10 | Martial Expertise, Heavy Armor Mastery, Critical Strike, Survival; Intelligence, Arcane Knowledge, Elemental Mastery, Spell Weaving; Field Medicine, Stealth |
-| Disconnected | 11 | Essence Regeneration, Defensive Magic; Mining, Smithing, Crafting, Woodcutting, Farming, Fishing, Enchanting, Herbalism; Trap Mastery |
+| Disconnected | 9 (was 11) | Essence Regeneration, Defensive Magic; Crafting, Woodcutting, Farming, Fishing, Enchanting, Herbalism; Trap Mastery |
 | Placeholder | 10 | Dual Wielding; Summoning; Alchemy, Cooking; Scavenging, Repairing, Trading, Animal Taming, Riding, Lockpicking |
 | Design-only | 0 | Every skill has at least placeholder code behind its page. |
 

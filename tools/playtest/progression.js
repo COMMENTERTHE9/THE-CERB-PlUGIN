@@ -71,11 +71,21 @@ let heldSlot = 0;
 async function equip(item) {
   await cmd('/clear @s ' + item, 600);
   await cmd('/give @s ' + item, 900);
-  const slot = bot.inventory.slots.findIndex((it, i) => it && it.name === item && i >= 36 && i <= 44);
-  if (slot >= 0) bot.setQuickBarSlot(slot - 36);
+  let slot = -1;
+  for (let n = 0; n < 10 && slot < 0; n++) { // the slot update can trail the command's answer
+    slot = bot.inventory.slots.findIndex((it, i) => it && it.name === item && i >= 9 && i <= 44);
+    if (slot < 0) await sleep(200);
+  }
+  if (slot < 0) return false;
+  if (slot < 36) { // a full hotbar (items other phases left): swap it into the first hotbar slot
+    try { await bot.clickWindow(slot, 0, 2); } catch (e) { /* the server's answer is what counts */ }
+    await sleep(400);
+    slot = 36;
+  }
+  bot.setQuickBarSlot(slot - 36);
   await sleep(300);
   heldSlot = slot - 36;
-  return slot >= 0;
+  return true;
 }
 
 /** Total XP a skill holds: every level's cost below its level (SkillManager.xpForLevel) plus the XP into it. */
