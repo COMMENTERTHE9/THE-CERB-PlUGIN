@@ -81,6 +81,11 @@ public final class AbilityCaster {
 
     public void setCanAct(java.util.function.Predicate<Player> canAct) { this.canAct = canAct; }
 
+    private volatile Manager.XpIntegrity xpIntegrity;
+
+    /** The magic skill XP a spell ability pays when it reaches a mob (Fireball pays through its own blast). */
+    public void setXpIntegrity(Manager.XpIntegrity xpIntegrity) { this.xpIntegrity = xpIntegrity; }
+
     public void setSpellCooldown(java.util.function.ToLongBiFunction<java.util.UUID, Long> f) { this.spellCooldown = f; }
 
     /** The ability in active slot {@code slot} of the player's loadout, or null (none, or not loaded). */
@@ -258,6 +263,10 @@ public final class AbilityCaster {
                     List<LivingEntity> hits = damage(p, prof, d, leading ? aimed : null, detail);
                     hit = hits.size();
                     foe = stronger(foe, strongest(hits));
+                    Manager.XpIntegrity xi = xpIntegrity;
+                    if (xi != null && d.scale() == EffectSpec.Scale.ESSENCE && !hits.isEmpty()) {
+                        xi.spellCast(p, hits, elementType(d.element())); // a spell: the magic skills, once per cast that reached a mob
+                    }
                 }
                 case EffectSpec.Blink b -> self |= blink(p, b, leading ? blinkTo : null);
                 case EffectSpec.Status s -> foe = stronger(foe, strongest(status(p, s)));

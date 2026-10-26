@@ -5,7 +5,6 @@ import Manager.CombatConfig;
 import Manager.CombatSkillProcessor;
 import Manager.PlayerDefenseManager;
 import Skills.SkillNames;
-import Spells.SpellManager;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -256,9 +255,10 @@ public final class SkillDefinitions {
                 List.of(), Material.BOW, C, List.of(
                 SkillEffect.planned("Better arrow accuracy"))));
         d.add(new SkillDef("Heavy Armor Training", "Fighting in iron, diamond and netherite armor.",
-                List.of("Take damage while wearing at least one iron, diamond or netherite armor piece: "
+                List.of("Take hits from mobs while wearing at least one iron, diamond or netherite armor piece: "
                                 + "XP equal to half the damage, up to " + xp(CombatSkillProcessor.HEAVY_ARMOR_XP_MAX)
-                                + " per hit, arrows and other projectiles from mobs or players included.",
+                                + " per hit, their arrows and other projectiles included.",
+                        "Not while you have been idle for a minute; each mob's hits pay at most what its kill pays.",
                         "Kill mobs with a weapon that no other skill trains (tools...) while wearing such armor."),
                 Material.NETHERITE_CHESTPLATE, C, List.of(
                 SkillEffect.live("Extra armor (damage reduction)", PlayerDefenseManager::heavyArmorBonus, PCT),
@@ -268,27 +268,28 @@ public final class SkillDefinitions {
                 SkillEffect.planned("Off-hand attacks"))));
         d.add(new SkillDef("Critical Strike", "Finding the weak spot: more frequent, harder critical hits.",
                 List.of("Hit mobs with melee attacks or spells: " + xp(CombatSkillProcessor.CRIT_STRIKE_HIT_XP)
-                        + " XP per hit, " + xp(CombatSkillProcessor.CRIT_STRIKE_CRIT_XP) + " for a critical hit."),
+                        + " XP per hit, " + xp(CombatSkillProcessor.CRIT_STRIKE_CRIT_XP) + " for a critical hit.",
+                        "Each mob pays at most what its kill pays."),
                 Material.GOLDEN_SWORD, C, List.of(
                 SkillEffect.pvp("Critical hit chance", CombatSkillProcessor::critChance, PCT),
                 SkillEffect.pvp("Critical hit damage", CombatSkillProcessor::critMultiplier, Unit.MULTIPLIER))));
 
         // ── Magic ──
         d.add(new SkillDef("Intelligence", "Understanding of magic itself.",
-                List.of("Cast a spell successfully: " + xp(SpellManager.INTELLIGENCE_CAST_XP) + " XP."),
+                List.of("Cast a spell that hits an enemy: " + xp(Manager.XpIntegrity.INTELLIGENCE_CAST_XP) + " XP."),
                 Material.ENCHANTED_BOOK, M, List.of()));
         d.add(new SkillDef("Arcane Knowledge", "Lore of enchanted books and arcane items.",
-                List.of(), Material.EXPERIENCE_BOTTLE, M, List.of(
+                List.of("Cast an arcane spell that hits an enemy: " + xp(Manager.XpIntegrity.SCHOOL_CAST_XP) + " XP."), Material.EXPERIENCE_BOTTLE, M, List.of(
                 SkillEffect.planned("Enchanting and magic item bonuses"))));
         d.add(new SkillDef("Elemental Mastery", "Command of fire and the other elements.",
-                List.of("Cast Fireball successfully: " + xp(SpellManager.ELEMENTAL_MASTERY_FIREBALL_XP) + " XP."),
+                List.of("Cast a fire, frost, lightning or earth spell that hits an enemy: " + xp(Manager.XpIntegrity.SCHOOL_CAST_XP) + " XP."),
                 Material.BLAZE_POWDER, M, List.of(
                 SkillEffect.planned("Extra elemental spell damage"))));
         d.add(new SkillDef("Summoning", "Calling creatures to fight beside you.",
                 List.of(), Material.SPAWNER, M, List.of(
                 SkillEffect.planned("Summon creatures"))));
         d.add(new SkillDef("Spell Weaving", "Casting through a wand, rod or staff.",
-                List.of("Cast a spell successfully: " + xp(SpellManager.SPELL_WEAVING_CAST_XP) + " XP."),
+                List.of("Cast a spell that hits an enemy: " + xp(Manager.XpIntegrity.SPELL_WEAVING_CAST_XP) + " XP."),
                 Material.END_ROD, M, List.of(
                 SkillEffect.planned("Cheaper spells"))));
         d.add(new SkillDef("Mana Regeneration", "Recovering Essence after spending it.",
@@ -341,8 +342,9 @@ public final class SkillDefinitions {
         d.add(new SkillDef("Lockpicking", "Opening what is locked.", List.of(), Material.IRON_DOOR, U,
                 List.of(SkillEffect.planned("Open locked chests and doors"))));
         d.add(new SkillDef("Survival", "Enduring the wild: fire, cold and deep water.",
-                List.of("Take damage from mob attacks, falls, fire, drowning and the like: "
-                        + xp(CombatSkillProcessor.SURVIVAL_HIT_XP) + " XP per hit, arrows and other projectiles from mobs or players included."),
+                List.of("Take hits from mobs: " + xp(CombatSkillProcessor.SURVIVAL_HIT_XP)
+                                + " XP per hit, their arrows and other projectiles included.",
+                        "Not while you have been idle for a minute; each mob's hits pay at most what its kill pays."),
                 Material.FLINT_AND_STEEL, U, List.of(
                 new SkillEffect("Fire resistance", EffectStatus.LIVE, (c, l) -> PlayerDefenseManager.survivalFireResist(l), PCT,
                         "Flames, burning afterwards, campfires, magma blocks and fire spells; lava only partly (combat.yml fire-resistance, half by default)."),

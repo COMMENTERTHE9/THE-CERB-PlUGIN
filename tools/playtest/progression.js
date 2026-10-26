@@ -119,7 +119,9 @@ async function killOne(type, level, entity = type, delay = 650, skill = null) {
 }
 
 async function killxp() {
-  await cmd('/gamemode creative');
+  // Survival: a creative kill pays no XP (xp-integrity). The test zombies have no AI and never hit back.
+  await cmd('/gamemode survival');
+  await cmd('/effect give @s resistance infinite 4 true', 300);
   check('Got a netherite sword', await equip('netherite_sword'));
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
   let r = await killOne('zombie', 1, 'zombie', 650, 'Blade_Mastery');
@@ -132,6 +134,8 @@ async function killxp() {
   r = await killOne('zombie', 1, 'zombie', 650, 'Blade_Mastery');
   check('Anti-grind: L1 mob at Blade Mastery 30 pays x0.25 and says so', r.xp === 10 && r.grey, r.msg + ' | ' + chat.slice(-6).join(' / '));
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`);
+  await cmd('/effect clear @s resistance', 300);
+  await cmd('/gamemode creative');
 }
 
 async function swings() {
@@ -1028,7 +1032,10 @@ async function stabOne(level, max = 200, delay = 1000) {
 }
 
 async function spear() {
-  await cmd('/gamemode creative'); await cmd('/time set night'); // a zombie in daylight burns: the kill must be the spear's (creative: night mobs ignore the bot)
+  // Night: a zombie in daylight burns, and the kill must be the spear's. Survival (a creative kill pays no XP), with
+  // resistance and no natural spawns, so night mobs can't interfere.
+  await cmd('/gamemode survival'); await cmd('/time set night'); await cmd('/gamerule spawn_mobs false', 300);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
   await cmd('/kill @e[type=!player,type=!text_display,distance=..20]', 600);
   for (const s of ['Weapon_Mastery', 'Heavy_Armor_Training', 'Blade_Mastery', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400);
   // Heavy armor on: a kill with a weapon no skill claimed used to fall back to Heavy Armor Mastery XP.
@@ -1056,6 +1063,9 @@ async function spear() {
   for (const s of ['Weapon_Mastery', 'Heavy_Armor_Training', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 400);
   await cmd('/kill @e[type=zombie,distance=..12]', 500);
   await cmd('/time set day', 300);
+  await cmd('/gamerule spawn_mobs true', 300);
+  await cmd('/effect clear @s resistance', 300);
+  await cmd('/gamemode creative');
   for (const w of ['iron_spear', 'netherite_chestplate', 'rotten_flesh', 'iron_ingot', 'carrot', 'potato']) await cmd('/clear @s ' + w, 250);
 }
 

@@ -89,9 +89,11 @@ bot.once('spawn', async () => {
     at = await cmd('/summon minecraft:zombie ~2 ~ ~ {NoAI:1b}', 2500);
     const zLabels = labelsNear();
     check('Spawned zombie gets an HP label', zLabels.some(l => /Zombie.*❤.*Lv\d+/.test(l)), zLabels.join(' | '));
+    await cmd('/gamemode survival'); // a creative kill pays no XP (xp-integrity); the zombie has no AI, so nothing hits back
     const killed = await killNearest(['zombie']);
     await sleep(1000);
     const hud = actionBar; // kill XP shows on the HUD (the real-time XP display), not in chat
+    await cmd('/gamemode creative');
     const bmAfter = await bladeXp();
     const gained = bmAfter.level > bmBefore.level || bmAfter.xp > bmBefore.xp;
     check('Sword kill grants Blade Mastery XP, shown on the HUD', killed && gained && /\+\d+ Blade Mastery/.test(hud),

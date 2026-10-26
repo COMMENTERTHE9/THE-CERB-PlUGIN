@@ -16,6 +16,30 @@ kill-xp:
     factor: 0.25
   max-per-kill: 1000000  # safety ceiling
 
+# ── XP integrity: what can't be farmed (docs/STATUS.md) ────────────────
+xp-integrity:
+  # Where a mob came from scales its kill XP and every per-hit XP it pays (Paper keeps a mob's spawn reason
+  # through restarts). A spawn reason not listed here pays in full: natural mobs, trial spawners, raids, admin spawns.
+  by-origin:
+    SPAWNER: 0.25           # monster spawners (mob grinders)
+    VILLAGE_DEFENSE: 0.25   # iron golems villagers summon (golem farms)
+    NETHER_PORTAL: 0.25     # zombified piglins from portals (gold farms)
+    BREEDING: 0             # animals you bred
+    EGG: 0                  # chickens from thrown eggs
+    SPAWNER_EGG: 0          # spawn eggs
+    DISPENSE_EGG: 0         # spawn eggs from dispensers
+    BUILD_IRONGOLEM: 0      # golems you built
+    BUILD_SNOWMAN: 0
+  # Fighting players pays no skill XP: killing one, or the defensive skills' XP for a hit taken from one.
+  # Off for now, not permanently: the PvP pass decides (docs/ROADMAP.md -> PvP).
+  pvp-xp: false
+  # Per-hit XP (Critical Strike, Survival, Heavy Armor Mastery) and the magic skills' XP for a spell cast that reached a
+  # mob: each mob pays each skill at most what its kill pays, as class cast XP does. A mob kept alive in a cage runs
+  # dry; a real fight is unchanged.
+  hit-budget: true
+  # Defensive XP (Survival, Heavy Armor Mastery) needs a player who did something in this many seconds (0: no rule).
+  idle-seconds: 60
+
 # ── Attributes: derived automatically from skills (no manual points yet) ──
 # Each skill level adds `per-level` points. `weapon` limits Power to one weapon type
 # (sword, axe, mace, trident, spear, bow, unarmed); leave it out for "all weapons".

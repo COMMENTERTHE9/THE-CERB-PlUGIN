@@ -259,28 +259,48 @@ public class CombatSkillProcessor {
      */
     public void awardAttackerHitXp(CombatContext ctx, org.bukkit.entity.Player attacker) {
         if (attacker == null || ctx.getRawDamage() <= 0) return;
+        // Only hits on mobs train it (not players, not armor stands), and each mob pays it at most what its kill pays:
+        // the same zombie hit forever in a cage used to pay forever (Manager.XpIntegrity).
+        if (!(ctx.getTarget() instanceof org.bukkit.entity.Mob mob)) return;
 
-        // Critical Strike: always gains XP from melee hits, bonus for crits
+        // Critical Strike: XP from melee hits, more for crits
         double critXp = ctx.attack().isCritical() ? CRIT_STRIKE_CRIT_XP : CRIT_STRIKE_HIT_XP;
-        skillManager.addXpAndCheckLevelUp("Critical Strike", critXp, attacker);
+        if (xpIntegrity != null) xpIntegrity.payHit(attacker, mob, "Critical Strike", critXp);
+        else skillManager.addXpAndCheckLevelUp("Critical Strike", critXp, attacker);
     }
 
     /**
-     * Award defender XP for taking damage. Called from VirtualHealthListener
-     * when a player takes damage from a mob or another player.
+     * Award defender XP for taking damage. Called from VirtualHealthListener when a player takes damage from
+     * {@code attacker} (the damaging entity: a mob, a player, a projectile, fangs, a cloud).
      */
-    public void awardDefenderHitXp(org.bukkit.entity.Player defender, double damageTaken) {
+    public void awardDefenderHitXp(org.bukkit.entity.Player defender, double damageTaken, org.bukkit.entity.Entity attacker) {
         if (defender == null || damageTaken <= 0) return;
+        // Defensive XP comes from a fight: the mob behind the hit (its arrow, an evoker's fangs, a witch's cloud), not
+        // TNT or a falling block. Nothing while the defender is idle in a mob trap, and each mob pays each skill at most
+        // what its kill pays. A player's hits pay only when fighting players pays XP (off for now: PvP, docs/ROADMAP.md).
+        org.bukkit.entity.LivingEntity source = XpIntegrity.attackerOf(attacker);
+        if (source == null || source.equals(defender)) return;
+        XpIntegrity xi = xpIntegrity;
+        if (xi != null && xi.idle(defender)) return;
+        boolean byPlayer = source instanceof org.bukkit.entity.Player;
+        if (byPlayer && xi != null && !xi.rules().pvpXp()) return;
 
         // Heavy Armor Training: XP from taking hits while wearing heavy armor
         if (hasHeavyArmor(defender)) {
             double hatXp = Math.min(damageTaken * HEAVY_ARMOR_XP_PER_DAMAGE, HEAVY_ARMOR_XP_MAX);
-            skillManager.addXpAndCheckLevelUp("Heavy Armor Training", hatXp, defender);
+            if (xi != null && !byPlayer) xi.payHit(defender, source, "Heavy Armor Training", hatXp);
+            else skillManager.addXpAndCheckLevelUp("Heavy Armor Training", hatXp, defender);
         }
 
         // Survival: small XP for enduring any damage
-        skillManager.addXpAndCheckLevelUp("Survival", SURVIVAL_HIT_XP, defender);
+        if (xi != null && !byPlayer) xi.payHit(defender, source, "Survival", SURVIVAL_HIT_XP);
+        else skillManager.addXpAndCheckLevelUp("Survival", SURVIVAL_HIT_XP, defender);
     }
+
+    private volatile XpIntegrity xpIntegrity;
+
+    /** The XP rules every per-hit award goes through (origin, weak mobs, per-mob budgets, idle). */
+    public void setXpIntegrity(XpIntegrity xpIntegrity) { this.xpIntegrity = xpIntegrity; }
 
 
     private boolean hasHeavyArmor(org.bukkit.entity.Player player) {

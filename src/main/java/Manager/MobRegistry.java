@@ -28,6 +28,7 @@ public class MobRegistry {
     private final NamespacedKey mobLevelKey;
     private final NamespacedKey spawnLevelKey;   // requested level for a plugin spawn (consumed by scaling)
     private final NamespacedKey testSpawnKey;    // marks mobs spawned for testing (safe to clean up)
+    private final NamespacedKey playerNamedKey;  // a player named it with a name tag: never matched by its name
 
     // Primary store: mobId → entry
     private volatile Map<String, MobEntry> entriesById = Map.of();
@@ -112,6 +113,7 @@ public class MobRegistry {
         this.mobLevelKey = new NamespacedKey(plugin, "cerb_mob_level");
         this.spawnLevelKey = new NamespacedKey(plugin, "cerb_spawn_level");
         this.testSpawnKey = new NamespacedKey(plugin, "cerb_test_spawn");
+        this.playerNamedKey = new NamespacedKey(plugin, "cerb_player_named");
         reload();
     }
 
@@ -159,8 +161,9 @@ public class MobRegistry {
             }
         }
 
-        // 2. Custom name exact — O(1)
-        String customName = entity.getCustomName();
+        // 2. Custom name exact — O(1). Never for a mob a player named with a name tag: "Elite Zombie" on a common
+        // zombie used to make it pay an elite's XP (Manager.XpIntegrity marks those).
+        String customName = entity.getPersistentDataContainer().has(playerNamedKey, PersistentDataType.BYTE) ? null : entity.getCustomName();
         if (customName != null) {
             MobEntry exactMatch = byCustomNameExact.get(customName);
             if (exactMatch != null) {
@@ -307,6 +310,11 @@ public class MobRegistry {
     /** Returns all registered mob IDs (for tab completion). */
     public Set<String> getEntryIds() {
         return entriesById.keySet();
+    }
+
+    /** Marks a mob a player named with a name tag (never matched by its custom name). */
+    public NamespacedKey getPlayerNamedKey() {
+        return playerNamedKey;
     }
 
     /** Returns the NamespacedKey used for PDC mob ID tagging. */

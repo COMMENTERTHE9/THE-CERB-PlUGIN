@@ -140,7 +140,7 @@ async function nav() {
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(sv); await waitTitle(SCREEN('Survival'));
   check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*Flames, burning afterwards, campfires, magma blocks and fire spells; lava only partly/.test(flat(24)), flat(24));
-  check('Survival page: live resistances with values; projectiles train it', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take damage from mob attacks, falls, fire/.test(flat(20)) && /projectiles from mobs or players included/.test(flat(20)), flat(20));
+  check('Survival page: live resistances with values; projectiles train it', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take hits from mobs/.test(flat(20)) && /arrows and other projectiles included/.test(flat(20)) && /idle for a minute/.test(flat(20)), flat(20));
   if (isOp()) check('Survival 4 shows 4.0% fire resistance, 5.0% next', /Fire resistance ● Live Now: 4\.0% next level 5\.0%/.test(flat(24)), flat(24));
 
   await click(49);

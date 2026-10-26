@@ -200,7 +200,12 @@ async function keys() {
 
 async function trees() {
   await arena();
-  await cmd('/gamemode creative', 400);
+  // Class XP is earned in survival (creative pays none, like skill XP). No natural spawns: a night mob hitting the bot
+  // would start a fight and block the loadout switches below.
+  await cmd('/gamerule spawn_mobs false', 300);
+  await cmd('/kill @e[type=!player,type=!text_display,distance=..48]', 500);
+  await cmd('/gamemode survival', 400);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
   const i0 = await info();
   if (!i0.ranks.Warrior || !i0.ranks.Mage) { check('Warrior and Mage are learned (run `learn` first with this name)', false); return; }
   for (const s of ['a1 cleave', 'a2 arcane_bolt', 'a3 none', 'a4 none', 'a5 none']) await equipSlot('1 ' + s);
@@ -248,6 +253,9 @@ async function trees() {
   check('Back on Loadout 1: still the same ranks and XP, and its slots as they were', i4.active === 1 && JSON.stringify(i4.ranks) === JSON.stringify(i2.ranks)
     && /A1 Cleave \| A2 Arcane Bolt/.test(i4.actives), i4.actives);
   await debug(false);
+  await cmd('/effect clear @s resistance', 300);
+  await cmd('/gamemode creative', 400);
+  await cmd('/gamerule spawn_mobs true', 300);
 }
 
 async function mixed() {

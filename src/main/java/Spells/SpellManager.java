@@ -3,7 +3,6 @@ package Spells;
 import Listener.VirtualHealthListener;
 import Manager.EffectManager;
 import Manager.PlayerManaManager;
-import Skills.SkillManager;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -12,16 +11,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SpellManager {
-    /** XP for each successful cast: Spell Weaving and Intelligence on any spell, Elemental Mastery on Fireball. */
-    public static final double SPELL_WEAVING_CAST_XP = 15;
-    public static final double ELEMENTAL_MASTERY_FIREBALL_XP = 10;
-    public static final double INTELLIGENCE_CAST_XP = 5;
 
     private final Map<String, Spell> spells;
     private final PlayerManaManager playerManaManager;
     private final EffectManager effectManager;
     private final JavaPlugin plugin;
-    private SkillManager skillManager;
 
     public SpellManager(EffectManager effectManager, PlayerManaManager playerManaManager, JavaPlugin plugin) {
         this.spells = new ConcurrentHashMap<>();
@@ -31,8 +25,9 @@ public class SpellManager {
         initializeSpells();
     }
 
-    public void setSkillManager(SkillManager skillManager) {
-        this.skillManager = skillManager;
+    /** The magic skill XP a cast pays when it reaches a mob (Manager.XpIntegrity.spellCast). */
+    public void setXpIntegrity(Manager.XpIntegrity xpIntegrity) {
+        if (spells.get("Fireball") instanceof FireballSpell fb) fb.setXpIntegrity(xpIntegrity);
     }
 
     /** Call after VirtualHealthListener is created to wire spell damage context. */
@@ -55,11 +50,7 @@ public class SpellManager {
     public void castSpell(String name, Player player) {
         Spell spell = getSpell(name);
         if (spell != null) {
-            boolean cast = spell.cast(player);
-
-            // Award magic XP only on a successful cast (a failed cast used to grant XP too,
-            // so spamming with no mana still levelled the magic skills)
-            if (cast) awardCastXp(name, player);
+            spell.cast(player); // magic skill XP is paid when the cast reaches a mob (Manager.XpIntegrity), not at launch
         } else {
             player.sendMessage("Spell not found!");
         }
@@ -72,26 +63,12 @@ public class SpellManager {
 
     /**
      * Cast a spell as a class ability: the ability engine has already checked and paid its cost,
-     * and the spell never hits players. Trains the magic skills like any successful cast.
+     * and the spell never hits players. Its blast trains the magic skills when it reaches a mob (Manager.XpIntegrity).
      * {@code onHit} gets what the spell hit when it bursts (on that region's thread), or nothing.
      */
     public boolean castForAbility(String name, Player player, java.util.function.Consumer<java.util.List<org.bukkit.entity.LivingEntity>> onHit) {
         if (!(getSpell(name) instanceof FireballSpell fireball)) return false;
-        boolean cast = fireball.castFromAbility(player, onHit);
-        if (cast) awardCastXp(name, player);
-        return cast;
-    }
-
-    private void awardCastXp(String name, Player player) {
-        if (skillManager == null) return;
-        // Spell Weaving: XP for casting any spell
-        skillManager.addXpAndCheckLevelUp("Spell Weaving", SPELL_WEAVING_CAST_XP, player);
-        // Elemental Mastery: bonus XP for elemental spells
-        if (name.equals("Fireball")) {
-            skillManager.addXpAndCheckLevelUp("Elemental Mastery", ELEMENTAL_MASTERY_FIREBALL_XP, player);
-        }
-        // Intelligence: small XP for any mana usage
-        skillManager.addXpAndCheckLevelUp("Intelligence", INTELLIGENCE_CAST_XP, player);
+        return fireball.castFromAbility(player, onHit); // magic skill XP when its blast reaches a mob (Manager.XpIntegrity)
     }
 
     public void addSpell(String name, Spell spell) {

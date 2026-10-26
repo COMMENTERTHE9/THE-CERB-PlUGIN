@@ -402,7 +402,7 @@ public final class ClassService implements AttributeSource {
      * quarter): a mob kept alive in a cage runs dry. Player's thread.
      */
     public void awardCastXp(Player p, String classId, Foe foe) {
-        if (foe == null) return;
+        if (foe == null || !Manager.XpIntegrity.earns(p)) return; // nothing in creative or spectator mode, as kill XP
         ClassDef c = catalog.classDef(classId);
         int own = c == null ? 0 : classSkillLevel(p.getUniqueId(), c);
         Attributes.KillXp.Params k = killXp.get();

@@ -63,6 +63,11 @@ public class MobKillListener implements Listener {
         LivingEntity mob = event.getEntity();
         Player player = mob.getKiller();
         if (player == null) return;
+        Manager.XpIntegrity integrity = plugin.getXpIntegrity();
+        // Killing a player pays no skill XP for now (xp-integrity.pvp-xp; docs/ROADMAP.md -> PvP), and creative or
+        // spectator kills pay nothing.
+        if (mob instanceof Player && (integrity == null || !integrity.rules().pvpXp())) return;
+        if (!Manager.XpIntegrity.earns(player)) return;
 
         double health = mob.getMaxHealth();
         double damage = mob.getLastDamage();
@@ -72,8 +77,10 @@ public class MobKillListener implements Listener {
 
         ItemStack weapon = player.getInventory().getItemInMainHand();
 
-        // Config-driven skill routing (skills.yml)
-        String skillName = resolveSkill(weapon, player);
+        // Config-driven skill routing (skills.yml), credited to the attack that landed the last hit: an arrow that
+        // kills after a switch to a sword trains Ranged Precision, a thrown trident Weapon Mastery (not the empty hand).
+        String held = resolveSkill(weapon, player);
+        String skillName = integrity != null ? integrity.killSkill(player, mob, held) : held;
         if (skillName.isEmpty()) return;
 
         // Spell focus kill XP toggle
@@ -102,6 +109,14 @@ public class MobKillListener implements Listener {
         } else {
             xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
         }
+        // A farm's mob (a monster spawner's, a bred animal, a spawn egg's) pays its share or nothing (xp-integrity).
+        double origin = integrity != null ? integrity.originFactor(mob) : 1.0;
+        xpGained *= origin;
+        if (plugin.isCombatDebugEnabled(player.getUniqueId())) {
+            player.sendMessage(ChatColor.DARK_GRAY + "[KillXp] " + skillName + (skillName.equals(held) ? "" : " (last hit; in hand: " + (held.isEmpty() ? "nothing" : held) + ")")
+                    + ", origin " + mob.getEntitySpawnReason() + " x" + origin + " -> " + String.format(java.util.Locale.ROOT, "%.1f", xpGained));
+        }
+        if (!(xpGained > 0)) return;
         skillManager.addXpAndCheckLevelUp(skillName, xpGained, player); // shown on the HUD by the XP display (Skills.XpDisplay)
         // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
         Classes.ClassService classes = plugin.getClassService();

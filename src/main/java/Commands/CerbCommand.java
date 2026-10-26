@@ -501,15 +501,22 @@ public class CerbCommand implements CommandExecutor {
 
         int level = 0; // 0 = normal distance-based level
         boolean ai = true;
+        // origin=<spawn reason>: spawn it as if a spawner, breeding or a spawn egg made it (to test the XP rules)
+        org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason origin = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.COMMAND;
         for (int i = 2; i < args.length; i++) {
             if (args[i].equalsIgnoreCase("noai")) { ai = false; continue; }
+            if (args[i].toLowerCase(java.util.Locale.ROOT).startsWith("origin=")) {
+                try { origin = org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.valueOf(args[i].substring(7).toUpperCase(java.util.Locale.ROOT)); }
+                catch (IllegalArgumentException e) { player.sendMessage(ChatColor.RED + "Not a spawn reason: " + args[i].substring(7)); return; }
+                continue;
+            }
             try { level = Math.max(1, Integer.parseInt(args[i])); }
-            catch (NumberFormatException e) { player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mob> [level] [noai]"); return; }
+            catch (NumberFormatException e) { player.sendMessage(ChatColor.RED + "Use: /cerb spawn <mob> [level] [noai] [origin=<spawn reason>]"); return; }
         }
         org.bukkit.Location spawnLoc = player.getLocation();
         // Command spawns are test spawns: never saved into the world, removed by panel cleanup.
         Manager.MobTestService.SpawnRequest req = new Manager.MobTestService.SpawnRequest(
-                type, mobId, customName, level, ai, true, player.getUniqueId());
+                type, mobId, customName, level, ai, true, player.getUniqueId(), origin);
         int lvl = level;
         String shown = mobId != null ? mobId : type.name().toLowerCase();
         Manager.Tier shownTier = tier;

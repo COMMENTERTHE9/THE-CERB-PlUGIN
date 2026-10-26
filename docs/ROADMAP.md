@@ -79,7 +79,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 **Permanent rule (owner, 2026-10-26): every skill improves at least one meaningful attribute or secondary stat,** through the one attribute engine. No skill is only an XP counter, and no bonus exists just to fill a table. Not every skill needs to add combat damage: a master fisherman, blacksmith or farmer becomes extraordinarily capable in that discipline. Balance, diminishing returns and controlled scaling hold. All 35 are designed now (`docs/design/SKILL_PROGRESSION.md`) and built alongside each skill's own gameplay.
 
 **In order:**
-1. **The skill-to-attribute design for all 35 skills.** For each skill:
+1. **The skill-to-attribute design for all 35 skills** (done: `docs/design/SKILL_PROGRESSION.md`). For each skill:
    - its primary attributes and its secondary or profession stats;
    - what each one does in play;
    - its milestones and missing dependencies;
@@ -92,6 +92,8 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - defensive XP in idle damage farms.
 
    Also review a normal player's way into the Mage; a material design choice goes to the owner with options and a recommendation.
+
+   **Done 2026-10-26** (`docs/STATUS.md` → "Done: XP integrity"; `tools/playtest/xp.js` 35/35, every reproduction failing on a control build). The Mage route is the owner's decision 14 in `docs/STATUS.md`, with options and a recommendation.
 3. **Level-up and rank-up feedback:**
    - a brief sound and a small particle effect;
    - which skill rose, its new level and its real stat gain;
@@ -295,6 +297,7 @@ Every PvP limit so far is **temporary**. None of it is a decision against PvP; t
 | Attributes on offense in PvP (Power, crits, lifesteal): PvP hits still use the old per-skill bonuses | Code: `Manager/PveOffense` runs only on player → mob hits; PvP goes through `Manager/CombatSkillProcessor` | A PvP offense path with PvP coefficients |
 | Abilities hitting players: every ability targets mobs only (Cleave, Fireball...), never another player's pet or a mount a player rides; Riposte only counters mobs that belong to no player; Feint's crit only on mob hits; a left-click on a player is a plain hit | Code: `Classes/AbilityCaster.valid` and `Manager/AbilityTargets`, the counter hook in `Listener/VirtualHealthListener`, `Manager/PveOffense.meleeHit`, `Spells/FireballSpell.castFromAbility`, `Classes/AbilityListener.onAttack` | `docs/design/CLASSES.md` §10 decision 5 (PvP coefficients), then one switch |
 | Class XP from fights with players | Code: `Listener/MobKillListener` gives no class share for player kills; casts never reach players; a self cast in a fight with no enemy in it (a PvP tag) earns nothing (`Classes/ClassService.fightFoeLevel`) | Together with abilities in PvP, with rules against farming each other |
+| Skill XP from fights with players: a player kill's weapon-skill XP, and Survival and Heavy Armor Mastery for a hit taken from a player (or their arrow, pet, potion cloud, TNT) | `attributes.yml` → `xp-integrity.pvp-xp: false` (`Manager/XpIntegrity`) | Set `true` (the idle rule still applies), with rules against two players farming each other |
 
 ## Reporting, per milestone
 

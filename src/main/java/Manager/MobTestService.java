@@ -41,7 +41,11 @@ public final class MobTestService {
      * {@code owner} is the admin a test spawn belongs to (their cleanup removes it).
      */
     public record SpawnRequest(EntityType type, String mobId, String customName, int level,
-                               boolean ai, boolean testSpawn, java.util.UUID owner) {}
+                               boolean ai, boolean testSpawn, java.util.UUID owner, CreatureSpawnEvent.SpawnReason reason) {
+        public SpawnRequest(EntityType type, String mobId, String customName, int level, boolean ai, boolean testSpawn, java.util.UUID owner) {
+            this(type, mobId, customName, level, ai, testSpawn, owner, CreatureSpawnEvent.SpawnReason.COMMAND);
+        }
+    }
 
     /** Read-only view of a mob for display. */
     public record MobInfo(String typeName, String displayName, String mobId, Tier tier, int level,
@@ -61,7 +65,8 @@ public final class MobTestService {
             throw new IllegalArgumentException(r.type() + " is not a living mob");
         }
         MobRegistry registry = plugin.getMobRegistry();
-        Entity e = loc.getWorld().spawn(loc, cls, CreatureSpawnEvent.SpawnReason.COMMAND, ent -> {
+        // A test may ask for another spawn reason (a spawner's, a bred animal's) to check the XP rules (xp-integrity).
+        Entity e = loc.getWorld().spawn(loc, cls, r.reason() != null ? r.reason() : CreatureSpawnEvent.SpawnReason.COMMAND, ent -> {
             LivingEntity le = (LivingEntity) ent;
             if (r.mobId() != null) registry.tagEntity(le, r.mobId());
             if (r.customName() != null) {

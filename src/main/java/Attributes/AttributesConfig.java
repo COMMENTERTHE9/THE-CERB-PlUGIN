@@ -26,6 +26,7 @@ public final class AttributesConfig {
     private final JavaPlugin plugin;
     private final Supplier<AttributeRules.Curves> curves;
     private volatile KillXp.Params killXp = KillXp.Params.DEFAULTS;
+    private volatile XpRules xpRules = XpRules.DEFAULTS;
     private volatile AttributeRules rules = AttributeRules.DEFAULTS;
     private volatile Manager.Realm defaultRealm = Manager.Realm.AWAKENED;
 
@@ -37,6 +38,9 @@ public final class AttributesConfig {
     }
 
     public KillXp.Params killXp() { return killXp; }
+
+    /** What can't be farmed (attributes.yml {@code xp-integrity}). */
+    public XpRules xpRules() { return xpRules; }
 
     public AttributeRules rules() { return rules; }
 
@@ -60,6 +64,7 @@ public final class AttributesConfig {
                     cfg.getDouble("kill-xp.anti-grind.factor", d.antiGrindFactor()),
                     cfg.getDouble("kill-xp.max-per-kill", d.maxPerKill()));
             List<String> problems = new ArrayList<>();
+            xpRules = parseXpRules(cfg, problems::add);
             if (!cfg.isSet("attributes")) {
                 plugin.getLogger().info("[Attributes] attributes.yml has no 'attributes:' section (older file) - using the built-in"
                         + " defaults. Delete attributes.yml and /cerb reload to get the full file with every setting.");
@@ -76,6 +81,31 @@ public final class AttributesConfig {
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "[Attributes] Could not load attributes.yml - keeping previous values", e);
         }
+    }
+
+    /**
+     * The {@code xp-integrity} section; an older file without it gets the jar's (through the defaults), and a missing
+     * key the built-in value. A spawn reason that isn't one is reported and ignored.
+     */
+    static XpRules parseXpRules(org.bukkit.configuration.Configuration cfg, Consumer<String> problems) {
+        XpRules d = XpRules.DEFAULTS;
+        Map<String, Double> byOrigin = new LinkedHashMap<>();
+        // section(): an older file without it reads the jar's (getConfigurationSection would make an empty one instead)
+        ConfigurationSection o = section(cfg, "xp-integrity.by-origin");
+        if (o == null) byOrigin.putAll(d.byOrigin());
+        else for (String reason : o.getKeys(false)) {
+            String key = reason.trim().toUpperCase(java.util.Locale.ROOT);
+            boolean known = false;
+            for (org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason r : org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.values()) {
+                if (r.name().equals(key)) { known = true; break; }
+            }
+            if (!known) { problems.accept("xp-integrity.by-origin: '" + reason + "' is not a spawn reason - ignored"); continue; }
+            byOrigin.put(key, o.getDouble(reason, 1.0));
+        }
+        return new XpRules(byOrigin,
+                cfg.getBoolean("xp-integrity.pvp-xp", d.pvpXp()),
+                cfg.getBoolean("xp-integrity.hit-budget", d.hitBudget()),
+                cfg.getInt("xp-integrity.idle-seconds", d.idleSeconds()));
     }
 
     /**

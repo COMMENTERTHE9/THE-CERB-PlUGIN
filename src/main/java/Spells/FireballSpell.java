@@ -56,6 +56,13 @@ public class FireballSpell extends Spell {
         this.virtualHealthListener = listener;
     }
 
+    private volatile Manager.XpIntegrity xpIntegrity;
+
+    /** The magic skill XP each blast that reaches a mob pays (wand and ability alike; Manager.XpIntegrity.spellCast). */
+    public void setXpIntegrity(Manager.XpIntegrity xpIntegrity) {
+        this.xpIntegrity = xpIntegrity;
+    }
+
     @Override
     public boolean cast(Player player) {
         double manaCost = baseManaCost;
@@ -174,6 +181,8 @@ public class FireballSpell extends Spell {
                 target.setFireTicks(60);
             }
         }
+        Manager.XpIntegrity xi = this.xpIntegrity;
+        if (xi != null) xi.spellCast(caster, hit, FIREBALL_CONTEXT.damageType()); // the magic skills, once per blast that reached a mob
         if (onHit != null) onHit.accept(hit); // the ability's class XP, on this region's thread
     }
 

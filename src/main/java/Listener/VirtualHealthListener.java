@@ -90,6 +90,11 @@ public class VirtualHealthListener implements Listener {
      * The entry is consumed (removed) when the damage event fires.
      * Entity IDs get reused — always clean immediately after reading.
      */
+    private volatile Manager.XpIntegrity xpIntegrity;
+
+    /** The XP rules hits feed: kill credit by the attack, magic XP on a spell hit (Manager.XpIntegrity). */
+    public void setXpIntegrity(Manager.XpIntegrity xpIntegrity) { this.xpIntegrity = xpIntegrity; }
+
     public void registerSpellDamage(int entityId, SpellDamageContext context) {
         pendingSpellDamage.put(entityId, context);
         // Safety cleanup: remove after 2 ticks if not consumed
@@ -227,7 +232,7 @@ public class VirtualHealthListener implements Listener {
                 double damageTaken = ctx.defense().getFinalDamage() / ctx.defense().getHealthScale();
                 if (damageTaken <= 0) damageTaken = modifiedDmg * 0.1; // minimum XP even if fully mitigated
                 if (combatSkillProcessor != null) {
-                    combatSkillProcessor.awardDefenderHitXp(player, damageTaken);
+                    combatSkillProcessor.awardDefenderHitXp(player, damageTaken, damager);
                 }
 
                 Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
@@ -252,6 +257,8 @@ public class VirtualHealthListener implements Listener {
                     PoolHit hit = hitPool(entity, ctx.attack().getModifiedDamage());
                     event.setDamage(hit.vanillaDamage());
                     afterPveHit(ctx, attackerPlayer, hit.dealt(), true);
+                    Manager.XpIntegrity xi = xpIntegrity;
+                    if (xi != null) xi.creditHit(attackerPlayer, entity, xi.skillOfHeld(attackerPlayer)); // a kill soon after trains this weapon's skill
                 } else {
                     if (spellCtx != null && attackerPlayer != null && pveOffense != null) {
                         double before = dmg;
@@ -263,6 +270,13 @@ public class VirtualHealthListener implements Listener {
                     }
                     PoolHit hit = hitPool(entity, dmg);
                     event.setDamage(hit.vanillaDamage());
+
+                    // A kill soon after a spell's hit is the spell's (its cast paid the magic skills: XpIntegrity.spellCast);
+                    // any other hit by a player is credited to what they hold.
+                    Manager.XpIntegrity xi = xpIntegrity;
+                    if (xi != null && attackerPlayer != null && hit.dealt() > 0) {
+                        xi.creditHit(attackerPlayer, entity, spellCtx != null ? Manager.XpIntegrity.SPELL_KILL_SKILL : xi.skillOfHeld(attackerPlayer));
+                    }
 
                     // Award attacker per-hit XP when a PLAYER hits a MOB
                     if (attackerPlayer != null && combatSkillProcessor != null && hit.vanillaDamage() > 0) {
@@ -425,7 +439,7 @@ public class VirtualHealthListener implements Listener {
                     && modifiedDmg > 0) {
                 double damageTaken = ctx.defense().getFinalDamage() / ctx.defense().getHealthScale();
                 if (damageTaken <= 0) damageTaken = modifiedDmg * 0.1; // minimum XP even if fully mitigated (as melee)
-                combatSkillProcessor.awardDefenderHitXp(player, damageTaken);
+                combatSkillProcessor.awardDefenderHitXp(player, damageTaken, shooter);
             }
 
             Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
@@ -443,15 +457,22 @@ public class VirtualHealthListener implements Listener {
             // Do NOT call leb.damage() — that causes recursive event loops
             Attributes.WeaponClass weapon = projectile instanceof org.bukkit.entity.Trident ? Attributes.WeaponClass.TRIDENT
                     : projectile instanceof org.bukkit.entity.AbstractArrow ? Attributes.WeaponClass.BOW : null;
+            PoolHit hit;
             if (shooter instanceof Player p && weapon != null && target instanceof org.bukkit.entity.Mob mob
                     && pveOffense != null && pveOffense.enabled()) {
                 CombatContext ctx = pveOffense.hit(p, mob, CustomDamageType.PROJECTILE, dmg, weapon,
                         plugin.isCombatDebugEnabled(p.getUniqueId()));
-                PoolHit hit = hitPool(target, ctx.attack().getModifiedDamage());
+                hit = hitPool(target, ctx.attack().getModifiedDamage());
                 event.setDamage(hit.vanillaDamage());
                 afterPveHit(ctx, p, hit.dealt(), false); // no per-hit Critical Strike XP for arrows (unchanged)
             } else {
-                event.setDamage(hitPool(target, dmg).vanillaDamage());
+                hit = hitPool(target, dmg);
+                event.setDamage(hit.vanillaDamage());
+            }
+            // The kill is the bow's or the trident's, whatever is in hand when it lands.
+            Manager.XpIntegrity xi = xpIntegrity;
+            if (xi != null && shooter instanceof Player p && weapon != null && target instanceof org.bukkit.entity.Mob mob && hit.dealt() > 0) {
+                xi.creditHit(p, mob, xi.skillOf(weapon == Attributes.WeaponClass.TRIDENT ? "TRIDENT" : "BOW"));
             }
         }
     }

@@ -2,6 +2,18 @@
 
 *The first task of the Gameplay Depth & Systems Completion milestone (`docs/ROADMAP.md`). Each skill was read from the source, not from its menu page: "Do not treat a skill as complete simply because its icon, description, or level exists."*
 
+> **Update, 2026-10-26 (XP integrity):** the live exploits in finding 4 below are closed (`docs/STATUS.md`, "Done: XP integrity"; `attributes.yml xp-integrity`). Each fix has a reproduction on a build without it and a positive control (`tools/playtest/xp.js`):
+> - magic skill XP is paid once per spell cast that reaches a mob, never into the sky;
+> - the Mage's Arcane Bolt and Frost Nova now train the magic skills too;
+> - spawner mobs pay a quarter, bred animals and spawn-egg mobs nothing;
+> - creative kills pay nothing, and player kills pay no skill XP for now (PvP);
+> - a name tag no longer turns a mob into a `mobs.yml` one;
+> - a kill trains the skill behind its last hit;
+> - Critical Strike and the defensive skills pay each mob's hits at most its kill XP;
+> - defensive XP stops after a minute without input.
+>
+> The way into the Mage is still the owner's decision (`docs/STATUS.md` → Decisions, item 14).
+>
 > **Update, 2026-10-26:** what every skill should grow (primary attributes, profession stats, milestones) is designed in `docs/design/SKILL_PROGRESSION.md`, under the owner's permanent rule that every skill improves at least one meaningful attribute or secondary stat.
 >
 > **Update, later on 2026-10-25:** the first loop is built (`docs/design/GATHERING.md`, `docs/STATUS.md`). **Mining** and **Smithing** are now **functional** (their rows and blocks below are updated), and **Fortune** does something: a chance of one extra ore, which also gives Fishing, Scavenging, Trading and Lockpicking their first effect. The counts, therefore: 6 functional, 10 partial, 9 disconnected, 10 placeholder. The rest of this audit is as written.

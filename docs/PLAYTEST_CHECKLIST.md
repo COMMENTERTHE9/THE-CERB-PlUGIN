@@ -168,6 +168,22 @@ Use a survival world spot with stone and ore (or make some with `/fill`: blocks 
 | 4 | Feed two tamed horses golden carrots. | They breed; all three wear labels afterwards. |
 | 5 | (Admin) `/cerb labels 48` | "orphans 0". `/cerb labels 48 clean` removes any stray, for example ones left from before this update (they also vanish at restart). |
 
-## 9. Afterwards
+## 9. XP that can't be farmed (the live exploits)
+
+The XP display (`/xpdisplay compact`) shows every gain, so each row is quick to see.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | As a Mage (or with the admin Fireball Wand, `/givetestitem fireball`), cast into the sky a few times. Then cast at a mob, and at a group of mobs. | The sky pays nothing. A cast that hits pays Spell Weaving +15, Intelligence +5, and Elemental Mastery +10 (Arcane Bolt: Arcane Knowledge +10), once per cast however many it hits. |
+| 2 | Kill the zombies a monster spawner makes (a dungeon, or a spawner farm). | Each pays a quarter of a wild zombie's XP. |
+| 3 | Breed two cows and kill the calf; then kill a wild cow. | The calf pays nothing; the wild cow pays as usual. |
+| 4 | Name a zombie "Legendary Bob" with a name tag and kill it. | It pays as a zombie (it used to pay four times as much). |
+| 5 | Kill a mob in creative mode. | No XP. |
+| 6 | Shoot a mob with a bow and switch to a sword before the arrow lands. Throw a trident at a mob. | The arrow's kill trains Ranged Precision, the trident's Weapon Mastery (they used to train Blade Mastery and Martial Expertise). |
+| 7 | Punch one zombie over and over without killing it. | Critical Strike stops rising after a while (at what the zombie's kill would pay); a new zombie pays again, and the first one's kill still pays in full. |
+| 8 | Stand where a mob can hit you and touch nothing for a minute. | Survival and Heavy Armor Mastery stop rising. Move or click and they train again. |
+| 9 | (Two players) Hit each other; kill each other. | No skill XP from either, for now (PvP: `attributes.yml xp-integrity.pvp-xp`). |
+
+## 10. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

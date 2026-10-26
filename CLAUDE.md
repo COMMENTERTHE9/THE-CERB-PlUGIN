@@ -37,7 +37,8 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - ✅ Class milestone wrap-up (2026-10-25, `docs/STATUS.md`): both control schemes stay (the owner prefers combos; default unchanged); per-mob cast-XP budget (`Classes/CastXpLedger`); movement ≤ 1.2 s (Blink 0.4 s; Charge/Lunge keep their strike pace via `strike-cooldown`); unedited shipped `abilities.yml`/`classes.yml` refreshed on older installs (`ShippedConfig`); rideable mobs labelled (the label steps aside for a rider)
 - ✅ The 35-skill audit (`docs/SKILL_AUDIT.md`, evidence in `audit/skills-2026-10-25/`): 4 functional, 10 partial, 11 disconnected, 10 placeholder; every skill's own `applyEffect` code is unreachable and unsafe to wire (skills act only through the attribute engine)
 - ✅ Mining → Smithing → Equipment (2026-10-25, `docs/design/GATHERING.md`, `docs/STATUS.md`): Mining XP for natural blocks, gathering speed and Fortune (extra ore) from Mining; placed/formed/piston-moved blocks in chunk data pay nothing; smelting/forging/netherite-upgrade Smithing XP counted per item made (CRAFT_ITEM statistic); forged quality → Power/Fortitude/Fortune through an `EquipmentSource`; iron/gold/copper gear pays and gets a quality only from metal the player smelted (per-player units in player data; farms make plain gear); custom resources, tools, drops and machine extraction are data (`resources.yml`), proven by a synthetic drill and ore; real-time XP display (`/xpdisplay`, HUD slot below ability messages). `tools/playtest/gathering.js`
-- ⬜ Next: the owner's playtest of mining and forging (`docs/PLAYTEST_CHECKLIST.md` §7); then the audit's XP-exploit fixes and the same loop for the next skills; later Step 6 (six classes one at a time) and mastery to level 150. Quality before class count
+- ✅ Progression Depth & Woodcutting milestone, items 1–2 (2026-10-26, `docs/ROADMAP.md`): ghost mob labels fixed (`Manager/MobLabelManager`, `labels.js`); the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`); **XP integrity** (`Manager/XpIntegrity`, `attributes.yml xp-integrity`): magic XP once per cast that reaches a mob, spawn-reason shares (spawners ¼, breeding/eggs 0), no XP in creative or from players (PvP switch `pvp-xp`), kill credit by the last hit, per-mob budgets for per-hit XP (Critical Strike, defensive, magic), the idle rule, name tags never match `mobs.yml`. `tools/playtest/xp.js` 35/35, every reproduction failing on a control build. The Mage route waits for the owner (`docs/STATUS.md` decision 14)
+- ⬜ Next: level-up and rank-up presentation, then Woodcutting (items 3–4 of the milestone); later Step 6 (six classes one at a time) and mastery to level 150. Quality before class count
 
 ## Key files
 - `cerberus/world/cerb/CerberusPlugin.java` — init / lifecycle
@@ -59,6 +60,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
   - **Runtime:** `GatheringService` (evaluate a break, pay XP with fractions carried, custom drops, `extract` for machines); `GatheringListener` (breaks, the Fortune bonus); `PlacedBlocks` (chunk-data record, cached per loaded chunk); `ForgeListener` (smelting, forging, netherite upgrade, quality); `EquipmentSource` (forged quality → attributes); `GearItems` (item ids and lore).
   - **Admin:** `/cerb gather info|tool|item|quality|extract|stats` (`Commands/GatherCommand`).
 - `Skills/XpDisplay.java` + `Skills/XpLine.java` — the real-time XP display; `Manager/PlayerHUDManager.xp` is its HUD slot (below `flash`)
+- `Manager/XpIntegrity.java` — what combat XP can't be farmed (origin, creative, PvP switch, kill credit `KillCredit`, per-mob budgets `XpBudgetLedger`, idle, magic once per cast); rules in `attributes.yml xp-integrity` (`Attributes/XpRules`)
 - `cerberus/world/cerb/DatabaseManager.java` — SQLite
 
 ## Conventions
@@ -73,7 +75,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - Commit working increments; keep the tree clean.
 - **Shipped config files** (`abilities.yml`, `classes.yml`, `attributes.yml`, `resources.yml`) are refreshed at startup when unedited (`ShippedConfig`): when you change one, add its old hash to `ShippedConfig.EARLIER` and the new one to `ShippedConfigTest` (the test says so).
 - **Every skill improves at least one meaningful attribute or secondary stat** (owner rule, 2026-10-26, permanent), through the one attribute engine (no per-skill stat managers, no filler bonuses); the design for all 35 is `docs/design/SKILL_PROGRESSION.md`, built with each skill's own gameplay.
-- **Anything that pays XP for an action** counts what really happened (the game's statistics, the final event state at MONITOR), never the click or the attempt; and it has a negative and a positive control in a harness.
+- **Anything that pays XP for an action** counts what really happened (the game's statistics, the final event state at MONITOR), never the click or the attempt; and it has a negative and a positive control in a harness. Combat XP goes through `Manager/XpIntegrity` (origin share, creative, per-mob budget); harnesses that measure kill or class XP run in survival.
 
 ## History / audits
 - `audit/AUDIT_2026-06-08.md` — latest codebase audit.

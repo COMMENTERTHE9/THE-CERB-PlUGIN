@@ -20,7 +20,7 @@ class ShippedConfigTest {
      */
     private static final String CURRENT_ABILITIES = "677925246e61266f82d703fd4336c5a240c047f53516571e9a897624cc339830";
     private static final String CURRENT_CLASSES = "c3cdfeeb78fb2427fea2f5a297a9dd1c963c5a79d11cefd614525c2648c06860";
-    private static final String CURRENT_ATTRIBUTES = "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b";
+    private static final String CURRENT_ATTRIBUTES = "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373";
     private static final String CURRENT_RESOURCES = "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942";
 
     @Test

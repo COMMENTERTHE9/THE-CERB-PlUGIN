@@ -261,6 +261,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     public Attributes.AttributesConfig getAttributesConfig() { return attributesConfig; }
 
+    private Manager.XpIntegrity xpIntegrity;
+
+    /** The XP rules every combat XP source goes through (Manager.XpIntegrity). */
+    public Manager.XpIntegrity getXpIntegrity() { return xpIntegrity; }
+
     private Classes.ClassService classService;
     private Classes.AbilityCaster abilityCaster;
 
@@ -579,6 +584,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
         // ── Combat & mobs ──
         pm.registerEvents(new CombatListener(this, skillManager, spellManager, mobRegistry), this);
+        // What can't be farmed: origin, creative, kill credit by the attack, per-mob hit-XP budgets, idle, name tags.
+        xpIntegrity = new Manager.XpIntegrity(this, skillManager, mobRegistry,
+                () -> getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS,
+                () -> getAttributesConfig() != null ? getAttributesConfig().xpRules() : Attributes.XpRules.DEFAULTS);
+        xpIntegrity.setSkillOfMaterial(skillMapper::resolveKillSkill);
+        combatSkillProcessor.setXpIntegrity(xpIntegrity);
+        pm.registerEvents(xpIntegrity, this);
         pm.registerEvents(new MobKillListener(this, skillManager, skillMapper, mobRegistry), this);
         this.mobScalingListener = new MobScalingListener(this);
         pm.registerEvents(mobScalingListener, this);
@@ -593,14 +605,16 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // priority, listeners run in registration order, and a spear stab replaced by a cast must
         // be cancelled before the pipeline drains the mob's HP pool.
         abilityCaster = new Classes.AbilityCaster(this, classService, playerManaManager, () -> spellManager, () -> virtualHealthListener);
+        abilityCaster.setXpIntegrity(xpIntegrity);
         abilityCaster.setCanAct(p -> Classes.AbilityListener.noContainerOpen(p)
                 && !playerVirtualHealthManager.isRespawning(p) && !playerVirtualHealthManager.hasPendingCustomDeath(p));
         abilityCaster.setSpellCooldown((id, ms) -> secondaryEffects.cooldownMs(id, ms));
         classService.setKillXp(() -> getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS);
         classService.setLevelOf(mobRegistry::getLevel);
-        // A mob's cast-XP budget is what its kill pays (kill XP v2, before the weak-mob rule).
+        // A mob's cast-XP budget is what its kill pays (kill XP v2, before the weak-mob rule), farms' mobs their share.
         classService.setKillXpOf(mob -> Attributes.KillXp.compute(mobRegistry.getLevel(mob), mobRegistry.xpMultiplierOf(mob), 0,
-                getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS));
+                getAttributesConfig() != null ? getAttributesConfig().killXp() : Attributes.KillXp.Params.DEFAULTS)
+                * xpIntegrity.originFactor(mob));
         Classes.CastFeedback castFeedback = new Classes.CastFeedback(playerHUDManager);
         abilityCaster.setFeedback(castFeedback);
         Classes.AbilityBar abilityBar = new Classes.AbilityBar(this, classService, playerManaManager);
@@ -614,8 +628,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pveOffense.setForcedCrit(classService::consumeEmpower); // Feint: the next melee hit crits
         virtualHealthListener.setPveOffense(pveOffense);
         virtualHealthListener.setCounterHook(abilityCaster::tryCounter); // Riposte
+        virtualHealthListener.setXpIntegrity(xpIntegrity);
         spellManager.setVirtualHealthListener(virtualHealthListener);
-        spellManager.setSkillManager(skillManager);
+        spellManager.setXpIntegrity(xpIntegrity);
         pm.registerEvents(virtualHealthListener, this);
 
         // ── Other ──

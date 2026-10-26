@@ -24,6 +24,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - level-up and rank-up feedback;
   - a deep Woodcutting loop.
 - **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
+- **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage needs your decision (Decisions, item 14).
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -581,6 +582,54 @@ On a control build with the fix switched off, the idle check fails (0 labels on 
 
 Strays already in your world disappear at the next restart (labels are never saved).
 
+## Done: XP integrity (2026-10-26)
+
+**What was wrong** (the audit's live exploits, `docs/SKILL_AUDIT.md`):
+- magic skill XP was paid at launch, so a Fireball into the sky paid every magic skill;
+- kills from spawners, breeding, spawn eggs, creative mode and other players paid in full;
+- a name tag could make a common zombie pay as a `mobs.yml` boss (×4);
+- a kill trained whatever was in hand at the moment of death: an arrow landing after a switch to a sword trained Blade Mastery, a thrown trident the empty hand;
+- Critical Strike paid for every hit, forever, on one mob kept alive;
+- a player standing idle in a mob trap trained Survival and Heavy Armor Mastery.
+
+**The rules now** (`Manager/XpIntegrity`; the numbers in `attributes.yml` → `xp-integrity`):
+- **Magic.** A spell cast pays the magic skills once, when it reaches a mob: Spell Weaving 15, Intelligence 5, and its school 10 (Elemental Mastery for fire, frost, lightning and earth; Arcane Knowledge for arcane). Into the sky, at a wall, an armor stand, a player or a pet: nothing. A blast that reaches several mobs still pays once. The Mage's Arcane Bolt and Frost Nova now pay too; before, only Fireball did (`docs/design/CLASSES.md`: "a Mage spell trains Spell Weaving").
+- **Where a mob came from.** Its spawn reason scales its kill XP and every per-hit XP it pays. Monster spawners, villagers' iron golems and nether-portal piglins pay a quarter. Bred animals, spawn eggs, thrown-egg chickens and built golems pay nothing. Natural mobs, trial spawners, raids and admin spawns pay in full. Paper keeps a mob's spawn reason through restarts.
+- **Who earns.** Nothing in creative or spectator mode, kill XP, hit XP, spell XP and class cast XP alike. Fighting players pays no skill XP for now, neither the kill nor the defensive XP for a hit taken (`xp-integrity.pvp-xp`, `docs/ROADMAP.md` → PvP).
+- **Which skill a kill trains:** the one behind the player's last hit on the mob (within 15 s), else the item in hand as before. An arrow trains Ranged Precision, a trident Weapon Mastery, a spell Spell Weaving.
+- **Per-hit XP has a budget.** Each mob pays each skill at most what its kill pays: Critical Strike for hits on it, Survival and Heavy Armor Mastery for its hits on you, and the magic skills for spells reaching it. This is the rule class cast XP already follows. A real fight, which ends in a kill, stays under it; a mob kept alive in a cage runs dry.
+- **Idle.** Survival and Heavy Armor Mastery need a player who did something in the last minute (`idle-seconds: 60`; Paper's idle time, reset by any input).
+- **Defensive XP comes from a fight:** a mob's hit, its arrow, an evoker's fangs, a witch's cloud. TNT, falling blocks, fireworks and dispensers pay nothing, as falls and fire never did. The Survival and Heavy Armor Mastery pages now say exactly this; before, they also listed falls and fire.
+- **Names.** A mob a player named with a name tag is never matched by that name in `mobs.yml`. Mobs that admins or plugins name still are.
+
+Admin test tool: `/cerb spawn <mob> [level] [noai] [origin=<spawn reason>]`, for example `origin=SPAWNER`.
+
+**Checks** (`tools/playtest/xp.js`, 35 checks, each exploit with a reproduction and a positive control):
+- **This build:** 35/35.
+- **A control build without the fixes** (the commit before): every reproduction fails as it should, and every positive control passes:
+  - a Fireball into the sky paid Spell Weaving +15, Intelligence +5 and Elemental Mastery +10, from the wand and as the Mage's ability alike;
+  - a real monster spawner's zombie paid 40, like an ordinary one (now 10);
+  - a calf bred from two cows paid 40 (now 0);
+  - a zombie a player named "Legendary Bob" paid 160 (now 40). One an admin summoned with that name still pays 160 on both builds;
+  - a creative kill paid 40, and a creative Arcane Bolt paid Mage class XP (now nothing);
+  - killing a player paid 40, and a player's hit trained Survival (now nothing);
+  - an arrow kill, both the exact hit and a real shot with a switch to the sword, trained Blade Mastery (now Ranged Precision). A thrown trident trained Martial Expertise (now Weapon Mastery);
+  - 35 punches on one live zombie paid Critical Strike 94 (now 40, its kill XP). A fresh zombie still pays, and the first one's kill still pays 40;
+  - a player idle for a minute still trained Survival (now not, until their next action);
+  - 45 hits from one zombie paid Survival 45 (now 40);
+  - Arcane Bolt and Frost Nova paid no magic XP at all (now Spell Weaving 15, Intelligence 5 and their school 10 per cast that hits).
+- **Regression on this build:**
+  - smoke 14/14;
+  - `progression.js` killxp 5/5, projectile 7/7, spear 5/5;
+  - `classes.js` learn 7/7 (a new character), trees 8/8;
+  - `menu.js` nav 63/63;
+  - `abilities.js` mage 24/24, fixes 20/20.
+
+  Harnesses that measured kill or class XP in creative mode now do it in survival, since creative pays nothing.
+- **Unit tests:** 206, including `XpRulesTest`, `XpBudgetLedgerTest` and `KillCreditTest` (new). One of them caught a real migration bug before it shipped: an older `attributes.yml` without the new section would have read an empty origin list (no farm rule at all) instead of the jar's.
+
+The way into the Mage is still yours to decide (Decisions, item 14, with options).
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -609,7 +658,7 @@ Strays already in your world disappear at the next restart (labels are never sav
 5. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
 6. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
 7. **Ranged mobs ignore mob level.** Melee mob damage scales with the mob's level and tier (`combat.yml mob-damage-scaling`); arrows, fireballs and other mob projectiles do vanilla damage at any level. A level-100 skeleton shoots like a level-1 one. Recommendation: scale mob projectiles the same way, as a separate small change, because it makes ranged mobs much more dangerous.
-8. **Idle damage farms.** Defensive XP (melee and now projectiles) has no idle check: a player standing in a mob trap still trains Survival and Heavy Armor Mastery, as before Step 2. Recommendation: one rule for all defensive XP, for example none after a minute without player input (the server tracks this), when gathering or anti-grind work comes up.
+8. ~~Idle damage farms~~: built as recommended (2026-10-26, "Done: XP integrity" above). Survival and Heavy Armor Mastery stop after a minute without any input, and each mob's hits pay them at most what its kill pays (`attributes.yml xp-integrity`).
 9. **Environmental damage is vanilla-sized.** Falls, fire and lava deal vanilla amounts against a 100–300 health pool: lava costs 1–4% of health per hit where vanilla's 20 hearts lose 20%. Fire resistance now lowers that further. If lava and falls should stay dangerous, scale environmental damage with max health; that is a separate design decision.
 10. **Classes and abilities:** eight decisions in `docs/design/CLASSES.md` §10, each with a recommendation:
     - abilities = the designed Techniques;
@@ -625,7 +674,13 @@ Strays already in your world disappear at the next restart (labels are never sav
 11. ~~The default control scheme~~: decided (above).
 12. **Execute needs Momentum** (built, reversible). At 0 Momentum it was a plain hit that spent its 8 s cooldown, so it is now refused and spends nothing. To keep the old behaviour, set `needs: 0` on its resource effect.
 13. ~~Cast XP from a mob that never dies~~: built as recommended (each mob pays cast XP only up to its kill XP; above).
-14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`). Today only an admin can open the Mage. Recommendation: let Spell Weaving 5 open it (kills with a stick or blaze rod already train Spell Weaving), together with magic skill XP paid on hits instead of casts.
+14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`; reviewed again on 2026-10-26 with the XP fixes). The Mage opens at Intelligence 5, and only spells train Intelligence. Spells come from the Mage itself or the admin-only Fireball Wand, so a normal player can never open it. Magic XP is now paid only when a spell reaches an enemy (built, above). The options:
+    - **A. Spell Weaving 5 opens the Mage (recommended).** Kills with a focus in hand (a stick, blaze rod, breeze rod or end rod: `skills.yml`) already train Spell Weaving. Any player gets there by fighting with one, as the Warrior opens at Blade Mastery 5: about 60 kills of level-1 mobs, fewer of stronger ones. From then on the Mage's spells train Intelligence. It is one line in `classes.yml` (`entry: { Spell Weaving: 5 }`), and a class once open stays open.
+    - **B. Focus kills also train Intelligence** (a share of each kill), keeping Intelligence 5. Also cheap, but Intelligence would come from hitting mobs with a stick, and one kill would pay two skills.
+    - **C. A craftable apprentice focus** that casts a weak spell from the start; its hits train Intelligence. It fits best, but it is new content (an item, a recipe, a spell to tune), suited to the later magic-gear step.
+    - **D. No gate:** the Mage open to everyone. Simplest, but it breaks "skills open classes".
+
+    My recommendation: A now (one line, reversible), C later with magic gear. Nothing changes until you decide.
 15. **Lifesteal for everyone from level 1.** Weapon Mastery gives every player 2.7% lifesteal on mob hits from the start, the only healing in a fight. Keep it, or start it at 0 and let it grow with the skill?
 16. **Blink chaining.** At 0.4 s and 20 Essence, Blink costs exactly the base Essence regeneration, so it can chain indefinitely at about 15 blocks a second (like a teleport item limited only by mana). Keep it, or raise its Essence cost so a chain runs dry after a few seconds?
 17. **Gathering numbers** (`resources.yml`, all yours to tune): Mining XP per block, the weak-resource quarter, Fortune's 0.5% per point and 50% cap, the quality odds and bonuses.
