@@ -158,6 +158,16 @@ Use a survival world spot with stone and ore (or make some with `/fill`: blocks 
 - Is the XP line easy to read without being in the way? Compact or Detailed by default?
 - Do the quality bonuses feel worth forging for?
 
-## 8. Afterwards
+## 8. Mob labels (the ghost labels you found)
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Find wild horses (or llamas) and watch them for a minute. | Each keeps its "Lv Horse" label; they graze and wander instead of galloping about, and no label is left floating behind. |
+| 2 | Kill a horse, a pig and a zombie. | Each label disappears with its mob. |
+| 3 | Mount an untamed horse with an empty hand, a few times. | It still bucks you off now and then, and tames as usual. Its label steps aside while you ride and comes back when you get off. |
+| 4 | Feed two tamed horses golden carrots. | They breed; all three wear labels afterwards. |
+| 5 | (Admin) `/cerb labels 48` | "orphans 0". `/cerb labels 48 clean` removes any stray, for example ones left from before this update (they also vanish at restart). |
+
+## 9. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

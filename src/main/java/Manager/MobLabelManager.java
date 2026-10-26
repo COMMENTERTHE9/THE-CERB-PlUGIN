@@ -1,12 +1,16 @@
 package Manager;
 
 import cerberus.world.cerb.CerberusPlugin;
+import com.destroystokyo.paper.entity.ai.Goal;
+import com.destroystokyo.paper.entity.ai.VanillaGoal;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.AbstractHorse;
+import org.bukkit.entity.Animals;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -16,6 +20,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.entity.EntityEnterLoveModeEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -39,6 +44,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>A mob a player can ride has one seat, which the label would take: its label steps aside
  * when a player right-clicks the mob and comes back once nobody rides it.
  *
+ * <p>A label is only ever a passenger, so it never outlives its mob: one taken off a mob for any
+ * reason is removed at once ({@link #onLabelDismount}), and the mob gets a new one a little later.
+ * Untamed horses, donkeys, mules and llamas treat any passenger as a rider being tamed: they run
+ * around and buck it off, which used to leave the label floating where it fell. While a label
+ * rides one, that goal is paused; it is back whenever a player could mount (the label steps aside),
+ * so taming works as in vanilla. A horse in love keeps its label off, because vanilla won't breed
+ * a horse that carries anything.
+ *
  * <p>Folia-safe: attach/refresh/remove run only from handlers that fire on the mob's
  * owning region thread (spawn / damage / death / remove / interact / dismount). The map is
  * concurrent.
@@ -47,6 +60,7 @@ public final class MobLabelManager implements Listener {
 
     private final CerberusPlugin plugin;
     private final NamespacedKey ownerKey; // marks a TextDisplay as ours (combat-ignore + sweeps)
+    private final NamespacedKey mobKey;   // the mob a label was made for (diagnostics)
 
     /** Cached at spawn so refresh never re-resolves the mob (resolve() fires events). */
     private static final class LabelState {
@@ -63,6 +77,10 @@ public final class MobLabelManager implements Listener {
         TextDisplay label;
         /** The HP part last shown, so a hit that doesn't change the text sends nothing. */
         String shownHp;
+        /** An untamed horse's "run around like crazy" goal, paused while the label rides it. */
+        Goal<AbstractHorse> crazy;
+        /** A restore is already scheduled (after a label was taken off). */
+        boolean restoring;
         LabelState(int level, Tier tier, String typeName, double maxHp, Component prefix) {
             this.level = level; this.tier = tier;
             this.typeName = typeName; this.maxHp = maxHp;
@@ -75,6 +93,7 @@ public final class MobLabelManager implements Listener {
     public MobLabelManager(CerberusPlugin plugin) {
         this.plugin = plugin;
         this.ownerKey = new NamespacedKey(plugin, "cerb_label_owner");
+        this.mobKey = new NamespacedKey(plugin, "cerb_label_mob");
     }
 
     /** PDC key marking a TextDisplay as ours — lets combat/targeting code skip it. */
@@ -133,6 +152,7 @@ public final class MobLabelManager implements Listener {
             td.setPersistent(false);                            // never saved → anti-orphan/anti-dup
             td.setInvulnerable(true);
             td.getPersistentDataContainer().set(ownerKey, PersistentDataType.BYTE, (byte) 1);
+            td.getPersistentDataContainer().set(mobKey, PersistentDataType.STRING, mob.getUniqueId().toString());
         });
 
         if (!mob.addPassenger(label)) {  // mount failed (mob moved region / died this tick)
@@ -141,7 +161,47 @@ public final class MobLabelManager implements Listener {
         }
         st.label = label;
         st.shownHp = hp;
+        calm(mob, st);
         return true;
+    }
+
+    /**
+     * An untamed horse-like mob treats the label as a rider: its "run around like crazy" goal makes it
+     * gallop about and buck the label off. Pause that goal while the label rides. Mob's thread.
+     */
+    private static void calm(LivingEntity mob, LabelState st) {
+        if (!(mob instanceof AbstractHorse h) || h.isTamed()) return;
+        var goals = Bukkit.getMobGoals();
+        Goal<AbstractHorse> g = goals.getGoal(h, VanillaGoal.HORSE_RUN_AROUND_LIKE_CRAZY);
+        if (g == null) return;
+        st.crazy = g;
+        goals.removeGoal(h, VanillaGoal.HORSE_RUN_AROUND_LIKE_CRAZY);
+    }
+
+    /** Put the paused goal back (a player may mount and must be able to tame it). Mob's thread. */
+    private static void uncalm(LivingEntity mob, LabelState st) {
+        if (st.crazy == null || !(mob instanceof AbstractHorse h)) return;
+        var goals = Bukkit.getMobGoals();
+        if (!goals.hasGoal(h, VanillaGoal.HORSE_RUN_AROUND_LIKE_CRAZY)) goals.addGoal(h, 1, st.crazy); // vanilla's priority
+        st.crazy = null;
+    }
+
+    /** Take the label off for now (a rider, love mode); {@link #restore} brings it back. Mob's thread. */
+    private void stepAside(LivingEntity mob, LabelState st, long restoreTicks) {
+        TextDisplay td = findLabel(mob);
+        st.label = null; // first: the dismount below is ours (see onLabelDismount)
+        if (td != null) {
+            td.leaveVehicle(); // the seat is free now, not when the removal is processed
+            td.remove();
+        }
+        uncalm(mob, st);
+        scheduleRestore(mob, st, restoreTicks);
+    }
+
+    private void scheduleRestore(LivingEntity mob, LabelState st, long ticks) {
+        if (st.restoring) return;
+        st.restoring = true;
+        mob.getScheduler().runDelayed(plugin, t -> { st.restoring = false; restore(mob); }, () -> st.restoring = false, Math.max(1, ticks));
     }
 
     /**
@@ -168,12 +228,34 @@ public final class MobLabelManager implements Listener {
         if (!(event.getRightClicked() instanceof LivingEntity mob) || !isRideable(mob)) return;
         LabelState st = states.get(mob.getUniqueId());
         if (st == null || !canSeat(event.getPlayer(), mob)) return;
-        TextDisplay td = findLabel(mob);
-        if (td == null) return; // already aside (the off-hand half of the same click): its return is on the way
-        td.leaveVehicle(); // the seat is free now, not when the removal is processed
+        if (findLabel(mob) == null) return; // already aside (the off-hand half of the same click): its return is on the way
+        stepAside(mob, st, 2L);
+    }
+
+    /** Vanilla won't breed a horse that carries anything: a horse in love keeps its label off until love ends. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onLove(EntityEnterLoveModeEvent event) {
+        if (!(event.getEntity() instanceof AbstractHorse mob)) return;
+        LabelState st = states.get(mob.getUniqueId());
+        if (st != null && findLabel(mob) != null) stepAside(mob, st, 40L);
+    }
+
+    /**
+     * A label taken off its mob by anything but our own removal (vanilla AI, a conversion, another
+     * plugin) is removed at once, so it can never be left floating; the mob gets a new one later.
+     * Runs on the mob's thread (the dismount happens there).
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onLabelDismount(EntityDismountEvent event) {
+        if (!(event.getEntity() instanceof TextDisplay td) || !td.getPersistentDataContainer().has(ownerKey, PersistentDataType.BYTE)) return;
+        if (!td.isValid()) return; // being removed by us
         td.remove();
+        if (!(event.getDismounted() instanceof LivingEntity mob) || !mob.isValid()) return;
+        LabelState st = states.get(mob.getUniqueId());
+        if (st == null || st.label != td) return; // a label stepping aside: its own restore is on the way
         st.label = null;
-        mob.getScheduler().runDelayed(plugin, t -> restore(mob), null, 2L);
+        uncalm(mob, st);
+        scheduleRestore(mob, st, 100L); // a little later, so something that keeps ejecting can't churn labels
     }
 
     /** True when this right-click can seat {@code p} on {@code mob}, as far as the label needs to know. */
@@ -195,6 +277,10 @@ public final class MobLabelManager implements Listener {
     private void restore(LivingEntity mob) {
         LabelState st = states.get(mob.getUniqueId());
         if (st == null || !mob.isValid() || hasRider(mob) || findLabel(mob) != null) return;
+        if (mob instanceof AbstractHorse && mob instanceof Animals a && a.isLoveMode()) { // breeding needs it bare
+            scheduleRestore(mob, st, 40L);
+            return;
+        }
         MobVirtualHealthManager pools = plugin.getMobVirtualHealthManager();
         mount(mob, st, pools != null && pools.has(mob) ? pools.fraction(mob) : 1.0);
     }
@@ -234,15 +320,63 @@ public final class MobLabelManager implements Listener {
         return null;
     }
 
-    /** Remove the label. Call on the mob's region thread. */
+    /** Remove the label (every one riding the mob, and the one it had if that is still about). Mob's thread. */
     public void remove(LivingEntity mob) {
         if (mob == null) return;
-        states.remove(mob.getUniqueId());
-        TextDisplay td = findLabel(mob); // passenger lookup — Folia-safe
-        if (td != null) td.remove();
+        LabelState st = states.remove(mob.getUniqueId());
+        for (Entity p : mob.getPassengers()) { // passenger lookup — Folia-safe
+            if (p instanceof TextDisplay td && td.getPersistentDataContainer().has(ownerKey, PersistentDataType.BYTE)) td.remove();
+        }
+        TextDisplay kept = st == null ? null : st.label;
+        if (kept != null && kept.isValid() && kept.getVehicle() != mob) {
+            if (Bukkit.isOwnedByCurrentRegion(kept)) kept.remove();
+            else kept.getScheduler().run(plugin, t -> kept.remove(), null);
+        }
     }
 
     public void clear() { states.clear(); }
+
+    /**
+     * Diagnostics: our labels within {@code r} blocks of {@code at} that this region owns, as
+     * {total, on a live mob, orphans}, and a line per orphan (at most {@code max}). At's thread.
+     */
+    public java.util.List<String> census(Player at, double r, int max) {
+        return census(at, r, max, false);
+    }
+
+    /** As {@link #census(Player, double, int)}; {@code clean} also removes the orphans found. */
+    public java.util.List<String> census(Player at, double r, int max, boolean clean) {
+        int total = 0, live = 0, removed = 0;
+        java.util.List<String> orphans = new java.util.ArrayList<>();
+        for (Entity e : at.getNearbyEntities(r, r, r)) {
+            if (!(e instanceof TextDisplay td) || !Bukkit.isOwnedByCurrentRegion(e)
+                    || !td.getPersistentDataContainer().has(ownerKey, PersistentDataType.BYTE)) continue;
+            total++;
+            Entity v = td.getVehicle();
+            if (v instanceof LivingEntity le && le.isValid()) { live++; continue; }
+            if (clean) { td.remove(); removed++; }
+            if (orphans.size() < max) {
+                String mob = td.getPersistentDataContainer().get(mobKey, PersistentDataType.STRING);
+                orphans.add(String.format(java.util.Locale.ROOT, "orphan at %d %d %d, %d ticks old, vehicle %s, mob %s (%s)",
+                        td.getLocation().getBlockX(), td.getLocation().getBlockY(), td.getLocation().getBlockZ(), td.getTicksLived(),
+                        v == null ? "none" : v.getType().name().toLowerCase(java.util.Locale.ROOT) + (v.isValid() ? "" : " (gone)"),
+                        mob == null ? "?" : mob.substring(0, 8), mob != null && states.containsKey(UUID.fromString(mob)) ? "tracked" : "not tracked"));
+            }
+        }
+        int horses = 0, untamed = 0, paused = 0;
+        for (Entity e : at.getNearbyEntities(r, r, r)) {
+            if (!(e instanceof AbstractHorse h) || !Bukkit.isOwnedByCurrentRegion(e)) continue;
+            horses++;
+            if (h.isTamed()) continue;
+            untamed++;
+            if (!Bukkit.getMobGoals().hasGoal(h, VanillaGoal.HORSE_RUN_AROUND_LIKE_CRAZY)) paused++;
+        }
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add("labels " + total + ", on a live mob " + live + ", orphans " + (total - live) + (clean ? ", removed " + removed : "")
+                + "; horse-likes " + horses + ", untamed " + untamed + ", bucking paused " + paused);
+        out.addAll(orphans);
+        return out;
+    }
 
     /** Covers death, despawn, /kill, and chunk-unload — guarantees no orphaned displays. */
     @EventHandler(priority = EventPriority.MONITOR)

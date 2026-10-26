@@ -26,7 +26,7 @@ public class CerbCommand implements CommandExecutor {
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
-                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|gather>";
+                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|labels|gather>";
     private final CerberusPlugin plugin;
 
     public CerbCommand(CerberusPlugin plugin) {
@@ -185,6 +185,19 @@ public class CerbCommand implements CommandExecutor {
             case "mobs":
                 if (!(sender instanceof Player mp)) { sender.sendMessage(ChatColor.RED + "Run /cerb mobs in-game."); break; }
                 handleMobsDiag(mp, args);
+                break;
+
+            case "labels":
+                if (!(sender instanceof Player lp)) { sender.sendMessage(ChatColor.RED + "Run /cerb labels in-game."); break; }
+                // /cerb labels [radius] [clean]: our floating labels nearby, and the ones riding no mob (clean removes those)
+                double lr = 32;
+                boolean lclean = false;
+                for (int i = 1; i < args.length; i++) {
+                    if (args[i].equalsIgnoreCase("clean")) lclean = true;
+                    else try { lr = Math.max(1, Math.min(96, Double.parseDouble(args[i]))); } catch (NumberFormatException ignored) { }
+                }
+                if (plugin.getMobLabelManager() == null) { lp.sendMessage(ChatColor.RED + "Labels are off."); break; }
+                for (String line : plugin.getMobLabelManager().census(lp, lr, 8, lclean)) lp.sendMessage(ChatColor.GRAY + "[Labels] " + line);
                 break;
 
             case "speed":
