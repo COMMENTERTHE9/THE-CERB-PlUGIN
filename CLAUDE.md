@@ -72,6 +72,7 @@ The full game design lives in **`docs/design/`** — start at **`docs/design/REA
 - Verify gameplay changes on a running server, not just the build. In a cloud/Linux session, `tools/cerb.sh` can download Folia and run a local test server (see RESTART_GUIDE.md).
 - Commit working increments; keep the tree clean.
 - **Shipped config files** (`abilities.yml`, `classes.yml`, `attributes.yml`, `resources.yml`) are refreshed at startup when unedited (`ShippedConfig`): when you change one, add its old hash to `ShippedConfig.EARLIER` and the new one to `ShippedConfigTest` (the test says so).
+- **Every skill improves at least one meaningful attribute or secondary stat** (owner rule, 2026-10-26, permanent), through the one attribute engine (no per-skill stat managers, no filler bonuses); the design for all 35 is `docs/design/SKILL_PROGRESSION.md`, built with each skill's own gameplay.
 - **Anything that pays XP for an action** counts what really happened (the game's statistics, the final event state at MONITOR), never the click or the attempt; and it has a negative and a positive control in a harness.
 
 ## History / audits

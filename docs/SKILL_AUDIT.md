@@ -2,6 +2,8 @@
 
 *The first task of the Gameplay Depth & Systems Completion milestone (`docs/ROADMAP.md`). Each skill was read from the source, not from its menu page: "Do not treat a skill as complete simply because its icon, description, or level exists."*
 
+> **Update, 2026-10-26:** what every skill should grow (primary attributes, profession stats, milestones) is designed in `docs/design/SKILL_PROGRESSION.md`, under the owner's permanent rule that every skill improves at least one meaningful attribute or secondary stat.
+>
 > **Update, later on 2026-10-25:** the first loop is built (`docs/design/GATHERING.md`, `docs/STATUS.md`). **Mining** and **Smithing** are now **functional** (their rows and blocks below are updated), and **Fortune** does something: a chance of one extra ore, which also gives Fishing, Scavenging, Trading and Lockpicking their first effect. The counts, therefore: 6 functional, 10 partial, 9 disconnected, 10 placeholder. The rest of this audit is as written.
 
 ## Method
