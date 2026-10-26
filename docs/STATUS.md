@@ -1,6 +1,6 @@
 # Cerberus — Project Status
 
-*Last updated 2026-10-25 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
+*Last updated 2026-10-26 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
 **Current milestone:** Steps 0–2 of `docs/ROADMAP.md` are done and verified in game on the cloud sandbox:
 - **Step 0**, the owner's decisions: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis.
@@ -18,7 +18,12 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - class XP only from real fights; Execute as a real finisher.
 - **The owner has tried the new controls** and set the next milestone, **Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`). The class milestone's loose ends are closed first (section "Done: class milestone wrap-up" below): both control schemes stay, a mob kept alive can't pay cast XP forever, and movement abilities come back in 1.2 s at most.
 - **Done since:** the 35-skill audit, then the first gathering-to-equipment loop, **Mining → Smithing → Equipment**, with the real-time XP display (section "Done: Mining → Smithing → Equipment" below).
-- **Next:** your playtest of mining and forging; then closing the live XP exploits the audit found, the same loop for the next skills, then Step 6 (six more classes, one at a time) and mastery to level 150.
+- **You playtested mining and forging (2026-10-26)** and set the next milestone, **Progression Depth & Woodcutting** (`docs/ROADMAP.md`):
+  - a skill-to-attribute design for all 35 skills;
+  - closing the live XP exploits;
+  - level-up and rank-up feedback;
+  - a deep Woodcutting loop.
+- **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -543,6 +548,38 @@ In game after these: upgrade 5, smelt 6, forge 14.
   - the XP display formatted its numbers with `String.format`.
 - **What's left is small:** a block broken or a craft click costs about 10–20 µs, nothing runs per tick, and nothing touches the database per block.
 - **The `abilities` numbers come from a warm server.** The first `abilities` run after a restart includes the ability code's warm-up (0.172 and 0.177). The baseline's server had already run 20 minutes of class tests.
+
+## Done: ghost mob labels (2026-10-26)
+
+**What you saw:** "Lv5 Horse" labels floating where horses had died.
+
+**The cause was vanilla horse behavior, not death.** A label rides its mob as a passenger. An untamed horse, donkey, mule or llama treats any passenger as a rider being tamed:
+- it runs around and bucks the label off within seconds;
+- the label is left floating where it fell, and the horse walks on without one;
+- when the horse died, the cleanup looked for the label on the horse, found nothing, and the stray stayed until its chunk unloaded.
+
+Reproduced on the sandbox: 6 of 7 untamed horses and llamas threw their labels within 2.5 s, all 7 within 20 s. The same passenger also kept tamed horses from breeding, because vanilla won't breed a horse that carries anything.
+
+**The fix** (`Manager/MobLabelManager`):
+- **Bucking paused while a label rides.** The horse's "run around like crazy" behavior is paused through Paper's goal API.
+- **Taming works as before.** The paused behavior comes back whenever the label steps aside for a player, so riding and taming are vanilla.
+- **Breeding works.** A horse in love keeps its label off until love ends.
+- **No strays, whatever the cause.** A label taken off its mob for any reason is removed at once, and the mob gets a new one a few seconds later.
+- **Full cleanup on death.** Every label riding the mob is removed.
+
+There is no per-tick work. `/cerb labels [radius] [clean]` (admin) counts labels nearby, shows the ones riding no mob, and removes them with `clean`.
+
+**Checks:** `tools/playtest/labels.js`, 11 checks:
+- untamed horses and llamas in an open field keep their labels for 20 s;
+- horses, llamas, pigs, cows and zombies killed by `/kill`, by lethal hits, and right after a right-click leave no label, by both the server's count and the client's view;
+- an untamed horse can still be mounted, and its bucking is back while it is ridden;
+- its label and the pause return when the rider gets off;
+- two tamed horses breed, and all three wear labels afterwards;
+- labels survive chunks unloading and reloading.
+
+On a control build with the fix switched off, the idle check fails (0 labels on a live mob, 7 orphans) and so does breeding. Smoke 14/14.
+
+Strays already in your world disappear at the next restart (labels are never saved).
 
 ## Roadmap
 

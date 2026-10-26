@@ -72,7 +72,64 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
-## Gameplay Depth & Systems Completion (owner, 2026-10-25, approved): the current milestone
+## Progression Depth & Woodcutting (owner, 2026-10-26, approved): the current milestone
+
+**Why.** The owner playtested Mining → Smithing → Equipment and the XP display ("taking us in the right direction"). Next: every skill becomes a discipline worth mastering, progression feels alive, and gathering becomes deep, starting with Woodcutting. The quality target is the gameplay depth of Hypixel SkyBlock's foraging updates (0.23, June 2025; 0.27, August 2026). They are studied for design principles only: Cerberus copies no names, assets, maps, menus, formulas or implementations. Comparable depth comes over time, not in one milestone.
+
+**Permanent rule (owner, 2026-10-26): every skill improves at least one meaningful attribute or secondary stat,** through the one attribute engine. No skill is only an XP counter, and no bonus exists just to fill a table. Not every skill needs to add combat damage: a master fisherman, blacksmith or farmer becomes extraordinarily capable in that discipline. Balance, diminishing returns and controlled scaling hold. All 35 are designed now (`docs/design/SKILL_PROGRESSION.md`) and built alongside each skill's own gameplay.
+
+**In order:**
+1. **The skill-to-attribute design for all 35 skills.** For each skill:
+   - its primary attributes and its secondary or profession stats;
+   - what each one does in play;
+   - its milestones and missing dependencies;
+   - what works today and what is planned.
+2. **Close the live XP exploits**, each with a reproduction and a positive test:
+   - magic XP for casts into empty space;
+   - full kill XP from spawners, bred animals, renamed mobs, creative mode and player kills;
+   - weapon XP credited to the item held at death;
+   - Critical Strike farmed on one target;
+   - defensive XP in idle damage farms.
+
+   Also review a normal player's way into the Mage; a material design choice goes to the owner with options and a recommendation.
+3. **Level-up and rank-up feedback:**
+   - a brief sound and a small particle effect;
+   - which skill rose, its new level and its real stat gain;
+   - something stronger at milestones;
+   - a distinct class rank-up that names what it unlocks (abilities with other requirements stay locked);
+   - simultaneous gains combined;
+   - no replay on login, data loading or admin corrections;
+   - a player setting.
+
+   Vanilla sounds and particles only, local, bounded and Folia-safe. Built so realm breakthroughs, mastery trials and Awakenings can use it later; those systems aren't built now.
+4. **Woodcutting, a complete and deep loop:**
+   - **The loop:** find a natural tree, cut it with the right tool, earn XP, see the skill's effect, get better or specialized tools, unlock harvesting capabilities at milestones, use the resources elsewhere, move on to harder and more rewarding trees.
+   - **Trees and techniques:** different trees matter. Basic trees stay easy, and at least one higher-level technique visibly changes how Woodcutting plays.
+   - **Protection:** natural and placed wood are told apart, and placed logs or artificial regrowth can't be farmed. Large effects respect protected areas, builds, chunk and region boundaries and player intent.
+   - **Data:** everything is data-driven, proven by a synthetic custom tree. No forest generator.
+5. **Independent review and finish.**
+6. **Report, and propose the next loop:** Farming or Fishing, one complete loop at a time.
+
+**Also in this milestone:** the **ghost mob labels** from the owner's playtest (labels left floating after horses died). Fixed first (`docs/STATUS.md`).
+
+**Rules:**
+- **Performance first:** measure the affected systems before and after, with realistic multi-player harvesting and simultaneous level-ups. Particles and sounds must not become a new cost.
+- **Protect** the owner's world, characters and database.
+- **Preserve:**
+  - Mining → Smithing → Equipment;
+  - the XP display's modes;
+  - the six primary attributes and the secondary stats;
+  - combat and the 75% cap;
+  - Warrior, Mage and Duelist;
+  - both control schemes (the owner plays R-R-R combos);
+  - saved class progress and loadouts;
+  - the config migration and backup rules.
+- **No automatic merge** into `master`.
+- **Stays on the roadmap, not built early:** classes, mastery, Awakening, world generation.
+
+**Later (owner's direction):** Farming and Fishing next, then every remaining profession, each as deep as Mining and Woodcutting. The long-term aim is that depth across combat, mining, woodcutting, fishing, farming, hunting, crafting and the other disciplines: 35 disciplines worth mastering, not 35 XP bars.
+
+## Gameplay Depth & Systems Completion (owner, 2026-10-25, approved): done, 2026-10-25
 
 **Why.** The menus, combat engine, attributes and first three classes are in good shape, but much of the game is still skeletal. Many of the 35 skills have little or no gameplay: no XP source, unfinished effects, or effects that depend on systems not built yet. So depth and complete gameplay loops come before more classes. The six next classes and the 25-class vision stay on the roadmap; they wait.
 
