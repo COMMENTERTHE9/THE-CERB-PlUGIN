@@ -200,10 +200,28 @@ Plain hits fall in between. The `combat` load shows what players who don't cast 
 | `abilities` | 0.122 / 0.113 | 50 key presses, 49 hits |
 | `combat` | 0.122 / 0.122 | 107–110 hits |
 
-**After:** (being measured).
+**After** (TPS 20.00 on every region in every run, and the same work per bot as before):
+
+| Load | Before | After, first pass (b7be382) | After the fixes (7907fbc) |
+|---|---|---|---|
+| `gather` | 0.037 / 0.035 | 0.084 / 0.039 | 0.059 / 0.043 |
+| `craft` | 0.047 / 0.055 | 0.108 / 0.099 | 0.070 / 0.058 |
+| `abilities` | 0.122 / 0.113 | 0.172 / 0.131 | 0.177 / 0.107; two more on the warm server: 0.092 / 0.097 |
+| `combat` | 0.122 / 0.122 | 0.122 / 0.095 | 0.109 / 0.105 |
+
+**What the first pass found, and what was fixed** (`tools/perf/jfr_summary.py`, then a breakdown of what ran under each handler):
+- **Crafting cost twice the baseline.** The forge listener's grid handler spent 34 of its 36 samples in `PrepareItemCraftEvent.getRecipe`, which builds a whole Bukkit recipe on every change to any crafting grid. The armed batch is now checked first, so the lookup only runs inside a shift-click batch. Forge traces are built only for a player with the debug on, and the smelted-metal keys are cached. Craft: 0.108 / 0.099 → 0.070 / 0.058.
+- **The XP display's cost was `String.format`.** Nearly all of its samples (19 of 20 under a skill award in `gather`, all 5 in `abilities`) were formatter and locale setup in `XpLine.grouped`, once per gain. It now uses `Numbers.grouped`, which `NumbersTest` pins to the same output.
+
+**What stays, and why that is fine:**
+- **A block broken costs about 10–20 µs** of plugin time: 9 bots broke about 925 blocks in each 60 s recording, with 9–14 samples under the gathering listener and 5–6 under the XP display.
+- **A craft click costs about 15–20 µs:** 13–25 samples for about 760 crafts. Most of it is the quality roll and the smelted-metal check on the item made.
+- **Nothing runs per tick, and nothing touches the database per block.** Skill saves stay coalesced: at most one asynchronous save per player per second, as before.
+- **The rest of the gap is in code this milestone didn't touch.** Mob labels for natural mobs near the bots take 20–32 samples in a `gather` run, and damage numbers and ability code vary by run. In `abilities` the new code is barely on the stack: gathering 0 samples, the XP display 2–6. The high first `abilities` runs are warm-up, not new cost. Both "after" sets were recorded soon after a server restart, with no ability cast in between, so their first `abilities` run was the first time the ability code ran since the start. That run measured 0.172 and 0.177. The baseline's server had run about 20 minutes of class and ability tests before its recording (the server log: `/class equip` 153 times, `/cerb class` 85). Two more runs on the warm server measured 0.092 and 0.097, below the baseline. **Method note for next time:** add each load to the warm-up, not only `gather`.
 
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
+- **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

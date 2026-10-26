@@ -521,7 +521,28 @@ On the first pass five checks failed, none of them in the plugin:
 - **Nit:** a stale Fortune bonus is also cleared when another plugin cancels and then allows a break.
 - **Playtest note:** ingots smelted before this update don't count as smelted (only ingots taken out of a furnace from now on do), so an old stockpile forges plain gear (`docs/PLAYTEST_CHECKLIST.md` §7, 8b).
 
-**Performance:** (being measured).
+**Third review** (of the second review's fixes, against the server's bytecode): no high or medium findings. It confirmed that the shift-click signal can't be faked or paid twice. Two low findings and four nits, fixed or noted:
+- **A click in a furnace window** looked the block up before the cheap checks; it now does that last.
+- **The empty take has no time limit now,** so a garbage-collection pause between the click and the take can't lose a real upgrade. The next tick or the next click still disarms it.
+- **A click in creative mode** also disarms an earlier click's payment. An admin switching game mode within the same tick could otherwise have collected it.
+- **Comments,** and a note in the negative control: it can't prove that both clicks landed in one tick, but the payment no longer depends on that.
+
+In game after these: upgrade 5, smelt 6, forge 14.
+
+**Performance** (`docs/PERFORMANCE.md`: 9 bots, plugin time in ms per tick, two runs each, TPS 20.00 everywhere):
+
+| Load | Before | After |
+|---|---|---|
+| `gather` (9 players mining) | 0.037 / 0.035 | 0.059 / 0.043 |
+| `craft` (9 players crafting) | 0.047 / 0.055 | 0.070 / 0.058 |
+| `abilities` | 0.122 / 0.113 | 0.092 / 0.097 |
+| `combat` | 0.122 / 0.122 | 0.109 / 0.105 |
+
+- **The first "after" pass found two real costs, both fixed:**
+  - the crafting-grid handler built a whole recipe on every change to a grid (`craft` was 0.108 / 0.099);
+  - the XP display formatted its numbers with `String.format`.
+- **What's left is small:** a block broken or a craft click costs about 10–20 µs, nothing runs per tick, and nothing touches the database per block.
+- **The `abilities` numbers come from a warm server.** The first `abilities` run after a restart includes the ability code's warm-up (0.172 and 0.177). The baseline's server had already run 20 minutes of class tests.
 
 ## Roadmap
 
