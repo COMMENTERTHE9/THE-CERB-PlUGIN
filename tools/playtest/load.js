@@ -19,6 +19,10 @@
 //            in play. The Gameplay Depth baseline (docs/PERFORMANCE.md).
 //   craft  - each bot crafts at its own crafting table as fast as a hurried player: iron ingots and sticks into iron
 //            pickaxes, about two a second; finished pickaxes are cleared so the inventory never fills.
+//   wood   - each bot chops a small grove in survival (a netherite axe and Haste II): three oak trees, four logs tall
+//            under a leaf canopy, refilled when cut down; drops are picked up. The Woodcutting baseline (2026-10-26).
+//   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
+//            again from real XP: many level-ups at once across the server (the progression feedback's workload).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -107,6 +111,87 @@ function oreCube(controller, x, y, z) {
   controller.chat(`/fill ${x - 2} ${y} ${z + 2} ${x + 2} ${y + 2} ${z + 6} stone`);
   for (const [ore, dx, dy, dz] of [['coal_ore', -1, 0, 3], ['iron_ore', 1, 1, 4], ['copper_ore', 0, 2, 5], ['gold_ore', 2, 0, 6], ['iron_ore', -2, 1, 6], ['coal_ore', 0, 1, 3]]) {
     controller.chat(`/setblock ${x + dx} ${y + dy} ${z + dz} ${ore}`);
+  }
+}
+
+/** Three oak trees in front of bot i (+z side), four logs tall under a leaf canopy, on a floor to stand on. */
+function grove(controller, x, y, z) {
+  controller.chat(`/fill ${x - 3} ${y - 1} ${z - 1} ${x + 3} ${y - 1} ${z + 6} grass_block`);
+  controller.chat(`/fill ${x - 3} ${y} ${z - 1} ${x + 3} ${y + 6} ${z + 6} air`);
+  controller.chat(`/fill ${x - 3} ${y + 3} ${z + 2} ${x + 3} ${y + 5} ${z + 5} oak_leaves`);
+  for (const [dx, dz] of [[-2, 3], [0, 4], [2, 3]]) controller.chat(`/fill ${x + dx} ${y} ${z + dz} ${x + dx} ${y + 3} ${z + dz} oak_log`);
+}
+
+async function wood(b, deadline, controller) {
+  const n = b.username;
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  b.chat('/give @s netherite_axe'); await sleep(800);
+  b.chat('/effect give @s haste infinite 1 true'); b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(500);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_axe' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  const fill = async () => { grove(controller, home.x, home.y, home.z); bump(n, 'groves'); await sleep(900); };
+  await fill();
+  const vec3 = require('vec3');
+  while (Date.now() < deadline) {
+    let target = null; // the lowest log still standing, nearest trunk first
+    for (const [dx, dz] of [[0, 4], [-2, 3], [2, 3]]) for (let dy = 0; dy <= 3 && !target; dy++) {
+      const bl = b.blockAt(new vec3(home.x + dx, home.y + dy, home.z + dz));
+      if (bl && bl.name === 'oak_log') target = bl;
+    }
+    if (!target) { b.chat(`/tp @s ${home.x + 0.5} ${home.y} ${home.z + 0.5} 0 0`); await sleep(300); await fill(); continue; }
+    try { await b.dig(target, true); bump(n, 'logs'); } catch (e) { bump(n, 'digfail'); if (!counts.firstError) counts.firstError = { [n]: String(e.message || e).slice(0, 120) }; await sleep(200); }
+    if (b.inventory.emptySlotCount() < 3) { b.chat('/clear @s oak_log'); b.chat('/clear @s oak_sapling'); b.chat('/clear @s stick'); b.chat('/clear @s apple'); }
+    await sleep(200);
+  }
+}
+
+async function levels(b, deadline, controller) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Mining level 1`); await sleep(400);
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  b.chat('/give @s netherite_pickaxe'); await sleep(800);
+  b.chat('/effect give @s haste infinite 1 true'); b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(500);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_pickaxe' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  const fill = async () => {
+    controller.chat(`/fill ${home.x - 2} ${home.y - 1} ${home.z - 1} ${home.x + 2} ${home.y - 1} ${home.z + 7} stone`);
+    controller.chat(`/fill ${home.x - 2} ${home.y} ${home.z - 1} ${home.x + 2} ${home.y + 3} ${home.z + 1} air`);
+    controller.chat(`/fill ${home.x - 2} ${home.y} ${home.z + 2} ${home.x + 2} ${home.y + 2} ${home.z + 6} diamond_ore`);
+    bump(n, 'fills'); await sleep(900);
+  };
+  await fill();
+  const vec3 = require('vec3');
+  let nextReset = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    // back to level 1 every 12 s, so it keeps levelling up from real XP (the reset itself is an admin correction)
+    if (Date.now() > nextReset) { controller.chat(`/cerb skill ${n} Mining level 1`); bump(n, 'resets'); nextReset = Date.now() + 12000; }
+    let target = null;
+    for (let dz = 2; dz <= 6 && !target; dz++) for (let dy = 0; dy <= 2 && !target; dy++) for (let dx = -2; dx <= 2 && !target; dx++) {
+      const bl = b.blockAt(new vec3(home.x + dx, home.y + dy, home.z + dz));
+      if (bl && bl.name === 'diamond_ore') target = bl;
+    }
+    if (!target) { b.chat(`/tp @s ${home.x + 0.5} ${home.y} ${home.z + 0.5} 0 0`); await sleep(300); await fill(); continue; }
+    if (target.position.distanceTo(b.entity.position.offset(0, 1.6, 0)) > 4.2) {
+      b.chat(`/tp @s ${target.position.x + 0.5} ${home.y} ${target.position.z - 1.5} 0 0`); await sleep(250);
+    }
+    // Raw dig packets: this mineflayer times diamond ore as if the pickaxe didn't fit (3.25 s a block). A netherite
+    // pickaxe with Haste II breaks it in 8 ticks; the server checks the progress, so the finish comes after 0.45 s.
+    await b.lookAt(target.position.offset(0.5, 0.5, 0.5), true);
+    b._client.write('block_dig', { status: 0, location: target.position, face: 1, sequence: (b._seq = (b._seq || 7000) + 1) });
+    b.swingArm();
+    await sleep(450);
+    b._client.write('block_dig', { status: 2, location: target.position, face: 1, sequence: (b._seq = b._seq + 1) });
+    await sleep(150);
+    const after = b.blockAt(target.position);
+    bump(n, after && after.name === 'diamond_ore' ? 'digfail' : 'ores');
+    if (b.inventory.emptySlotCount() < 3) { b.chat('/clear @s diamond'); }
+    await sleep(200);
   }
 }
 
@@ -212,8 +297,9 @@ async function menuidle(b, deadline) {
     try {
       const b = await join(name);
       bots.push(b);
-      // gather: one lane each, 7 blocks apart (an ore block reaches 6 ahead); else a 4-block grid
-      const x = MODE === 'gather' ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = MODE === 'gather' ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
+      // gather, levels, wood: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
+      const lanes = ['gather', 'levels', 'wood'].includes(MODE);
+      const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
   }
@@ -226,6 +312,7 @@ async function menuidle(b, deadline) {
     const m = pick(i);
     const run = m === 'combat' ? combat(b, deadline) : m === 'abilities' ? abilities(b, deadline, controller) : m === 'hurt' ? hurt(b, deadline, controller)
         : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
+        : m === 'wood' ? wood(b, deadline, controller) : m === 'levels' ? levels(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
