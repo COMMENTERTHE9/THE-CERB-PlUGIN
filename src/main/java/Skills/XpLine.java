@@ -108,6 +108,6 @@ public final class XpLine {
     public int size() { return gains.size(); }
 
     static String grouped(long v) {
-        return String.format(Locale.ROOT, "%,d", v);
+        return Manager.Numbers.grouped(v); // String.format was this line's main cost under load (docs/PERFORMANCE.md)
     }
 }

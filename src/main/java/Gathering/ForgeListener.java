@@ -37,6 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Supplier;
 
 /**
  * Smithing XP and forged quality (docs/design/GATHERING.md, "Smithing and crafting"). What pays is
@@ -97,8 +98,9 @@ public final class ForgeListener implements Listener {
 
     public void setNotice(java.util.function.BiConsumer<Player, String> notice) { this.notice = notice; }
 
-    private void trace(Player p, String line) {
-        if (debug.test(p.getUniqueId())) p.sendMessage("§8[Forge] " + line);
+    /** The line is only built for a player with the debug on (it can be costly: a recipe lookup, a credit read). */
+    private void trace(Player p, Supplier<String> line) {
+        if (debug.test(p.getUniqueId())) p.sendMessage("§8[Forge] " + line.get());
     }
 
     private static boolean creative(Player p) {
@@ -107,8 +109,10 @@ public final class ForgeListener implements Listener {
 
     // ── Smelted metal: units of forging covered, per player and metal ──
 
+    private static final Map<String, NamespacedKey> CREDIT_KEYS = new ConcurrentHashMap<>();
+
     static NamespacedKey creditKey(String metal) {
-        return new NamespacedKey("cerberus", "smelted_" + metal);
+        return CREDIT_KEYS.computeIfAbsent(metal, m -> new NamespacedKey("cerberus", "smelted_" + m));
     }
 
     /** Units of {@code metal} the player smelted and hasn't forged yet. Player's thread. */
@@ -157,7 +161,7 @@ public final class ForgeListener implements Listener {
         if (metal != null && c.needsSmelted().contains(metal)) addCredit(p, metal, count);
         if (each <= 0) return;
         smelted.add(count);
-        trace(p, "smelted " + count + " " + item + (metal != null ? ", " + metal + " for forging " + credit(p, metal) : ""));
+        trace(p, () -> "smelted " + count + " " + item + (metal != null ? ", " + metal + " for forging " + credit(p, metal) : ""));
         service.award(p, c.smeltingSkill(), each * count);
     }
 
@@ -194,7 +198,7 @@ public final class ForgeListener implements Listener {
         if (each <= 0 || GatheringCatalog.gear(m.name()) == null) return;
         if (!covered(p, c, m)) { // made from metal the player didn't smelt: a plain item, no XP
             hint(p, m);
-            trace(p, "forging " + m + ": not enough smelted " + GatheringCatalog.metalOf(m.name()));
+            trace(p, () -> "forging " + m + ": not enough smelted " + GatheringCatalog.metalOf(m.name()));
             return;
         }
 
@@ -218,10 +222,13 @@ public final class ForgeListener implements Listener {
     /** In a batch, each next result gets the batch's quality as the grid makes it, while the player's smelted metal lasts. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPrepare(PrepareItemCraftEvent e) {
-        if (e.isRepair() || !(e.getRecipe() instanceof ShapedRecipe || e.getRecipe() instanceof ShapelessRecipe)) return;
+        // Every change to any crafting grid comes here: the armed batch is checked first, because the recipe
+        // lookup builds a whole recipe object each call (it was this listener's main cost under load).
         HumanEntity who = e.getView().getPlayer();
         Pending pd = pending.get(who.getUniqueId());
         if (pd == null || pd.batchQuality() == null || pd.view() != e.getView() || !pd.live(System.nanoTime())) return;
+        Recipe recipe = e.getRecipe();
+        if (e.isRepair() || !(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) return;
         ItemStack result = e.getInventory().getResult();
         if (result == null || result.getType() != pd.material()) return;
         if (!(who instanceof Player p) || !covered(p, service.catalog(), pd.material())) return;
@@ -247,7 +254,7 @@ public final class ForgeListener implements Listener {
     public void onSmith(SmithItemEvent e) {
         if (!(e.getWhoClicked() instanceof Player p) || creative(p)) return;
         pending.remove(p.getUniqueId());
-        trace(p, "smithing click (" + e.getClick() + "): recipe " + (e.getInventory().getRecipe() == null ? "none"
+        trace(p, () -> "smithing click (" + e.getClick() + "): recipe " + (e.getInventory().getRecipe() == null ? "none"
                 : e.getInventory().getRecipe().getClass().getSimpleName()) + ", result " + (e.getCurrentItem() == null ? "none" : e.getCurrentItem().getType()));
         if (!(e.getInventory().getRecipe() instanceof SmithingTransformRecipe)) return; // trims pay nothing
         ItemStack result = e.getCurrentItem();
@@ -265,7 +272,7 @@ public final class ForgeListener implements Listener {
 
     private void payUpgrade(Player p, Material m, int made) {
         upgraded.add(made);
-        trace(p, "upgraded " + made + " " + m);
+        trace(p, () -> "upgraded " + made + " " + m);
         service.award(p, service.catalog().forgingSkill(), service.catalog().netheriteUpgradeXp() * made);
     }
 
@@ -286,7 +293,7 @@ public final class ForgeListener implements Listener {
             return;
         }
         Pending pd = pending.get(p.getUniqueId());
-        trace(p, "made " + made + " " + e.getMaterial() + (pd == null ? ", nothing armed" : ", armed for " + pd.material()
+        trace(p, () -> "made " + made + " " + e.getMaterial() + (pd == null ? ", nothing armed" : ", armed for " + pd.material()
                 + (pd.live(System.nanoTime()) ? "" : " (expired)")));
         if (pd == null || pd.emptyTake() || e.getMaterial() != pd.material() || !pd.live(System.nanoTime()) || p.getOpenInventory() != pd.view()) return;
         if (pd.material().name().startsWith("NETHERITE_")) { payUpgrade(p, pd.material(), made); return; }
