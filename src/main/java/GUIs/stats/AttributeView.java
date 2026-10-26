@@ -5,7 +5,6 @@ import Attributes.AttributeRules;
 import Attributes.AttributeService;
 import Attributes.AttributeSnapshot;
 import Attributes.Contribution;
-import Attributes.SkillAttributes;
 import Attributes.WeaponClass;
 import GUIs.menu.Fmt;
 import GUIs.menu.Ui;
@@ -157,14 +156,7 @@ public final class AttributeView {
 
     /** {@code current} with {@code skill} at {@code level} instead (for "next level gives..." previews). */
     public static AttributeSnapshot withSkillLevel(AttributeService service, java.util.UUID player, String skill, int level) {
-        AttributeRules rules = service.rules();
-        String id = SkillAttributes.SOURCE_PREFIX + skill;
-        return service.preview(player, cs -> {
-            List<Contribution> out = new ArrayList<>();
-            for (Contribution c : cs) if (!c.sourceId().equals(id)) out.add(c);
-            out.addAll(SkillAttributes.contributions(Map.of(skill, level), rules));
-            return out;
-        });
+        return service.withSkillLevel(player, skill, level);
     }
 
     private static String trim(double v) {

@@ -237,15 +237,4 @@ public class MobKillListener implements Listener {
         }
     }
 
-    private String createLevelUpMessage(String skillName, int level) {
-        StringBuilder msg = new StringBuilder();
-        msg.append("§6§m----------------------------------------------\n")
-                .append("§e§l| LEVEL UP! §b").append(skillName).append(" §e|\n")
-                .append("§6§m----------------------------------------------\n")
-                .append("§7| You have reached §a").append(level)
-                .append(" §7in §b").append(skillName).append("! §7|\n")
-                .append("§6§m----------------------------------------------\n")
-                .append("§e| Keep training to unlock more power! |");
-        return msg.toString();
-    }
     }

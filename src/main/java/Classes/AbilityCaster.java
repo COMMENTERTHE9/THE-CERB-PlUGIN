@@ -122,6 +122,7 @@ public final class AbilityCaster {
         if (a == null) return CastResult.refuse(CastResult.Outcome.EMPTY, null, "");
         long now = System.currentTimeMillis();
         if (!prof.unlocked(a)) {
+            if (prof.rankReached(a)) return CastResult.refuse(CastResult.Outcome.NOT_UNLOCKED, a, ClassService.needs(prof.missing(a)));
             ClassDef c = service.catalog().classes().get(a.classId());
             return CastResult.refuse(CastResult.Outcome.NOT_UNLOCKED, a, (c == null ? a.classId() : c.displayName()) + " rank " + a.unlockRank());
         }

@@ -25,6 +25,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - a deep Woodcutting loop.
 - **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
 - **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage needs your decision (Decisions, item 14).
+- **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10). **Next:** Woodcutting.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -629,6 +630,53 @@ Admin test tool: `/cerb spawn <mob> [level] [noai] [origin=<spawn reason>]`, for
 - **Unit tests:** 206, including `XpRulesTest`, `XpBudgetLedgerTest` and `KillCreditTest` (new). One of them caught a real migration bug before it shipped: an older `attributes.yml` without the new section would have read an empty origin list (no farm rule at all) instead of the jar's.
 
 The way into the Mage is still yours to decide (Decisions, item 14, with options).
+
+## Done: level-up and rank-up presentation (2026-10-26)
+
+**Before:** a level-up was one chat line per level, "Congratulations! Your Blade Mastery skill has reached level 12!", also for an admin's XP grant. A class rank-up was a chat line and the vanilla level-up sound.
+
+**Now** (`docs/design/LEVEL_UP.md`; `Skills/Celebrations`, vanilla sounds and particles only):
+- **A level-up:** a short chime and a small sparkle around the player. For 3 s the middle of the HUD bar names the skill, its new level and what it gave ("▲ Blade Mastery 12 · +1 Power (swords)"); health and Essence stay in place. One chat line gives the full gain ("Power (swords) 11.8 → 12.8, Attack speed (swords) 3.4% → 3.6%"). The gain is the attribute engine's own, after diminishing returns; a skill that feeds nothing yet says only its level.
+- **Milestones** (10, 25, 50, 75, 100: Apprentice, Journeyman, Expert, Master, Grandmaster): a title, a fanfare and a ring of particles.
+- **A class rank:** a beacon tone, a ring in the class's colour (`classes.yml color:`), "✦ Warrior rank 3" and each ability it opens ("New ability: Charge - equip it in /class"). When an ability opens there is also an enchanting sound and a title.
+- **Abilities with other requirements** (`abilities.yml requires:`; no shipped ability uses it yet):
+  - reaching the rank doesn't open one: the rank-up, its tile and an equip say what it still needs, and the class keeps ranking;
+  - the skill's level-up opens it;
+  - a slot holding one whose requirement isn't met (an admin lowered the skill) keeps it, inert. Its key says what it needs, and it never blocks other changes to the loadout.
+- **One presentation per moment:**
+  - everything earned in the same moment shows once: one sound, one effect, and one HUD line naming up to three;
+  - sounds, particles and titles play at most every 1.5 s per player;
+  - every chat line always shows.
+- **Never celebrated:** admin corrections and loading:
+  - `/cerb skill … level|xp`;
+  - the admin panel's skill editor;
+  - `/cerb class … rank|xp` (the class XP grant is new, for tests).
+- **A setting:** `/levelup full|reduced|off`, saved on the player:
+  - reduced keeps the HUD line, chat and a soft note;
+  - off keeps chat only.
+- **Later systems:** a presentation is data (kind, tier, texts, colour). Realm breakthroughs, mastery trials and Awakenings will use the same path at a stronger tier when they are built.
+
+**Checks** (`tools/playtest/levelup.js`; sounds told apart by volume and pitch, particles counted around the bot only, titles read from the packets):
+- **Presentation:** 19/19:
+  - a level, a milestone, three skills at once, a burst, the reduced and off settings, a Warrior rank by fighting;
+  - admin corrections and a rejoin show nothing.
+- **Requirements:** `requires` 6/6, with a requirement written into the sandbox's `abilities.yml` for the phase.
+- **Regression on this build:**
+  - `menu.js` nav 63/63, motion 22/22, names 4/4;
+  - smoke 14/14;
+  - `classes.js` learn 7/7 (a new character), trees 8/8, menu 15/15, exploits 22/22;
+  - `abilities.js` mage 24/24, fixes 20/20, mixed 20/20;
+  - `progression.js` killxp 5/5, projectile 7/7;
+  - `xp.js` 35/35;
+  - `gathering.js` mine 13/13, smelt 6/6, forge 14/14, xpdisplay 3/3.
+- **Found by the regression and fixed:**
+  - **Per-hit XP lost its fractions.** Skill XP is paid in whole points, and the fraction was dropped, a defect older than this milestone. A zombie's 6-damage hit, after the defense bar took 70% of it, was worth 0.85 Heavy Armor Mastery XP and paid nothing. Most mob hits are that small, so Heavy Armor Mastery barely trained from fighting. Fractions now carry over per player and skill, as Mining's already did: two such hits pay 1, ten pay 8.
+  - **Locked abilities in loadouts.** Equipping a locked ability now says what it still needs. A slot kept for an ability waiting on a requirement no longer blocks other edits of that loadout. A keystone in an active slot is still told it can't go there first.
+- **Unit tests:** 212, including `LevelUpsTest` (milestones, real gains through the attribute calculator, combining) and a `ClassCoreTest` case for an ability that needs a skill besides its rank.
+
+**Performance** (`docs/PERFORMANCE.md`):
+- **Level-ups:** `load.js levels` has 9 players levelling Mining from real XP about every 2 s each. The presentation's frames were 2–5 samples per 60 s recording, and Cerberus as a whole measured 0.024 / 0.037 ms per tick, against 0.025 / 0.024 before.
+- **XP integrity:** no measurable cost in `combat`, `abilities` or `gather`.
 
 ## Roadmap
 

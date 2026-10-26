@@ -306,6 +306,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.ForgeListener forgeListener;
     private Gathering.EquipmentSource equipmentSource;
     private XpDisplay xpDisplay;
+    private Celebrations celebrations;
 
     /** Gathering and forging (docs/design/GATHERING.md): resources.yml, Mining and Smithing XP, placed blocks. */
     public Gathering.GatheringService getGatheringService() { return gatheringService; }
@@ -512,6 +513,13 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Real-time XP display: every award shows briefly on the HUD, below ability messages
         xpDisplay = new XpDisplay(this, playerHUDManager);
         skillManager.setXpListener(xpDisplay);
+        // Level-ups and rank-ups (docs/design/LEVEL_UP.md): real progress only, shown once per moment
+        celebrations = new Celebrations(this, playerHUDManager, attributeService);
+        skillManager.setLevelUpListener(celebrations::skillLevels);
+        if (classService != null) {
+            classService.setCelebrations(celebrations);
+            celebrations.setAbilityUnlocks(classService::unlockedBy);
+        }
     }
 
 
@@ -556,6 +564,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var xpCmd = Objects.requireNonNull(getCommand("xpdisplay"));
         xpCmd.setExecutor(xpDisplay);
         xpCmd.setTabCompleter(xpDisplay);
+        var levelUpCmd = Objects.requireNonNull(getCommand("levelup"));
+        levelUpCmd.setExecutor(celebrations);
+        levelUpCmd.setTabCompleter(celebrations);
     }
 
     private Commands.ClassCommand classCommand;
@@ -653,6 +664,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(forgeListener, this);
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
+        pm.registerEvents(celebrations, this);
 
         // REMOVED: ManaListener (lifecycle moved to PlayerSessionManager)
         // REMOVED: SpeedLimiterListener (speed limit moved to PlayerSessionManager)
@@ -848,7 +860,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (mode.equals("level")) {
                 skillManager.setSkillLevel(target, skill, (int) value);
             } else {
-                skillManager.addXpAndCheckLevelUp(skill, value, target);
+                skillManager.addXpQuietly(skill, value, target); // an admin's correction: no level-up celebration
             }
             int lvl = skillManager.getSkillLevel(target, skill);
             int xp = skillManager.getSkillXP(target, skill);

@@ -223,8 +223,28 @@ async function names() {
   await cmd(`/cerb skill ${NAME} Navigation level 1`, 600);
   let at = await cmd(`/cerb skill ${NAME} Pathfinding level 3`, 900);
   check('/cerb skill accepts the new name', !!saw(/Pathfinding \(Navigation\) is now level 3/, at), chat.slice(at).join(' / '));
-  at = await cmd(`/cerb skill ${NAME} Navigation xp 1000`, 1200);
-  check('Level-up message uses the new name', !!saw(/Your Pathfinding skill has reached level \d+/, at), chat.slice(at).join(' / '));
+  // A real level-up shows the new name (an admin's XP grant celebrates nothing, docs/design/LEVEL_UP.md): Heavy Armor
+  // Mastery from a zombie's hit while wearing a netherite chestplate, 1 XP short of level 4.
+  const xpFor = l => Math.round(75 * Math.pow(l, 1.85) + 40 * l);
+  await cmd(`/cerb skill ${NAME} Heavy_Armor_Training level 3`, 500);
+  await cmd(`/cerb skill ${NAME} Heavy_Armor_Training xp ${xpFor(3) - 1}`, 500);
+  await cmd('/gamemode survival', 400);
+  await cmd('/effect clear @s resistance', 300); // another harness's leftover Resistance V would block the hit
+  await cmd('/clear @s netherite_chestplate', 300);
+  await cmd('/give @s netherite_chestplate', 800);
+  const cp = bot.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_chestplate' && i >= 36 && i <= 44);
+  if (cp >= 0) { bot.setQuickBarSlot(cp - 36); await sleep(300); await bot.look(bot.entity.yaw, Math.PI / 2, true); bot.activateItem(); await sleep(250); bot.deactivateItem(); await sleep(600); }
+  await cmd('/summon zombie ~2 ~ ~ {NoAI:1b}', 900);
+  // The defense bar takes most of a hit: one is worth less than 1 XP, and the fraction waits for the next (XpIntegrity).
+  at = chat.length;
+  for (let i = 0; i < 4 && !saw(/▲ Heavy Armor Mastery reached level 4/, at); i++) {
+    await cmd(`/damage ${NAME} 6 minecraft:mob_attack by @e[type=zombie,limit=1,sort=nearest]`, 1200);
+  }
+  check('Level-up message uses the new name', !!saw(/▲ Heavy Armor Mastery reached level 4/, at), chat.slice(at).join(' / '));
+  await cmd('/kill @e[type=zombie,distance=..8]', 400);
+  await cmd('/clear @s netherite_chestplate', 300);
+  await cmd(`/cerb heal ${NAME}`, 400);
+  await cmd('/gamemode creative', 400);
   at = await cmd(`/cerb skill ${NAME} heavy_armor_mastery level 2`, 900);
   check('Display name with underscores works', !!saw(/Heavy Armor Mastery \(Heavy Armor Training\) is now level 2/, at), chat.slice(at).join(' / '));
   at = await cmd(`/cerb skill ${NAME} Blade_Mastery level 4`, 900);

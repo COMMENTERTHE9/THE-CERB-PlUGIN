@@ -37,7 +37,8 @@ public final class ShippedConfig {
                     "b838aacb331535782ae0bb1e06f7732b71a688090ddfd58ee227b3ee71ed7de2"), // the movement rule, first cut
             "classes.yml", Set.of(
                     "c1531ecb45d585cdaed23789845b4b21314956a5f9da9a3736cd35145e22244d",  // Step 5
-                    "9f6ff81a335d75f7194ab463e1f6faf9d9a3e26b03db897bf9173ac34c4a5c84"), // Ability controls 2.0
+                    "9f6ff81a335d75f7194ab463e1f6faf9d9a3e26b03db897bf9173ac34c4a5c84",  // Ability controls 2.0
+                    "c3cdfeeb78fb2427fea2f5a297a9dd1c963c5a79d11cefd614525c2648c06860"), // before class colours
             "attributes.yml", Set.of(
                     "86570131ff02bbae03d48a40992b786e595dc77ceea83eebd4e68434cf3adc23",  // Kill XP v2
                     "290bb31fdfa52a76472b81c867b20ef43a04d69f1bbc00426f2807ec6ad4ce37",  // Attributes engine core

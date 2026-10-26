@@ -51,21 +51,31 @@ public final class ClassCatalog {
     private final List<String> notes;
     /** class or ability id -> the item its menu tile shows (the optional "icon:" key; a material name). */
     private final Map<String, String> icons;
+    /** class id -> its colour (the optional "color:" key, "#RRGGBB"): its rank-up effect. */
+    private final Map<String, Integer> colors;
     /** The ability keys' server settings ({@code controls:} in classes.yml). */
     private final Controls.Settings controls;
 
     private ClassCatalog(Map<String, ClassDef> classes, Map<String, AbilityDef> abilities, Map<String, Long> groupMs,
-                         List<String> problems, List<String> notes, Map<String, String> icons, Controls.Settings controls) {
+                         List<String> problems, List<String> notes, Map<String, String> icons, Map<String, Integer> colors,
+                         Controls.Settings controls) {
         this.classes = Collections.unmodifiableMap(classes);
         this.abilities = Collections.unmodifiableMap(abilities);
         this.groupMs = Collections.unmodifiableMap(groupMs);
         this.problems = List.copyOf(problems);
         this.notes = List.copyOf(notes);
         this.icons = Collections.unmodifiableMap(icons);
+        this.colors = Collections.unmodifiableMap(colors);
         this.controls = controls;
     }
 
-    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), List.of(), Map.of(), Controls.Settings.DEFAULTS); }
+    public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), List.of(), Map.of(), Map.of(), Controls.Settings.DEFAULTS); }
+
+    /** A class's colour (0xRRGGBB), or -1 when classes.yml gives it none. */
+    public int color(String classId) {
+        Integer c = classId == null ? null : colors.get(classId);
+        return c == null ? -1 : c;
+    }
 
     /** The ability keys' server settings: default scheme, combo timing, ability bar. */
     public Controls.Settings controls() { return controls; }
@@ -107,6 +117,7 @@ public final class ClassCatalog {
 
         Map<String, AbilityDef> abilities = new LinkedHashMap<>();
         Map<String, String> icons = new java.util.HashMap<>();
+        Map<String, Integer> colors = new java.util.HashMap<>();
         ConfigurationSection as = abilitiesYml == null ? null : abilitiesYml.getConfigurationSection("abilities");
         if (as != null) {
             for (String id : as.getKeys(false)) {
@@ -133,6 +144,11 @@ public final class ClassCatalog {
                 ConfigurationSection c = cs.getConfigurationSection(id);
                 if (c == null) continue;
                 if (c.getString("icon") != null) icons.put(id, c.getString("icon"));
+                String color = c.getString("color");
+                if (color != null) {
+                    if (color.trim().matches("#[0-9A-Fa-f]{6}")) colors.put(id, Integer.parseInt(color.trim().substring(1), 16));
+                    else problems.add("class " + id + ": color '" + color + "' is not #RRGGBB - none used");
+                }
                 List<String> own = new ArrayList<>();
                 for (AbilityDef a : abilities.values()) if (a.classId().equals(id)) own.add(a.id());
                 classes.put(id, new ClassDef(id, c.getString("name", id), c.getString("role", ""),
@@ -159,7 +175,7 @@ public final class ClassCatalog {
             }
         }
         Controls.Settings controls = Controls.Settings.from(classesYml == null ? null : classesYml.getConfigurationSection("controls"));
-        return new ClassCatalog(classes, abilities, groups, problems, notes, icons, controls);
+        return new ClassCatalog(classes, abilities, groups, problems, notes, icons, colors, controls);
     }
 
     /** "1.2 s", "10 s". */
@@ -233,12 +249,16 @@ public final class ClassCatalog {
         } else if (passives.isEmpty()) {
             why.add("a passive or keystone needs passives");
         }
+        Map<String, Integer> requires = levels(a.getConfigurationSection("requires"));
+        for (Map.Entry<String, Integer> r : requires.entrySet()) {
+            if (r.getValue() < 1 || r.getValue() > 1000) why.add("requires " + r.getKey() + " " + r.getValue() + " outside 1-1000");
+        }
         if (note != null && why.isEmpty()) notes.add(note);
         return new AbilityDef(id, classId == null ? "" : classId, a.getString("name", id), a.getString("description", ""),
                 kind, rank, Collections.unmodifiableSet(weapons), essence, cooldown, strikeCooldown,
                 Collections.unmodifiableSet(new LinkedHashSet<>(a.getStringList("groups"))),
                 Collections.unmodifiableSet(new LinkedHashSet<>(a.getStringList("exclusive"))),
-                List.copyOf(effects), List.copyOf(passives));
+                List.copyOf(effects), List.copyOf(passives), requires);
     }
 
     private static EffectSpec parseEffect(Map<?, ?> m, List<String> why) {

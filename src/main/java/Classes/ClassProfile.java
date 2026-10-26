@@ -90,10 +90,39 @@ public final class ClassProfile {
         classes.put(classId, new Progress(Math.max(1, Math.min(ClassRanks.MAX_RANK, rank)), 0));
     }
 
-    /** True when the ability's class is learned at its unlock rank or above. */
+    /**
+     * True when the ability can be used: its class is learned at its unlock rank or above, and every other requirement
+     * ({@link AbilityDef#requires}) is met. A rank alone never opens an ability that needs more.
+     */
     public boolean unlocked(AbilityDef a) {
+        if (!rankReached(a)) return false;
+        if (a.requires().isEmpty()) return true;
+        java.util.function.ToIntFunction<String> level = skillLevels;
+        if (level == null) return false;
+        for (Map.Entry<String, Integer> r : a.requires().entrySet()) if (level.applyAsInt(r.getKey()) < r.getValue()) return false;
+        return true;
+    }
+
+    /** True when the ability's class is learned at its unlock rank or above (its other requirements aside). */
+    public boolean rankReached(AbilityDef a) {
         return a != null && rank(a.classId()) >= a.unlockRank();
     }
+
+    /** The requirements besides its rank that are not met yet, as skill (internal name) to level; all of them while levels are unknown. */
+    public Map<String, Integer> missing(AbilityDef a) {
+        if (a == null || a.requires().isEmpty()) return Map.of();
+        java.util.function.ToIntFunction<String> level = skillLevels;
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> r : a.requires().entrySet()) {
+            if (level == null || level.applyAsInt(r.getKey()) < r.getValue()) out.put(r.getKey(), r.getValue());
+        }
+        return out;
+    }
+
+    /** The player's skill levels, by internal name (set when the profile loads; never saved). */
+    private volatile java.util.function.ToIntFunction<String> skillLevels;
+
+    public void useSkillLevels(java.util.function.ToIntFunction<String> skillLevels) { this.skillLevels = skillLevels; }
 
     // ── loadouts ────────────────────────────────────────────────
 
@@ -300,7 +329,9 @@ public final class ClassProfile {
     private boolean fits(String id, AbilityDef.Kind kind, ClassCatalog catalog, java.util.Set<String> seen, java.util.Set<String> tags) {
         AbilityDef a = catalog.ability(id);
         if (a == null) return id.length() <= MAX_ID_LENGTH && seen.add(id); // not in abilities.yml now: kept, inert (fixing the file brings it back)
-        if (a.kind() != kind || !unlocked(a) || !seen.add(id)) return false;
+        // The rank, not the other requirements: skill levels may not be loaded yet, and an ability whose skill dropped
+        // stays in its slot, inert (refused at cast and on equip), until the skill is back.
+        if (a.kind() != kind || !rankReached(a) || !seen.add(id)) return false;
         for (String t : a.exclusive()) if (!tags.add(t)) return false;
         return true;
     }

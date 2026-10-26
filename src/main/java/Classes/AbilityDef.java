@@ -3,7 +3,10 @@ package Classes;
 import Attributes.Attribute;
 import Attributes.Stat;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -18,11 +21,26 @@ import java.util.Set;
  * @param exclusive  tags of which only one equipped ability may carry each ("stance", "aura")
  * @param effects    what an active does when cast, in order
  * @param passives   what a passive or keystone adds while equipped (through the attribute engine)
+ * @param requires   skill levels it needs besides its rank (abilities.yml {@code requires}); until they are met it stays
+ *                   locked on its own, and the class keeps ranking (docs/design/LEVEL_UP.md)
  */
 public record AbilityDef(String id, String classId, String displayName, String description, Kind kind,
                          int unlockRank, Set<WeaponFamily> weapons, double essenceCost, long cooldownMs,
                          long strikeCooldownMs, Set<String> groups, Set<String> exclusive, List<EffectSpec> effects,
-                         List<Passive> passives) {
+                         List<Passive> passives, Map<String, Integer> requires) {
+
+    public AbilityDef {
+        requires = requires == null || requires.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(requires));
+    }
+
+    /** An ability that needs only its rank. */
+    public AbilityDef(String id, String classId, String displayName, String description, Kind kind,
+                      int unlockRank, Set<WeaponFamily> weapons, double essenceCost, long cooldownMs,
+                      long strikeCooldownMs, Set<String> groups, Set<String> exclusive, List<EffectSpec> effects,
+                      List<Passive> passives) {
+        this(id, classId, displayName, description, kind, unlockRank, weapons, essenceCost, cooldownMs, strikeCooldownMs,
+                groups, exclusive, effects, passives, Map.of());
+    }
 
     public enum Kind { ACTIVE, PASSIVE, KEYSTONE }
 

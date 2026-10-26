@@ -343,6 +343,47 @@ class ClassCoreTest {
     }
 
     @Test
+    void anAbilityWithOtherRequirementsStaysLockedWhileTheClassRanksOn() throws Exception {
+        // A synthetic requirement (the shipped abilities need only their rank): Frost Nova also needs Elemental Mastery 25.
+        String yml = edit(SHIPPED_ABILITIES, "(  frost_nova:\\n    class: mage\\n)", "$1    requires: { Elemental Mastery: 25 }\n");
+        ClassCatalog cat = of(SHIPPED_CLASSES, yml);
+        AbilityDef nova = cat.ability("frost_nova"), bolt = cat.ability("arcane_bolt");
+        assertEquals(Map.of("Elemental Mastery", 25), nova.requires());
+        assertEquals(Map.of(), bolt.requires(), "others need only their rank");
+
+        ClassProfile p = new ClassProfile();
+        p.learn("mage");
+        p.setRank("mage", 12);
+        assertTrue(p.rankReached(nova));
+        assertFalse(p.unlocked(nova), "the rank alone doesn't open it (skill levels unknown: locked)");
+        assertEquals(Map.of("Elemental Mastery", 25), p.missing(nova));
+        assertTrue(p.unlocked(bolt));
+        int[] em = {24};
+        p.useSkillLevels(s -> s.equals("Elemental Mastery") ? em[0] : 1);
+        assertFalse(p.unlocked(nova), "Elemental Mastery 24: still locked");
+        em[0] = 25;
+        assertTrue(p.unlocked(nova), "met: open");
+        assertEquals(Map.of(), p.missing(nova));
+        em[0] = 3;
+        assertFalse(p.unlocked(nova), "a lowered skill locks it again");
+        assertFalse(Loadout.empty("L").withActive(1, "frost_nova").problems(cat.abilities(), p::unlocked).isEmpty(),
+                "it can't be equipped while it is locked");
+        List<String> repairs = new java.util.ArrayList<>();
+        Loadout kept = p.repair(Loadout.empty("L").withActive(1, "frost_nova"), cat, repairs);
+        assertEquals("frost_nova", kept.actives().get(1), "...but a saved slot is never emptied for it (skills may still be loading): it waits, inert");
+        assertEquals(List.of(), repairs);
+        // The class keeps ranking while the ability waits.
+        int before = p.rank("mage");
+        p.award("mage", 1_000_000);
+        assertTrue(p.rank("mage") > before, "ranking goes on");
+        assertFalse(p.unlocked(nova), "...and the ability still waits for its skill");
+
+        // Out-of-range requirements are refused like any bad entry.
+        String bad = edit(SHIPPED_ABILITIES, "(  frost_nova:\\n    class: mage\\n)", "$1    requires: { Elemental Mastery: 0 }\n");
+        assertNull(of(SHIPPED_CLASSES, bad).ability("frost_nova"), "requires 0 is refused");
+    }
+
+    @Test
     void badEntriesAreRefusedNeverThrown() throws Exception {
         ClassCatalog cat = of("classes:\n  a: {}\n", """
                 abilities:

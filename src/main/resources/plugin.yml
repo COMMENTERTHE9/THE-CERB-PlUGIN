@@ -24,6 +24,10 @@ commands:
     description: How XP gains show on your HUD - compact, detailed or off.
     usage: /<command> [compact|detailed|off]
     aliases: [xphud]
+  levelup:
+    description: How level-ups and rank-ups show - full, reduced or off.
+    usage: /<command> [full|reduced|off]
+    aliases: [levelups]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

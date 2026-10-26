@@ -19,7 +19,7 @@ class ShippedConfigTest {
      * replaces it here.
      */
     private static final String CURRENT_ABILITIES = "677925246e61266f82d703fd4336c5a240c047f53516571e9a897624cc339830";
-    private static final String CURRENT_CLASSES = "c3cdfeeb78fb2427fea2f5a297a9dd1c963c5a79d11cefd614525c2648c06860";
+    private static final String CURRENT_CLASSES = "e26faf16facb0cbc9216d73bc31b1836dcf9ab006e92ff7bd9118398dda85b0d";
     private static final String CURRENT_ATTRIBUTES = "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373";
     private static final String CURRENT_RESOURCES = "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942";
 
@@ -94,6 +94,6 @@ class ShippedConfigTest {
         // The hashes are of the text without '\r': the same for a Linux and a Windows checkout.
         assertEquals(ShippedConfig.hash("x\n".getBytes(StandardCharsets.UTF_8)), ShippedConfig.hash("x\r\n".getBytes(StandardCharsets.UTF_8)));
         assertEquals(4, ShippedConfig.EARLIER.get("abilities.yml").size());
-        assertEquals(2, ShippedConfig.EARLIER.get("classes.yml").size());
+        assertEquals(3, ShippedConfig.EARLIER.get("classes.yml").size());
     }
 }

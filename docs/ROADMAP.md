@@ -104,6 +104,8 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - a player setting.
 
    Vanilla sounds and particles only, local, bounded and Folia-safe. Built so realm breakthroughs, mastery trials and Awakenings can use it later; those systems aren't built now.
+
+   **Done 2026-10-26** (`docs/design/LEVEL_UP.md`; `docs/STATUS.md` → "Done: level-up and rank-up presentation"; `tools/playtest/levelup.js` 19/19 and `requires` 6/6).
 4. **Woodcutting, a complete and deep loop:**
    - **The loop:** find a natural tree, cut it with the right tool, earn XP, see the skill's effect, get better or specialized tools, unlock harvesting capabilities at milestones, use the resources elsewhere, move on to harder and more rewarding trees.
    - **Trees and techniques:** different trees matter. Basic trees stay easy, and at least one higher-level technique visibly changes how Woodcutting plays.

@@ -172,7 +172,7 @@ final class SkillEditMenu extends AdminMenu {
             long grant = amount == FILL_TO_NEXT
                     ? Math.max(1, (long) SkillManager.xpForLevel(before) - sm.getSkillXP(target, skill))
                     : amount;
-            sm.addXpAndCheckLevelUp(skill, grant, target);
+            sm.addXpQuietly(skill, grant, target); // an admin's grant: no level-up celebration
             int after = sm.getSkillLevel(target, skill);
             panel.audit(admin, "granted " + grant + " " + label() + " XP to " + target.getName() + " (level " + before + " -> " + after + ")");
             notifyTarget(admin, target, "granted you " + Fmt.grouped(grant) + " " + SkillNames.display(skill) + " XP.");

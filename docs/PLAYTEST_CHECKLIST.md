@@ -184,6 +184,21 @@ The XP display (`/xpdisplay compact`) shows every gain, so each row is quick to 
 | 8 | Stand where a mob can hit you and touch nothing for a minute. | Survival and Heavy Armor Mastery stop rising. Move or click and they train again. |
 | 9 | (Two players) Hit each other; kill each other. | No skill XP from either, for now (PvP: `attributes.yml xp-integrity.pvp-xp`). |
 
-## 10. Afterwards
+## 10. Level-ups and class ranks
+
+What a level-up looks and sounds like now (`docs/design/LEVEL_UP.md`). Admin commands change levels quietly, so set a skill just below a level with `/cerb skill <you> <skill> level <n>` and then earn the last bit by playing.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Kill a mob that gives you a level, in any skill. | A short chime and a small sparkle around you. For 3 s the middle of the HUD bar says which skill rose and what it gave ("▲ Blade Mastery 12 · +1 Power (swords)"); health and Essence stay where they are. One chat line has the full gain ("Power (swords) 11.8 → 12.8, Attack speed (swords) 3.4% → 3.6%"). |
+| 2 | Reach level 10 of a skill (then 25 and 50 if you like) by playing. | A title ("Apprentice" over "Blade Mastery 10"; Journeyman, Expert, Master and Grandmaster later), a fanfare and a ring of particles. Bigger than a level, but short. |
+| 3 | With Spell Weaving, Intelligence and Elemental Mastery each just below a level, hit a mob with a Fireball. | One sound and one HUD line naming all three; three chat lines. |
+| 4 | Rank up a class by fighting: `/cerb class <you> warrior rank 2`, put Cleave on a key, and fight until rank 3. | Its own sound (a beacon tone and an enchanting sound), a ring in the Warrior's red, "✦ Warrior rank 3" and "New ability: Charge - equip it in /class" in chat, and a title "Warrior · Rank 3" over "New: Charge". A rank that opens nothing has no title. |
+| 5 | Level up several times quickly (a strong mob at a low skill). | Every level gets its chat line; sounds and particles play at most every 1.5 s, never a storm. |
+| 6 | `/levelup reduced`, then level something. `/levelup off`, then level something. `/levelup` alone. Rejoin. | Reduced: the HUD line, chat and a soft note, no particles or title. Off: chat only. `/levelup` alone cycles through the three. Your choice stays after a rejoin. |
+| 7 | Use the admin tools: `/cerb skill <you> <skill> level 30`, the admin panel's skill editor, `/cerb class <you> warrior rank 9`. Then rejoin. | Only the admin's confirmation, no celebration. Rejoining replays nothing. |
+| 8 | Overall feel. | Tell me if anything is too loud, too long, too often or too small. Volumes, particles and title times are easy to tune. |
+
+## 11. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

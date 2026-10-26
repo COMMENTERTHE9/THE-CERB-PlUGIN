@@ -181,9 +181,25 @@ public final class XpIntegrity implements Listener {
         };
     }
 
+    /**
+     * XP fractions per player and skill. Skill XP is awarded in whole points, and per-hit XP is often less than one (a hit
+     * the defense bar mostly absorbs, a weak mob's quarter): the fraction waits for the next one instead of being lost.
+     * On the player's thread only.
+     */
+    private final java.util.Map<java.util.UUID, Gathering.GatherRules.Carry> carries = new java.util.concurrent.ConcurrentHashMap<>();
+
     private void award(Player p, String skill, double amount) {
-        if (Bukkit.isOwnedByCurrentRegion(p)) skills.addXpAndCheckLevelUp(skill, amount, p);
-        else p.getScheduler().run(plugin, t -> skills.addXpAndCheckLevelUp(skill, amount, p), null);
+        Runnable pay = () -> {
+            long whole = carries.computeIfAbsent(p.getUniqueId(), id -> new Gathering.GatherRules.Carry()).add(skill, amount);
+            if (whole > 0) skills.addXpAndCheckLevelUp(skill, whole, p);
+        };
+        if (Bukkit.isOwnedByCurrentRegion(p)) pay.run();
+        else p.getScheduler().run(plugin, t -> pay.run(), null);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+        carries.remove(e.getPlayer().getUniqueId());
     }
 
     // ── Events ──────────────────────────────────────────────────

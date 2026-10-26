@@ -4,6 +4,7 @@
 # is in use. PROTOTYPE (Step 5): Warrior, Mage and Duelist. Skill names are internal names.
 
 # icon: the item a class's menu tile shows (a material name); abilities can have one too.
+# color: the class's colour, "#RRGGBB" (its rank-up effect; docs/design/LEVEL_UP.md).
 
 # Ability keys (docs/design/ABILITY_CONTROLS.md). Each player can choose their own scheme (/class controls,
 # or the Controls tile in Player Menu -> Classes & Abilities); this is the default for everyone else.
@@ -26,18 +27,21 @@ classes:
   warrior:
     name: Warrior
     icon: IRON_SWORD
+    color: "#C0392B"
     role: Balanced melee
     signature: Momentum (hits build stacks, finishers spend them)
     entry-any: { Blade Mastery: 5, Weapon Mastery: 5 }
   mage:
     name: Mage
     icon: BLAZE_ROD
+    color: "#8E44AD"
     role: General offensive magic
     signature: Essence (spells cost it, Essence makes them stronger)
     entry: { Intelligence: 5 }
   duelist:
     name: Duelist
     icon: GOLDEN_SWORD
+    color: "#D4AC0D"
     role: Precision counters and chained strikes
     signature: Riposte (read the attack, answer it)
     entry: { Blade Mastery: 10, Critical Strike: 5 }

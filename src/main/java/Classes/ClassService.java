@@ -141,6 +141,7 @@ public final class ClassService implements AttributeSource {
             if (!repairs.isEmpty()) {
                 plugin.getLogger().warning("[Classes] Repaired " + p.getName() + "'s saved classes: " + String.join("; ", repairs));
             }
+            prof.useSkillLevels(s -> skills.getSkillLevel(id, s)); // an ability's requirements besides its rank
             profiles.put(id, prof);
             learnEligible(p, prof);
             refreshContributions(p);
@@ -289,40 +290,104 @@ public final class ClassService implements AttributeSource {
         }
     }
 
-    /** Add class XP (player's thread); announces ranks and new unlocks. */
+    /** Add class XP earned by play (player's thread); a rank gained is celebrated with what it opens. */
     public void awardXp(Player p, String classId, double xp) {
+        award(p, classId, xp, true);
+    }
+
+    /** An admin's class XP grant: the same award, without the rank-up celebration. Player's thread. */
+    public void addXpQuietly(Player p, String classId, double xp) {
+        award(p, classId, xp, false);
+    }
+
+    private void award(Player p, String classId, double xp, boolean celebrate) {
         ClassProfile prof = profiles.get(p.getUniqueId());
         if (prof == null) return;
         int before = prof.rank(classId);
         ClassRanks.Result r = prof.award(classId, xp);
         if (r == null) return;
-        if (r.ranksGained() > 0) announceRanks(p, classId, before, r.rank());
+        if (r.ranksGained() > 0 && celebrate) announceRanks(p, classId, before, r.rank());
         save(p);
     }
 
-    /** Admin/test: set a class to an exact rank (learning it if needed). Player's thread. */
+    /** Admin/test: set a class to an exact rank (learning it if needed), quietly (an admin correction). Player's thread. */
     public void setRank(Player p, String classId, int rank) {
         ClassProfile prof = profiles.get(p.getUniqueId());
         if (prof == null || catalog.classDef(classId) == null) return;
-        int before = prof.rank(classId);
         prof.setRank(classId, rank);
-        if (prof.rank(classId) > before) announceRanks(p, classId, before, prof.rank(classId));
         repairAll(p, prof);
         save(p);
     }
 
+    private volatile Skills.Celebrations celebrations;
+
+    /** Where rank-ups are shown (docs/design/LEVEL_UP.md); without it they are plain chat lines. */
+    public void setCelebrations(Skills.Celebrations celebrations) { this.celebrations = celebrations; }
+
+    /**
+     * A rank gained by play: "✦ Mage rank 12", each ability that rank made available, and each that reached its rank but
+     * still needs something else (it stays locked; ranking goes on). Its own sound and the class's colour; a title only
+     * when an ability opened.
+     */
     private void announceRanks(Player p, String classId, int from, int to) {
         ClassDef c = catalog.classDef(classId);
         if (c == null) return;
-        p.sendMessage(ChatColor.GOLD + "✦ " + c.displayName() + " rank " + to);
+        ClassProfile prof = profiles.get(p.getUniqueId());
+        List<String> chat = new ArrayList<>();
+        List<String> opened = new ArrayList<>();
+        chat.add("§6✦ " + c.displayName() + " rank " + Skills.LevelUps.levels(from, to));
         for (String aid : c.abilities()) {
             AbilityDef a = catalog.ability(aid);
-            if (a != null && a.unlockRank() > from && a.unlockRank() <= to) {
-                p.sendMessage(ChatColor.GREEN + "  Unlocked: " + ChatColor.WHITE + a.displayName() + ChatColor.DARK_GRAY + " ("
-                        + a.kind().name().toLowerCase(java.util.Locale.ROOT) + ")");
+            if (a == null || a.unlockRank() <= from || a.unlockRank() > to) continue;
+            if (prof != null && prof.unlocked(a)) {
+                opened.add(a.displayName());
+                chat.add("§a  New ability: §f" + a.displayName() + " §8(" + a.kind().name().toLowerCase(java.util.Locale.ROOT) + ") §7- equip it in /class");
+            } else {
+                chat.add("§6  " + a.displayName() + "§7: rank reached; it also needs " + needs(prof == null ? a.requires() : prof.missing(a)));
             }
         }
-        p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.2f);
+        Skills.Celebrations cel = celebrations;
+        if (cel == null) {
+            for (String line : chat) p.sendMessage(line);
+            p.playSound(p, Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.2f);
+            return;
+        }
+        boolean any = !opened.isEmpty();
+        String names = String.join(", ", opened);
+        cel.celebrate(p, new Skills.Celebration(Skills.Celebration.Kind.CLASS_RANK,
+                any ? Skills.Celebration.Tier.MAJOR : Skills.Celebration.Tier.ORDINARY,
+                "§6✦ §f" + c.displayName() + " rank §6" + to + (any ? "§7 · §aNew: §f" + names : ""), "§6✦ §f" + c.displayName() + " rank §6" + to,
+                any ? "§6" + c.displayName() + " · Rank " + to : null, any ? "§aNew: §f" + names : null,
+                chat, catalog.color(classId)));
+    }
+
+    /**
+     * Abilities that {@code skill}'s levels from {@code from} to {@code to} made available: one of their requirements
+     * besides the rank was crossed, and now everything is met. Shown with the level-up (Skills.Celebrations).
+     */
+    public List<Skills.Celebration> unlockedBy(Player p, String skill, int from, int to) {
+        ClassProfile prof = profiles.get(p.getUniqueId());
+        if (prof == null) return List.of();
+        List<Skills.Celebration> out = new ArrayList<>();
+        for (AbilityDef a : catalog.abilities().values()) {
+            Integer need = a.requires().get(skill);
+            if (need == null || need <= from || need > to || !prof.unlocked(a)) continue;
+            ClassDef c = catalog.classDef(a.classId());
+            String cls = c == null ? a.classId() : c.displayName();
+            out.add(new Skills.Celebration(Skills.Celebration.Kind.ABILITY, Skills.Celebration.Tier.MAJOR,
+                    "§a✦ New ability: §f" + a.displayName(), null, "§aNew ability", "§f" + a.displayName() + " §7(" + cls + ")",
+                    List.of("§a✦ New ability: §f" + a.displayName() + " §8(" + cls + ", " + a.kind().name().toLowerCase(java.util.Locale.ROOT)
+                            + ") §7- equip it in /class"), catalog.color(a.classId())));
+        }
+        if (!out.isEmpty()) refreshContributions(p); // one already waiting in a passive or keystone slot starts counting
+        return out;
+    }
+
+    /** "Elemental Mastery 25, Survival 10": requirements by the names players see. */
+    public static String needs(Map<String, Integer> requirements) {
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<String, Integer> r : requirements.entrySet()) parts.add(Skills.SkillNames.display(r.getKey()) + " " + r.getValue());
+        return String.join(", ", parts);
     }
 
     // ── weak-mob rule for class XP (Phase 3) ───────────────────
@@ -486,7 +551,10 @@ public final class ClassService implements AttributeSource {
         ClassProfile prof = profiles.get(p.getUniqueId());
         if (prof == null) return "Your classes are still loading.";
         if (index < 0 || index >= prof.loadouts().size()) return "No such loadout.";
-        if (abilityId != null && catalog.ability(abilityId) == null) return "Unknown ability: " + abilityId;
+        AbilityDef wanted = abilityId == null ? null : catalog.ability(abilityId);
+        if (abilityId != null && wanted == null) return "Unknown ability: " + abilityId;
+        // A locked ability says what it still needs; one of the wrong kind for the slot is told that first (below).
+        if (wanted != null && wanted.kind().name().equals(slot.name()) && !prof.unlocked(wanted)) return lockedReason(prof, wanted);
         if (index == prof.activeIndex() && inCombat(p.getUniqueId())) return "Not during a fight: wait until 8 s after the last hit.";
         // Slots that stopped being allowed (an unlock or catalog change) never block an unrelated edit.
         Loadout l = prof.repair(prof.loadouts().get(index), catalog, new ArrayList<>());
@@ -502,7 +570,9 @@ public final class ClassService implements AttributeSource {
             case PASSIVE -> l.withPassive(pos, abilityId);
             case KEYSTONE -> l.withKeystone(abilityId);
         };
-        List<String> problems = next.problems(catalog.abilities(), prof::unlocked);
+        // The ability being equipped is fully unlocked (above); the other slots are judged as the load repair judges
+        // them, so one kept while it waits on a requirement besides its rank never blocks an unrelated edit.
+        List<String> problems = next.problems(catalog.abilities(), prof::rankReached);
         if (!problems.isEmpty()) return problems.get(0);
         prof.setLoadout(index, next);
         if (index == prof.activeIndex()) {
@@ -511,6 +581,13 @@ public final class ClassService implements AttributeSource {
         }
         save(p);
         return null;
+    }
+
+    /** "Charge is not unlocked yet: Warrior rank 3", or "...: it also needs Elemental Mastery 25" once the rank is reached. */
+    private String lockedReason(ClassProfile prof, AbilityDef a) {
+        if (prof.rankReached(a)) return a.displayName() + " is not unlocked yet: it also needs " + needs(prof.missing(a));
+        ClassDef c = catalog.classDef(a.classId());
+        return a.displayName() + " is not unlocked yet: " + (c == null ? a.classId() : c.displayName()) + " rank " + a.unlockRank();
     }
 
     /** Make loadout {@code index} the one in use. Returns why not, or null when done. Player's thread. */

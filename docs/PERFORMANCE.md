@@ -219,9 +219,29 @@ Plain hits fall in between. The `combat` load shows what players who don't cast 
 - **Nothing runs per tick, and nothing touches the database per block.** Skill saves stay coalesced: at most one asynchronous save per player per second, as before.
 - **The rest of the gap is in code this milestone didn't touch.** Mob labels for natural mobs near the bots take 20–32 samples in a `gather` run, and damage numbers and ability code vary by run. In `abilities` the new code is barely on the stack: gathering 0 samples, the XP display 2–6. The high first `abilities` runs are warm-up, not new cost. Both "after" sets were recorded soon after a server restart, with no ability cast in between, so their first `abilities` run was the first time the ability code ran since the start. That run measured 0.172 and 0.177. The baseline's server had run about 20 minutes of class and ability tests before its recording (the server log: `/class equip` 153 times, `/cerb class` 85). Two more runs on the warm server measured 0.092 and 0.097, below the baseline. **Method note for next time:** add each load to the warm-up, not only `gather`.
 
+## Progression Depth: XP integrity and level-ups (2026-10-26)
+
+**Method:** the corrected one above (9 bots, 80 s load, a warm-up run of every load, two measured runs of 60 s JFR from 10 s after "LOAD START", `tps` halfway). Two loads are new in `load.js`:
+- `levels`: each bot mines diamond ore with its Mining set back to level 1 every 12 s, so it levels up again and again from real XP. That is many level-ups at once across the server, the presentation's workload.
+- `wood`: each bot chops a small grove. It is the baseline for Woodcutting, which comes next.
+
+**Before:** the build before the XP-integrity work (1f1ed75). **After:** XP integrity and the level-up presentation (the build committed with this section). TPS 20.00 on every region in every run, except one 19.67 reading in the first `abilities` run (the warm-up effect described above).
+
+| Load | Before, ms per tick (two runs) | After | Work per bot (both) |
+|---|---|---|---|
+| `levels` | 0.025 / 0.024 | 0.024 / 0.037 | 93 diamond ores, 6 resets |
+| `gather` | 0.022 / 0.020 | 0.018 / 0.022 | 127 stone, 10 ore |
+| `combat` | 0.113 / 0.114 | 0.095 / 0.087 | 110 hits |
+| `abilities` | 0.120 / 0.083 | 0.120 / 0.090 | 50 presses, 49 hits |
+
+- **The presentation costs nothing measurable.** Across the `levels` runs, its frames (`Celebrations.present`, `flush`, `sound`, `LevelUps`) were 2–5 samples per 60 s run, while 9 players levelled Mining about every 2 s each. The second run's higher figure comes from the HUD redraw and the mana and health managers, which vary from run to run.
+- **XP integrity costs nothing measurable either.** `combat` is slightly lower than before, `abilities` the same.
+- **A first attempt was confounded:** about 400 mobs had built up near spawn over earlier test sessions, with mob spawning on. That run measured mob labels and damage numbers, which the baseline never saw (`levels` 0.082 / 0.057). The runs above were taken after clearing them, with mob spawning off, as in the baseline. **Method note:** clear mobs near spawn and turn mob spawning off before every recording.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
+- **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.
 - **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

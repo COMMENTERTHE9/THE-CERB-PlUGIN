@@ -225,10 +225,11 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
                 + slotArg.toUpperCase(Locale.ROOT) + " of Loadout " + (loadout + 1) + ".");
     }
 
-    // ── admin: /cerb class <player> <class> rank <n> | /cerb class <player> info ──
+    // ── admin: /cerb class <player> <class> rank <n> | xp <n> | /cerb class <player> info ──
 
     public void admin(CommandSender sender, String[] args) {
-        String usage = ChatColor.RED + "Use: /cerb class <player> <class> rank <1-" + ClassRanks.MAX_RANK + ">  or  /cerb class <player> info|cooldowns";
+        String usage = ChatColor.RED + "Use: /cerb class <player> <class> rank <1-" + ClassRanks.MAX_RANK + ">  or  ... <class> xp <amount>"
+                + "  or  /cerb class <player> info|cooldowns";
         ClassService svc = plugin.getClassService();
         if (svc == null) { sender.sendMessage(ChatColor.RED + "Classes are not running."); return; }
         if (args.length < 3) { sender.sendMessage(usage); return; }
@@ -253,9 +254,26 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
             }, null);
             return;
         }
-        if (args.length != 5 || !args[3].equalsIgnoreCase("rank")) { sender.sendMessage(usage); return; }
+        if (args.length != 5 || !(args[3].equalsIgnoreCase("rank") || args[3].equalsIgnoreCase("xp"))) { sender.sendMessage(usage); return; }
         ClassDef c = findClass(svc, args[2]);
         if (c == null) { sender.sendMessage(ChatColor.RED + "Unknown class: " + args[2]); return; }
+        if (args[3].equalsIgnoreCase("xp")) {
+            // An admin's grant: the same XP as play, without the rank-up celebration (docs/design/LEVEL_UP.md).
+            double xp;
+            try { xp = Double.parseDouble(args[4]); } catch (NumberFormatException e) { sender.sendMessage(usage); return; }
+            if (!Double.isFinite(xp) || xp < 0 || xp > 1e9) { sender.sendMessage(usage); return; }
+            target.getScheduler().run(plugin, t -> {
+                ClassProfile prof = svc.profile(target.getUniqueId());
+                if (prof == null || !prof.knows(c.id())) {
+                    sender.sendMessage(ChatColor.RED + target.getName() + " has not learned " + c.displayName() + " (or classes are not loaded) - nothing changed.");
+                    return;
+                }
+                svc.addXpQuietly(target, c.id(), xp);
+                ClassProfile.Progress pr = prof.classes().get(c.id());
+                sender.sendMessage(ChatColor.GREEN + target.getName() + ": " + c.displayName() + " is now rank " + pr.rank() + " (" + pr.xp() + " XP)");
+            }, null);
+            return;
+        }
         int rank;
         try { rank = Integer.parseInt(args[4]); } catch (NumberFormatException e) { sender.sendMessage(usage); return; }
         if (rank < 1 || rank > ClassRanks.MAX_RANK) { sender.sendMessage(usage); return; }
@@ -276,7 +294,7 @@ public final class ClassCommand implements CommandExecutor, TabCompleter {
         return switch (args.length) {
             case 2 -> filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
             case 3 -> { List<String> o = new ArrayList<>(svc.catalog().classes().keySet()); o.add("info"); o.add("cooldowns"); yield filter(o, args[2]); }
-            case 4 -> args[2].equalsIgnoreCase("info") || args[2].equalsIgnoreCase("cooldowns") ? List.of() : filter(List.of("rank"), args[3]);
+            case 4 -> args[2].equalsIgnoreCase("info") || args[2].equalsIgnoreCase("cooldowns") ? List.of() : filter(List.of("rank", "xp"), args[3]);
             default -> List.of();
         };
     }

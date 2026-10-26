@@ -140,6 +140,20 @@ public class SkillManager {
         this.xpListener = listener;
     }
 
+    /**
+     * Levels gained through real play, for the level-up presentation (Skills.Celebrations). Never told about loading or
+     * admin corrections ({@link #addXpQuietly}, {@link #setSkillLevel}). Called on the awarding thread.
+     */
+    public interface LevelUpListener {
+        void leveledUp(Player player, String skill, int from, int to);
+    }
+
+    private volatile LevelUpListener levelUps;
+
+    public void setLevelUpListener(LevelUpListener listener) {
+        this.levelUps = listener;
+    }
+
     public void setLevelListener(LevelListener listener) {
         this.levelListener = listener == null ? NO_LISTENER : listener;
     }
@@ -261,26 +275,28 @@ public class SkillManager {
         Map<String, Integer> xp = playerSkillXP.get(uid);
         if (levels == null || xp == null) return; // data not loaded yet, or player already left
 
-        applyAward(player, skillName, levels, xp, amount);
+        applyAward(player, skillName, levels, xp, amount, true);
         saveSkills(player);
     }
 
     /**
-     * Single award path for every XP source: overflow-safe, capped at
-     * {@link SkillProgression#MAX_LEVEL}, one level-up message per level gained.
+     * Single award path for every XP source: overflow-safe, capped at {@link SkillProgression#MAX_LEVEL}. Levels gained
+     * through real play ({@code celebrate}) go to the level-up presentation; an admin's correction changes them quietly.
      */
     private SkillProgression.Result applyAward(Player player, String skillName,
                                                Map<String, Integer> levels, Map<String, Integer> xp,
-                                               double amount) {
+                                               double amount, boolean celebrate) {
         int currentLevel = levels.getOrDefault(skillName, 1);
         int currentXP = xp.getOrDefault(skillName, 0);
         SkillProgression.Result r = SkillProgression.award(currentLevel, currentXP, amount);
         levels.put(skillName, r.level());
         xp.put(skillName, r.xp());
-        for (int i = r.levelsGained() - 1; i >= 0; i--) {
-            player.sendMessage(createLevelUpMessage(skillName, r.level() - i));
-        }
         if (r.levelsGained() > 0) levelListener.changed(player.getUniqueId());
+        if (r.levelsGained() > 0 && celebrate) {
+            LevelUpListener ups = levelUps;
+            if (ups != null) ups.leveledUp(player, skillName, currentLevel, r.level());
+            else player.sendMessage(createLevelUpMessage(skillName, r.level()));
+        }
         XpListener feed = xpListener;
         long whole = SkillProgression.wholeXp(amount);
         if (feed != null && whole > 0 && SkillProgression.clampLevel(currentLevel) < SkillProgression.MAX_LEVEL) {
@@ -365,7 +381,18 @@ public class SkillManager {
         Map<String, Integer> xp = playerSkillXP.get(uid);
         if (levels == null || xp == null) return false;
 
-        SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained);
+        SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
+        saveSkills(player);
+        return r.levelsGained() > 0;
+    }
+
+    /** An admin's XP grant or correction: the same award, without the level-up presentation. */
+    public boolean addXpQuietly(String skillName, double xpGained, Player player) {
+        UUID uid = player.getUniqueId();
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return false;
+        SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, false);
         saveSkills(player);
         return r.levelsGained() > 0;
     }

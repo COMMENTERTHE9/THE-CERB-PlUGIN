@@ -23,7 +23,9 @@ public class PlayerHUDManager {
         String effectivenessText = "";
         String flash;       // legacy-coloured text shown in the middle of the bar, or null
         long flashUntil;    // System.nanoTime()
-        String xp;          // the XP line: the same place, lower priority (it waits while a message shows)
+        String notice;      // a level-up or rank-up: the same place, below messages, above the XP line
+        long noticeUntil;   // System.nanoTime()
+        String xp;          // the XP line: the same place, lowest priority (it waits while a message or notice shows)
         long xpUntil;       // System.nanoTime()
     }
 
@@ -99,9 +101,11 @@ public class PlayerHUDManager {
         // Realm magnitudes reach billions: exact below 10,000, compact above (Numbers.hud).
         long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
         if (last.flash != null && now - last.flashUntil >= 0) last.flash = null;
+        if (last.notice != null && now - last.noticeUntil >= 0) last.notice = null;
         if (last.xp != null && now - last.xpUntil >= 0) last.xp = null;
         hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ");
         if (last.flash != null) hudBuilder.append(last.flash).append("   ");
+        else if (last.notice != null) hudBuilder.append(last.notice).append("   ");
         else if (last.xp != null) hudBuilder.append(last.xp).append("   ");
         else hudBuilder.append(effectivenessColor).append(last.effectivenessText);
         hudBuilder.append(manaColor).append(Numbers.hud(mana)).append('/').append(Numbers.hud(maxMana)).append('✎');
@@ -126,8 +130,24 @@ public class PlayerHUDManager {
         long shownUntil = s.flash != null && s.flashUntil - now > 0 ? s.flashUntil : now;
         s.flash = legacyText;
         s.flashUntil = now + Math.max(0, ms) * 1_000_000L;
-        // An XP line waits while the message shows: it keeps the time it had left for after it.
+        // A notice and an XP line wait while the message shows: they keep the time they had left for after it.
+        if (s.notice != null && s.noticeUntil - shownUntil > 0) s.noticeUntil = s.flashUntil + (s.noticeUntil - shownUntil);
         if (s.xp != null && s.xpUntil - shownUntil > 0) s.xpUntil = s.flashUntil + (s.xpUntil - shownUntil);
+        updateHUD(player);
+    }
+
+    /**
+     * Show a level-up or rank-up notice in the middle of the HUD bar for {@code ms} (Skills.Celebrations): below
+     * {@link #flash} messages, which it waits for, and above the XP line, which waits for it. Player's thread.
+     */
+    public void notice(Player player, String legacyText, long ms) {
+        Sent s = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        long now = System.nanoTime();
+        long start = s.flash != null && s.flashUntil - now > 0 ? s.flashUntil : now;
+        long shownUntil = s.notice != null && s.noticeUntil - start > 0 ? s.noticeUntil : start;
+        s.notice = legacyText;
+        s.noticeUntil = start + Math.max(0, ms) * 1_000_000L;
+        if (s.xp != null && s.xpUntil - shownUntil > 0) s.xpUntil = s.noticeUntil + (s.xpUntil - shownUntil);
         updateHUD(player);
     }
 
@@ -144,6 +164,7 @@ public class PlayerHUDManager {
         } else {
             long now = System.nanoTime();
             long start = s.flash != null && s.flashUntil - now > 0 ? s.flashUntil : now;
+            if (s.notice != null && s.noticeUntil - start > 0) start = s.noticeUntil;
             s.xp = legacyText;
             s.xpUntil = start + Math.max(0, ms) * 1_000_000L;
         }
@@ -155,7 +176,8 @@ public class PlayerHUDManager {
         Sent s = sent.get(player.getUniqueId());
         if (s == null || s.flash == null) return;
         long now = System.nanoTime();
-        // An XP line waiting behind the message moves up by the time the message no longer takes.
+        // A notice or an XP line waiting behind the message moves up by the time the message no longer takes.
+        if (s.notice != null && s.flashUntil - now > 0 && s.noticeUntil - s.flashUntil > 0) s.noticeUntil -= s.flashUntil - now;
         if (s.xp != null && s.flashUntil - now > 0 && s.xpUntil - s.flashUntil > 0) s.xpUntil -= s.flashUntil - now;
         s.flash = null;
         updateHUD(player);

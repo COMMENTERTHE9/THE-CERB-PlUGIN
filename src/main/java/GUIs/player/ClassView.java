@@ -17,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /** Tiles shared by the Classes & Abilities screens. Read-only: they draw the profile, never change it. */
@@ -95,7 +96,15 @@ final class ClassView {
         l.gap();
         if (open) l.raw(ChatColor.GREEN + "✔ Unlocked");
         else if (!prof.knows(a.classId())) l.raw(ChatColor.GOLD + "✖ Learn " + className + " first");
-        else l.raw(ChatColor.GOLD + "✖ Unlocks at " + className + " rank " + a.unlockRank() + ChatColor.GRAY + " (you: " + prof.rank(a.classId()) + ")");
+        else if (!prof.rankReached(a)) l.raw(ChatColor.GOLD + "✖ Unlocks at " + className + " rank " + a.unlockRank() + ChatColor.GRAY + " (you: " + prof.rank(a.classId()) + ")");
+        if (!open && !a.requires().isEmpty()) {
+            // Requirements besides the rank: each one, met or not (the rank alone never opens it).
+            Map<String, Integer> missing = prof.missing(a);
+            for (Map.Entry<String, Integer> r : a.requires().entrySet()) {
+                boolean met = !missing.containsKey(r.getKey());
+                l.raw((met ? ChatColor.GREEN + "✔ " : ChatColor.GOLD + "✖ Also needs ") + Skills.SkillNames.display(r.getKey()) + " " + r.getValue());
+            }
+        }
         String where = equippedIn(prof, a.id());
         if (where != null) l.stat("Equipped", where);
         if (hint != null) l.hint(hint);

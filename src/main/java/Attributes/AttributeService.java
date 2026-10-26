@@ -128,6 +128,18 @@ public final class AttributeService {
         return build(player, rules.get(), edit);
     }
 
+    /** The player's snapshot with {@code skill} at {@code level} instead ("next level gives...", a level-up's real gain). */
+    public AttributeSnapshot withSkillLevel(UUID player, String skill, int level) {
+        AttributeRules r = rules.get();
+        String id = SkillAttributes.SOURCE_PREFIX + skill;
+        return preview(player, cs -> {
+            List<Contribution> out = new ArrayList<>();
+            for (Contribution c : cs) if (!c.sourceId().equals(id)) out.add(c);
+            out.addAll(SkillAttributes.contributions(java.util.Map.of(skill, level), r));
+            return out;
+        });
+    }
+
     private AttributeSnapshot build(UUID player, AttributeRules r, UnaryOperator<List<Contribution>> edit) {
         List<Contribution> all = new ArrayList<>();
         for (AttributeSource src : sources) all.addAll(src.contributions(player, r));

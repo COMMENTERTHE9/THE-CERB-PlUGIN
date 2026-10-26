@@ -180,6 +180,10 @@ cleave:
 ```
 Validation at load refuses an ability whose numbers break the bounds (§8): a coefficient over the cap, a cooldown under the floor, an unknown verb or weapon family. Server owners can tune, but cannot make an infinite or limit-breaking ability by accident.
 
+**Built since (2026-10-26):**
+- **`requires:`** An ability may list skill levels it needs besides its rank, for example `requires: { Elemental Mastery: 25 }`. Each level must be 1–1000, or the ability is refused at load. Reaching the rank alone doesn't open it, and the class keeps ranking. It opens when the skill gets there (`docs/design/LEVEL_UP.md` §6). No shipped ability uses it yet.
+- **`color:`** A class in `classes.yml` may set `color: "#RRGGBB"` for its rank-up effect.
+
 ### 5.2 Effect verbs (the engine's vocabulary)
 `damage` (melee strike, cone, circle, line, projectile, hitscan) · `dash` · `blink` (teleport, Folia `teleportAsync`) · `knockback` / `pull` · `status` (slow, stun, burn, poison, weakness: vanilla effects where they exist) · `buff` (a timed attribute contribution) · `shield` (an absorb pool, read by the defense bar layer) · `heal` · `cleanse` · `mark` · `stealth` · `summon` · `barrier` (placed, temporary, no world changes kept) · `stance` (a toggle) · `form` · `resource` (gain or spend Momentum, Fury or Essence) · `reaction` (element state + element state → effect).
 
