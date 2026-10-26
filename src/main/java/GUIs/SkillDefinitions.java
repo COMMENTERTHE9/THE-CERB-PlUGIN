@@ -319,7 +319,7 @@ public final class SkillDefinitions {
                 List.of(SkillEffect.planned("Rarer catches"))));
         d.add(new SkillDef("Crafting", "Making tools and goods.", List.of(), Material.CRAFTING_TABLE, U,
                 List.of(SkillEffect.planned("Advanced recipes"))));
-        d.add(new SkillDef("Smithing", "Smelting metal and forging gear.", List.of(), Material.ANVIL, U, List.of(
+        d.add(new SkillDef("Smithing", "Smelting metal, forging gear and keeping it in shape.", List.of(), Material.ANVIL, U, List.of(
                 SkillEffect.live("Chance of Superior or better forged gear", (cfg, lvl) -> forged(Gathering.Quality.SUPERIOR, lvl), PCT),
                 SkillEffect.live("Chance of Masterwork forged gear", (cfg, lvl) -> forged(Gathering.Quality.MASTERWORK, lvl), PCT))));
         d.add(new SkillDef("Alchemy", "Brewing potions.", List.of(), Material.BREWING_STAND, U,

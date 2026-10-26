@@ -172,7 +172,7 @@ Ranked by value to players against effort.
 | Mana Regeneration (Essence Regeneration) | Magic | Disconnected | None | Nothing earnable (would copy Intelligence) |
 | Defensive Magic | Magic | Disconnected | None | Nothing earnable (Fortitude at admin levels) |
 | Mining | Gathering | **Functional** (since the loop) | Natural stone and ore broken by hand (`resources.yml`) | Gathering speed, Fortune (extra ore) |
-| Smithing | Production | **Functional** (since the loop) | Smelting metal, forging gear, the netherite upgrade | Forged gear quality odds |
+| Smithing | Production | **Functional** (since the loop) | Smelting metal, forging gear, the netherite upgrade | Forged gear quality odds; Fortitude 0.25 a level and wear resistance (since 2026-10-26) |
 | Crafting | Production | Disconnected | None | Nothing |
 | Woodcutting | Gathering | **Functional** (since its loop, 2026-10-26) | Natural logs cut with an axe (`resources.yml`), a discovery per wood | Vitality, Fortune (extra log), chopping speed; Felling, Canopy, heartwood upgrades |
 | Farming | Gathering | Disconnected | None | Nothing |
@@ -392,7 +392,7 @@ The ten questions, short. **XP** = 1–2, **Effects** = 3, **Not working** = 4, 
 - **Future:** drills, custom ores, distance-tiered nodes.
 - **Now / later:** the Mining → Smithing → Equipment loop now (`docs/design/GATHERING.md`).
 
-**Smithing: disconnected** (as audited; **functional since the loop**: smelting, forging and netherite-upgrade XP, counted per item made; forged quality through the attribute engine).
+**Smithing: disconnected** (as audited; **functional since the loop**: smelting, forging and netherite-upgrade XP, counted per item made; forged quality through the attribute engine; since 2026-10-26 also Fortitude 0.25 a level and wear resistance, `docs/design/SKILL_PROGRESSION.md`).
 - **XP:** none: no furnace, smithing-table or anvil handler.
 - **Effects:** none.
 - **Not working:** the smithing code in `CraftingManager` can never receive an item. If it could, it would apply unsafe Sharpness and a name-only "infusion".

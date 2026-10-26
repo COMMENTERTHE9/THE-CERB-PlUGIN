@@ -6,7 +6,7 @@ package Attributes;
  * gear affix, or Weapon Mastery's lifesteal). All values are fractions (0.10 = +10%), except
  * {@link #CRIT_MULTIPLIER}, which adds to the multiplier itself.
  *
- * <p>The last five are the speed and handling stats (docs/design/ATTRIBUTE_EXPANSION.md): raised
+ * <p>The last seven are the speed and handling stats (docs/design/ATTRIBUTE_EXPANSION.md): raised
  * by a primary attribute plus the skill that owns the action, then capped with diminishing
  * returns ({@link AttributeRules.Secondary}).
  */
@@ -28,10 +28,13 @@ public enum Stat {
     COOLDOWN_RECOVERY("Spell cooldown recovery"),
     GATHER_SPEED("Gathering speed"),
     /** Gathering speed with an axe in hand (Woodcutting's); every other item uses {@link #GATHER_SPEED} (Mining's). */
-    CHOP_SPEED("Chopping speed");
+    CHOP_SPEED("Chopping speed"),
+    /** The chance each point of wear on a tool, weapon or piece of armour is avoided (Smithing's: a smith keeps gear in shape). */
+    WEAR_RESISTANCE("Wear resistance");
 
     /** The speed and handling stats, in display order. */
-    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED, CHOP_SPEED);
+    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED, CHOP_SPEED,
+            WEAR_RESISTANCE);
 
     public boolean isSecondary() { return SECONDARY.contains(this); }
 

@@ -113,6 +113,8 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - **Data:** everything is data-driven, proven by a synthetic custom tree. No forest generator.
 
    **Done 2026-10-26** (`docs/design/WOODCUTTING.md`; `docs/STATUS.md` → "Done: Woodcutting"; `tools/playtest/woodcutting.js`): eleven woods, Felling I–IV and the Canopy, heartwood grip and limbs, discoveries, Fortune scoped to wood, chopping speed, and protection for builds, claims and Folia regions.
+
+   **Owner's playtest feedback, done 2026-10-26** (`docs/STATUS.md` → "Done: grown trees and Smithing's growth"): growing and harvesting trees is a legitimate way to train Woodcutting (a tree left to grow pays 80%, bone meal 50% and no heartwood, placed logs nothing; the owner's decision replaces "artificial regrowth can't be farmed" above); and Smithing grows Fortitude and wear resistance through the attribute engine, its forged-quality odds unchanged.
 5. **Independent review and finish.**
 6. **Report, and propose the next loop:** Farming or Fishing, one complete loop at a time.
 
@@ -331,7 +333,7 @@ Every PvP limit so far is **temporary**. None of it is a decision against PvP; t
 | Off for now | Where it is switched | To turn it on |
 |---|---|---|
 | Attributes on defense in PvP (Vitality, Fortitude, realm): PvP hits use the pre-Attributes-2.0 defense | `attributes.yml` → `integration.pvp-defense: false` | Set `true`, then tune |
-| Speed bonuses in PvP (attack, movement, bow draw, spell cooldown) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
+| Speed and handling bonuses in PvP (attack, movement, bow draw, spell cooldown, gathering and chopping speed, Smithing's wear resistance) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
 | Attributes on offense in PvP (Power, crits, lifesteal): PvP hits still use the old per-skill bonuses | Code: `Manager/PveOffense` runs only on player → mob hits; PvP goes through `Manager/CombatSkillProcessor` | A PvP offense path with PvP coefficients |
 | Abilities hitting players: every ability targets mobs only (Cleave, Fireball...), never another player's pet or a mount a player rides; Riposte only counters mobs that belong to no player; Feint's crit only on mob hits; a left-click on a player is a plain hit | Code: `Classes/AbilityCaster.valid` and `Manager/AbilityTargets`, the counter hook in `Listener/VirtualHealthListener`, `Manager/PveOffense.meleeHit`, `Spells/FireballSpell.castFromAbility`, `Classes/AbilityListener.onAttack` | `docs/design/CLASSES.md` §10 decision 5 (PvP coefficients), then one switch |
 | Class XP from fights with players | Code: `Listener/MobKillListener` gives no class share for player kills; casts never reach players; a self cast in a fight with no enemy in it (a PvP tag) earns nothing (`Classes/ClassService.fightFoeLevel`) | Together with abilities in PvP, with rules against farming each other |

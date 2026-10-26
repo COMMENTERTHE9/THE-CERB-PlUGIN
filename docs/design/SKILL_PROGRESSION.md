@@ -106,7 +106,7 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 | Skill | Primary | Secondary and profession stats | What changes in play | Milestones | Needs | Today |
 |---|---|---|---|---|---|---|
 | **Mining** | Fortune (ore) 0.5 | Gathering speed (non-axe), +0.2% per level, cap 25% | More ore, faster mining | 50: tier-5 resources (custom ores need tier and level, `resources.yml`). Later: ore techniques | Custom ore tiers, distance-tiered nodes | **Working**: XP, speed, extra ore. Fortune scoped to ore since Woodcutting, numbers unchanged |
-| **Woodcutting** | Vitality 0.25 | Fortune (wood) 0.5; chopping speed (axe in hand); Felling (logs one technique can take) | More wood, faster chopping, whole sections or trees at once | 10, 25, 50, 75, 100: techniques (`docs/design/WOODCUTTING.md`) | — | **Working** (2026-10-26): XP from natural logs, all three stats, Felling I–IV, Canopy, heartwood upgrades, discoveries |
+| **Woodcutting** | Vitality 0.25 | Fortune (wood) 0.5; chopping speed (axe in hand); Felling (logs one technique can take) | More wood, faster chopping, whole sections or trees at once | 10, 25, 50, 75, 100: techniques (`docs/design/WOODCUTTING.md`) | — | **Working** (2026-10-26): XP from logs of trees (generated in full, grown from a sapling 80%, bone meal 50%, placed nothing), all three stats, Felling I–IV, Canopy, heartwood upgrades, discoveries |
 | **Farming** | Vitality 0.25 | Fortune (crops) 0.5; harvesting speed (hoe in hand); planned: replanting | More and better crops | 10: replant on harvest. 25: wide harvest. 50: crop quality | Ripe-crop rules, crop tiers | **Planned** (next loop candidate) |
 | **Fishing** | Fortune (fish) 0.5 (today: unscoped) | Planned: lure speed; treasure chance; sea-creature chance, capped | Faster bites, rarer catches, encounters worth having | 10: lure speed. 25: treasure. 50: sea creatures by level | XP per catch, idle check, encounter design | **Partial**: Fortune only; catches roll an uncapped Sea Monster (next loop candidate) |
 | **Herbalism** | Essence 0.25 | Fortune (herbs) 0.5; planned: herb potency for Alchemy | Wild plants yield more and better reagents | 25: rare herbs. 50: reagent quality | The scope decision against Farming (wild plants vs crops) | **Planned** |
@@ -115,12 +115,12 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 
 | Skill | Primary | Secondary and profession stats | What changes in play | Milestones | Needs | Today |
 |---|---|---|---|---|---|---|
-| **Smithing** | Fortitude 0.25 (heat and endurance), planned | Craftsmanship, planned as a visible stat: the forged-quality odds it drives today | Better forged gear | 25: Superior odds. 50: reforging. 75: tempering | Reforging, realm materials | **Working**: XP, quality odds by level (not yet shown as a stat) |
+| **Smithing** | Fortitude 0.25 (heat and endurance) | Wear resistance, +0.3% per level with diminishing returns, cap 35%: each point of wear the game puts on a tool, weapon or armour piece is avoided with that chance (3% at 10, 7% at 25, 12% at 50, 20% at 100); the forged-quality odds (on its page) | Better forged gear, and gear that lasts | 25: Superior odds. 50: reforging. 75: tempering | Reforging, realm materials | **Working** (2026-10-26): XP, quality odds by level, Fortitude, wear resistance |
 | **Crafting** | Agility 0.25 | Planned: craftsmanship for wood and leather gear | Better bows, shields, tools | 10: woodworking recipes (with Woodcutting's materials) | Recipe rules (no XP for reversible recipes) | **Planned** |
 | **Alchemy** | Essence 0.5 | Planned: potion potency and duration | Stronger, longer potions | 10: first Cerberus potion | Consumables that act on the health pool | **Planned** |
 | **Enchanting** | Essence 0.5 | Planned: enchant power (budget) | Better enchantments within the offense budget | 25: enchant slots | The enchant budget design | **Planned** |
 | **Cooking** | Vitality 0.25 | Planned: meal potency and duration | Meals as timed buffs | 10: first buff meal | Consumables | **Planned** |
-| **Repairing** | Fortitude 0.25 | Planned: repair efficiency (durability restored, material saved) | Gear lasts longer for less | 25: field repair | Durability that matters (entropy) | **Planned** |
+| **Repairing** | Fortitude 0.25 | Planned: repair efficiency (durability restored, material saved); Smithing's wear resistance keeps gear from wearing, Repairing restores it | Gear lasts longer for less | 25: field repair | Durability that matters (entropy) | **Planned** |
 
 ### Exploration and utility (9)
 
@@ -147,6 +147,7 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
    To make Fortune scoped, Mining's Fortune becomes Fortune (ore), with the same numbers.
 2. **The XP-integrity rules** that feed Weapon Mastery, Ranged Precision, Martial Expertise, Critical Strike, Survival, Heavy Armor Mastery and the magic skills honestly (item 2 of the milestone).
 3. **Milestone celebrations** for every skill at 10, 25, 50, 75 and 100 (item 3). Until a skill's own milestone capabilities exist, its milestone shows the stat it gained and the title.
+4. **Smithing's own growth** (owner, 2026-10-26, after the playtest: its page said "This skill gives no attribute points or speed"): Fortitude 0.25 a level and wear resistance, through the same engine; the forged-quality odds are unchanged. A new stat followed the rules below: one `Stat` value (`WEAR_RESISTANCE`), applied in one place (`SecondaryEffects.onItemDamage`), a Stats-page line, paused in PvP with the other secondary stats.
 
 Everything else above is built with its own gameplay: Farming or Fishing next, then the rest, one complete loop at a time.
 

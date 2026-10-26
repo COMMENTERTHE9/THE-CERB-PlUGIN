@@ -212,8 +212,9 @@ public final class AttributesConfig {
                 driver = d.driver();
             }
             double cap = num(one, "cap", d.cap(), problems);
-            if (cap <= 0 || cap > 2.0) {
-                problems.accept("secondary.stats." + key + ".cap must be in (0, 2] - using " + d.cap());
+            double most = stat == Stat.WEAR_RESISTANCE ? MAX_WEAR_CAP : 2.0; // a chance: never gear that can't wear
+            if (cap <= 0 || cap > most) {
+                problems.accept("secondary.stats." + key + ".cap must be in (0, " + most + "] - using " + d.cap());
                 cap = d.cap();
             }
             stats.put(stat, new AttributeRules.SecondaryStat(one.getBoolean("enabled", d.enabled()), driver,
@@ -254,6 +255,9 @@ public final class AttributesConfig {
         return new AttributeRules.Secondary(stats, weights, s.getBoolean("in-pvp", def.inPvp()), tag);
     }
 
+    /** The most wear resistance may reach: a chance to avoid wear, so gear can't become unbreakable. */
+    static final double MAX_WEAR_CAP = 0.9;
+
     /**
      * Skills an update added to the shipped attributes.yml after its first version. Only these come
      * from the shipped file when a server's file doesn't mention them: a skill an owner deleted from
@@ -262,7 +266,8 @@ public final class AttributesConfig {
      */
     static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of(
             "Mining",       // 2026-10-25, the gathering loop
-            "Woodcutting"); // 2026-10-26, the Woodcutting loop
+            "Woodcutting",  // 2026-10-26, the Woodcutting loop
+            "Smithing");    // 2026-10-26, Smithing's Fortitude and wear resistance
 
     /**
      * The skills {@code sk} lists, plus each skill in {@link #ADDED_BY_UPDATES} that the shipped file

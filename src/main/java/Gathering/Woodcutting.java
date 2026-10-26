@@ -37,8 +37,9 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 
 /**
- * Woodcutting beyond one log (docs/design/WOODCUTTING.md): Felling a natural tree in steps, the canopy, heartwood,
- * discoveries and the rest between fellings. A cut log's own XP and Fortune bonus are the gathering rules'
+ * Woodcutting beyond one log (docs/design/WOODCUTTING.md): Felling a tree in steps, the canopy, heartwood,
+ * discoveries and the rest between fellings, for trees the world made and trees grown from planted saplings (their share,
+ * {@link WoodRules#xpShare}). A cut log's own XP and Fortune bonus are the gathering rules'
  * ({@link GatheringListener}); this adds what comes after the cut. Folia: a felling's steps run on the region thread that
  * owns the tree (the region scheduler at the stump), every block and the player are checked for ownership at every step,
  * and XP is awarded on the player's own thread.
@@ -82,7 +83,7 @@ public final class Woodcutting implements Listener {
 
     /** What a discovery or a felling has to say on the HUD and in chat (wired to the level-up presentation). */
     public interface Announcer {
-        /** The first natural log of {@code wood}: {@code xp} paid once. */
+        /** The first log of {@code wood} cut from a tree (never a placed one): {@code xp} paid once. */
         void discovered(Player p, GatheringCatalog.ResourceDef wood, double xp);
 
         /** Heartwood dropped. */
@@ -98,7 +99,7 @@ public final class Woodcutting implements Listener {
     /** Players with a felling running, and when it started (an entry older than a few seconds is stale). */
     private final Map<UUID, Long> felling = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> discovered = new ConcurrentHashMap<>();
-    /** When a player last saw each kind of hint ("axe", "weak", "felling"), so one kind never silences another. */
+    /** When a player last saw each kind of hint ("axe", "weak", "felling", "placed", "grown"...), so one kind never silences another. */
     private final Map<String, Long> lastHint = new ConcurrentHashMap<>();
     private final LongAdder fellings = new LongAdder(), felledLogs = new LongAdder(), refusals = new LongAdder(),
             heartwoods = new LongAdder(), discoveries = new LongAdder(), canopyLeaves = new LongAdder(), scans = new LongAdder();
@@ -120,51 +121,114 @@ public final class Woodcutting implements Listener {
      */
     public void afterCut(Player p, GatheringService.Evaluation ev) {
         GatheringCatalog.ResourceDef r = ev.resource();
-        if (!r.isTree() || ev.method() != GatherRules.Method.MANUAL || ev.placed()) return;
-        if (!ev.decision().xp()) {
-            boolean axe = ev.tool() != null && ev.tool().kinds().contains("axe");
-            if (!axe) hint(p, "axe", "§7Logs pay Woodcutting XP when cut with an axe.", 60_000);
+        if (!r.isTree() || ev.method() != GatherRules.Method.MANUAL) return;
+        boolean hasAxe = ev.tool() != null && ev.tool().kinds().contains("axe");
+        if (ev.placed()) {
+            if (hasAxe && hintDue(p, "placed", 120_000)) notice.accept(p, placedHint(ev, r)); // the scan only when due
             return;
         }
-        discover(p, r); // any axe that pays at all finds a wood
-        if (ev.weakTool()) {
+        if (!ev.decision().xp()) {
+            if (!hasAxe) hint(p, "axe", "§7Logs pay Woodcutting XP when cut with an axe.", 60_000);
+            return;
+        }
+        GatheringCatalog c = gathering.catalog();
+        discover(p, r); // any axe that pays at all finds a wood, on any tree that wasn't placed
+        if (ev.weakTool()) { // this hint first: a grown tree's would replace it on the HUD at once
             String axe = GatheringCatalog.tierName(r.tier());
             hint(p, "weak", "§e" + r.displayName() + " §7pays in full with " + ("aeiou".indexOf(axe.charAt(0)) >= 0 ? "an" : "a") + " §f" + axe
                     + " axe §7or better.", 10_000);
             return;
         }
-        GatheringCatalog c = gathering.catalog();
         int level = skills.getSkillLevel(p, r.skill());
         Block b = ev.block();
-        if (rollHeartwood(c, r, level)) {
+        boolean said = false; // a HUD line this cut already showed (each replaces the one before)
+        if (rollHeartwood(c, r, level, ev.origin())) {
             ItemStack h = heartwoodItem(c);
             if (h != null) {
                 b.getWorld().dropItemNaturally(b.getLocation().add(0.5, 0.5, 0.5), h);
                 heartwoods.increment();
                 Announcer a = announcer;
-                if (a != null) a.heartwood(p, r);
+                if (a != null) { a.heartwood(p, r); said = true; }
             }
         }
-        if (p.isSneaking()) fell(p, ev, level);
+        if (p.isSneaking()) said |= fell(p, ev, level);
+        if (!said) grownHint(p, c.wood(), ev.origin()); // last, and only when nothing else is on the HUD: never wiped unseen
     }
 
-    private boolean rollHeartwood(GatheringCatalog c, GatheringCatalog.ResourceDef r, int level) {
-        double chance = c.wood().heartwoodChance(r.tree().heartwood(), level);
+    private boolean rollHeartwood(GatheringCatalog c, GatheringCatalog.ResourceDef r, int level, Origin origin) {
+        double chance = c.wood().heartwoodChance(r.tree().heartwood(), level, origin);
         return chance > 0 && ThreadLocalRandom.current().nextDouble() < chance;
     }
+
+    /**
+     * Why a log that pays nothing does: a grown tree of a wood with its own drops; a tree grown before grown trees paid
+     * (remembered as placed: {@link #grewBefore}); or a log placed by hand.
+     */
+    private String placedHint(GatheringService.Evaluation ev, GatheringCatalog.ResourceDef r) {
+        if (ev.origin() == Origin.GROWN || ev.origin() == Origin.BONEMEAL) return "§7Trees of this wood pay only where the world grew them.";
+        if (grewBefore(ev.block(), r)) {
+            return "§7This tree grew before grown trees paid, so it is remembered as placed: no XP. Trees you plant now pay.";
+        }
+        return "§7Logs placed by hand pay no Woodcutting XP; trees grown from saplings do.";
+    }
+
+    /**
+     * True when the placed log {@code b} looks like a tree grown before grown trees paid: with the memory's marks left
+     * aside, its connected logs of that wood make a tree with its own (decaying) leaves and no build touching it, and
+     * every one of those logs is remembered as placed (a log placed against a wild tree is not: the wild tree's logs
+     * aren't). For the hint only (every 2 minutes at most); nothing pays by it. The block's region thread.
+     */
+    private boolean grewBefore(Block b, GatheringCatalog.ResourceDef r) {
+        PlacedBlocks placed = gathering.placedBlocks();
+        if (placed == null) return false;
+        World w = b.getWorld();
+        TreeScan.View all = new TreeScan.View() {
+            private final TreeScan.View base = view(w, r);
+            @Override public Material type(int x, int y, int z) { return base.type(x, y, z); }
+            @Override public boolean naturalLeaf(int x, int y, int z) { return base.naturalLeaf(x, y, z); }
+            @Override public boolean placed(int x, int y, int z) { return false; }
+        };
+        WoodRules rules = gathering.catalog().wood();
+        TreeScan.Tree t = TreeScan.scan(all, b.getX(), b.getY(), b.getZ(), r.blocks(), r.tree().leaves(), BUILD_BLOCKS, rules.reach(), 64);
+        if (t.size() < 2 || t.capped() || t.build() || !t.natural(rules.minLeaves())) return false;
+        for (long pos : t.logs()) {
+            if (placed.origin(w.getBlockAt(TreeScan.x(pos), TreeScan.y(pos), TreeScan.z(pos))) != Origin.PLACED) return false;
+        }
+        return true;
+    }
+
+    /** Now and then, what a tree grown from a planted sapling pays (so a smaller number is never a mystery). */
+    private void grownHint(Player p, WoodRules w, Origin origin) {
+        if (origin == Origin.GROWN) {
+            hint(p, "grown", "§7Trees grown from saplings pay §f" + percent(w.grown().xp()) + "%§7 of a wild tree's Woodcutting XP.", 300_000);
+        } else if (origin == Origin.BONEMEAL) {
+            hint(p, "bonemeal", "§7Trees grown with bone meal pay §f" + percent(w.boneMeal().xp()) + "%§7 of a wild tree's XP"
+                    + (w.boneMeal().heartwood() > 0 ? "" : " and no heartwood") + "; left to grow, §f" + percent(w.grown().xp()) + "%§7.", 300_000);
+        }
+    }
+
+    private static long percent(double share) { return Math.round(share * 100); }
 
     private static ItemStack heartwoodItem(GatheringCatalog c) {
         GatheringCatalog.ItemDef d = c.item(c.wood().heartwoodItem());
         return d == null ? null : GearItems.makeItem(d, 1);
     }
 
-    private void hint(Player p, String kind, String text, long everyMs) {
+    /** Show {@code text} unless this kind was shown in the last {@code everyMs}; true when shown. */
+    private boolean hint(Player p, String kind, String text, long everyMs) {
+        if (!hintDue(p, kind, everyMs)) return false;
+        notice.accept(p, text);
+        return true;
+    }
+
+    /** True (and noted) when {@code p} hasn't seen a hint of this kind in {@code everyMs}. */
+    private boolean hintDue(Player p, String kind, long everyMs) {
         long now = System.currentTimeMillis();
         String key = p.getUniqueId() + ":" + kind;
         Long last = lastHint.get(key);
-        if (last != null && now - last < everyMs) return;
+        if (last != null && now - last < everyMs) return false;
         lastHint.put(key, now);
-        notice.accept(p, text);
+        return true;
     }
 
     // ── discoveries ──────────────────────────────────────────────
@@ -226,47 +290,42 @@ public final class Woodcutting implements Listener {
         }
     }
 
-    private void fell(Player p, GatheringService.Evaluation ev, int level) {
+    /** Fell the tree {@code ev}'s cut belongs to, if Felling may; true when the HUD said why it didn't. */
+    private boolean fell(Player p, GatheringService.Evaluation ev, int level) {
         GatheringCatalog c = gathering.catalog();
         WoodRules w = c.wood();
         GatheringCatalog.ResourceDef r = ev.resource();
         int capacity = w.capacity(level);
-        if (capacity <= 0) return; // Felling isn't open yet: a sneaking cut is just a cut
-        if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) return; // adventure's own limits on breaking are never bypassed
+        if (capacity <= 0) return false; // Felling isn't open yet: a sneaking cut is just a cut
+        if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) return false; // adventure's own limits on breaking are never bypassed
         UUID id = p.getUniqueId();
         long now = System.currentTimeMillis();
         Long running = felling.get(id);
-        if (running != null && now - running < 10_000) return; // one felling at a time
+        if (running != null && now - running < 10_000) return false; // one felling at a time
         Long until = restUntil.get(id);
         if (until != null && until > now) {
-            refuse(p, "§7Felling is ready again in §f" + (until - now + 999) / 1000 + " s§7.");
-            return;
+            return refuse(p, "§7Felling is ready again in §f" + (until - now + 999) / 1000 + " s§7.");
         }
         Block b = ev.block();
         scans.increment();
-        TreeScan.Tree t = TreeScan.scan(view(b.getWorld()), b.getX(), b.getY(), b.getZ(), r.blocks(), r.tree().leaves(), BUILD_BLOCKS,
+        TreeScan.Tree t = TreeScan.scan(view(b.getWorld(), r), b.getX(), b.getY(), b.getZ(), r.blocks(), r.tree().leaves(), BUILD_BLOCKS,
                 w.reach(), capacity + 1);
         if (t.capped()) { // first: a capped scan may not have reached the crown's leaves
-            refuse(p, "§7This tree has more than §f" + capacity + " §7logs: " + w.fellingName(level) + " takes up to §f" + capacity + "§7.");
-            return;
+            return refuse(p, "§7This tree has more than §f" + capacity + " §7logs: " + w.fellingName(level) + " takes up to §f" + capacity + "§7.");
         }
         if (!t.natural(w.minLeaves())) {
-            refuse(p, "§7Felling brings down only trees the world grew: this one has none of its own leaves.");
-            return;
+            return refuse(p, "§7Felling brings down only trees with their own leaves: this one has none. Cut it log by log.");
         }
         if (t.build()) {
-            refuse(p, "§7This tree touches a build: Felling leaves it standing. Cut it log by log.");
-            return;
+            return refuse(p, "§7This tree touches a build: Felling leaves it standing. Cut it log by log.");
         }
         if (t.baseWidth() > r.tree().trunk()) {
-            refuse(p, "§7This tree's base is wider than a trunk (logs built against it, or trees grown together): cut it log by log.");
-            return;
+            return refuse(p, "§7This tree's base is wider than a trunk (logs built against it, or trees grown together): cut it log by log.");
         }
         if (t.giant() && !w.giantTrunks(level)) {
-            refuse(p, "§7Giant trunks fall from " + Skills.SkillNames.display(r.skill()) + " §f" + w.giantAt() + "§7.");
-            return;
+            return refuse(p, "§7Giant trunks fall from " + Skills.SkillNames.display(r.skill()) + " §f" + w.giantAt() + "§7.");
         }
-        if (t.size() <= 1) return; // nothing above the cut
+        if (t.size() <= 1) return false; // nothing above the cut
         double bonus = ev.decision().bonus() ? gathering.bonusChance(id, r.fortuneYield()) : 0;
         Felling f = new Felling(p, r, p.getInventory().getItemInMainHand().getType(), t.logs(), b.getWorld(),
                 b.getLocation().add(0.5, 0.5, 0.5), level, w.canopy(level), bonus);
@@ -276,11 +335,13 @@ public final class Woodcutting implements Listener {
         fellings.increment();
         b.getWorld().playSound(f.stump, Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, SoundCategory.BLOCKS, 0.45f, 0.6f);
         Bukkit.getRegionScheduler().runDelayed(plugin, f.stump, task -> step(f), 1L);
+        return false;
     }
 
-    private void refuse(Player p, String text) {
+    /** A felling refused: counted, and said on the HUD (true when shown). */
+    private boolean refuse(Player p, String text) {
         refusals.increment();
-        hint(p, "felling", text, 1_500);
+        return hint(p, "felling", text, 1_500);
     }
 
     /**
@@ -302,7 +363,8 @@ public final class Woodcutting implements Listener {
             if (!Bukkit.isOwnedByCurrentRegion(b)) { go = false; break; } // past the region: the rest is cut by hand
             Material log = b.getType();
             if (!f.r.blocks().contains(log)) continue;                    // someone cut it meanwhile
-            if (placed != null && placed.isPlaced(b)) continue;
+            Origin origin = placed == null ? Origin.NATURAL : placed.origin(b);
+            if (GatheringService.paysNothing(f.r, origin)) continue;     // placed meanwhile
             ItemStack axe = f.p.getInventory().getItemInMainHand();
             if (wouldBreak(axe)) { go = false; break; }
             FellingBreak e = new FellingBreak(b, f.p);
@@ -315,12 +377,12 @@ public final class Woodcutting implements Listener {
             f.p.damageItemStack(EquipmentSlot.HAND, 1);
             took++;
             f.taken++;
-            xp += GatherRules.xp(f.r.xp(), f.r.level(), f.level, c.weakGap(), c.weakFactor());
+            xp += GatherRules.xp(f.r.xp(), f.r.level(), f.level, c.weakGap(), c.weakFactor()) * c.wood().xpShare(origin);
             if (e.isDropItems() && f.bonusChance > 0 && ThreadLocalRandom.current().nextDouble() < f.bonusChance) {
                 drops.add(new ItemStack(log)); // Fortune for wood: one more of the log, as a cut by hand gets
                 gathering.countBonus();
             }
-            if (rollHeartwood(c, f.r, f.level)) {
+            if (rollHeartwood(c, f.r, f.level, origin)) {
                 ItemStack h = heartwoodItem(c);
                 if (h != null) {
                     drops.add(h);
@@ -440,8 +502,11 @@ public final class Woodcutting implements Listener {
 
     // ── the world, as a tree scan reads it ───────────────────────
 
-    /** Reads only blocks this region thread owns in loaded chunks; anything else is "can't read" (an edge). */
-    private TreeScan.View view(World w) {
+    /**
+     * Reads only blocks this region thread owns in loaded chunks; anything else is "can't read" (an edge). A log of
+     * {@code r} that pays nothing (placed by hand, moved) is no part of a tree; a grown tree's logs are.
+     */
+    private TreeScan.View view(World w, GatheringCatalog.ResourceDef r) {
         PlacedBlocks placed = gathering.placedBlocks();
         return new TreeScan.View() {
             @Override public Material type(int x, int y, int z) {
@@ -455,7 +520,7 @@ public final class Woodcutting implements Listener {
             }
 
             @Override public boolean placed(int x, int y, int z) {
-                return placed != null && placed.isPlaced(w.getBlockAt(x, y, z));
+                return placed != null && GatheringService.paysNothing(r, placed.origin(w.getBlockAt(x, y, z)));
             }
         };
     }
@@ -463,7 +528,7 @@ public final class Woodcutting implements Listener {
     /** The tree the block {@code b} is, as Felling would see it (admin tool). The block's region thread. */
     public TreeScan.Tree inspect(Block b, GatheringCatalog.ResourceDef r, int maxLogs) {
         scans.increment();
-        return TreeScan.scan(view(b.getWorld()), b.getX(), b.getY(), b.getZ(), r.blocks(), r.tree().leaves(), BUILD_BLOCKS,
+        return TreeScan.scan(view(b.getWorld(), r), b.getX(), b.getY(), b.getZ(), r.blocks(), r.tree().leaves(), BUILD_BLOCKS,
                 gathering.catalog().wood().reach(), maxLogs);
     }
 

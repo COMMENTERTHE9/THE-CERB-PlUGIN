@@ -8,7 +8,9 @@ Find stone and ore → mine it (**Mining XP**) → smelt it (**Smithing XP**) �
 
 Vanilla resources first. Everything a later custom ore, tool, drill or machine needs is a definition in a config file, proven by a synthetic resource and tool that exist only in a test config.
 
-**The second loop, Woodcutting** (`WOODCUTTING.md`, built 2026-10-26), runs on the same rules and data: woods are resources with a tree, placed and grown logs pay nothing, and Fortune is now scoped by resource (Mining's counts on ore, Woodcutting's on wood, with the same numbers as before).
+**The second loop, Woodcutting** (`WOODCUTTING.md`, built 2026-10-26), runs on the same rules and data: woods are resources with a tree, placed logs pay nothing (trees grown from planted saplings pay a share since the owner's playtest: 80%, with bone meal 50%; `WOODCUTTING.md` §5), and Fortune is now scoped by resource (Mining's counts on ore, Woodcutting's on wood, with the same numbers as before).
+
+**Smithing grows the character too** (2026-10-26, `SKILL_PROGRESSION.md`): Fortitude +0.25 a level and wear resistance (each point of wear on your gear avoided with that chance, 20% at 100), through the attribute engine; the forged-quality odds below are unchanged.
 
 ## What a level changes
 
@@ -61,6 +63,7 @@ resources:
 | Silk Touch, then place again | Silk Touch on a natural ore pays XP and no bonus. The placed block is remembered. |
 | Generators (lava + water make stone, basalt, obsidian) | Formed blocks are remembered as placed. |
 | Pistons | A pushed or pulled resource block counts as placed at its new spot. |
+| Wind charges (a breeze, a mace's Wind Burst) | Their burst reaches blocks without breaking them; only an explosion that destroys blocks clears their marks (fixed 2026-10-26: a wind charge used to make a placed ore natural, mined for full XP, silk-touched back and placed again). |
 | Fortune duplicating rewards | The bonus is at most one extra item per block, never multiplied by the Fortune enchantment, never on Silk Touch, and its chance is capped at 50%. |
 | Creative mode | No XP and no bonus. |
 | Craft and uncraft loops (ingots ↔ blocks, nuggets ↔ ingots) | Only forward recipes pay (gear); storage and reversible recipes pay nothing. |

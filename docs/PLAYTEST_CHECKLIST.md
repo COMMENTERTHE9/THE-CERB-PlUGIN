@@ -207,17 +207,34 @@ The new loop (`docs/design/WOODCUTTING.md`). The XP display (`/xpdisplay compact
 |---|---|---|
 | 1 | Cut an oak or birch log with any axe, in survival. Then cut one by hand. | +4 Woodcutting XP with the axe. By hand the log drops, with no XP, and the HUD says logs pay with an axe. The first log of each wood is also a **discovery**: a chat line, a chime and its bonus XP, once. |
 | 2 | Find a harder wood (cherry, dark oak, mangrove, a pale garden's pale oak, a Nether stem) and cut it with a wooden axe, then with a better one. | A too-weak axe pays a quarter, and the HUD names the axe that pays in full (cherry, dark oak and mangrove: stone; pale oak and Nether stems: iron). |
-| 3 | Place a log and cut it. Plant a sapling, bone-meal it, and cut the tree. | The wood drops, with no XP (placed and grown wood never pays). |
+| 3 | Place a log and cut it. | The wood drops, with no XP, and the HUD says logs placed by hand pay nothing (grown trees: §12). |
 | 4 | At Woodcutting 10, **Sneak** while cutting the bottom log of a small oak or birch. | The whole tree comes down at once; its logs land at the stump in one or two stacks; the axe loses a point per log. Without Sneak, one log as always. |
 | 5 | Fell another tree right after. | "Felling is ready again in N s": a short rest, longer after a bigger tree. |
 | 6 | At 10 try a tall tree; at 25 the same; at 25 a dark oak (2x2), then at 50. | Too big for your level: one log, and the HUD gives the limit (6 logs at 10, 24 at 25). Giant trunks fall from 50. |
-| 7 | Sneak + cut a log of one of your own log builds. Then put a plank or a torch against a natural tree's trunk and Sneak + cut that tree; then a short fence of logs against another tree's base. | One log only, each time: Felling brings down only trees the world grew, never a tree a build touches, and never one with logs built against its base (the HUD says which). Your old builds and villages stay standing. |
+| 7 | Sneak + cut a log of one of your own log builds. Then put a plank or a torch against a tree's trunk and Sneak + cut that tree; then a short fence of logs against another tree's base. | One log only, each time: Felling brings down only trees with their own leaves, never a tree a build touches, and never one with logs built against its base (the HUD says which). Your old builds and villages stay standing. |
 | 8 | At 75, fell a tree. | Half a second later its leaves come down too, with their saplings, sticks and apples. |
 | 9 | Get a **heartwood** (rare from natural logs; for testing, `/cerb gather item heartwood`). Craft it with an axe, then with a bow. | The axe gets a **heartwood grip**: the Stats page's Chopping speed rises while you hold it. The bow gets **heartwood limbs** (draw speed). Quality, enchantments and name stay; a second grip on the same axe isn't offered. Heartwood can't be placed, burnt, smelted or made into planks, and a crafter block won't use it. |
 | 10 | At Woodcutting 50 or more, watch how many logs you get. | Fortune for wood: about one extra log in eight at 50, one in four at 100. Mining's Fortune doesn't add logs, and Woodcutting's doesn't add ore. |
 | 11 | The Player Menu → Skills → Utility → Woodcutting, and → Stats. | What a level gives (Vitality, Fortune on wood, chopping speed), what Felling takes at your level, the heartwood chance, and the woods you have discovered and the ones still to find. On the Stats page, Fortune by where it counts and Chopping speed. |
 | 12 | Overall feel. | Too slow, too fast, Felling too strong, the rest too long, heartwood too rare? Every number is in `resources.yml` and `attributes.yml`. |
 
-## 12. Afterwards
+## 12. Your feedback: grown trees and Smithing's growth
+
+The two changes from your Woodcutting playtest (`docs/STATUS.md` → "Done: grown trees and Smithing's growth"). **Plant new saplings for these:** a tree that grew before this build was recorded as placed and still pays nothing.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Cut a few logs of a wild tree with an axe (Woodcutting 15 or so; birch or oak). | 4 XP a log, as before. |
+| 2 | Plant a sapling, let it grow on its own (or wait near it), and cut or fell it. | 80% of a wild tree's XP (3.2 a birch log; the XP display shows the whole points). Once every few minutes the HUD says "Trees grown from saplings pay 80% of a wild tree's Woodcutting XP". At Woodcutting 10, Sneak + cut fells it. |
+| 3 | Plant a sapling, bone-meal it (by hand, or with a dispenser and a button), and cut or fell it. | Half (2 XP a birch log), no heartwood; the HUD says so now and then. Felling works. |
+| 4 | Place a log and cut it with an axe. If a tree you grew before this build is still standing, cut it too. | No XP; the HUD says "Logs placed by hand pay no Woodcutting XP; trees grown from saplings do", and for the old tree "This tree grew before grown trees paid…". |
+| 5 | Put a plank against a grown tree's trunk and Sneak + cut it. | One log only, as for a wild tree: Felling never takes a tree a build touches. |
+| 6 | Player Menu → Skills → Utility → **Smithing**. | "Each level gives: +0.25 Fortitude, +0.3% wear resistance", what they give you now and at the next level (armor, defense bar, resistances, wear resistance), both live; Next levels still shows the forged-quality odds. No more "This skill gives no attribute points or speed". |
+| 7 | Player Menu → Stats → Speed & handling. | A Wear resistance line (20% at Smithing 100). The Fortitude tile lists Smithing among its skills. |
+| 8 | Level Smithing (smelt or forge something) and read the level-up line. | It names Fortitude and Wear resistance with their before → after values. |
+| 9 | At a high Smithing level, use a pickaxe or sword for a while and watch its durability bar. | It wears more slowly: at Smithing 100 about one point in five is never taken (Unbreaking still counts first). During a PvP fight it wears as usual, like the other secondary stats. |
+| 10 | Overall feel. | Too much, too little? `attributes.yml`: `Smithing:` under `skills` (Fortitude) and under `secondary.skills` (wear resistance), the cap under `secondary.stats.wear-resistance`; `resources.yml`: `woodcutting.grown` and `woodcutting.bone-meal`. |
+
+## 13. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

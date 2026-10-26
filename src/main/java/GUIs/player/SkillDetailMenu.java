@@ -184,7 +184,7 @@ public final class SkillDetailMenu extends PlayerMenu {
                     : ChatColor.DARK_GRAY + "✘ " + ChatColor.GRAY + r.displayName() + ChatColor.DARK_GRAY + " · level " + r.level() + " · " + axe);
         }
         l.gap();
-        for (String w : PlayerTheme.wrap("The first natural log of each wood pays a discovery bonus, once.", SkillView.WIDTH)) l.text(w);
+        for (String w : PlayerTheme.wrap("The first log of each wood you cut from a tree pays a discovery bonus, once.", SkillView.WIDTH)) l.text(w);
         return Ui.item(Material.OAK_SAPLING, ChatColor.GOLD + "Woods: " + have + " of " + woods.size() + " discovered", l.build());
     }
 
@@ -217,7 +217,7 @@ public final class SkillDetailMenu extends PlayerMenu {
         for (AttributeRules.StatWeight w : speed) {
             if (seenStats.add(w.stat())) l.raw(ChatColor.AQUA + w.stat().displayName + ": " + AttributeView.secondaryLabel(svc.secondaryEffect(w.stat())));
         }
-        if (!speed.isEmpty() && !rules.secondary().inPvp()) l.raw(ChatColor.DARK_GRAY + "Speed bonuses pause during PvP combat.");
+        if (!speed.isEmpty() && !rules.secondary().inPvp()) l.raw(ChatColor.DARK_GRAY + "Speed and handling bonuses pause during PvP combat.");
         return Ui.item(main != null ? AttributeView.icon(main) : Material.FEATHER, ChatColor.GOLD + "Attributes & speed", l.build());
     }
 

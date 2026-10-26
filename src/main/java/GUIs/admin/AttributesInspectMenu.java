@@ -83,6 +83,7 @@ final class AttributesInspectMenu extends AdminMenu {
                 .stat("  Attack speed (sword / axe)", Fmt.signedPct(s.attackSpeed(WeaponClass.SWORD)) + " / " + Fmt.signedPct(s.attackSpeed(WeaponClass.AXE)))
                 .stat("  Bow draw / movement", Fmt.signedPct(s.secondary(Attributes.Stat.DRAW_SPEED)) + " / " + Fmt.signedPct(s.secondary(Attributes.Stat.MOVE_SPEED)))
                 .stat("  Spell cooldown recovery", Fmt.signedPct(s.secondary(Attributes.Stat.COOLDOWN_RECOVERY)))
+                .stat("  Wear resistance", Fmt.pct(s.secondary(Attributes.Stat.WEAR_RESISTANCE)))
                 .stat("  PvP", plugin.getSecondaryEffects() != null && plugin.getSecondaryEffects().paused(targetId)
                         ? "tagged: bonuses paused" : rules.secondary().inPvp() ? "bonuses apply in PvP" : "not tagged (bonuses pause when tagged)");
         v.set(13, Ui.item(Material.BLAZE_POWDER, ChatColor.GOLD + "Combat outcomes", out.build()));

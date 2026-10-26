@@ -274,7 +274,7 @@ public final class GatheringCatalog {
             }
             List<String> lines = new ArrayList<>();
             if (trees) {
-                lines.add("Cut logs of natural trees with an axe in survival: " + String.join(", ", parts) + " XP each.");
+                lines.add("Cut the logs of trees with an axe in survival: " + String.join(", ", parts) + " XP each.");
                 if (!axes.isEmpty()) {
                     lines.add("Harder woods want a better axe for full XP (" + String.join(", ", axes) + "); a weaker one pays "
                             + Math.round(weakToolFactor * 100) + "%.");
@@ -286,7 +286,10 @@ public final class GatheringCatalog {
                 lines.add("Each block has a level (stone 1, deeper ores more); " + weakGap + "+ levels above it you get "
                         + Math.round(weakFactor * 100) + "% of its XP.");
             }
-            if (trees) lines.add("Logs players place, and trees grown from saplings, give nothing. The first log of each wood is a discovery.");
+            if (trees) {
+                lines.add("Trees grown from saplings pay " + Math.round(wood.grown().xp() * 100) + "% (with bone meal "
+                        + Math.round(wood.boneMeal().xp() * 100) + "%); logs players place give nothing. The first log of each wood is a discovery.");
+            }
             else lines.add("Blocks placed by players, made by lava and water, or moved by pistons give nothing. Silk Touch keeps the XP.");
             out.put(skill, lines);
         });
@@ -638,7 +641,18 @@ public final class GatheringCatalog {
             heartwood = null;
         }
         double factor = w.getDouble("heartwood.level-factor", d.levelFactor());
-        return new WoodRules(at, giant, rest, halved, canopy, reach, minLeaves, heartwood, factor);
+        return new WoodRules(at, giant, rest, halved, canopy, reach, minLeaves, heartwood, factor,
+                share(w, "grown", d.grown(), problems), share(w, "bone-meal", d.boneMeal(), problems));
+    }
+
+    /** {@code woodcutting.<key>}: the share of a wild tree's XP and heartwood a grown tree pays (each 0-1), or {@code dflt}. */
+    private static WoodRules.Share share(ConfigurationSection w, String key, WoodRules.Share dflt, List<String> problems) {
+        double xp = w.getDouble(key + ".xp", dflt.xp()), heartwood = w.getDouble(key + ".heartwood", dflt.heartwood());
+        if (!(xp >= 0 && xp <= 1) || !(heartwood >= 0 && heartwood <= 1)) {
+            problems.add("woodcutting." + key + ": xp and heartwood are shares from 0 to 1 - using " + dflt.xp() + " and " + dflt.heartwood());
+            return dflt;
+        }
+        return new WoodRules.Share(xp, heartwood);
     }
 
     /** A material by name, without the server's registry (unit tests read the shipped file too). */

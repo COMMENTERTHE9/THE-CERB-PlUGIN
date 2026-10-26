@@ -17,6 +17,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -28,9 +29,10 @@ import java.util.UUID;
 /**
  * Puts the speed and handling stats into the game (docs/design/ATTRIBUTE_EXPANSION.md):
  * attack, movement and gathering (block breaking) speed as temporary attribute modifiers (never
- * saved with the player), bow draw speed when an arrow is released, and the spell cooldown through
- * {@link #cooldownMs}. Everything runs on the player's own region thread, only when something
- * changes (snapshot rebuilt, main hand changed, PvP tag started or ended): no per-tick work.
+ * saved with the player), bow draw speed when an arrow is released, the spell cooldown through
+ * {@link #cooldownMs}, and wear resistance when the game wears an item down. Everything runs on the
+ * player's own region thread, only when something changes (snapshot rebuilt, main hand changed,
+ * PvP tag started or ended) or the game asks: no per-tick work.
  */
 public final class SecondaryEffects implements Listener {
 
@@ -98,7 +100,39 @@ public final class SecondaryEffects implements Listener {
         return Math.max(50, Math.round(baseMs / (1.0 + Math.max(-0.5, r))));
     }
 
+    /**
+     * Of {@code damage} points of wear, how many still land when each is avoided with {@code chance}: one roll per point
+     * (at most {@link #WEAR_ROLLS}; a larger amount keeps its expected share). Pure, unit-tested.
+     */
+    public static int wearKept(int damage, double chance, java.util.function.DoubleSupplier random) {
+        if (damage <= 0 || !(chance > 0) || !Double.isFinite(chance)) return damage;
+        double c = Math.min(1.0, chance);
+        if (damage > WEAR_ROLLS) return (int) Math.round(damage * (1.0 - c));
+        int kept = 0;
+        for (int i = 0; i < damage; i++) if (random.getAsDouble() >= c) kept++;
+        return kept;
+    }
+
+    /** Wear rolled point by point up to this much at once (a tool loses 1 or 2 a use; armour about a quarter of the hit). */
+    static final int WEAR_ROLLS = 64;
+
     // ── Events ───────────────────────────────────────────────────
+
+    /**
+     * Wear resistance (Smithing's, docs/design/SKILL_PROGRESSION.md): each point of wear the game puts on a tool, weapon
+     * or piece of armour (after Unbreaking) is avoided with this chance. Paused in PvP combat like the other bonuses.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onItemDamage(PlayerItemDamageEvent e) {
+        int damage = e.getDamage();
+        if (damage <= 0) return;
+        double chance = active(e.getPlayer().getUniqueId(), Stat.WEAR_RESISTANCE);
+        if (!(chance > 0)) return;
+        int kept = wearKept(damage, chance, java.util.concurrent.ThreadLocalRandom.current()::nextDouble);
+        if (kept == damage) return;
+        if (kept <= 0) e.setCancelled(true);
+        else e.setDamage(kept);
+    }
 
     /** Attack speed depends on the weapon type in hand. */
     @EventHandler(priority = EventPriority.MONITOR)

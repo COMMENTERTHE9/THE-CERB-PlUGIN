@@ -263,11 +263,29 @@ TPS was 19.93–20.00 in every run.
 - **Crafting:** the upgrade listener now looks at a grid's materials before anything else, so ordinary crafting never pays for a recipe lookup. Its own cost is 3–5 samples a minute. The rest of the gap is in code this loop didn't touch (the HUD redraw, the forge listener) and is about the spread between two runs of one build (0.055 vs 0.036 before).
 - **A first `craft` set taken after an hour of tests** read 0.076 / 0.053, with twice the region-thread samples of a fresh server. **Method note:** restart before each set, as for mobs and mob spawning.
 
+## Grown trees and Smithing's wear resistance (2026-10-26)
+
+**What it adds to frequent events:** every log or ore broken now reads its origin from the chunk's marks (up to three binary searches in small sorted arrays, from the same per-chunk cache); a tree scan does the same per log; every point of wear on a tool, weapon or armour piece goes through `SecondaryEffects.onItemDamage` (one cached-snapshot lookup, one roll). Growth marks are written when a sapling grows (one region task a tick later for random-tick growth).
+
+**Method:** as above (9 bots, 80 s load, a warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), mobs cleared and spawning off, each build right after a restart. **Before:** the Woodcutting build (d116bb0) with its own shipped files. **After:** the build committed with this section. TPS 19.9–20.0 throughout.
+
+| Load | Before, ms per tick (two runs) | After | Work per bot in 80 s |
+|---|---|---|---|
+| `gather` | 0.039 / 0.015 | 0.030 / 0.017 | 127 stone, 10 ore (a pickaxe's wear per block) |
+| `wood`, first comparison | 0.029 / 0.018 | 0.052 / 0.024; two more: 0.056 / 0.051 | 142 logs |
+| `wood`, the builds alternated (before, after, before, after), bots from Woodcutting 1 every run | 0.060 / 0.036, 0.078 / 0.033 | 0.048 / 0.042, 0.051 / 0.038 | 141 logs |
+| `felling` | 0.049 / 0.052 | 0.056 / 0.048 | 46–48 fellings, about 97 cuts |
+| `combat` | 0.102 / 0.083 | 0.105 / 0.082 | 110 hits (a sword's wear per hit) |
+
+- **The new code barely shows in the profile:** `onItemDamage` 0–1 samples per 60 s run, the origin lookups (`PlacedBlocks.marks`, `pack`) 0–1, while 9 bots mined, chopped or fought non-stop. Tree scans are 6–7 samples a run against 5–6 before, and the felling steps the same (7–12 on both builds).
+- **`wood` first looked slower after the change** (0.05 against 0.02–0.03). The extra samples were in the skill saves, the XP display's HUD line and the level-up path, none of which this change touches. The cause was the test, not the build: `load.js` didn't set the bots' Woodcutting level, so the two sessions ran at different levels, with different numbers of level-ups and XP lines. With every run starting at Woodcutting 1 (`load.js` now does this) and the builds alternated on fresh restarts, the change reads the same or lower (0.038–0.051 against 0.033–0.078). **Method note:** a load that pays XP must set the skill level it starts from.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.
+- **Grown trees and wear resistance:** met; the new handlers don't show in the profile.
 - **Woodcutting:** met. Cutting wood costs what it did; Felling costs about what cutting the same logs by hand would. It runs 8 logs a tick, does nothing per tick when idle, and writes nothing to the database per block. For Farming or Fishing: add a load for the loop (`load.js`), measure before and after on freshly restarted servers, and look at the XP display's HUD line, which is now the largest per-gain cost.
 - **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

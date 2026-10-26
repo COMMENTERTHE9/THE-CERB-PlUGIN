@@ -26,7 +26,8 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
 - **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage needs your decision (Decisions, item 14).
 - **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10).
-- **Done:** **Woodcutting**, the second complete gathering loop: eleven woods, Felling and the Canopy as milestone techniques, heartwood upgrades, discoveries, and protection for builds, claims and Folia regions (section "Done: Woodcutting" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §11). **Next:** your playtest, then Farming or Fishing, one complete loop.
+- **Done:** **Woodcutting**, the second complete gathering loop: eleven woods, Felling and the Canopy as milestone techniques, heartwood upgrades, discoveries, and protection for builds, claims and Folia regions (section "Done: Woodcutting" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §11).
+- **Your Woodcutting playtest (2026-10-26):** trees grown from saplings now pay Woodcutting XP (80%, with bone meal 50%; placed logs nothing), and Smithing grows Fortitude and a new wear resistance (section "Done: grown trees and Smithing's growth" below; checklist §12). **Next:** your playtest, then Farming or Fishing, one complete loop.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -690,7 +691,7 @@ The way into the Mage is still yours to decide (Decisions, item 14, with options
   - by hand the wood drops with no XP, and the HUD says to use an axe;
   - too weak an axe pays a quarter, and the HUD names the axe that pays in full;
   - a wood 20 or more levels below you pays a quarter, as weak ore and weak mobs do.
-- **Placed, moved and grown logs pay nothing.** A log a player places, a piston moves or a sapling grows into gives its wood only: no XP, no Felling, no rare drop, no discovery. Planting and bone-mealing trees never pays.
+- **Placed, moved and grown logs pay nothing.** A log a player places, a piston moves or a sapling grows into gives its wood only: no XP, no Felling, no rare drop, no discovery. Planting and bone-mealing trees never pays. *(Changed after your playtest: grown trees now pay 80%, bone meal 50%; see "Done: grown trees and Smithing's growth".)*
 - **What a level gives:**
   - Vitality 0.25;
   - Fortune for wood 0.5: an extra log, about 1 in 8 at level 50 and 1 in 4 at 100;
@@ -768,6 +769,52 @@ The way into the Mage is still yours to decide (Decisions, item 14, with options
 - **Felling** with 9 players felling non-stop (about 5 trees a second across the server): 0.05–0.08 ms per tick, about what cutting those logs by hand costs.
 - **Mining** is unchanged (`gather` 0.019 / 0.019 against 0.019 / 0.022).
 - **Crafting** reads 0.066 / 0.050 against 0.055 / 0.036. The upgrade listener is 3–5 samples a minute of that; the rest is in code this loop didn't touch and within the run-to-run spread.
+
+## Done: grown trees and Smithing's growth (2026-10-26, your Woodcutting playtest)
+
+**What you found:**
+1. **A tree you chopped paid no XP.** Investigated on the build you played: trees the world generated paid in every test, in brand-new chunks and old ones (oak 4, birch 4 a log, a /place-feature birch 28 for 7 logs). A tree grown from a planted sapling, with or without bone meal, paid nothing, Felling refused it, and no message said why. So your tree was almost certainly one grown from a sapling: the rule as designed then, not a bug in natural trees. The silence was a real flaw.
+2. **Smithing's page said "This skill gives no attribute points or speed."** True: Smithing raised only the forged-quality odds, which broke the rule that every skill grows your character.
+
+**Now: where a log came from decides what it pays** (`docs/design/WOODCUTTING.md` §5):
+
+| Tree source | XP per log | Heartwood | Felling |
+|---|---|---|---|
+| Generated with the world | 100% | full chance | yes |
+| Planted by a player, grown on its own | 80% | 80% of the chance | yes |
+| Grown with bone meal | 50% | none | yes |
+| Logs placed by hand (or moved by a piston) | 0 | none | no |
+
+- **How:** the world's trees are generated; a planted tree grows through the game's grow event, and any bone meal (yours or a dispenser's) is followed by a fertilize event, which marks the tree bone-meal grown. The chunk's own memory records grown and bone-meal logs next to the placed ones (two new keys in chunk data; the existing placed-block data is read as before, nothing is rewritten).
+- **Felling** takes grown trees, with every protection as before: never a placed log, never a tree a build touches, never a base wider than a trunk, every log offered to protection plugins, region-thread ownership checked at every step.
+- **The HUD explains** a smaller number now and then ("Trees grown from saplings pay 80%…", "Trees grown with bone meal pay 50%… and no heartwood"), and a placed log cut with an axe says why it pays nothing.
+- **Anti-farming without punishing forestry:** bone meal pays half and no heartwood; every log needs your own axe (machines, TNT, creative pay nothing); Felling keeps its rest; oak and birch pay a quarter 20+ levels above them, so a high-level farm needs harder woods; placed and piston-moved logs never pay. Discoveries and Fortune for wood work on any tree.
+- **Trees grown before this build** were recorded as placed and still pay nothing; cutting one, the HUD says it grew before grown trees paid. Cut them and plant new ones.
+- **Numbers:** `resources.yml` → `woodcutting.grown` (xp 0.8, heartwood 0.8) and `woodcutting.bone-meal` (xp 0.5, heartwood 0).
+
+**Smithing now grows your character,** through the same attribute engine, with its forged-quality odds unchanged (`docs/design/SKILL_PROGRESSION.md`):
+- **Fortitude +0.25 a level** (heat and endurance at the forge): at 100, +25 Fortitude = +2.5% armor, a 25% larger defense bar, +5% resistances. All four Fortitude skills at 100 give 225 (cap 300), still inside the armor and resistance limits.
+- **Wear resistance** (new secondary stat): each point of wear the game puts on a tool, weapon or armour piece is avoided with this chance, after Unbreaking. 3% at Smithing 10, 7% at 25, 12% at 50, 20% at 100 (+0.3% a level with diminishing returns, cap 35%). It pauses in PvP combat like the other secondary stats (`docs/ROADMAP.md` → PvP).
+- **Shown:** the Smithing page (each level, now, now → next level, at the milestones, both "Active"), the Stats page (Speed & handling: Wear resistance), the Fortitude tile, the level-up line, the admin inspector. Smithing's description now reads "Smelting metal, forging gear and keeping it in shape."
+- **Delivered:** an unedited `attributes.yml` is refreshed (the old copy kept as `.old.N`); an edited one keeps your numbers and gets Smithing's entries from the plugin's own file, with a log line saying so (`Smithing: []` turns them off).
+
+**Found by the independent review, and fixed** (a separate reviewer read the whole change, checked the server's own code for how each event is fired, then re-read the fixes):
+1. **A dispenser's bone meal counted as "grown on its own"** (80% and heartwood instead of 50% and none): the server reports dispenser bone meal to the grow event as not bone meal. Every kind of bone meal (a player's, a dispenser's, another plugin's) is followed by a fertilize event, so bone meal is now taken from that event; growth with none (random ticks) settles as grown a tick later. A dispenser case is in the harness.
+2. **Marks were written before the growth was final:** a protection plugin cancelling the bone meal left marks where nothing grew. They are now written only once nothing can cancel the growth.
+3. **Wind charges cleared the placed-block memory** (older than this change, found while reviewing it): a wind charge's burst reports every block it reached without breaking any, and the memory forgot them all. A placed ore hit by one paid full Mining XP, and with Silk Touch the ore came back to be placed again, without end; this change would have let it lift bone-meal logs to 100% too. Only an explosion that destroys blocks clears marks now, checked in game with a trapdoor proving the burst reached the block.
+4. **Hints:** a tree grown before this build said "logs placed by hand…" (now it says it grew before grown trees paid, judged from the whole tree, not the cut log's neighbours); the grown-tree line could be replaced on the HUD by a Felling refusal or a heartwood line in the same cut (now it shows only when nothing else did); a grown tree of a wood with custom drops (none ship) had the wrong line and a wrong `/cerb gather tree` share.
+5. **Wear resistance's cap** accepted values up to 2, so a server file could make gear unbreakable; it is now at most 0.9.
+
+**Checks** (on the final build unless noted):
+- **Tree sources** (`woodcutting.js sources`, 8 checks, each source on its own with Felling I at Woodcutting 15): a `/place feature` birch 4 XP a log (28 for 7); bone meal 2 a log, with the HUD line; a dispenser's bone meal 2 a log; grown on its own 3.2 a log (22 for 7); a placed log nothing, with the HUD line, and still nothing after a wind charge reached it; a grown tree a plank touches left standing (one log, 2 XP). **Wild trees** in chunks generated for the test: 4 XP a log, exactly.
+- **Smithing** (`gathering.js smithing`, 9 checks): Smithing 1 → 100 adds 24.75 Fortitude and 20.2% wear resistance; in a real hit, +2.5% armor and +5% fire resistance; in real mining with a pickaxe, wear 100 of 100 at Smithing 1 and 77 of 100 at 100 (a 400-block run: 317 of 400, 20.8% avoided); while a player's hits keep the bot in PvP combat all 30 points land, and after the tag 26 of 30; a forged sword's level-up names both gains. **Menus** (`menu.js smithing`, 11 checks): the Smithing tile and page (each level, now, now → next level, milestones with the forged-quality odds still there, both "Active"), the Stats page line.
+- **Woodcutting and gathering on the final build:** `woodcutting.js` cut, sources, wild, felling, fortune, speed 39/39; protect, heartwood, custom, canopy, machines 23/23; `gathering.js farm` 12/12 (with the wind charge on a placed ore).
+- **An upgrade from the build you played, with both config files edited** (as yours may be after the mining playtest): a birch grown with bone meal on the old build still pays nothing after the update, and the HUD says it grew before grown trees paid, while one grown afterwards pays half (2/2); every tree source as above (8/8); Smithing's Fortitude and wear resistance arrive although `attributes.yml` is edited (9/9), with two log lines saying so; both files stay untouched on disk.
+- **Each fix reproduced on a build without it:** on the Woodcutting build, a placed ore hit by a wind charge (the trapdoor on it opened) paid 8 Mining XP when mined (0 now); on this change's first build, a placed log hit by one paid 4 (0 now), and a dispenser's bone-meal birch paid 16 XP for 5 logs, 80% (2 a log now).
+- **Regression** (the first build, before the review's fixes; the fixes touched only the placed-block memory, hints, the admin tool and the Stats text, re-checked above): smoke 14/14; `gathering.js` all 75/75, custom 9/9; `menu.js` nav 63/63 (again 63/63 on the final build), motion 22/22, names 4/4; `progression.js` speed 13/13, stats 14/14; `levelup.js` 19/19, requires 6/6; `woodcutting.js` discover 4/4. Two checks failed in that first run, both from test-area leftovers rather than the plugin: a tree built where an earlier test run had left placed-log marks (`/fill` clears blocks, not the memory; a probe found such marks at three old test spots), and a test tree already discovered by the test character. The harness now uses a fresh area each time and a new test wood each run; both pass.
+- **Unit tests:** 254 (240 before), including `ChunkMarksTest` (origins, one mark per position, only changed sets written, which explosions clear marks), `WoodRulesTest` (shares), `GatheringTest` (parsing, what pays nothing), `AttributesConfigDeliveryTest` (Smithing on an older file, wear resistance's curve and cap), `LevelUpsTest` (Smithing's level-up), `WearResistanceTest`.
+
+**Performance** (`docs/PERFORMANCE.md`; 9 players, before and after on fresh restarts, TPS 19.9–20.0): mining 0.030 / 0.017 ms per tick against 0.039 / 0.015 before, Felling 0.056 / 0.048 against 0.049 / 0.052, combat 0.105 / 0.082 against 0.102 / 0.083, chopping the same or lower once the bots start each run at the same level (alternated builds: 0.038–0.051 against 0.033–0.078). The wear-resistance handler and the origin lookups take 0–1 samples a minute.
 
 ## Roadmap
 

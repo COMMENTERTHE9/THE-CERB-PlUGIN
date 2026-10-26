@@ -3,7 +3,8 @@
 //   mine      - Mining XP per resource, the weak-resource rule, vanilla's tool rule (iron ore and a wooden pickaxe: no drop,
 //               no XP), bare hands; gathering speed from Mining (the block_break_speed attribute)
 //   farm      - every "can't be farmed" row, each with a positive control: place and break, Silk Touch (XP, no bonus; the
-//               block placed again pays nothing), a lava-and-water generator, a piston, TNT, creative mode
+//               block placed again pays nothing), a lava-and-water generator, a piston, TNT, a wind charge (it reaches a
+//               placed ore without breaking it: still placed), creative mode
 //   fortune   - the bonus at the 50% cap: one extra item at most, about half the time, and never on a torch standing on the
 //               ore; never with Silk Touch; rare at low Fortune; on top of the Fortune enchantment, never multiplied by it
 //   smelt     - smelting XP when a player takes the metal: once per take (a furnace that smelted two kinds of input), a
@@ -21,6 +22,11 @@
 //               put back; needs SERVER_DIR): refused with a pickaxe, gathered with the drill, a machine's extraction, a placed
 //               one; the refusal message takes priority over the XP line
 //   xpdisplay - the real-time XP display: compact (merged gains), detailed, off
+//   smithing  - Smithing's own growth (docs/design/SKILL_PROGRESSION.md): +0.25 Fortitude a level (armor and fire
+//               resistance in a real hit's combat trace, Smithing 1 against 100), wear resistance (100 stone mined with
+//               a pickaxe at each level: about a fifth of the wear avoided at 100, none at 1; paused while a player's
+//               hits keep the bot in PvP combat, back once the tag ends; brings in CerbTarget), and the level-up line
+//               a forged sword brings naming both
 //   persist-set / persist-check - a placed ore, Mining XP, a forged item and the XP display setting survive a restart
 //               (STATE=<file> keeps what persist-set recorded)
 const mineflayer = require('mineflayer');
@@ -66,7 +72,8 @@ async function setLevel(name, level) { await cmd(`/cerb skill ${NAME} ${name} le
 let X = 0, Y = 0, Z = 0;
 async function arena(fixed = null) {
   const sp = bot.spawnPoint || bot.entity.position;
-  const off = fixed != null ? fixed : 300 + (Date.now() % 40) * 48;
+  // A fresh area each call: placed-block marks live in chunk data and outlive /fill (an earlier run's would carry over).
+  const off = fixed != null ? fixed : 300 + (Date.now() % 20000) * 48;
   X = Math.floor(sp.x) + off; Y = 120; Z = Math.floor(sp.z) + 300;
   await cmd('/gamemode creative', 300);
   await cmd(`/tp @s ${X + 0.5} ${Y + 1} ${Z + 0.5}`, 1000);
@@ -319,7 +326,29 @@ async function farm() {
   await cmd(`/fill ${X - 6} ${Y - 1} ${Z - 6} ${X + 18} ${Y - 1} ${Z + 6} glass`, 400);
   await cmd('/kill @e[type=item,distance=..30]', 300);
 
-  // 6. Creative mode
+  // 6. A wind charge: its burst reaches blocks without breaking them, and once made a placed ore natural (then mined for
+  //    full XP, silk-touched back and placed again, without end). The ore must stay placed.
+  await stand(0, 0);
+  await give('iron_ore', 1); await hold('iron_ore');
+  try { await bot.placeBlock(bot.blockAt(at(2, -1, 0)), new Vec3(0, 1, 0)); } catch (e) { /* checked below */ }
+  await sleep(500);
+  const windPlaced = blockName(2, 0, 0) === 'iron_ore';
+  await setblock(2, 1, 0, 'oak_trapdoor[open=false]'); // the burst opens it: proof that it reached the ore
+  await give('wind_charge', 2); await hold('wind_charge');
+  await look(2, 0, 0);
+  bot.activateItem(); await sleep(150); bot.deactivateItem();
+  await sleep(1200);
+  const reached = !!(bot.blockAt(at(2, 1, 0)) && bot.blockAt(at(2, 1, 0)).getProperties().open);
+  await setblock(2, 1, 0, 'air');
+  await stand(0, 0);
+  await hold('iron_pickaxe');
+  before = await mining();
+  await dig(2, 0, 0);
+  check('A placed ore hit by a wind charge (the trapdoor on it opened), then mined: still no XP', windPlaced && reached
+    && blockName(2, 0, 0) === 'air' && (await mining()) === before, `placed=${windPlaced}, burst reached=${reached}, +${(await mining()) - before}`);
+  await cmd('/kill @e[type=item,distance=..10]', 300);
+
+  // 7. Creative mode
   await cmd('/gamemode creative', 400);
   await setblock(2, 0, 0, 'iron_ore');
   before = await mining();
@@ -759,6 +788,145 @@ async function gear() {
   await cmd('/clear @s', 300);
 }
 
+// ── Smithing's own growth ─────────────────────────────────────────
+/** /cerb gather info: Fortitude, wear resistance and the held item's wear, as the server has them. */
+async function gatherInfo() {
+  const a = await cmd('/cerb gather info', 900);
+  const t = chat.slice(a).join(' ');
+  const m = t.match(/Fortitude ([\d.]+),.*?wear resistance ([\d.]+)%/);
+  const w = t.match(/wear (\d+)\/(\d+)/);
+  return { fort: m ? Number(m[1]) : NaN, wearRes: m ? Number(m[2]) / 100 : NaN, wear: w ? Number(w[1]) : NaN, max: w ? Number(w[2]) : NaN };
+}
+/** One exact hit (/damage) with full health, its combat trace's reductions (1 decimal of 100: 0.1%). */
+async function hitShares(type) {
+  await cmd(`/cerb heal ${NAME}`, 900);
+  const a = await cmd(`/damage ${NAME} 100 ${type}`, 1300);
+  const t = chat.slice(a).find(m => /\[Combat\].*Final/.test(m)) || '';
+  const steps = [...t.matchAll(/(\w+)(?:\(([^)]*)\))?: (-?[\d.]+)/g)].map(m => ({ step: m[1], v: Number(m[3]) }));
+  const share = name => { const i = steps.findIndex(x => x.step === name); return i > 0 ? 1 - steps[i].v / steps[i - 1].v : 0; };
+  return { trace: t, armor: share('Armor'), resist: share('ElemResist') };
+}
+/** Wear `n` stone blocks put on a fresh pickaxe; how much wear it took and how many blocks broke. */
+async function wearOver(n) {
+  await cmd('/clear @s netherite_pickaxe', 300);
+  await give('netherite_pickaxe[enchantments={efficiency:5}]'); await hold('netherite_pickaxe');
+  const w0 = (await gatherInfo()).wear;
+  let broke = 0;
+  for (let i = 0; i < n; i++) {
+    await setblock(2, 0, 0, 'stone', 150);
+    await dig(2, 0, 0, true, 100);
+    if (blockName(2, 0, 0) === 'air') broke++;
+  }
+  const w1 = (await gatherInfo()).wear;
+  return { wear: w1 - w0, broke };
+}
+
+async function smithingGrowth() {
+  await arena();
+  // Only Smithing moves; the other Fortitude skills stay at 1. First Aid 100 (Vitality, no Fortitude) keeps a 100 hit survivable.
+  for (const s of ['Survival', 'Heavy_Armor_Training', 'Defensive_Magic']) await setLevel(s, 1);
+  await setLevel('First_Aid', 100);
+  await stand(0, 0);
+  await setblock(2, 0, 0, 'stone');
+  await look(2, 0, 0);
+  await setLevel('Smithing', 1);
+  const low = await gatherInfo();
+  await setLevel('Smithing', 100);
+  const high = await gatherInfo();
+  check('Smithing 100: +24.75 Fortitude over Smithing 1 (0.25 a level, through the attribute engine)', Math.abs(high.fort - low.fort - 24.75) < 1e-6,
+    `${low.fort} -> ${high.fort}`);
+  check('...and wear resistance 20.2% (0.3% at Smithing 1)', Math.abs(high.wearRes - 0.2015) < 0.001 && Math.abs(low.wearRes - 0.003) < 0.0005,
+    `${(low.wearRes * 100).toFixed(2)}% -> ${(high.wearRes * 100).toFixed(2)}%`);
+
+  // Fortitude in a real hit: armor +0.1% and fire resistance +0.2% a point (no armor worn, so only Fortitude shows).
+  await cmd('/effect clear @s resistance', 300);
+  if (!(await debugOn(true))) console.log('  (could not turn combat debug on)');
+  await setLevel('Smithing', 1);
+  await sleep(500);
+  const hit1 = await hitShares('minecraft:generic'), fire1 = await hitShares('minecraft:in_fire');
+  await setLevel('Smithing', 100);
+  await sleep(500);
+  const hit100 = await hitShares('minecraft:generic'), fire100 = await hitShares('minecraft:in_fire');
+  await debugOn(false);
+  await cmd(`/cerb heal ${NAME}`, 600);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
+  console.log('  Smithing 1:   ' + hit1.trace + '\n                ' + fire1.trace);
+  console.log('  Smithing 100: ' + hit100.trace + '\n                ' + fire100.trace);
+  check('A real hit at Smithing 100: +2.5% armor reduction from its Fortitude', Math.abs(hit100.armor - hit1.armor - 0.02475) < 0.0015,
+    `${(hit1.armor * 100).toFixed(1)}% -> ${(hit100.armor * 100).toFixed(1)}%`);
+  check('...and +5% fire resistance', Math.abs(fire100.resist - fire1.resist - 0.0495) < 0.0015,
+    `${(fire1.resist * 100).toFixed(1)}% -> ${(fire100.resist * 100).toFixed(1)}%`);
+
+  // Wear resistance in real mining: N stone (WEAR_BLOCKS, 100 by default) with a pickaxe at each level (1 wear a block
+  // without it). At Smithing 100 a fifth is avoided: 80 of 100 expected, sd 4; the bounds are about 3.5 sd.
+  const N = Number(process.env.WEAR_BLOCKS || 100);
+  await cmd('/effect give @s haste infinite 1 true', 300);
+  await setLevel('Smithing', 1);
+  const w1 = await wearOver(N);
+  await setLevel('Smithing', 100);
+  const w100 = await wearOver(N);
+  // Paused in PvP combat like the other secondary stats: hit by a player now and then, the wear lands in full; once the
+  // tag ends it is avoided again (30 blocks with none avoided at 20% would happen 1 time in 800).
+  await cmd('/effect clear @s resistance', 300);
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  other.on('messagestr', () => {});
+  other.on('kicked', () => {});
+  await new Promise(r => other.once('spawn', r));
+  await sleep(1000);
+  await cmd('/gamemode survival CerbTarget', 400);
+  const tag = async () => {
+    await cmd('/tp CerbTarget ' + NAME, 700);
+    const me = Object.values(other.entities).find(e => e.type === 'player' && e.username === NAME);
+    if (me) { await other.lookAt(me.position.offset(0, 1.5, 0), true); other.attack(me); }
+    await sleep(400);
+  };
+  await cmd('/clear @s netherite_pickaxe', 300);
+  await give('netherite_pickaxe[enchantments={efficiency:5}]'); await hold('netherite_pickaxe');
+  let pw0 = (await gatherInfo()).wear, pvpBroke = 0;
+  for (let i = 0; i < 30; i++) {
+    if (i % 8 === 0) { await tag(); await hold('netherite_pickaxe'); }
+    await setblock(2, 0, 0, 'stone', 150);
+    await dig(2, 0, 0, true, 100);
+    if (blockName(2, 0, 0) === 'air') pvpBroke++;
+  }
+  const pvpWear = (await gatherInfo()).wear - pw0;
+  other.quit();
+  await sleep(16000); // the 15 s tag runs out
+  const after = await wearOver(30);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
+  check('Smithing 100 in PvP combat (hit by a player every few blocks): all 30 points of wear land', pvpBroke === 30 && pvpWear === 30,
+    `${pvpBroke} broke, wear ${pvpWear}`);
+  check('...and once the tag ends, wear is avoided again', after.broke === 30 && after.wear < 30, `${after.broke} broke, wear ${after.wear}`);
+  await cmd('/effect clear @s haste', 300);
+  const sd = Math.sqrt(N * 0.2015 * 0.7985);
+  check(`Smithing 1: ${N} stone mined, the pickaxe wears ~${N} (0.3% avoided)`, w1.broke === N && w1.wear >= N - Math.max(3, 0.03 * N) && w1.wear <= N,
+    `${w1.broke} broke, wear ${w1.wear}`);
+  check(`Smithing 100: ${N} stone mined, about a fifth of the wear avoided (expected ~${Math.round(N * 0.7985)})`, w100.broke === N
+    && Math.abs(w100.wear - N * 0.7985) <= 3.5 * sd, `${w100.broke} broke, wear ${w100.wear}, ${(100 - 100 * w100.wear / N).toFixed(1)}% avoided`);
+  await cmd('/clear @s', 300);
+
+  // A real level-up (a forged sword crossing level 2) names both gains.
+  await setLevel('Smithing', 1);
+  await cmd(`/cerb skill ${NAME} Smithing xp 110`, 600); // 110 of the 115 level 1 needs; the sword pays 10
+  await setblock(2, 0, 0, 'crafting_table');
+  await cmd('/cerb gather credit iron 2', 400);
+  await give('iron_ingot', 2, 300); await give('stick', 1, 300);
+  const w = await openAt(2, 0, 0);
+  await split(w, 'iron_ingot', 2, 5);
+  await put(w, 'stick', 8);
+  await sleep(300);
+  const at0 = chat.length;
+  await clickW(0, 0, 0, 600); await stash(w);
+  bot.closeWindow(w);
+  await sleep(800);
+  const lines = chat.slice(at0).filter(m => /Smithing/.test(m) || /Wear resistance|Fortitude/.test(m));
+  check('Forging the sword levels Smithing to 2, and the level-up names both gains (wear resistance 0.3% -> 0.59%, Fortitude +0.25)',
+    lines.some(m => /Smithing reached level 2/.test(m) && /Wear resistance 0\.3% → 0\.59%/.test(m) && /Fortitude 2\.3 → 2\.5/.test(m)), lines.join(' / '));
+  await setLevel('First_Aid', 1);
+  await setLevel('Smithing', 1);
+  await cmd('/clear @s', 300);
+}
+
 const TEST_RESOURCES = {
   items: '  test_crystal: { material: AMETHYST_SHARD, name: "Test Crystal", lore: ["A synthetic drop (gathering test)"] }',
   tools: '  test_drill: { material: DIAMOND_PICKAXE, name: "Test Drill", kinds: [drill, pickaxe], tier: 5 }',
@@ -906,12 +1074,12 @@ async function persistCheck() {
   await cmd('/clear @s', 300);
 }
 
-const PHASES = { mine, farm, fortune, smelt, forge, upgrade, gear, custom, xpdisplay, 'persist-set': persistSet, 'persist-check': persistCheck };
+const PHASES = { mine, farm, fortune, smelt, forge, upgrade, gear, custom, xpdisplay, smithing: smithingGrowth, 'persist-set': persistSet, 'persist-check': persistCheck };
 
 bot.once('spawn', async () => {
   try {
     await sleep(2500);
-    const run = phase === 'all' ? ['mine', 'farm', 'fortune', 'smelt', 'forge', 'upgrade', 'gear', 'xpdisplay'] : [phase];
+    const run = phase === 'all' ? ['mine', 'farm', 'fortune', 'smelt', 'forge', 'upgrade', 'gear', 'xpdisplay', 'smithing'] : [phase];
     for (const p of run) {
       if (!PHASES[p]) { console.log('Unknown phase ' + p); process.exit(1); }
       console.log(`== ${p}`);

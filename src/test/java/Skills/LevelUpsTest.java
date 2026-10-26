@@ -62,11 +62,21 @@ class LevelUpsTest {
     }
 
     @Test
+    void smithingsLevelUpNamesFortitudeAndWearResistance() {
+        AttributeRules r = AttributeRules.DEFAULTS;
+        List<LevelUps.Gain> g = LevelUps.gains("Smithing", r, snapshot(r, Map.of("Smithing", 49)), snapshot(r, Map.of("Smithing", 50)));
+        assertEquals(List.of("Fortitude", "Wear resistance"), g.stream().map(LevelUps.Gain::name).sorted().toList(), g.toString());
+        LevelUps.Gain wear = g.stream().filter(x -> x.name().equals("Wear resistance")).findFirst().orElseThrow();
+        assertTrue(wear.percent() && wear.delta() > 0 && wear.delta() < 0.003, "one level, after diminishing returns: " + wear.delta());
+        assertTrue(wear.text().startsWith("+0.2") && wear.text().endsWith("% Wear resistance"), wear.text());
+    }
+
+    @Test
     void aTechniqueLineNamesItAndWhatItDoes() {
-        Celebration t = Celebrations.technique("Felling I: Sneak while cutting a natural tree to bring down up to 6 logs");
+        Celebration t = Celebrations.technique("Felling I: Sneak while cutting a tree to bring down up to 6 logs");
         assertEquals(Celebration.Kind.TECHNIQUE, t.kind());
         assertEquals(Celebration.Tier.MAJOR, t.tier());
-        assertEquals(List.of("§a✦ New technique: §fFelling I§7: Sneak while cutting a natural tree to bring down up to 6 logs"), t.chat());
+        assertEquals(List.of("§a✦ New technique: §fFelling I§7: Sneak while cutting a tree to bring down up to 6 logs"), t.chat());
         assertNull(t.title(), "the milestone it comes with carries the title");
     }
 

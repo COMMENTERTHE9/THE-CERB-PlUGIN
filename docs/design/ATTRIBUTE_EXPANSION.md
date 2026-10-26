@@ -40,6 +40,7 @@ percent from being worth stacking. All numbers live in `attributes.yml` → `sec
 | Knockback resistance | Fortitude + Martial Expertise, Heavy Armor | Being knocked back less | Vanilla knockback-resistance attribute | 50% | Proposed: makes Martial Expertise's "not active" promise real |
 | Gathering speed | Mining, Woodcutting, Farming, Herbalism | Block-breaking speed for that kind of block | Vanilla block-break-speed attribute, set per tool type | +50% | Proposed, after gathering skills get XP sources (VISION_ALIGNMENT gap) |
 | Casting speed | Essence + Spell Weaving | Channel time | Spells are instant today | — | Later, when channelled spells exist |
+| **Wear resistance** | Smithing only (driver Fortitude at 0 per point) | Each point of wear on a tool, weapon or armour piece is avoided with this chance, after Unbreaking | `PlayerItemDamageEvent`, one roll per point (`SecondaryEffects.onItemDamage`) | **35%**; Smithing 10/25/50/100: 3/7/12/20% | **Built (2026-10-26)**, paused in PvP with the rest |
 
 Rejected: **reach** (PvP-sensitive and exploit-prone), **raw dodge/miss chance** (luck-gated
 outcomes the vision avoids).
@@ -70,6 +71,7 @@ arrow that carries a draw bonus deals its vanilla damage if it hits a player.
   attribute snapshot changes (join, level-up, buff, reload), when the main hand changes (Paper's
   equipment-change event) and when a PvP tag starts or ends. No per-tick work, nothing saved.
 - Draw speed: one calculation per arrow. Cooldown: one multiplication per cast.
+- Wear resistance: one cached-snapshot lookup and one roll per point of wear, on the event the game already fires.
 
 ## Shown in the game
 

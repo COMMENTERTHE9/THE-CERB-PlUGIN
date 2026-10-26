@@ -2,8 +2,12 @@
 // Usage: node woodcutting.js [phase[,phase...]] [botName]
 //   cut       - a natural log pays its wood's XP with an axe; by hand nothing (and a hint); too weak an axe a quarter
 //               (and a hint), a fitting one in full; the weak-resource rule
-//   farm      - nothing for a log the player placed or a tree grown from a sapling with bone meal, with a natural log
-//               next to them as the positive control
+//   sources   - every source of a log on its own: a tree the world grew pays in full, a tree a player planted that grew
+//               on its own 80%, one grown with bone meal half (with a HUD line), one grown by a dispenser's bone meal half,
+//               a log placed by hand nothing (with a HUD line), and nothing either after a wind charge hit it; Felling
+//               takes grown trees, and leaves a grown tree a build touches standing
+//   wild      - trees the world generator made, in chunks generated for the test (/locate a forest far away): each log
+//               pays its wood's XP
 //   felling   - Felling I-III: Sneak + cut brings the tree down (logs at the stump, XP and durability for every log); not
 //               without Sneak, not below level 10, not past the level's size, not a giant trunk below 50; the rest between
 //               fellings; never a build (no natural leaves, or leaves a player placed); a placed log touching the tree
@@ -24,7 +28,10 @@
 //   canopy    - Woodcutting 75: a felled vanilla tree's leaves that would decay come down at once; at 74 they stay
 //   machines  - a crafter never makes an upgrade (any axe + stripped dark oak wood once gave the recipe's own copper axe)
 //               or crafts with heartwood; a furnace never makes heartwood into charcoal; each with a working control
-//   all       - cut, farm, felling, fortune, speed (the default)
+//   oldtree-set / oldtree-check - a birch grown with bone meal on the build before grown trees paid (oldtree-set, run on
+//               that build; STATE=<file> keeps where), then, on this build, it still pays nothing and the HUD says it grew
+//               before grown trees paid, while a tree grown now pays its share
+//   all       - cut, sources, wild, felling, fortune, speed (the default)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
@@ -68,11 +75,13 @@ async function skill(name) {
 const wood = async () => totalXp(await skill('Woodcutting'));
 async function setLevel(name, level) { await cmd(`/cerb skill ${NAME} ${name} level ${level}`, 500); }
 
-// ── the arena: grass far from spawn, a fresh strip each run; leaves never decay while it runs ──
+// ── the arena: grass far from spawn, a fresh area each call; leaves never decay while it runs ──
+// Placed-block marks live in chunk data and outlive /fill, so an area is never reused: one left by an earlier run would
+// carry its marks (a bone-mealed tree's logs cut down to one, a placed log) into this run's trees.
 let X = 0, Y = 0, Z = 0;
 async function arena() {
   const sp = bot.spawnPoint || bot.entity.position;
-  X = Math.floor(sp.x) + 700 + (Date.now() % 50) * 40; Y = 110; Z = Math.floor(sp.z) - 400;
+  X = Math.floor(sp.x) + 2000 + (Date.now() % 20000) * 96; Y = 110; Z = Math.floor(sp.z) - 400;
   await cmd('/gamemode creative', 300);
   await cmd(`/tp @s ${X + 0.5} ${Y + 1} ${Z + 0.5}`, 1000);
   try { await bot.waitForChunksToLoad(); } catch (e) { /* the fill retries */ }
@@ -256,36 +265,244 @@ async function cutPhase() {
   await cmd('/kill @e[type=item,distance=..20]', 300);
 }
 
-async function farmPhase() {
-  await arena();
-  await setLevel('Woodcutting', 1);
-  await give('iron_axe'); await give('oak_log', 2); await give('oak_sapling', 2); await give('bone_meal', 32);
-  await stand(0, 0, 0);
-  // A log the player places pays nothing.
-  await hold('oak_log');
-  try { await bot.placeBlock(bot.blockAt(at(0, -1, 2)), new Vec3(0, 1, 0)); } catch (e) { /* checked below */ }
+/** Birch logs in the column at (dx, dz), from the ground up (a birch is a single trunk, 5-7 logs). */
+const birchLogs = (dx, dz) => { let n = 0; for (let y = 0; y < 12; y++) if (blockName(dx, y, dz) === 'birch_log') n++; return n; };
+/** Plant a birch sapling on the arena floor at (dx, dz), as a player does (right-click on the grass). */
+async function plant(dx, dz) {
+  await stand(dx, dz - 2);
+  await hold('birch_sapling');
+  try { await bot.placeBlock(bot.blockAt(at(dx, -1, dz)), new Vec3(0, 1, 0)); } catch (e) { /* checked by the caller */ }
   await sleep(500);
-  const placed = blockName(0, 0, 2) === 'oak_log';
+  return blockName(dx, 0, dz) === 'birch_sapling';
+}
+/** Fell the tree at (dx, dz) with Sneak + cut from (dx, dz - 3): its logs before, the XP it paid, the HUD lines. */
+async function fellXp(dx, dz) {
+  const logs = birchLogs(dx, dz);
   await hold('iron_axe');
-  check('A log the player placed, cut: no XP', placed && (await cutXp(0, 0, 2)) === 0, `placed=${placed}`);
-  // A tree grown from a planted sapling with bone meal: wood, no XP.
-  await hold('oak_sapling');
-  try { await bot.placeBlock(bot.blockAt(at(4, -1, 3)), new Vec3(0, 1, 0)); } catch (e) { /* checked below */ }
-  await sleep(500);
+  await stand(dx, dz - 3);
+  const t = Date.now();
+  const before = await wood();
+  await cut(dx, 0, dz, { sneak: true });
+  await sleep(900);
+  const xp = (await wood()) - before;
+  return { logs, left: birchLogs(dx, dz), xp, hud: hudSince(t).filter(h => !/^\S+⛨\s+\S+♥\s+[+\d]/.test(h)).slice(-4) };
+}
+
+/** Bone-meal the sapling at (dx, dz) until it is a tree (the bot holds bone meal and right-clicks it). */
+async function boneMealGrow(dx, dz) {
   await hold('bone_meal');
-  for (let i = 0; i < 12 && blockName(4, 0, 3) !== 'oak_log'; i++) {
-    try { await bot.activateBlock(bot.blockAt(at(4, 0, 3)), new Vec3(0, 1, 0)); } catch (e) { /* retry */ }
-    await sleep(400);
+  for (let i = 0; i < 16 && blockName(dx, 0, dz) !== 'birch_log'; i++) {
+    try { await bot.activateBlock(bot.blockAt(at(dx, 0, dz)), new Vec3(0, 1, 0)); } catch (e) { /* retry */ }
+    await sleep(350);
   }
-  const grown = blockName(4, 0, 3) === 'oak_log';
+  return blockName(dx, 0, dz) === 'birch_log';
+}
+
+const OLD_TREE_STATE = process.env.STATE || path.join(require('os').tmpdir(), 'cerb-oldtree.json');
+async function oldTreeSet() {
+  await arena();
+  await give('birch_sapling', 2); await give('bone_meal', 32);
+  const ok = (await plant(0, 3)) && (await boneMealGrow(0, 3));
+  fs.writeFileSync(OLD_TREE_STATE, JSON.stringify({ X, Y, Z, logs: birchLogs(0, 3) }));
+  check('A birch grown with bone meal on this build, recorded for oldtree-check', ok && birchLogs(0, 3) >= 4, `${birchLogs(0, 3)} logs at ${X} ${Y} ${Z + 3}`);
+}
+async function oldTreeCheck() {
+  const st = JSON.parse(fs.readFileSync(OLD_TREE_STATE, 'utf8'));
+  X = st.X; Y = st.Y; Z = st.Z;
+  await cmd('/gamemode creative', 300);
+  await cmd(`/tp @s ${X + 0.5} ${Y + 1} ${Z + 0.5}`, 1500);
+  try { await bot.waitForChunksToLoad(); } catch (e) { /* best effort */ }
+  await cmd('/gamerule random_tick_speed 0', 300);
+  await cmd('/clear @s', 300);
+  await cmd('/gamemode survival', 300);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
+  await setLevel('Woodcutting', 15);
+  await give('iron_axe'); await give('birch_sapling', 2); await give('bone_meal', 32);
   await hold('iron_axe');
-  await stand(3, 1, 0);
-  const g = await cutXp(4, 0, 3);
-  check('A tree grown from a sapling with bone meal: wood, no XP', grown && g === 0, `grown=${grown}, +${g}`);
-  // The positive control: a natural log beside them.
-  await setblock(1, 0, 3, 'oak_log');
-  check('Control: a natural log beside them pays 4', (await cutXp(1, 0, 3)) === 4);
-  await cmd('/kill @e[type=item,distance=..20]', 300);
+  await setblock(-3, 0, 3, 'birch_log'); // birch discovered first, so its one-time bonus doesn't count below
+  await stand(-3, 0);
+  await cut(-3, 0, 3);
+  const logs = birchLogs(0, 3);
+  await stand(0, 0);
+  const t = Date.now();
+  const xp = await cutXp(0, 0, 3);
+  check('A tree grown before grown trees paid: still remembered as placed, no XP, and the HUD says it grew before',
+    logs >= 4 && xp === 0 && hudSince(t).some(h => /grew before grown trees paid/.test(h)), `${logs} logs, +${xp}; ${JSON.stringify(hudSince(t).slice(-1))}`);
+  const ok = (await plant(6, 3)) && (await boneMealGrow(6, 3));
+  await stand(6, 0);
+  await hold('iron_axe');
+  const xp2 = await cutXp(6, 0, 3);
+  check('...while a tree grown with bone meal now pays half (2 XP a log)', ok && xp2 === 2, `grew=${ok}, +${xp2}`);
+  await cmd('/kill @e[type=item,distance=..30]', 300);
+}
+
+async function sourcesPhase() {
+  // Every source of a log, measured on its own (docs/design/WOODCUTTING.md §5): a tree the world grew, a tree a player
+  // planted that grew on its own, one grown with bone meal, a log placed by hand. Birch (level 1, 4 XP a log) at
+  // Woodcutting 15: in full, and Felling I takes the whole trunk (birches grow 5-7 logs).
+  await arena();
+  await setLevel('Woodcutting', 15);
+  await give('iron_axe'); await give('birch_log', 2); await give('birch_sapling', 6); await give('bone_meal', 64);
+  await stuff();
+  // Birch discovered first, so its one-time bonus doesn't count below.
+  await hold('iron_axe');
+  await setblock(-3, 0, 3, 'birch_log');
+  await stand(-3, 0);
+  await cut(-3, 0, 3);
+  // A tree the world grew (/place feature makes it the way world generation does): every log in full.
+  await cmd(`/place feature minecraft:birch ${X} ${Y} ${Z + 3}`, 900);
+  const nat = await fellXp(0, 3);
+  check('A tree the world grew: Felling takes it, every log pays in full (4 XP)', nat.logs >= 4 && nat.left === 0 && nat.xp === nat.logs * 4,
+    JSON.stringify(nat));
+  await cmd('/kill @e[type=item,distance=..40]', 300);
+  await sleep(2500); // the rest after a felling
+  // A tree grown from a planted sapling with bone meal.
+  const bm = await plant(6, 3);
+  await hold('bone_meal');
+  for (let i = 0; i < 16 && blockName(6, 0, 3) !== 'birch_log'; i++) {
+    try { await bot.activateBlock(bot.blockAt(at(6, 0, 3)), new Vec3(0, 1, 0)); } catch (e) { /* retry */ }
+    await sleep(350);
+  }
+  const bone = await fellXp(6, 3);
+  check('A tree grown with bone meal: Felling takes it, and it pays half (2 XP a log)', bm && bone.logs >= 4 && bone.left === 0
+    && Math.abs(bone.xp - bone.logs * 2) <= 1, JSON.stringify(bone));
+  check('...and the HUD says why it pays less', bone.hud.some(h => /bone meal/i.test(h)), JSON.stringify(bone.hud));
+  await cmd('/kill @e[type=item,distance=..40]', 300);
+  await sleep(2500);
+  // A tree grown from a planted sapling on its own: random ticks sped up, no bone meal.
+  const gp = await plant(12, 3);
+  await cmd('/gamerule random_tick_speed 1000', 300);
+  for (let i = 0; i < 120 && blockName(12, 0, 3) !== 'birch_log'; i++) await sleep(250);
+  await cmd('/gamerule random_tick_speed 0', 300);
+  const grown = await fellXp(12, 3);
+  check('A tree a player planted that grew on its own: Felling takes it, and it pays 80% (3.2 XP a log)', gp && grown.logs >= 4
+    && grown.left === 0 && Math.abs(grown.xp - grown.logs * 3.2) <= 1, JSON.stringify(grown));
+  await cmd('/kill @e[type=item,distance=..40]', 300);
+  await sleep(2500);
+  // A log placed by hand: nothing, and the HUD says so.
+  await hold('birch_log');
+  await stand(18, 0);
+  try { await bot.placeBlock(bot.blockAt(at(18, -1, 2)), new Vec3(0, 1, 0)); } catch (e) { /* checked below */ }
+  await sleep(500);
+  const placedOk = blockName(18, 0, 2) === 'birch_log';
+  await hold('iron_axe');
+  let t = Date.now();
+  const p0 = await cutXp(18, 0, 2);
+  check('A log placed by hand: no XP, and the HUD says so', placedOk && p0 === 0 && hudSince(t).some(h => /placed by hand/i.test(h)),
+    `placed=${placedOk}, +${p0}; ${JSON.stringify(hudSince(t).slice(-1))}`);
+  // A wind charge "explodes" without destroying anything: the placed log beside it stays placed (it once became natural).
+  await hold('birch_log');
+  await stand(20, 0);
+  try { await bot.placeBlock(bot.blockAt(at(20, -1, 2)), new Vec3(0, 1, 0)); } catch (e) { /* checked below */ }
+  await sleep(500);
+  const placed2 = blockName(20, 0, 2) === 'birch_log';
+  await setblock(20, 1, 2, 'oak_trapdoor[open=false]'); // the burst opens it: proof that it reached the log
+  await give('wind_charge', 2);
+  await hold('wind_charge');
+  await bot.lookAt(at(20, 0, 2).offset(0.5, 0.5, 0.5), true);
+  bot.activateItem(); await sleep(150); bot.deactivateItem();
+  await sleep(1200);
+  const reached = !!(bot.blockAt(at(20, 1, 2)) && bot.blockAt(at(20, 1, 2)).getProperties().open);
+  await setblock(20, 1, 2, 'air');
+  await stand(20, 0);
+  await hold('iron_axe');
+  const p1 = await cutXp(20, 0, 2);
+  check('A log placed by hand, hit by a wind charge first (the trapdoor on it opened): still no XP', placed2 && reached
+    && blockName(20, 0, 2) === 'air' && p1 === 0, `placed=${placed2}, burst reached=${reached}, +${p1}`);
+  // A grown tree a build touches (a plank against its trunk): Felling leaves it standing, the cut log still pays.
+  await plant(24, 3);
+  await hold('bone_meal');
+  for (let i = 0; i < 16 && blockName(24, 0, 3) !== 'birch_log'; i++) {
+    try { await bot.activateBlock(bot.blockAt(at(24, 0, 3)), new Vec3(0, 1, 0)); } catch (e) { /* retry */ }
+    await sleep(350);
+  }
+  await setblock(25, 1, 3, 'birch_planks');
+  const built = await fellXp(24, 3);
+  check('A grown tree a build touches: one log (2 XP), the rest stands, and the HUD says why', built.logs >= 4 && built.left === built.logs - 1
+    && built.xp === 2 && built.hud.some(h => /touches a build/.test(h)), JSON.stringify(built));
+  await cmd('/kill @e[type=item,distance=..40]', 300);
+  await sleep(2500);
+  // A dispenser's bone meal (a tree farm's): bone meal too, half the XP, although the game's grow event says otherwise.
+  const dp = await plant(30, 3);
+  await setblock(30, 0, 2, 'dispenser[facing=south]{Items:[{Slot:0b,id:"minecraft:bone_meal",count:64}]}');
+  for (let i = 0; i < 24 && blockName(30, 0, 3) !== 'birch_log'; i++) {
+    await setblock(31, 0, 2, 'redstone_block', 150); await setblock(31, 0, 2, 'air', 250);
+  }
+  const dgrew = blockName(30, 0, 3) === 'birch_log';
+  await setblock(30, 0, 2, 'air'); // the dispenser out of the way (no build next to the tree)
+  const disp = await fellXp(30, 3);
+  check('A tree grown by a dispenser\'s bone meal: Felling takes it, and it pays half (2 XP a log)', dp && dgrew && disp.logs >= 4
+    && disp.left === 0 && Math.abs(disp.xp - disp.logs * 2) <= 1, `grew=${dgrew}; ${JSON.stringify(disp)}`);
+  await cmd('/kill @e[type=item,distance=..40]', 300);
+}
+
+/** The Woodcutting XP a cut of the block at absolute position `pos` pays (survival, the axe in hand). */
+async function cutXpAt(pos) {
+  const before = await wood();
+  const b = bot.blockAt(pos);
+  await bot.lookAt(pos.offset(0.5, 0.5, 0.5), true);
+  bot._client.write('block_dig', { status: 0, location: pos, face: 1, sequence: seq++ });
+  bot.swingArm();
+  await sleep(700);
+  bot._client.write('block_dig', { status: 2, location: pos, face: 1, sequence: seq++ });
+  await sleep(700);
+  const gone = (bot.blockAt(pos) || {}).name !== (b || {}).name;
+  return { name: b ? b.name : '?', gone, xp: (await wood()) - before };
+}
+
+async function wildPhase() {
+  // Trees the world generator made, in chunks the server generates for this test (nothing was ever placed or grown
+  // there): every log pays like any natural tree. The owner's playtest question was a tree that paid nothing.
+  await cmd('/gamemode creative', 300);
+  await cmd('/gamerule spawn_mobs false', 300);
+  await cmd('/time set day', 300);
+  await cmd('/effect give @s resistance infinite 4 true', 300);
+  await setLevel('Woodcutting', 1);
+  // Oak, birch and spruce discovered first (logs set in an arena), so each wild log must pay exactly its wood's XP.
+  await arena();
+  await give('iron_axe'); await hold('iron_axe');
+  for (const [i, w] of ['oak', 'birch', 'spruce'].entries()) await setblock(i * 2, 0, 3, `${w}_log`);
+  await stand(2, 1, 0);
+  for (const i of [0, 1, 2]) await cut(i * 2, 0, 3);
+  await cmd('/gamemode creative', 300);
+  const far = 30000 + (Date.now() % 97) * 160;
+  await cmd(`/tp @s ${far} 200 ${far}`, 2500);
+  let found = null;
+  for (const biome of ['birch_forest', 'forest', 'taiga']) {
+    const a = await cmd(`/locate biome minecraft:${biome}`, 4000);
+    const m = (saw(/is at \[/, a) || '').match(/\[(-?\d+), (?:-?\d+|~), (-?\d+)\]/);
+    if (m) { found = { biome, x: Number(m[1]), z: Number(m[2]) }; break; }
+  }
+  if (!found) { check('A forest could be located for the test', false); return; }
+  await cmd(`/tp @s ${found.x} 200 ${found.z}`, 3000);
+  try { await bot.waitForChunksToLoad(); } catch (e) { /* best effort */ }
+  await sleep(1500);
+  const names = ['oak_log', 'birch_log', 'spruce_log'];
+  const ids = names.map(n => bot.registry.blocksByName[n].id);
+  const soil = new Set(['grass_block', 'dirt', 'podzol', 'coarse_dirt', 'moss_block', 'rooted_dirt']);
+  const solid = p => { const b = bot.blockAt(p); return b && b.boundingBox === 'block' && !names.includes(b.name) && !/leaves/.test(b.name); };
+  const air = p => { const b = bot.blockAt(p); return b && (b.name === 'air' || b.name === 'short_grass' || b.name === 'fern'); };
+  const bases = bot.findBlocks({ matching: ids, maxDistance: 64, count: 600 })
+    .filter(p => soil.has((bot.blockAt(p.offset(0, -1, 0)) || {}).name))
+    .filter(p => { for (let y = 2; y < 12; y++) for (let a = -2; a <= 2; a++) for (let c = -2; c <= 2; c++) {
+      const b = bot.blockAt(p.offset(a, y, c)); if (b && /leaves/.test(b.name)) return true; } return false; });
+  const results = [];
+  for (const p of bases) {
+    if (results.length >= 3) break;
+    const spot = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, c]) => p.offset(a, 0, c))
+      .find(q => air(q) && air(q.offset(0, 1, 0)) && solid(q.offset(0, -1, 0)));
+    if (!spot) continue;
+    await cmd('/gamemode creative', 250);
+    await cmd(`/tp @s ${spot.x + 0.5} ${spot.y} ${spot.z + 0.5}`, 900);
+    await cmd('/gamemode survival', 300);
+    if (!bot.inventory.items().some(i => i.name === 'iron_axe')) await give('iron_axe');
+    await hold('iron_axe');
+    results.push({ at: `${p.x},${p.y},${p.z}`, ...(await cutXpAt(p)) });
+  }
+  await cmd('/gamemode creative', 300);
+  await cmd('/kill @e[type=item,distance=..30]', 300);
+  check(`Trees the world generated (a ${found.biome} at ${found.x}, ${found.z}, chunks made for the test): each log pays its wood's XP`,
+    results.length >= 2 && results.every(r => r.gone && r.xp === (r.name === 'spruce_log' ? 5 : 4)), JSON.stringify(results));
 }
 
 async function fellingPhase() {
@@ -359,7 +576,7 @@ async function fellingPhase() {
   t = Date.now();
   await cut(20, 0, 3, { sneak: true });
   check('A log tower with no leaves (a build): one log, and the HUD says it is no natural tree', logsLeft(20, 3, 5) === 4
-    && hudSince(t).some(h => /only trees the world grew/.test(h)), `${logsLeft(20, 3, 5)} left`);
+    && hudSince(t).some(h => /only trees with their own leaves/.test(h)), `${logsLeft(20, 3, 5)} left`);
   await fill(19, 4, 2, 21, 5, 4, 'oak_leaves[persistent=true] replace air');
   await cut(20, 1, 3, { sneak: true });
   check('...with leaves a player placed: still one log', logsLeft(20, 3, 5) === 3, `${logsLeft(20, 3, 5)} left`);
@@ -705,7 +922,9 @@ async function discoverPhase() {
 
 async function customPhase() {
   await arena();
-  const entry = '  test_mushroom: { skill: Woodcutting, blocks: [MUSHROOM_STEM], tool: axe, tier: 0, level: 1, xp: 7, fortune: wood,\n'
+  // A new id each run: a discovery is saved on the player, and this check pays the discovery.
+  const id = 'test_mushroom_' + Date.now().toString(36);
+  const entry = `  ${id}: { skill: Woodcutting, blocks: [MUSHROOM_STEM], tool: axe, tier: 0, level: 1, xp: 7, fortune: wood,\n`
     + '                   tree: { leaves: [RED_MUSHROOM_BLOCK, BROWN_MUSHROOM_BLOCK], heartwood: 1.0, discovery-xp: 33 } }\n';
   await withResources(s => s.replace(/\n# A resource pays a quarter/, '\n' + entry + '\n# A resource pays a quarter'), async () => {
     await setLevel('Woodcutting', 10);
@@ -847,9 +1066,10 @@ async function canopyPhase() {
 (async () => {
   await connect();
   await sleep(3000);
-  const phases = { cut: cutPhase, farm: farmPhase, felling: fellingPhase, protect: protectPhase, fortune: fortunePhase, speed: speedPhase,
-    heartwood: heartwoodPhase, discover: discoverPhase, custom: customPhase, canopy: canopyPhase, machines: machinesPhase };
-  const run = phaseArg === 'all' ? ['cut', 'farm', 'felling', 'fortune', 'speed'] : phaseArg.split(',');
+  const phases = { cut: cutPhase, sources: sourcesPhase, wild: wildPhase, felling: fellingPhase, protect: protectPhase, fortune: fortunePhase, speed: speedPhase,
+    heartwood: heartwoodPhase, discover: discoverPhase, custom: customPhase, canopy: canopyPhase, machines: machinesPhase,
+    'oldtree-set': oldTreeSet, 'oldtree-check': oldTreeCheck };
+  const run = phaseArg === 'all' ? ['cut', 'sources', 'wild', 'felling', 'fortune', 'speed'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);

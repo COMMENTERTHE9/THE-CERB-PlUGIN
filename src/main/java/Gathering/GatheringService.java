@@ -28,12 +28,13 @@ import java.util.concurrent.atomic.LongAdder;
 public final class GatheringService {
 
     /**
-     * One block as the rules see it, for a player and the item in their hand. {@code weakTool}: a wood cut with an axe
-     * below the tier it wants (a soft gate, docs/design/WOODCUTTING.md §4: part of the XP, no bonus, no Felling, no
-     * heartwood).
+     * One block as the rules see it, for a player and the item in their hand. {@code origin}: where the block came from
+     * ({@link PlacedBlocks}); {@code placed}: it pays nothing for that (placed by hand, or anything but natural for a
+     * resource that is no tree's). {@code weakTool}: a wood cut with an axe below the tier it wants (a soft gate,
+     * docs/design/WOODCUTTING.md §4: part of the XP, no bonus, no Felling, no heartwood).
      */
-    public record Evaluation(Block block, GatheringCatalog.ResourceDef resource, GatherRules.Method method, boolean placed,
-                             GatherRules.Tool tool, boolean toolFits, boolean silk, GatherRules.Decision decision,
+    public record Evaluation(Block block, GatheringCatalog.ResourceDef resource, GatherRules.Method method, Origin origin,
+                             boolean placed, GatherRules.Tool tool, boolean toolFits, boolean silk, GatherRules.Decision decision,
                              double xp, double bonusChance, boolean weakTool) {}
 
     /** What a machine's extraction did: the drops, or why it couldn't. */
@@ -76,7 +77,8 @@ public final class GatheringService {
         if (r == null) return null;
         ItemStack hand = p.getInventory().getItemInMainHand();
         GatherRules.Method method = methodOf(p);
-        boolean wasPlaced = placed != null && placed.isPlaced(b);
+        Origin origin = placed == null ? Origin.NATURAL : placed.origin(b);
+        boolean wasPlaced = paysNothing(r, origin);
         GatherRules.Tool tool = GearItems.tool(hand, c);
         boolean fits = GatherRules.toolFits(r.tool(), r.tier(), tool == null ? null : tool.kinds(), tool == null ? 0 : tool.tier());
         // A wood and an axe below its tier: a soft gate (part of the XP), never a wall.
@@ -87,8 +89,19 @@ public final class GatheringService {
         GatherRules.Decision d = GatherRules.decide(method, wasPlaced, r.replacesDrops(), fits || weakTool, vanillaDrops, silk, r.fortune() && !weakTool);
         double xp = d.xp() ? GatherRules.xp(r.xp(), r.level(), skills.getSkillLevel(p, r.skill()), c.weakGap(), c.weakFactor()) : 0;
         if (weakTool) xp *= c.weakToolFactor();
+        if (r.isTree()) xp *= c.wood().xpShare(origin); // a tree grown from a planted sapling pays its share
         double chance = d.bonus() ? bonusChance(p.getUniqueId(), r.fortuneYield()) : 0;
-        return new Evaluation(b, r, method, wasPlaced, tool, fits, silk, d, xp, chance, weakTool);
+        return new Evaluation(b, r, method, origin, wasPlaced, tool, fits, silk, d, xp, chance, weakTool);
+    }
+
+    /**
+     * True when a block of {@code r} from {@code origin} pays nothing and gives only vanilla's drops: one placed by hand,
+     * formed or moved; or, for a resource that is no tree's, anything the world didn't make. A grown tree's log pays its
+     * share (resources.yml woodcutting.grown, bone-meal).
+     */
+    public static boolean paysNothing(GatheringCatalog.ResourceDef r, Origin origin) {
+        if (origin == null || origin == Origin.NATURAL) return false;
+        return origin == Origin.PLACED || r == null || !r.isTree() || r.replacesDrops();
     }
 
     /** The player's chance of one extra ore now (Fortune on ore). */
@@ -155,7 +168,7 @@ public final class GatheringService {
         ItemStack tool = machineTool == null ? new ItemStack(Material.AIR) : machineTool;
         GatheringCatalog.ResourceDef r = c.resource(b.getType());
         if (b.getType().isAir()) return new Extraction(false, List.of(), "nothing there");
-        boolean wasPlaced = r != null && placed != null && placed.isPlaced(b);
+        boolean wasPlaced = r != null && placed != null && paysNothing(r, placed.origin(b));
         GatherRules.Tool t = GearItems.tool(tool, c);
         boolean fits = r == null || GatherRules.toolFits(r.tool(), r.tier(), t == null ? null : t.kinds(), t == null ? 0 : t.tier());
         if (r != null && r.replacesDrops() && !wasPlaced && !fits) {

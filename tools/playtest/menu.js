@@ -12,6 +12,9 @@
 //            page-turn sounds, the progress strip filling, new progress since the last close (glow, lines, one chime,
 //            one level-up flash), category tabs, last opened category, animations cancelled on fast clicks and
 //            none left running on an idle open menu
+//   smithing - (op) Smithing's growth on its pages: the Utility tile and the skill page name +0.25 Fortitude and +0.3%
+//            wear resistance a level, what they give now and at the next level, both live; Next levels shows wear
+//            resistance at the milestones and keeps the forged-quality odds; the Stats page shows the wear resistance
 const mineflayer = require('mineflayer');
 const phase = process.argv[2] || 'nav';
 const NAME = process.argv[3] || 'CerbSmoke';
@@ -734,6 +737,41 @@ async function perf() {
   console.log(`  (menu previews computed: ${after.previews - before.previews})`);
 }
 
+// ── smithing ──────────────────────────────────────────────────────
+
+async function smithingPages() {
+  if (!isOp()) { check('The smithing phase needs op (it sets Smithing to 50)', false); return; }
+  await cmd(`/cerb skill ${NAME} Smithing level 50`, 600);
+  check('The hub opens', await openViaHead(), title());
+  await click(19); await waitTitle(SCREEN('Skills'));
+  await click(24);
+  check('Utility category opens', await waitTitle(SCREEN('Utility Skills')), title());
+  const sm = findSlot(/^Smithing/);
+  check('Smithing tile: +0.25 Fortitude and +0.3% wear resistance per level', sm >= 0 && /\+0\.25 Fortitude per level/.test(flat(sm))
+      && /\+0\.3% wear resistance per level/.test(flat(sm)), sm >= 0 ? flat(sm) : 'missing');
+  await click(sm);
+  check('Smithing page opens', await waitTitle(SCREEN('Smithing')), title());
+  const t = flat(22);
+  check('Attributes & speed: each level gives +0.25 Fortitude and +0.3% wear resistance (no "gives no attribute")',
+    /Each level gives: \+0\.25 Fortitude \+0\.3% wear resistance/.test(t) && !/gives no attribute/.test(t), t);
+  check('...from this skill now (level 50): +12.5 Fortitude, +15% wear resistance (before diminishing returns)',
+    /From this skill now \(level 50\): \+12\.5 Fortitude \+15% wear resistance/.test(t), t);
+  check('...what they do, now and at the next level: armor, defense bar, resistances, wear resistance 12.2%',
+    /Armor: \+[\d.]+%/.test(t) && /Defense bar: x[\d.]+/.test(t) && /Resistances: \+[\d.]+%/.test(t)
+      && /Wear resistance: \+12\.2% → \+12\.4%/.test(t), t);
+  check('...both live, and the PvP pause said', /Fortitude: ● Active/.test(t) && /Wear resistance: ● Active/.test(t) && /pause during PvP/.test(t), t);
+  check('Next levels: wear resistance at each milestone, and the forged-quality odds stay',
+    /At level 51 .*Wear resistance: \+12\.4%/.test(flat(31)) && /At level 100 .*\+25 Fortitude .*Wear resistance: \+20\.1%/.test(flat(31))
+      && /Superior or better forged gear/.test(flat(31)), flat(31));
+  await click(49, 600); // Home
+  await waitTitle(SCREEN('Player Menu'));
+  await click(21);
+  check('Stats opens', await waitTitle(SCREEN('Stats & Attributes')), title());
+  check('Stats: wear resistance 12.2%, raised by Smithing', /Wear resistance: 12\.2% of your gear's wear avoided/.test(flat(22)) && /Smithing/.test(flat(22)), flat(22));
+  await closeAny();
+  await cmd(`/cerb skill ${NAME} Smithing level 1`, 600);
+}
+
 (async () => {
   await connect();
   await sleep(3000);
@@ -744,6 +782,7 @@ async function perf() {
     else if (phase === 'perf') await perf();
     else if (phase === 'shelves') await shelves();
     else if (phase === 'motion') await motion();
+    else if (phase === 'smithing') await smithingPages();
     else console.log('unknown phase ' + phase);
   } catch (e) {
     check('phase ran without errors', false, e.stack);

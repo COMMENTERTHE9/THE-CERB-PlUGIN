@@ -51,8 +51,26 @@ class WoodRulesTest {
     }
 
     @Test
+    void aTreeGrownFromASaplingPaysItsShare() {
+        assertEquals(1.0, r.xpShare(Origin.NATURAL));
+        assertEquals(0.8, r.xpShare(Origin.GROWN), 1e-12, "left to grow: 80%");
+        assertEquals(0.5, r.xpShare(Origin.BONEMEAL), 1e-12, "finished by bone meal: half");
+        assertEquals(0.0, r.xpShare(Origin.PLACED), "placed by hand: nothing");
+        assertEquals(1.0, r.xpShare(null), "no memory: natural");
+        assertEquals(1.0, r.heartwoodShare(Origin.NATURAL));
+        assertEquals(0.8, r.heartwoodShare(Origin.GROWN), 1e-12);
+        assertEquals(0.0, r.heartwoodShare(Origin.BONEMEAL), "no heartwood from a bone-meal farm");
+        assertEquals(0.0, r.heartwoodShare(Origin.PLACED));
+        assertEquals(0.004 * 0.8, r.heartwoodChance(0.002, 50, Origin.GROWN), 1e-12);
+        assertEquals(0.0, r.heartwoodChance(0.002, 50, Origin.BONEMEAL));
+        assertEquals(r.heartwoodChance(0.002, 50), r.heartwoodChance(0.002, 50, Origin.NATURAL));
+        assertEquals(new WoodRules.Share(1, 0), new WoodRules.Share(7, -2), "shares stay within 0-1");
+        assertEquals(new WoodRules.Share(0, 0), new WoodRules.Share(Double.NaN, Double.POSITIVE_INFINITY));
+    }
+
+    @Test
     void aLevelUpNamesWhatItOpened() {
-        assertEquals(List.of("Felling I: Sneak while cutting a natural tree to bring down up to 6 logs"), r.openedBetween(9, 10));
+        assertEquals(List.of("Felling I: Sneak while cutting a tree to bring down up to 6 logs"), r.openedBetween(9, 10));
         assertEquals(List.of("Felling II: Felling takes up to 24 logs"), r.openedBetween(24, 25));
         assertEquals(List.of("Felling III: Felling takes up to 64 logs, and giant 2×2 trunks"), r.openedBetween(49, 50));
         assertEquals(List.of("Canopy: a felled tree's natural leaves come down with it (their own drops)"), r.openedBetween(74, 75));

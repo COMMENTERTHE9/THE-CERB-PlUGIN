@@ -672,7 +672,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(craftingListener, this);
 
         // ── Gathering and forging (docs/design/GATHERING.md) and the XP display ──
-        Gathering.PlacedBlocks placedBlocks = new Gathering.PlacedBlocks(gatheringService::catalog);
+        Gathering.PlacedBlocks placedBlocks = new Gathering.PlacedBlocks(this, gatheringService::catalog);
         gatheringService.setPlacedBlocks(placedBlocks);
         pm.registerEvents(placedBlocks, this);
         Gathering.GatheringListener gatheringListener = new Gathering.GatheringListener(gatheringService, (p, msg) -> playerHUDManager.flash(p, msg, 1500));

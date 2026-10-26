@@ -70,7 +70,7 @@ public final class Celebrations implements Listener, TabExecutor {
     }
 
     /**
-     * Techniques a skill's new levels opened ("Felling I: Sneak while cutting a natural tree to bring down up to 6 logs"),
+     * Techniques a skill's new levels opened ("Felling I: Sneak while cutting a tree to bring down up to 6 logs"),
      * each "Name: what it does" (docs/design/WOODCUTTING.md §6).
      */
     @FunctionalInterface

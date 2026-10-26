@@ -180,11 +180,14 @@ public final class StatsMenu extends PlayerMenu {
                 + ChatColor.GRAY + "  breaking blocks");
         l.raw(ChatColor.AQUA + "Chopping speed: " + ChatColor.WHITE + Fmt.signedPct(s.secondary(Attributes.Stat.CHOP_SPEED))
                 + ChatColor.GRAY + "  with an axe in hand");
-        l.gap().text("Raised by Agility (Essence for spells)")
-                .text("and by the skill behind each action:")
-                .text("Blade Mastery, Weapon Mastery, Ranged")
-                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving, Mining,")
-                .text("Woodcutting.");
+        l.raw(ChatColor.AQUA + "Wear resistance: " + ChatColor.WHITE + Fmt.pct(s.secondary(Attributes.Stat.WEAR_RESISTANCE))
+                + ChatColor.GRAY + "  of your gear's wear avoided");
+        l.gap().text("Speeds: raised by Agility (Essence for")
+                .text("spells) and by the skill behind each")
+                .text("action: Blade Mastery, Weapon Mastery,")
+                .text("Ranged Precision, " + Skills.SkillNames.display("Navigation") + ", Spell")
+                .text("Weaving, Mining, Woodcutting.")
+                .text("Wear resistance: by Smithing.");
         l.gap();
         if (paused) l.raw(ChatColor.YELLOW + "⏸ Paused: you are in PvP combat");
         else {

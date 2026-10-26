@@ -26,7 +26,7 @@ public final class TreeScan {
         /** True for a leaf the world grew (vanilla's "persistent" off); blocks without that flag count as natural. */
         boolean naturalLeaf(int x, int y, int z);
 
-        /** True when the placed-block memory has this position (placed, grown from a sapling, moved by a piston). */
+        /** True when the placed-block memory says this log pays nothing (placed by hand, moved by a piston); a grown tree's logs are false. */
         boolean placed(int x, int y, int z);
     }
 

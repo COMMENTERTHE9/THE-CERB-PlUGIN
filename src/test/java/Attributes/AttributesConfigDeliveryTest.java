@@ -33,6 +33,9 @@ class AttributesConfigDeliveryTest {
                 new AttributeRules.SkillWeight(Attribute.FORTUNE, 0.5, null, Yield.WOOD)), r.skillWeights().get("Woodcutting"));
         assertEquals(List.of(new AttributeRules.StatWeight(Stat.CHOP_SPEED, 0.002, null)), r.secondary().skillWeights().get("Woodcutting"));
         assertEquals(AttributeRules.DEFAULT_SECONDARY.get(Stat.CHOP_SPEED), r.secondary().get(Stat.CHOP_SPEED));
+        assertEquals(List.of(new AttributeRules.SkillWeight(Attribute.FORTITUDE, 0.25, null)), r.skillWeights().get("Smithing"));
+        assertEquals(List.of(new AttributeRules.StatWeight(Stat.WEAR_RESISTANCE, 0.003, null)), r.secondary().skillWeights().get("Smithing"));
+        assertEquals(AttributeRules.DEFAULT_SECONDARY.get(Stat.WEAR_RESISTANCE), r.secondary().get(Stat.WEAR_RESISTANCE));
     }
 
     @Test
@@ -50,9 +53,10 @@ class AttributesConfigDeliveryTest {
         server.setDefaults(shipped()); // as AttributesConfig.reload does with the jar's copy
         List<String> problems = new ArrayList<>();
         AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
-        assertEquals(4, problems.size(), problems.toString());
-        assertTrue(problems.stream().allMatch(p -> p.contains("Mining") && p.contains("Mining: []") || p.contains("Woodcutting") && p.contains("Woodcutting: []")),
-                "the log says where Mining and Woodcutting came from: " + problems);
+        assertEquals(6, problems.size(), problems.toString());
+        assertTrue(problems.stream().allMatch(p -> p.contains("Mining") && p.contains("Mining: []") || p.contains("Woodcutting") && p.contains("Woodcutting: []")
+                        || p.contains("Smithing") && p.contains("Smithing: []")),
+                "the log says where Mining, Woodcutting and Smithing came from: " + problems);
         assertEquals(2.0, r.skillWeights().get("Blade Mastery").get(0).perLevel(), "the owner's own number stays");
         assertFalse(r.skillWeights().containsKey("Fishing"), "\"Fishing: []\" turns it off");
         assertEquals(0.5, r.skillWeights().get("Mining").get(0).perLevel(), "Mining arrives from the shipped file");
@@ -62,6 +66,58 @@ class AttributesConfigDeliveryTest {
         assertEquals(Yield.WOOD, r.skillWeights().get("Woodcutting").get(1).yield(), "Woodcutting arrives with its Fortune scoped to wood");
         assertEquals(0.002, r.secondary().skillWeights().get("Woodcutting").get(0).perLevel());
         assertTrue(r.secondary().get(Stat.GATHER_SPEED).enabled(), "a stat the file lacks uses the built-in setting");
+        assertEquals(0.25, r.skillWeights().get("Smithing").get(0).perLevel(), "Smithing's Fortitude arrives on an older file");
+        assertEquals(Stat.WEAR_RESISTANCE, r.secondary().skillWeights().get("Smithing").get(0).stat(), "...and its wear resistance");
+        assertEquals(AttributeRules.DEFAULT_SECONDARY.get(Stat.WEAR_RESISTANCE), r.secondary().get(Stat.WEAR_RESISTANCE));
+    }
+
+    @Test
+    void smithingGivesFortitudeAndWearResistanceWithDiminishingReturns() {
+        AttributeSnapshot s = AttributeCalculator.compute(SkillAttributes.contributions(java.util.Map.of("Smithing", 100), AttributeRules.DEFAULTS),
+                AttributeRules.DEFAULTS);
+        assertEquals(25, s.get(Attribute.FORTITUDE), 1e-9, "+0.25 Fortitude per level");
+        assertEquals(0.30, s.secondaryRaw(Stat.WEAR_RESISTANCE), 1e-9, "+0.3% wear resistance per level");
+        assertEquals(0.2015, s.secondary(Stat.WEAR_RESISTANCE), 5e-4, "20% at 100, below the 35% cap");
+        assertEquals(0.122, at("Smithing", 50).secondary(Stat.WEAR_RESISTANCE), 5e-4);
+        assertEquals(0.068, at("Smithing", 25).secondary(Stat.WEAR_RESISTANCE), 5e-4);
+        assertEquals(0.029, at("Smithing", 10).secondary(Stat.WEAR_RESISTANCE), 5e-4);
+        assertTrue(at("Smithing", 150).secondary(Stat.WEAR_RESISTANCE) < 0.35, "mastery past 100 still never reaches the cap");
+        assertEquals(0.025, s.armorBonus(), 1e-9, "Fortitude 25: +2.5% armor");
+        assertEquals(1.25, s.defenseBarMultiplier(), 1e-9, "...a 25% larger defense bar");
+        assertEquals(0.05, s.resist(), 1e-9, "...and +5% resistances");
+        AttributeSnapshot tough = AttributeCalculator.compute(List.of(Contribution.attribute("t", "t", Attribute.FORTITUDE, 300, null)), AttributeRules.DEFAULTS);
+        assertEquals(0.0, tough.secondary(Stat.WEAR_RESISTANCE), 1e-12, "Fortitude alone doesn't drive it: only Smithing does");
+        AttributeSnapshot all = AttributeCalculator.compute(SkillAttributes.contributions(
+                java.util.Map.of("Smithing", 100, "Heavy Armor Training", 100, "Survival", 100, "Defensive Magic", 100), AttributeRules.DEFAULTS),
+                AttributeRules.DEFAULTS);
+        assertEquals(225, all.get(Attribute.FORTITUDE), 1e-9, "every Fortitude skill at 100 stays under the 300 cap");
+        assertTrue(all.resist() <= AttributeRules.DEFAULTS.limits().resist() + 1e-12 && all.armorBonus() <= AttributeRules.DEFAULTS.limits().armor() + 1e-12,
+                "and inside the armour and resistance limits");
+    }
+
+    @Test
+    void wearResistanceCanNeverMakeGearUnbreakable() throws Exception {
+        YamlConfiguration server = new YamlConfiguration();
+        server.loadFromString("""
+                attributes:
+                  secondary:
+                    stats:
+                      wear-resistance: { enabled: true, driver: fortitude, per-point: 0, cap: 1.0 }
+                      attack-speed:    { enabled: true, driver: agility, per-point: 0.001, cap: 1.5 }
+                """);
+        List<String> problems = new ArrayList<>();
+        AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
+        assertEquals(AttributeRules.DEFAULT_SECONDARY.get(Stat.WEAR_RESISTANCE).cap(), r.secondary().get(Stat.WEAR_RESISTANCE).cap(),
+                "a cap of 1 (never wear) is refused: the default is used");
+        assertTrue(problems.stream().anyMatch(x -> x.contains("wear-resistance.cap")), problems.toString());
+        assertEquals(1.5, r.secondary().get(Stat.ATTACK_SPEED).cap(), 1e-12, "a speed may still go up to 2");
+        server.loadFromString("attributes:\n  secondary:\n    stats:\n      wear-resistance: { cap: 0.9 }\n");
+        assertEquals(0.9, AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, x -> {})
+                .secondary().get(Stat.WEAR_RESISTANCE).cap(), 1e-12, "0.9 is the most it may be");
+    }
+
+    private static AttributeSnapshot at(String skill, int level) {
+        return AttributeCalculator.compute(SkillAttributes.contributions(java.util.Map.of(skill, level), AttributeRules.DEFAULTS), AttributeRules.DEFAULTS);
     }
 
     @Test

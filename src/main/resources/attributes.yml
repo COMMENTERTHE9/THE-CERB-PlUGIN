@@ -79,6 +79,7 @@ attributes:
     Woodcutting:                                                                    # docs/design/WOODCUTTING.md
       - { attribute: vitality, per-level: 0.25 }
       - { attribute: fortune, per-level: 0.5, yield: wood }                         # a chance of one extra log
+    Smithing:             [ { attribute: fortitude, per-level: 0.25 } ]             # heat and endurance at the forge
 
   # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
   caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }
@@ -141,6 +142,7 @@ attributes:
       cooldown-recovery: { enabled: true, driver: essence, per-point: 0.002,  cap: 0.50 } # spell cooldown / (1 + this)
       gather-speed:      { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # breaking blocks; only gathering skills raise it
       chop-speed:        { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # the same with an axe in hand (Woodcutting's)
+      wear-resistance:   { enabled: true, driver: fortitude, per-point: 0,    cap: 0.35 } # the chance a point of wear on your gear is avoided (Smithing's)
     skills:
       Blade Mastery:    [ { stat: attack-speed, per-level: 0.003, weapon: sword } ]
       Weapon Mastery:
@@ -153,3 +155,4 @@ attributes:
       Spell Weaving:    [ { stat: cooldown-recovery, per-level: 0.003 } ]
       Mining:           [ { stat: gather-speed, per-level: 0.002 } ]
       Woodcutting:      [ { stat: chop-speed, per-level: 0.002 } ]
+      Smithing:         [ { stat: wear-resistance, per-level: 0.003 } ]               # 3% at 10, 7% at 25, 12% at 50, 20% at 100

@@ -128,7 +128,8 @@ function grove(controller, x, y, z, height = 4) {
 async function wood(b, deadline, controller, felling = false) {
   const n = b.username;
   const height = felling ? 6 : 4;
-  if (felling) { controller.chat(`/cerb skill ${n} Woodcutting level 25`); await sleep(400); }
+  // Every run starts from the same level, so the XP, level-ups and HUD lines it causes are the same from run to run.
+  controller.chat(`/cerb skill ${n} Woodcutting level ${felling ? 25 : 1}`); await sleep(400);
   b.chat('/gamemode survival'); await sleep(400);
   b.chat('/clear @s'); await sleep(300);
   b.chat('/give @s netherite_axe'); await sleep(800);

@@ -70,7 +70,8 @@ public final class GatherCommand {
             GatherRules.Decision d = ev.decision();
             p.sendMessage(ChatColor.GRAY + "  resource " + ChatColor.WHITE + r.id() + ChatColor.GRAY + " (" + r.skill() + ", level " + r.level()
                     + ", " + r.xp() + " XP" + (r.fortune() ? ", fortune" : "") + (r.replacesDrops() ? ", custom drops" : "") + ")");
-            p.sendMessage(ChatColor.GRAY + "  placed: " + ChatColor.WHITE + ev.placed() + ChatColor.GRAY + "  method: " + ChatColor.WHITE
+            p.sendMessage(ChatColor.GRAY + "  origin: " + ChatColor.WHITE + originName(ev.origin()) + (ev.placed() ? " (pays nothing)" : "")
+                    + ChatColor.GRAY + "  method: " + ChatColor.WHITE
                     + ev.method().name().toLowerCase(Locale.ROOT) + ChatColor.GRAY + "  tool: " + ChatColor.WHITE
                     + (ev.tool() == null ? "none" : ev.tool().id() + " " + ev.tool().kinds() + " tier " + ev.tool().tier())
                     + ChatColor.GRAY + " fits: " + ChatColor.WHITE + ev.toolFits() + (ev.silk() ? ChatColor.GRAY + " (silk touch)" : ""));
@@ -83,16 +84,19 @@ public final class GatherCommand {
         var snap = plugin.getAttributeService().get(p.getUniqueId());
         Attributes.WeaponClass wc = Attributes.WeaponClass.ofMaterial(hand.getType().name());
         p.sendMessage(ChatColor.GRAY + "  attributes now: " + ChatColor.WHITE + String.format(Locale.ROOT,
-                "Power %.2f (%s), Fortitude %.2f, Fortune %.2f (ore %.2f, wood %.2f)", snap.power(wc), wc.singular.toLowerCase(Locale.ROOT),
-                snap.get(Attributes.Attribute.FORTITUDE), snap.get(Attributes.Attribute.FORTUNE),
-                snap.fortune(Attributes.Yield.ORE), snap.fortune(Attributes.Yield.WOOD)));
+                "Power %.2f (%s), Fortitude %.2f, Fortune %.2f (ore %.2f, wood %.2f), wear resistance %.2f%%", snap.power(wc),
+                wc.singular.toLowerCase(Locale.ROOT), snap.get(Attributes.Attribute.FORTITUDE), snap.get(Attributes.Attribute.FORTUNE),
+                snap.fortune(Attributes.Yield.ORE), snap.fortune(Attributes.Yield.WOOD), snap.secondary(Attributes.Stat.WEAR_RESISTANCE) * 100));
         StringBuilder smelted = new StringBuilder();
         for (String metal : svc.catalog().needsSmelted()) {
             smelted.append(smelted.isEmpty() ? "" : ", ").append(metal).append(' ').append(ForgeListener.credit(p, metal));
         }
         if (!smelted.isEmpty()) p.sendMessage(ChatColor.GRAY + "  smelted metal for forging: " + ChatColor.WHITE + smelted);
+        int maxWear = hand.getType().getMaxDurability();
         p.sendMessage(ChatColor.GRAY + "  in hand: " + ChatColor.WHITE + hand.getType().name().toLowerCase(Locale.ROOT)
                 + (q != null ? ChatColor.GRAY + ", quality " + q.color + q.displayName : "")
+                + (maxWear > 0 && hand.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable dm
+                        ? ChatColor.GRAY + ", wear " + dm.getDamage() + "/" + maxWear : "")
                 + (GearItems.toolId(hand) != null ? ChatColor.GRAY + ", custom tool " + GearItems.toolId(hand) : "")
                 + (GearItems.upgrades(hand).isEmpty() ? "" : ChatColor.GRAY + ", upgrades " + GearItems.upgrades(hand))
                 + ChatColor.GRAY + String.format(Locale.ROOT, "  your bonus chance: ore %.1f%%, wood %.1f%%",
@@ -180,10 +184,13 @@ public final class GatherCommand {
         int level = plugin.getSkillManager().getSkillLevel(p, r.skill());
         Gathering.WoodRules w = c.wood();
         Gathering.TreeScan.Tree t = wc.inspect(b, r, 1024);
-        boolean placed = svc.placedBlocks() != null && svc.placedBlocks().isPlaced(b);
+        Gathering.Origin origin = svc.placedBlocks() == null ? Gathering.Origin.NATURAL : svc.placedBlocks().origin(b);
         p.sendMessage(ChatColor.GOLD + "Tree: " + ChatColor.WHITE + r.displayName() + ChatColor.GRAY + " (level " + r.level() + ", " + r.xp()
                 + " XP a log, " + GatheringCatalog.tierName(r.tier()) + " axe)");
-        p.sendMessage(ChatColor.GRAY + "  this log: " + ChatColor.WHITE + (placed ? "placed (pays nothing)" : "natural")
+        boolean nothing = Gathering.GatheringService.paysNothing(r, origin);
+        double share = nothing ? 0 : w.xpShare(origin);
+        p.sendMessage(ChatColor.GRAY + "  this log: " + ChatColor.WHITE + originName(origin)
+                + (share >= 1 ? "" : share <= 0 ? " (pays nothing)" : String.format(Locale.ROOT, " (pays %.0f%%)", share * 100))
                 + ChatColor.GRAY + "  logs: " + ChatColor.WHITE + t.size() + (t.capped() ? "+" : "")
                 + ChatColor.GRAY + "  its natural leaves: " + ChatColor.WHITE + t.naturalLeaves() + (t.naturalLeaves() >= Gathering.TreeScan.LEAF_COUNT_LIMIT ? "+" : "")
                 + ChatColor.GRAY + "  trunk: " + ChatColor.WHITE + (t.giant() ? "giant (2x2)" : "single")
@@ -193,7 +200,7 @@ public final class GatherCommand {
         int cap = w.capacity(level);
         String fell = cap <= 0 ? "no: Felling opens at " + r.skill() + " " + w.firstFellingLevel()
                 : t.size() > cap + 1 ? "no: more than " + cap + " logs besides the cut"
-                : !t.natural(w.minLeaves()) ? "no: not a tree the world grew"
+                : !t.natural(w.minLeaves()) ? "no: none of its own leaves (a build of logs)"
                 : t.build() ? "no: it touches a build (planks, glass, a door...)"
                 : t.baseWidth() > r.tree().trunk() ? "no: its base is wider than a trunk"
                 : t.giant() && !w.giantTrunks(level) ? "no: giant trunks from " + w.giantAt()
@@ -202,8 +209,13 @@ public final class GatherCommand {
         p.sendMessage(ChatColor.GRAY + "  Felling at your " + r.skill() + " " + level + ": " + ChatColor.WHITE + fell
                 + (rest > 0 ? ChatColor.GRAY + ", ready in " + (rest + 999) / 1000 + " s" : ""));
         p.sendMessage(ChatColor.GRAY + "  heartwood chance per log: " + ChatColor.WHITE
-                + String.format(Locale.ROOT, "%.2f%%", w.heartwoodChance(r.tree().heartwood(), level) * 100)
+                + String.format(Locale.ROOT, "%.2f%%", nothing ? 0 : w.heartwoodChance(r.tree().heartwood(), level, origin) * 100)
                 + ChatColor.GRAY + "  discovered: " + ChatColor.WHITE + wc.discovered(p).contains(r.id()));
+    }
+
+    /** "natural", "placed", "grown", "bone meal": where a block came from, for these messages. */
+    private static String originName(Gathering.Origin o) {
+        return o == Gathering.Origin.BONEMEAL ? "bone meal" : o.name().toLowerCase(Locale.ROOT);
     }
 
     /** Test helper: set your smelted-metal units for forging (what smelting would have given). */

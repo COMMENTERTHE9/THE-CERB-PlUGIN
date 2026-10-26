@@ -39,7 +39,7 @@ Studied: Hypixel SkyBlock's foraging updates 0.23 (June 2025) and 0.27 (August 2
 2. **Cut it with an axe.** Logs pay Woodcutting XP only with an axe. Harder woods want a better one: with too weak an axe a log pays a quarter of its XP and gives no Felling and no heartwood, and the HUD says which axe pays in full. By hand the wood still drops, with no XP.
 3. **Feel the skill.** Every level adds Vitality, Fortune for wood (a chance of an extra log) and chopping speed with an axe. The level-up says exactly how much.
 4. **Unlock techniques at milestones.** Felling (Sneak while cutting, and the tree comes down) grows from small trees at 10 to giant trunks at 50; at 75 the canopy comes down too.
-5. **Discover woods.** The first natural log of each wood pays a discovery bonus, once.
+5. **Discover woods.** The first log of each wood cut from a tree pays a discovery bonus, once.
 6. **Bring back heartwood.** A rare core from natural logs, more often from harder trees and at higher levels. It goes into an axe's grip (faster chopping) or a bow's limbs (faster draw).
 7. **Move on.** A tree 20 or more levels below the player pays a quarter (as weak mobs and weak ore do), so progress means harder trees in harder places.
 
@@ -63,15 +63,26 @@ Studied: Hypixel SkyBlock's foraging updates 0.23 (June 2025) and 0.27 (August 2
 - **XP pace:** a beginner cutting oak and birch by hand-picked trees earns about 6,000 XP an hour, like a beginner miner (`GATHERING.md`). Level 10 takes about 3 hours, and Felling makes the next stretch faster.
 - **Only logs (and Nether stems).** Stripped logs, wood blocks and planks are things players make, so they pay nothing.
 
-## 5. Natural and placed wood
+## 5. Where a log came from
 
-- **A log pays unless it was placed, moved or grown since this update,** the same rule as ore (`GATHERING.md`). The placed-block memory marks every log a player places or a piston moves, and every log a sapling grows into:
-  - saplings, fungi, propagules and azaleas that a player plants or bone-meals grow trees that give wood, but no XP, no Felling, no heartwood and no discovery;
-  - so no amount of replanting pays.
-- **Felling also needs a tree the world grew.** Its connected logs of that wood must touch at least two of the tree's own **natural leaves** (by a side, an edge or a corner, as the logs themselves connect, so a mushroom-like cap sitting on its stem counts): leaves the world grew, which vanilla marks as decaying. Leaves a player placed never count, and Nether stems count their wart blocks. Looking up to 7 blocks sideways, 32 up and 1 down from the cut, a felling never takes a placed log or goes past one.
+Growing and harvesting a real tree is a way to train Woodcutting; placing logs and breaking them again is not (owner decision, 2026-10-26, after the playtest: the tree that paid nothing had grown from a sapling, under the first rule of this section, and no message said why). The placed-block memory in chunk data (`Gathering/PlacedBlocks`, `ChunkMarks`) tells four origins apart:
+
+| Where the log came from | XP per log | Heartwood | Felling, discovery, Fortune |
+|---|---|---|---|
+| A tree the world generated | 100% | the wood's chance | yes |
+| A tree grown from a sapling, fungus or propagule a player planted, left to grow | 80% (`woodcutting.grown.xp`) | 80% of the chance (`grown.heartwood`) | yes |
+| A tree bone meal finished growing | 50% (`woodcutting.bone-meal.xp`) | none (`bone-meal.heartwood: 0`) | yes |
+| A log placed by hand, or moved by a piston | 0 | none | no |
+
+- **How a tree is told apart:** the world's own trees are generated and never pass through a grow event; every tree that grows from something planted does (`StructureGrowEvent`). All bone meal, a player's or a dispenser's, is followed by a fertilize event (`BlockFertilizeEvent`), which settles the tree as bone-meal grown; growth by random ticks has none and settles as grown a tick later. Marks are written only once the growth is final (a fertilize event a protection plugin cancels marks nothing). A log placed, moved by a piston or put back after breaking is placed, whatever it was before; a wind charge's burst changes no mark.
+- **The HUD explains a smaller number,** at most every 5 minutes: "Trees grown from saplings pay 80% of a wild tree's Woodcutting XP", "Trees grown with bone meal pay 50% of a wild tree's XP and no heartwood; left to grow, 80%". A placed log cut with an axe says "Logs placed by hand pay no Woodcutting XP; trees grown from saplings do" (at most every 2 minutes).
+- **Anti-farming, without punishing a forest:** a bone-meal farm pays half and no heartwood; every log still needs the player's own axe (machines, explosions and creative pay nothing); Felling keeps its rest between fellings; oak and birch pay a quarter to a player 20+ levels above them (the weak-resource rule), so a high-level farm needs the harder woods; a placed or piston-moved log pays nothing, so logs can't be cycled. A tree left to grow pays nearly as much as a wild one: planting a forest and coming back is real forestry.
+- **Trees grown before this rule** (from the Woodcutting build of 2026-10-26 until this one) were recorded as placed and still pay nothing: the old memory can't tell them from placed logs. Cut them and replant; the HUD says "This tree grew before grown trees paid…" when such a log still touches its tree's own leaves. Nothing in the saved data is rewritten; an older build reading the world treats grown logs as natural.
+- **A wood with its own custom drops** grown from a sapling gives vanilla's drops and pays nothing, as a placed one: a farm never makes custom items from nothing.
+- **Felling also needs a real tree.** Its connected logs of that wood must touch at least two of the tree's own **natural leaves** (by a side, an edge or a corner, as the logs themselves connect, so a mushroom-like cap sitting on its stem counts): leaves that grew with the tree (generated or grown from a sapling), which vanilla marks as decaying. Leaves a player placed never count, and Nether stems count their wart blocks. Looking up to 7 blocks sideways, 32 up and 1 down from the cut, a felling never takes a placed log or goes past one, and takes a grown tree's logs at their share.
 - **Old builds.** A log built into a house before this update is unmarked, so cutting it by hand pays once, as old ore blocks do; it can't be repeated, because a log placed again is remembered. Felling never takes such a build:
   - a build has no natural leaves of its own;
-  - a natural tree that a build touches is left standing. When planks, stairs, slabs, a fence or wall, a door or trapdoor, glass, a bed, wool or carpet, a sign or banner, a torch or lantern, bricks, concrete, a ladder, a crafting table, chest, barrel, furnace or bookshelf touches any of its logs, the HUD says so and the tree is cut log by log. An old log house or a village built against a tree never comes down with it. Trees the world grows never touch these;
+  - a tree (generated or grown) that a build touches is left standing. When planks, stairs, slabs, a fence or wall, a door or trapdoor, glass, a bed, wool or carpet, a sign or banner, a torch or lantern, bricks, concrete, a ladder, a crafting table, chest, barrel, furnace or bookshelf touches any of its logs, the HUD says so and the tree is cut log by log. An old log house or a village built against a tree never comes down with it. Trees the world grows never touch these;
   - a tree whose lowest layer of logs is wider than a trunk is left standing too. A trunk is 1 or 2 logs wide (3 for the Nether's thick fungi: `trunk:` per wood), and a log fence, wall or palisade built against it, even of logs alone, widens its base. Two trees grown into each other are left standing for the same reason, and are cut by hand.
 - **What can still come down:** a structure made only of logs of the tree's own wood, attached to the tree above its base, with no other building block touching any of its logs, and only on land no protection plugin claims. Claims stop every felling at their edge.
 - **Why not demand leaves for every log:** a trunk whose crown was cut first, or whose leaves already decayed, would stop paying halfway down. One check per felling costs little; one per log would cost more and frustrate players.
@@ -80,7 +91,7 @@ Studied: Hypixel SkyBlock's foraging updates 0.23 (June 2025) and 0.27 (August 2
 
 | Level | Technique | What changes |
 |---|---|---|
-| 10 | **Felling I** | Sneak while cutting a natural tree's log: the rest of the tree, up to 6 logs, comes down with it. Small oaks and birches in one cut. |
+| 10 | **Felling I** | Sneak while cutting a tree's log: the rest of the tree, up to 6 logs, comes down with it. Small oaks and birches in one cut. |
 | 25 | **Felling II** | Up to 24 logs: most single-trunk trees. |
 | 50 | **Felling III** | Up to 64 logs, and giant 2×2 trunks: dark oak, pale oak, giant spruce and jungle trees. |
 | 75 | **Canopy** | Felling brings the tree's natural leaves down too, with their own drops (saplings, sticks, apples). |
@@ -118,7 +129,7 @@ Studied: Hypixel SkyBlock's foraging updates 0.23 (June 2025) and 0.27 (August 2
 
 ## 9. Discoveries
 
-- The first natural log of each wood a player cuts is a **discovery**: the bonus XP in the table above, a line in chat and on the HUD, and a soft chime. Once per wood per player, saved on the player (no database).
+- The first log of each wood a player cuts from a tree (generated or grown; never a placed log) is a **discovery**: the bonus XP in the table above, a line in chat and on the HUD, and a soft chime. Once per wood per player, saved on the player (no database).
 - The Woodcutting page (Player Menu → Skills → Utility → Woodcutting) lists the woods discovered and the ones still to find, with the level and axe each asks for.
 
 ## 10. Protecting the world
@@ -126,15 +137,15 @@ Studied: Hypixel SkyBlock's foraging updates 0.23 (June 2025) and 0.27 (August 2
 | Risk | What stops it |
 |---|---|
 | Placing and breaking logs | Placed logs are remembered and pay nothing (as ore). |
-| Tree farms (saplings, bone meal, fungi, propagules) | Logs a sapling grows are remembered as grown: wood drops, nothing else. |
+| Tree farms (saplings, bone meal, fungi, propagules) | A tree left to grow pays 80%, one bone meal finished 50% and no heartwood (§5); each log needs the player's own axe, Felling rests, and the weak-resource rule cuts low woods to a quarter for a high-level player. |
 | Old log builds and villages (logs nothing remembers as placed) | Cut by hand they pay once, like old ore. Felling never takes them: they have no natural leaves, and a natural tree they touch is left standing (§5). |
 | Felling a build | Felling takes only logs of the cut log's wood that belong to its natural tree, never a placed log and never past one, within 7 blocks sideways, 32 up and 1 down of the cut. A tree a build touches, or whose base is wider than a trunk, isn't felled at all (§5). |
 | Machines | A crafter never makes an upgrade or uses heartwood; a furnace never smelts heartwood. An upgrade's recipe on its own gives nothing back. |
 | Protected areas | Each felled log is offered to protection plugins as the player's own break; when one refuses a log, the felling stops there. |
 | Chunk and region edges | A felling reads and changes only loaded blocks the current region thread owns (Folia), checked again at every step; past that the tree is cut by hand. |
 | Lag | The felling runs in steps of 8 logs a tick, so other plugins' handlers never run for a whole tree in one tick. |
-| Player intent | Felling only while Sneaking, with a fitting axe, on a natural tree. |
-| Fortune duplicating wood | At most one extra log per log, never from placed or grown logs; a placed extra log pays nothing. |
+| Player intent | Felling only while Sneaking, with a fitting axe, on a tree with its own leaves. |
+| Fortune duplicating wood | At most one extra log per log, never from placed logs; a placed extra log pays nothing. |
 | Creative mode | Nothing (no XP, no Felling bonus, no heartwood, no discovery). |
 
 ## 11. Data and extension points

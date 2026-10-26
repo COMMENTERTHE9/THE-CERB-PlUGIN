@@ -363,10 +363,65 @@ class GatheringTest {
         assertEquals(Attributes.Stat.CHOP_SPEED, grip.stat());
         assertEquals(Set.of("bow"), limbs.on());
         assertEquals(Attributes.Stat.DRAW_SPEED, limbs.stat());
-        // The skill page's training lines speak of trees for a skill made of woods.
+        assertEquals(new WoodRules.Share(0.8, 0.8), w.grown(), "a tree left to grow from a sapling: 80% of the XP and heartwood");
+        assertEquals(new WoodRules.Share(0.5, 0), w.boneMeal(), "one bone meal finished: half the XP, no heartwood");
+        // The skill page's training lines speak of trees for a skill made of woods, and say what a grown tree pays.
         List<String> lines = c.trainingLines().get("Woodcutting");
-        assertTrue(lines.get(0).startsWith("Cut logs of natural trees with an axe"), lines.toString());
+        assertTrue(lines.get(0).startsWith("Cut the logs of trees with an axe"), lines.toString());
         assertTrue(lines.stream().anyMatch(l -> l.contains("pale oak: iron")), lines.toString());
+        assertTrue(lines.stream().anyMatch(l -> l.startsWith("Trees grown from saplings pay 80% (with bone meal 50%); logs players place give nothing")),
+                lines.toString());
+    }
+
+    @Test
+    void grownTreesPayTheirShareAndAFileCanChangeIt() throws Exception {
+        GatheringCatalog edited = of("""
+                woodcutting:
+                  grown: { xp: 1.0, heartwood: 0.5 }
+                  bone-meal: { xp: 0.25 }
+                """);
+        assertTrue(edited.problems().stream().noneMatch(x -> x.startsWith("woodcutting.grown") || x.startsWith("woodcutting.bone-meal")),
+                edited.problems().toString());
+        assertEquals(new WoodRules.Share(1.0, 0.5), edited.wood().grown());
+        assertEquals(new WoodRules.Share(0.25, 0), edited.wood().boneMeal(), "an unwritten heartwood keeps the default");
+        GatheringCatalog older = of("""
+                woodcutting:
+                  felling: { at: { 10: 6 } }
+                """);
+        assertEquals(WoodRules.DEFAULTS.grown(), older.wood().grown(), "a file from before this update: the built-in shares");
+        assertEquals(WoodRules.DEFAULTS.boneMeal(), older.wood().boneMeal());
+        GatheringCatalog bad = of("""
+                woodcutting:
+                  grown: { xp: 1.5 }
+                  bone-meal: { xp: -1, heartwood: 0 }
+                """);
+        assertEquals(WoodRules.DEFAULTS.grown(), bad.wood().grown(), "outside 0-1: the default, and a problem");
+        assertEquals(WoodRules.DEFAULTS.boneMeal(), bad.wood().boneMeal());
+        assertEquals(2, bad.problems().stream().filter(x -> x.startsWith("woodcutting.grown") || x.startsWith("woodcutting.bone-meal")).count(),
+                bad.problems().toString());
+    }
+
+    @Test
+    void whatPaysNothingByOrigin() throws Exception {
+        GatheringCatalog c = shipped();
+        GatheringCatalog.ResourceDef oak = c.resource(Material.OAK_LOG), iron = c.resource(Material.IRON_ORE);
+        assertFalse(GatheringService.paysNothing(oak, Origin.NATURAL));
+        assertTrue(GatheringService.paysNothing(oak, Origin.PLACED), "a log placed by hand");
+        assertFalse(GatheringService.paysNothing(oak, Origin.GROWN), "a tree grown from a sapling pays its share");
+        assertFalse(GatheringService.paysNothing(oak, Origin.BONEMEAL));
+        assertFalse(GatheringService.paysNothing(iron, Origin.NATURAL));
+        assertTrue(GatheringService.paysNothing(iron, Origin.PLACED));
+        assertTrue(GatheringService.paysNothing(iron, Origin.GROWN), "only a tree's logs pay for growing");
+        GatheringCatalog custom = of("""
+                resources:
+                  glowcap: { skill: Woodcutting, blocks: [MUSHROOM_STEM], tool: axe, xp: 5, drops: [ { item: STICK } ],
+                             tree: { leaves: [RED_MUSHROOM_BLOCK] } }
+                """);
+        assertTrue(GatheringService.paysNothing(custom.resource(Material.MUSHROOM_STEM), Origin.GROWN),
+                "a grown tree of a wood with custom drops: vanilla's drops only, as a placed one (no custom items from a farm)");
+        assertFalse(GatheringService.paysNothing(custom.resource(Material.MUSHROOM_STEM), Origin.NATURAL));
+        assertFalse(GatheringService.paysNothing(null, Origin.NATURAL));
+        assertTrue(GatheringService.paysNothing(null, Origin.GROWN));
     }
 
     @Test

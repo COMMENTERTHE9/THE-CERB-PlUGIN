@@ -7,7 +7,8 @@
 #
 # Rules the code keeps whatever this file says (docs/design/GATHERING.md, "What can't be farmed"):
 #   - only blocks broken by a player in survival or adventure pay XP or a bonus;
-#   - a block a player placed, a generator formed or a piston moved pays nothing;
+#   - a block a player placed, a generator formed or a piston moved pays nothing (a tree grown from a planted
+#     sapling pays the share woodcutting.grown / bone-meal sets);
 #   - Silk Touch pays XP but no bonus; the bonus is at most one extra item, never on Silk Touch.
 
 resources:
@@ -28,10 +29,10 @@ resources:
   emerald_ore:    { skill: Mining, blocks: [EMERALD_ORE, DEEPSLATE_EMERALD_ORE], tool: pickaxe, level: 30, xp: 50, fortune: true }
   ancient_debris: { skill: Mining, blocks: [ANCIENT_DEBRIS], tool: pickaxe, level: 40, xp: 100 }
 
-  # Woods (docs/design/WOODCUTTING.md §4): logs of natural trees, cut with an axe. "tier" is the axe that pays
+  # Woods (docs/design/WOODCUTTING.md §4): logs of trees, cut with an axe. "tier" is the axe that pays
   # in full (0 any, 1 stone, 2 iron); a weaker axe pays woodcutting.weak-axe of the XP and opens no technique.
-  # "tree": the leaves its natural trees grow (Felling needs some), the chance of heartwood per natural log
-  # at level 0, the XP its first natural log pays as a discovery, and how wide its trunk can be at the base
+  # "tree": the leaves its trees grow (Felling needs some), the chance of heartwood per log of a wild tree
+  # at level 0, the XP its first log cut from a tree pays as a discovery, and how wide its trunk can be at the base
   # (trunk: 2 unless written; a wider base is logs built against the tree, which Felling leaves standing).
   oak:          { skill: Woodcutting, blocks: [OAK_LOG], tool: axe, tier: 0, level: 1, xp: 4, fortune: true,
                   tree: { leaves: [OAK_LEAVES, AZALEA_LEAVES, FLOWERING_AZALEA_LEAVES], heartwood: 0.002, discovery-xp: 20 } }
@@ -63,11 +64,11 @@ weak-resources: { level-gap: 20, factor: 0.25 }
 # resource marked "fortune: true", never multiplied by the Fortune enchantment.
 fortune: { chance-per-point: 0.005, max-chance: 0.5 }
 
-# Woodcutting's techniques (docs/design/WOODCUTTING.md §6): Felling (Sneak while cutting a natural tree's log
-# with an axe that fits) takes up to this many logs from these levels on; giant 2x2 trunks from giant-trunks-at;
-# the next felling waits rest-per-log seconds per log taken (halved from rest-halved-at); from canopy-at the
-# felled tree's natural leaves come down too. reach: how far from the cut a tree may spread. A tree needs at
-# least min-natural-leaves of its own leaves (the world's, never placed ones) to be felled.
+# Woodcutting's techniques (docs/design/WOODCUTTING.md §6): Felling (Sneak while cutting a tree's log with an
+# axe that fits) takes up to this many logs from these levels on; giant 2x2 trunks from giant-trunks-at; the next
+# felling waits rest-per-log seconds per log taken (halved from rest-halved-at); from canopy-at the felled tree's
+# natural leaves come down too. reach: how far from the cut a tree may spread. A tree needs at least
+# min-natural-leaves of its own leaves (grown ones, never placed ones) to be felled.
 woodcutting:
   felling:
     at: { 10: 6, 25: 24, 50: 64, 100: 128 }
@@ -78,8 +79,13 @@ woodcutting:
   reach: { sideways: 7, up: 32, down: 1 }
   min-natural-leaves: 2
   weak-axe: 0.25
-  # Heartwood: the chance per natural log is the wood's own x (1 + Woodcutting level / level-factor).
+  # Heartwood: the chance per log of a wild tree is the wood's own x (1 + Woodcutting level / level-factor).
   heartwood: { item: heartwood, level-factor: 50 }
+  # Trees grown from a sapling, fungus or propagule a player planted (docs/design/WOODCUTTING.md §5): the share of a
+  # wild tree's XP and heartwood chance each log pays (0 to 1). "bone-meal": a tree bone meal finished growing.
+  # Felling, discoveries and the Fortune bonus work on both; logs placed by hand pay nothing, whatever this says.
+  grown:     { xp: 0.8, heartwood: 0.8 }
+  bone-meal: { xp: 0.5, heartwood: 0 }
 
 # Custom tools and items (custom ores, drills, machines, heartwood). A tool is an item carrying its id; a
 # resource can need one of its kinds ("drill") and its tier, and drop custom items instead of its own. A
