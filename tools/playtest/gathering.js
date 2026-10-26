@@ -13,7 +13,8 @@
 //               full inventory, Ctrl+Q; a number key onto an occupied hotbar slot and a click with a full cursor make
 //               nothing and pay nothing; storage blocks both ways, nuggets and the repair recipe pay nothing; iron the
 //               player didn't smelt (a farm's) makes plain gear and pays nothing, and a batch stops paying when it runs out
-//   upgrade   - the netherite upgrade at a smithing table (50 XP, the quality kept; a shift-click too), an armor trim (nothing)
+//   upgrade   - the netherite upgrade at a smithing table (50 XP, the quality kept; a shift-click too), an armor trim (nothing),
+//               a shift-click with no room while a netherite sword is swapped in (nothing)
 //   gear      - forged quality in the attribute engine: Power with that weapon in hand only (not in the off hand), Fortitude
 //               per armor piece worn, Fortune with the pickaxe in hand (the bonus chance follows); plain items rebuild nothing
 //   custom    - the synthetic custom resource, drop and drill (written into the sandbox's resources.yml for the phase, then
@@ -50,6 +51,15 @@ async function skill(name) {
 }
 const mining = async () => totalXp(await skill('Mining'));
 const smithing = async () => totalXp(await skill('Smithing'));
+/** Turn /cerb combatdebug on or off (it toggles; its answer says which). */
+async function debugOn(on) {
+  for (let i = 0; i < 2; i++) {
+    const a = await cmd('/cerb combatdebug', 700);
+    const m = saw(/Combat debug: (ON|OFF)/, a);
+    if (m && /ON/.test(m) === on) return true;
+  }
+  return false;
+}
 async function setLevel(name, level) { await cmd(`/cerb skill ${NAME} ${name} level ${level}`, 600); }
 
 // ── The test area: a glass floor far from spawn, fresh each run (placed-block marks live in chunk data) ──
@@ -640,6 +650,38 @@ async function upgrade() {
   check('A shift-click upgrade: 50 Smithing XP, once', (await smithing()) - before === 50 && (await serverCount('netherite_pickaxe')) === 1,
       `+${(await smithing()) - before}`);
   await cmd('/clear @s', 300);
+
+  // Negative control: a shift-click that fails for want of room makes nothing, even when a netherite sword lands in
+  // the inventory in that same tick (swapped in from the cursor). Counting the inventory a tick later paid 50 for it.
+  await give('netherite_upgrade_smithing_template'); await give('diamond_sword'); await give('netherite_ingot'); await give('netherite_sword');
+  await give('dirt', 32 * 64, 900); // every other slot full
+  w = await openAt(2, 0, 0);
+  await put(w, 'netherite_upgrade_smithing_template', 0);
+  await put(w, 'diamond_sword', 1);
+  await put(w, 'netherite_ingot', 2);
+  let own = -1; // the inventory's own netherite sword (slot 3 is the result, a netherite sword too)
+  for (let i = 4; i < w.slots.length && own < 0; i++) if (w.slots[i] && w.slots[i].name === 'netherite_sword') own = i;
+  await clickW(own, 0, 0, 400); // onto the cursor
+  await give('dirt', 4 * 64, 900); // the four slots just emptied: nothing has room now
+  await debugOn(true);
+  before = await smithing();
+  const at0 = chat.length;
+  // Both clicks in one go (one server tick): the shift-click on the result, then the cursor's sword onto a dirt stack.
+  bot.clickWindow(3, 0, 1).catch(() => {});
+  bot.clickWindow(4, 0, 0).catch(() => {});
+  await sleep(1200);
+  const name = i => (w.slots[i] ? w.slots[i].name : null);
+  const shiftSeen = !!chat.slice(at0).find(m => /\[Forge\] smithing click \(SHIFT_LEFT\)/.test(m));
+  const swapped = name(4) === 'netherite_sword' && w.selectedItem && w.selectedItem.name === 'dirt';
+  const notMade = name(3) === 'netherite_sword' && name(1) === 'diamond_sword';
+  const gainedNo = (await smithing()) - before;
+  await debugOn(false);
+  check('A shift-click with no room, a netherite sword swapped in that tick: no Smithing XP', gainedNo === 0 && shiftSeen && swapped && notMade,
+      `+${gainedNo}; shift-click seen ${shiftSeen}, sword swapped in ${swapped}, upgrade not made ${notMade}`);
+  bot.closeWindow(w);
+  await sleep(500);
+  await cmd('/clear @s', 300);
+  await cmd('/kill @e[type=item,distance=..12]', 300);
 }
 
 async function gear() {

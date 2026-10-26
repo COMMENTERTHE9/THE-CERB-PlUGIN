@@ -5,6 +5,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Statistic;
+import org.bukkit.block.Furnace;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -20,6 +21,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerStatisticIncrementEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.FurnaceInventory;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Recipe;
@@ -42,13 +44,14 @@ import java.util.concurrent.atomic.LongAdder;
  * a click that makes nothing pays nothing, and a shift-click or Ctrl+Q batch pays every item.
  *
  * <ul>
- *   <li><b>Smelting</b> pays as metal is taken out of a furnace or blast furnace by a player (the
- *       statistic rises while that window is open; a number key or F onto an empty slot is counted
- *       from the click, the one take the statistic misses). Hoppers pay nobody. Each ingot taken also
- *       covers one unit of forging of that metal.</li>
+ *   <li><b>Smelting</b> pays as metal is taken out of a furnace or blast furnace block by a player
+ *       (the statistic rises while that window is open; a number key or F onto an empty slot is
+ *       counted from the click, the one take the statistic misses). Hoppers pay nobody. Each ingot
+ *       taken also covers one unit of forging of that metal.</li>
  *   <li><b>Forging</b> (crafting gear) and the <b>netherite upgrade</b>: the click arms the payment
- *       for its own window, and the statistic pays it. A shift-click at the smithing table raises the
- *       statistic by nothing (vanilla moves the result first), so it pays when the result arrives.</li>
+ *       for its own window, and the statistic pays it. A shift-click at the smithing table moves the
+ *       result first and then counts the emptied stack: the statistic is raised for no item by 0, and
+ *       only when the result really moved. That take pays the armed upgrade once.</li>
  *   <li><b>Metal a farm can make</b> ({@code forging.needs-smelted}: iron, gold, copper) pays and
  *       rolls a quality only as far as the player smelted it: an iron golem farm makes ingots without
  *       mining. The units are kept on the player (no database).</li>
@@ -64,8 +67,12 @@ public final class ForgeListener implements Listener {
     /** The "pays only from smelted metal" hint, at most this often per player. */
     private static final long HINT_MS = 5 * 60_000L;
 
-    /** An armed payment: items of {@code material} made in {@code view} now pay {@code xpEach}; a batch's items get {@code batchQuality}. */
-    private record Pending(Material material, String skill, double xpEach, Quality batchQuality, InventoryView view, long until) {
+    /**
+     * An armed payment: items of {@code material} made in {@code view} now pay {@code xpEach}; a batch's items get
+     * {@code batchQuality}. {@code emptyTake}: a shift-click at the smithing table, paid by its empty take.
+     */
+    private record Pending(Material material, String skill, double xpEach, Quality batchQuality, InventoryView view, long until,
+                           boolean emptyTake) {
         boolean live(long now) { return now - until < 0; }
     }
 
@@ -134,8 +141,11 @@ public final class ForgeListener implements Listener {
 
     // ── Smelting ─────────────────────────────────────────────────
 
-    private static boolean furnace(InventoryType t) {
-        return t == InventoryType.FURNACE || t == InventoryType.BLAST_FURNACE || t == InventoryType.SMOKER;
+    /** A furnace, blast furnace or smoker block's window (a plugin's furnace-shaped screen is none of them). */
+    private static boolean furnace(Inventory top) {
+        InventoryType t = top.getType();
+        return (t == InventoryType.FURNACE || t == InventoryType.BLAST_FURNACE || t == InventoryType.SMOKER)
+                && top.getHolder(false) instanceof Furnace;
     }
 
     /** Pay for {@code count} of {@code item} taken out of a furnace, and cover that much forging. */
@@ -157,7 +167,7 @@ public final class ForgeListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onFurnaceSwap(InventoryClickEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p) || !(e.getClickedInventory() instanceof FurnaceInventory)) return;
+        if (!(e.getWhoClicked() instanceof Player p) || !(e.getClickedInventory() instanceof FurnaceInventory f) || !furnace(f)) return;
         if (e.getSlotType() != InventoryType.SlotType.RESULT) return;
         if (e.getClick() != ClickType.NUMBER_KEY && e.getClick() != ClickType.SWAP_OFFHAND) return;
         ItemStack out = e.getCurrentItem();
@@ -193,7 +203,7 @@ public final class ForgeListener implements Listener {
         GearItems.setQuality(tagged, q);
         e.setCurrentItem(tagged); // the item this click takes
         boolean batch = e.getClick().isShiftClick() || e.getClick() == ClickType.CONTROL_DROP;
-        Pending pd = new Pending(m, c.forgingSkill(), each, batch ? q : null, e.getView(), System.nanoTime() + WINDOW_NS);
+        Pending pd = new Pending(m, c.forgingSkill(), each, batch ? q : null, e.getView(), System.nanoTime() + WINDOW_NS, false);
         pending.put(p.getUniqueId(), pd);
         CraftingInventory grid = e.getInventory();
         p.getScheduler().runDelayed(plugin, t -> settle(p, pd, grid), null, 1L);
@@ -245,25 +255,12 @@ public final class ForgeListener implements Listener {
         GatheringCatalog c = service.catalog();
         if (c.netheriteUpgradeXp() <= 0) return;
         Material m = result.getType();
-        if (e.getClick().isShiftClick()) {
-            // Vanilla moves the result first and counts the emptied stack: the statistic rises by nothing.
-            // A shift-click only fails for want of room, and then nothing unstackable can arrive either,
-            // so one more of the result in the inventory a tick later means it was made.
-            int before = countIn(p, m);
-            p.getScheduler().runDelayed(plugin, t -> {
-                if (countIn(p, m) > before) payUpgrade(p, m, 1);
-            }, null, 1L);
-            return;
-        }
-        Pending pd = new Pending(m, c.forgingSkill(), c.netheriteUpgradeXp(), null, e.getView(), System.nanoTime() + WINDOW_NS);
+        // A shift-click is paid by its empty take (onCrafted), never by what turns up in the inventory: a shift-click
+        // that fails for want of room makes nothing, and an item swapped in from the cursor is not one made.
+        Pending pd = new Pending(m, c.forgingSkill(), c.netheriteUpgradeXp(), null, e.getView(), System.nanoTime() + WINDOW_NS,
+                e.getClick().isShiftClick());
         pending.put(p.getUniqueId(), pd);
         p.getScheduler().runDelayed(plugin, t -> pending.remove(p.getUniqueId(), pd), null, 1L);
-    }
-
-    private static int countIn(Player p, Material m) {
-        int n = 0;
-        for (ItemStack it : p.getInventory().getStorageContents()) if (it != null && it.getType() == m) n += it.getAmount();
-        return n;
     }
 
     private void payUpgrade(Player p, Material m, int made) {
@@ -276,18 +273,22 @@ public final class ForgeListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onCrafted(PlayerStatisticIncrementEvent e) {
-        if (e.getStatistic() != Statistic.CRAFT_ITEM || e.getMaterial() == null) return;
+        if (e.getStatistic() != Statistic.CRAFT_ITEM) return;
         Player p = e.getPlayer();
         int made = e.getNewValue() - e.getPreviousValue();
+        if (e.getMaterial() == null || e.getMaterial().isAir()) { // no item: a shift-click's take at the smithing table
+            if (made == 0) emptyTake(p);
+            return;
+        }
         if (made <= 0) return;
-        if (furnace(p.getOpenInventory().getTopInventory().getType())) { // taken out of a furnace: smelting
+        if (furnace(p.getOpenInventory().getTopInventory())) { // taken out of a furnace: smelting
             paySmelt(p, e.getMaterial(), made);
             return;
         }
         Pending pd = pending.get(p.getUniqueId());
         trace(p, "made " + made + " " + e.getMaterial() + (pd == null ? ", nothing armed" : ", armed for " + pd.material()
                 + (pd.live(System.nanoTime()) ? "" : " (expired)")));
-        if (pd == null || e.getMaterial() != pd.material() || !pd.live(System.nanoTime()) || p.getOpenInventory() != pd.view()) return;
+        if (pd == null || pd.emptyTake() || e.getMaterial() != pd.material() || !pd.live(System.nanoTime()) || p.getOpenInventory() != pd.view()) return;
         if (pd.material().name().startsWith("NETHERITE_")) { payUpgrade(p, pd.material(), made); return; }
         GatheringCatalog c = service.catalog();
         int paid = made;
@@ -300,6 +301,17 @@ public final class ForgeListener implements Listener {
         if (paid <= 0) return;
         forged.add(paid);
         service.award(p, pd.skill(), pd.xpEach() * paid);
+    }
+
+    /**
+     * A shift-click at the smithing table moved its result into the inventory: vanilla then counts the emptied
+     * stack, which raises the statistic for no item by 0 (and only after a real move). Pays the armed upgrade once.
+     */
+    private void emptyTake(Player p) {
+        Pending pd = pending.get(p.getUniqueId());
+        if (pd == null || !pd.emptyTake() || !pd.live(System.nanoTime()) || p.getOpenInventory() != pd.view()) return;
+        if (!pending.remove(p.getUniqueId(), pd)) return;
+        payUpgrade(p, pd.material(), 1);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

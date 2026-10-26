@@ -76,6 +76,7 @@ public final class GatheringListener implements Listener {
     public void onBreak(BlockBreakEvent e) {
         Player p = e.getPlayer();
         Block b = e.getBlock();
+        bonus.remove(p.getUniqueId()); // also here: HIGH is skipped for a break another plugin cancelled and then allowed
         GatheringService.Evaluation ev = deciding.remove(p.getUniqueId());
         if (ev == null || !ev.block().equals(b)) ev = service.evaluate(p, b); // un-cancelled after HIGH by another plugin
         if (ev == null) return;
