@@ -24,6 +24,8 @@ public final class GearItems {
     public static final NamespacedKey TOOL = new NamespacedKey("cerberus", "tool");
     public static final NamespacedKey ITEM = new NamespacedKey("cerberus", "item");
     public static final NamespacedKey QUALITY = new NamespacedKey("cerberus", "quality");
+    /** Upgrades made to the item (docs/design/WOODCUTTING.md §8): their ids, comma-separated, in the order made. */
+    public static final NamespacedKey UPGRADES = new NamespacedKey("cerberus", "upgrades");
 
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
@@ -144,6 +146,56 @@ public final class GearItems {
 
     private static Component text(String legacy) {
         return LEGACY.deserialize(legacy).decoration(TextDecoration.ITALIC, false);
+    }
+
+    /** The upgrades an item carries, by id (empty when none). */
+    public static List<String> upgrades(ItemStack it) {
+        String s = string(it, UPGRADES);
+        if (s == null || s.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String id : s.split(",")) if (!id.isBlank()) out.add(id.trim());
+        return List.copyOf(out);
+    }
+
+    /**
+     * A copy of {@code it} with {@code u} made to it: the id in its data and one lore line ("✦ Heartwood grip: chopping
+     * speed while held"; the amount is on the Stats page). Everything else (enchantments, damage, quality, name) is kept.
+     * Null when it already has that upgrade or isn't of a kind it goes on.
+     */
+    public static ItemStack withUpgrade(ItemStack it, GatheringCatalog.UpgradeDef u) {
+        if (it == null || u == null || !u.on().contains(kind(it.getType()))) return null;
+        List<String> have = upgrades(it);
+        if (have.contains(u.id())) return null;
+        ItemStack out = it.clone();
+        out.setAmount(1);
+        List<String> ids = new ArrayList<>(have);
+        ids.add(u.id());
+        out.editMeta(m -> {
+            m.getPersistentDataContainer().set(UPGRADES, PersistentDataType.STRING, String.join(",", ids));
+            List<Component> lore = m.lore() == null ? new ArrayList<>() : new ArrayList<>(m.lore());
+            lore.add(text("§6✦ " + u.name() + "§7: " + u.stat().displayName.toLowerCase(Locale.ROOT) + " while held"));
+            m.lore(lore);
+        });
+        return out;
+    }
+
+    /** What kind of item a material is, for upgrades: axe, pickaxe, shovel, hoe, sword, spear, bow, crossbow, trident, mace; or null. */
+    public static String kind(org.bukkit.Material m) {
+        if (m == null) return null;
+        String n = m.name();
+        if (n.endsWith("_PICKAXE")) return "pickaxe";
+        if (n.endsWith("_AXE")) return "axe";
+        if (n.endsWith("_SHOVEL")) return "shovel";
+        if (n.endsWith("_HOE")) return "hoe";
+        if (n.endsWith("_SWORD")) return "sword";
+        if (n.endsWith("_SPEAR")) return "spear";
+        return switch (n) {
+            case "BOW" -> "bow";
+            case "CROSSBOW" -> "crossbow";
+            case "TRIDENT" -> "trident";
+            case "MACE" -> "mace";
+            default -> null;
+        };
     }
 
     /** "iron_pickaxe" → "Iron pickaxe" (for labels). */

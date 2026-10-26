@@ -24,6 +24,7 @@ public final class AttributeCalculator {
         double[] stat = new double[nStat];
         double[] classDamage = new double[nClass];
         double[] classAttackSpeed = new double[nClass];
+        double[] yieldFortune = new double[Yield.values().length];
         List<Contribution> kept = new ArrayList<>(input.size());
         int ignored = 0;
 
@@ -33,6 +34,7 @@ public final class AttributeCalculator {
             if (c.attribute() != null) {
                 // Weapon limits only mean something for Power; elsewhere they count everywhere.
                 if (c.attribute() == Attribute.POWER && c.weapon() != null) classPower[c.weapon().ordinal()] += c.amount();
+                else if (c.attribute() == Attribute.FORTUNE && c.yield() != null) yieldFortune[c.yield().ordinal()] += c.amount();
                 else general[c.attribute().ordinal()] += c.amount();
             } else if (c.stat() == Stat.DAMAGE && c.weapon() != null) {
                 classDamage[c.weapon().ordinal()] += c.amount();
@@ -53,6 +55,12 @@ public final class AttributeCalculator {
             power[w.ordinal()] = clamp(general[Attribute.POWER.ordinal()] + classPower[w.ordinal()], 0, powerCap);
             // A damage penalty can at most cancel the bonus side, never make hits heal.
             damageBonus[w.ordinal()] = Math.max(-0.9, stat[Stat.DAMAGE.ordinal()] + classDamage[w.ordinal()]);
+        }
+
+        // Fortune counting on one yield (Mining's on ore, Woodcutting's on wood): the general part plus that yield's.
+        double[] fortune = new double[Yield.values().length];
+        for (Yield y : Yield.values()) {
+            fortune[y.ordinal()] = clamp(general[Attribute.FORTUNE.ordinal()] + yieldFortune[y.ordinal()], 0, rules.cap(Attribute.FORTUNE));
         }
 
         AttributeRules.Derived d = rules.derived();
@@ -97,7 +105,7 @@ public final class AttributeCalculator {
 
         return new AttributeSnapshot(rules, realm, totals, power, damageBonus, critChance, critMult, lifesteal,
                 maxHp, armor, bar, resist, mana, regen, spell, secondary, secondaryRaw, attackSpeed, attackSpeedRaw,
-                kept, ignored);
+                fortune, kept, ignored);
     }
 
     /**

@@ -22,7 +22,8 @@ public final class SkillAttributes {
             for (AttributeRules.SkillWeight w : e.getValue()) {
                 double amount = w.perLevel() * level;
                 if (amount == 0) continue;
-                out.add(Contribution.attribute(SOURCE_PREFIX + skill, Skills.SkillNames.display(skill) + " " + level, w.attribute(), amount, w.weapon()));
+                out.add(new Contribution(SOURCE_PREFIX + skill, Skills.SkillNames.display(skill) + " " + level, w.attribute(), null, amount,
+                        w.weapon(), w.attribute() == Attribute.FORTUNE ? w.yield() : null));
             }
         }
         for (Map.Entry<String, List<AttributeRules.StatWeight>> e : rules.secondary().skillWeights().entrySet()) {

@@ -61,7 +61,7 @@ public final class PlayerHubMenu extends PlayerMenu {
                 .raw(Attribute.VITALITY.color + "Vitality " + ChatColor.WHITE + one(s.get(Attribute.VITALITY))
                         + "   " + Attribute.FORTITUDE.color + "Fortitude " + ChatColor.WHITE + one(s.get(Attribute.FORTITUDE)))
                 .raw(Attribute.ESSENCE.color + "Essence " + ChatColor.WHITE + one(s.get(Attribute.ESSENCE))
-                        + "   " + Attribute.FORTUNE.color + "Fortune " + ChatColor.WHITE + one(s.get(Attribute.FORTUNE)))
+                        + "   " + Attribute.FORTUNE.color + "Fortune " + ChatColor.WHITE + GUIs.stats.StatsMenu.fortuneText(s))
                 .hint("Click for your full stats").build()), c -> openSection(c.player(), "stats"));
 
         // ── Vitals strip ───────────────────────────────────────

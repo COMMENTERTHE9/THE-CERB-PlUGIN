@@ -307,6 +307,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.EquipmentSource equipmentSource;
     private XpDisplay xpDisplay;
     private Celebrations celebrations;
+    private Gathering.Woodcutting woodcutting;
+    private Gathering.Upgrades upgrades;
+
+    /** Woodcutting's techniques after a cut (docs/design/WOODCUTTING.md); null until gathering is up. */
+    public Gathering.Woodcutting getWoodcutting() { return woodcutting; }
 
     /** Gathering and forging (docs/design/GATHERING.md): resources.yml, Mining and Smithing XP, placed blocks. */
     public Gathering.GatheringService getGatheringService() { return gatheringService; }
@@ -330,6 +335,14 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             getLogger().severe("[Gathering] resources.yml could not be read (" + e.getMessage()
                     + "). Nothing was changed; fix the file and run /cerb reload.");
             return null;
+        }
+        try (java.io.InputStream in = getResource("resources.yml")) { // what updates added reaches an edited file too
+            if (in != null) {
+                YamlConfiguration shipped = YamlConfiguration.loadConfiguration(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+                for (String note : Gathering.GatheringCatalog.addUpdates(yml, shipped)) getLogger().info("[Gathering] resources.yml: " + note);
+            }
+        } catch (java.io.IOException e) {
+            getLogger().warning("[Gathering] could not read this version's resources.yml (" + e.getMessage() + ")");
         }
         Gathering.GatheringCatalog catalog = Gathering.GatheringCatalog.from(yml, skillManager::findSkillName);
         for (String problem : catalog.problems()) getLogger().warning("[Gathering] resources.yml: " + problem);
@@ -520,6 +533,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             classService.setCelebrations(celebrations);
             celebrations.setAbilityUnlocks(classService::unlockedBy);
         }
+        // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy).
+        celebrations.setTechniques((skill, from, to) -> {
+            Gathering.GatheringCatalog c = gatheringService == null ? null : gatheringService.catalog();
+            return c == null || !skill.equals(c.woodSkill()) ? List.of() : c.wood().openedBetween(from, to);
+        });
     }
 
 
@@ -657,10 +675,34 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         Gathering.PlacedBlocks placedBlocks = new Gathering.PlacedBlocks(gatheringService::catalog);
         gatheringService.setPlacedBlocks(placedBlocks);
         pm.registerEvents(placedBlocks, this);
-        pm.registerEvents(new Gathering.GatheringListener(gatheringService, (p, msg) -> playerHUDManager.flash(p, msg, 1500)), this);
+        Gathering.GatheringListener gatheringListener = new Gathering.GatheringListener(gatheringService, (p, msg) -> playerHUDManager.flash(p, msg, 1500));
+        // Woodcutting (docs/design/WOODCUTTING.md): Felling, heartwood, discoveries after a real cut; upgrades in a crafting grid.
+        woodcutting = new Gathering.Woodcutting(this, gatheringService, skillManager, (p, msg) -> playerHUDManager.flash(p, msg, 1800));
+        woodcutting.setAnnouncer(new Gathering.Woodcutting.Announcer() {
+            @Override public void discovered(Player p, Gathering.GatheringCatalog.ResourceDef wood, double xp) {
+                int found = woodcutting.discovered(p).size(), all = gatheringService.catalog().woods().size();
+                String name = wood.displayName(), gain = xp > 0 ? (xp == Math.rint(xp) ? String.valueOf((long) xp) : String.valueOf(xp)) : null;
+                celebrations.celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.ORDINARY,
+                        "§a✦ §fDiscovered: " + name + (gain != null ? " §7· §a+" + gain + " XP" : ""), "§a✦ §f" + name, null, null,
+                        List.of("§a✦ Discovered: §f" + name + " wood §7(" + found + " of " + all + " woods"
+                                + (gain != null ? ", +" + gain + " " + SkillNames.display(wood.skill()) + " XP" : "") + ")"), -1));
+            }
+
+            @Override public void heartwood(Player p, Gathering.GatheringCatalog.ResourceDef wood) {
+                playerHUDManager.flash(p, "§6✦ Heartwood §7from " + wood.displayName().toLowerCase(java.util.Locale.ROOT), 1800);
+                p.playSound(p, org.bukkit.Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.8f, 0.7f);
+            }
+        });
+        gatheringListener.setWoodcutting(woodcutting);
+        pm.registerEvents(gatheringListener, this);
+        pm.registerEvents(woodcutting, this);
+        upgrades = new Gathering.Upgrades(this, gatheringService::catalog);
+        upgrades.register(gatheringService.catalog());
+        pm.registerEvents(upgrades, this);
         forgeListener = new Gathering.ForgeListener(this, gatheringService, skillManager);
         forgeListener.setDebug(this::isCombatDebugEnabled);
         forgeListener.setNotice((p, msg) -> playerHUDManager.flash(p, msg, 2500));
+        forgeListener.setNotForging(upgrades::isUpgrade); // an upgrade keeps the item's quality and pays no forging XP
         pm.registerEvents(forgeListener, this);
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
@@ -702,6 +744,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             Gathering.GatheringCatalog next = loadGatheringCatalog(false);
             if (next != null) {
                 gatheringService.setCatalog(next);
+                if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
                 if (attributeService != null) attributeService.markAllDirty(); // forged gear's numbers may have changed
                 if (attributeEffects != null) attributeEffects.refreshAll();
             }

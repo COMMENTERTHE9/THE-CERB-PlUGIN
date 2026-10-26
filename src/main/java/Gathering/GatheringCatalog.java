@@ -21,12 +21,53 @@ import java.util.Set;
  */
 public final class GatheringCatalog {
 
-    /** A resource: what gathers it, what it is worth, and (for a custom one) what it drops. */
+    /**
+     * A resource: what gathers it, what it is worth, and (for a custom one) what it drops.
+     *
+     * @param fortuneYield which Fortune its bonus counts (Mining's ore, Woodcutting's wood); null = the general part
+     * @param tree         a wood's tree (docs/design/WOODCUTTING.md): its leaves, heartwood, discovery; null for others
+     */
     public record ResourceDef(String id, String skill, Set<Material> blocks, String tool, int tier, int level,
-                              double xp, boolean fortune, List<Drop> drops) {
+                              double xp, boolean fortune, List<Drop> drops, Attributes.Yield fortuneYield, TreeDef tree) {
+        public ResourceDef(String id, String skill, Set<Material> blocks, String tool, int tier, int level, double xp, boolean fortune,
+                           List<Drop> drops) {
+            this(id, skill, blocks, tool, tier, level, xp, fortune, drops, null, null);
+        }
+
         /** True when its drops replace the block's vanilla drops (a custom resource). */
         public boolean replacesDrops() { return !drops.isEmpty(); }
+
+        /** True for a wood: its blocks are logs of a tree. */
+        public boolean isTree() { return tree != null; }
+
+        /** "Oak", "Pale oak": the id as players read it. */
+        public String displayName() {
+            String t = id.replace('_', ' ');
+            return t.isEmpty() ? t : Character.toUpperCase(t.charAt(0)) + t.substring(1);
+        }
     }
+
+    /**
+     * A wood's tree (docs/design/WOODCUTTING.md §4, §5): the leaves its natural trees grow (Felling needs some), the
+     * chance of heartwood per natural log at level 0, and the XP its first natural log pays as a discovery.
+     */
+    /**
+     * A wood's natural tree: its leaves, the heartwood chance per log, the discovery XP, and how wide its trunk can be
+     * at the base (2: single and 2×2 trunks; the Nether's huge fungi grow some 3×3 stems).
+     */
+    public record TreeDef(Set<Material> leaves, double heartwood, double discoveryXp, int trunk) {
+        public TreeDef(Set<Material> leaves, double heartwood, double discoveryXp) { this(leaves, heartwood, discoveryXp, 2); }
+    }
+
+    /**
+     * An upgrade a custom item makes to a tool or weapon (docs/design/WOODCUTTING.md §8): {@code item} in a crafting
+     * grid with one of {@code on} (item kinds: axe, bow...; "for:" in the file) adds {@code amount} of {@code stat}
+     * while it is held. Once per item.
+     */
+    public record UpgradeDef(String id, String item, Set<String> on, Attributes.Stat stat, double amount, String name) {}
+
+    /** Item kinds an upgrade can go on (GearItems.kind). */
+    static final Set<String> ITEM_KINDS = Set.of("axe", "pickaxe", "shovel", "hoe", "sword", "spear", "bow", "crossbow", "trident", "mace");
 
     /** A drop: a Cerberus item id or a material, {@code min} to {@code max} of it. */
     public record Drop(String item, int min, int max) {}
@@ -65,13 +106,17 @@ public final class GatheringCatalog {
     private final double fortunePerPoint, fortuneMax;
     private final int weakGap;
     private final double weakFactor;
+    private final WoodRules wood;
+    private final double weakToolFactor;
+    private final Map<String, UpgradeDef> upgrades;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
                              Map<String, ItemDef> items, String smeltingSkill, Map<Material, Double> smelting, String forgingSkill,
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
-                             double weakFactor, List<String> problems) {
+                             double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
+                             List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -88,6 +133,9 @@ public final class GatheringCatalog {
         this.fortuneMax = fortuneMax;
         this.weakGap = weakGap;
         this.weakFactor = weakFactor;
+        this.wood = wood;
+        this.weakToolFactor = weakToolFactor;
+        this.upgrades = upgrades;
         this.problems = List.copyOf(problems);
     }
 
@@ -134,7 +182,26 @@ public final class GatheringCatalog {
     public double fortuneMax() { return fortuneMax; }
     public int weakGap() { return weakGap; }
     public double weakFactor() { return weakFactor; }
+    /** Woodcutting's techniques (the {@code woodcutting:} section). */
+    public WoodRules wood() { return wood; }
+    /** What a wood pays with too weak an axe (a soft gate): this share of its XP, and no Felling, bonus or heartwood. */
+    public double weakToolFactor() { return weakToolFactor; }
+    public Map<String, UpgradeDef> upgrades() { return upgrades; }
+    public UpgradeDef upgrade(String id) { return id == null ? null : upgrades.get(id); }
     public List<String> problems() { return problems; }
+
+    /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
+    public String woodSkill() {
+        for (ResourceDef r : resources.values()) if (r.isTree()) return r.skill();
+        return null;
+    }
+
+    /** The woods (resources with a tree), in file order. */
+    public List<ResourceDef> woods() {
+        List<ResourceDef> out = new ArrayList<>();
+        for (ResourceDef r : resources.values()) if (r.isTree()) out.add(r);
+        return out;
+    }
 
     /** XP for forging one item of {@code m} (0 when it isn't forged gear). */
     public double forgeXp(Material m) {
@@ -198,15 +265,29 @@ public final class GatheringCatalog {
         Map<String, List<ResourceDef>> bySkill = new LinkedHashMap<>();
         for (ResourceDef r : resources.values()) bySkill.computeIfAbsent(r.skill(), k -> new ArrayList<>()).add(r);
         bySkill.forEach((skill, list) -> {
-            List<String> parts = new ArrayList<>();
-            for (ResourceDef r : list) parts.add(r.id().replace('_', ' ') + " " + number(r.xp()));
+            List<String> parts = new ArrayList<>(), axes = new ArrayList<>();
+            boolean trees = true;
+            for (ResourceDef r : list) {
+                parts.add(r.id().replace('_', ' ') + " " + number(r.xp()));
+                trees &= r.isTree();
+                if (r.isTree() && r.tier() > 0) axes.add(r.id().replace('_', ' ') + ": " + tierName(r.tier()));
+            }
             List<String> lines = new ArrayList<>();
-            lines.add("Break natural blocks by hand in survival: " + String.join(", ", parts) + " XP.");
+            if (trees) {
+                lines.add("Cut logs of natural trees with an axe in survival: " + String.join(", ", parts) + " XP each.");
+                if (!axes.isEmpty()) {
+                    lines.add("Harder woods want a better axe for full XP (" + String.join(", ", axes) + "); a weaker one pays "
+                            + Math.round(weakToolFactor * 100) + "%.");
+                }
+            } else {
+                lines.add("Break natural blocks by hand in survival: " + String.join(", ", parts) + " XP.");
+            }
             if (weakGap > 0) {
                 lines.add("Each block has a level (stone 1, deeper ores more); " + weakGap + "+ levels above it you get "
                         + Math.round(weakFactor * 100) + "% of its XP.");
             }
-            lines.add("Blocks placed by players, made by lava and water, or moved by pistons give nothing. Silk Touch keeps the XP.");
+            if (trees) lines.add("Logs players place, and trees grown from saplings, give nothing. The first log of each wood is a discovery.");
+            else lines.add("Blocks placed by players, made by lava and water, or moved by pistons give nothing. Silk Touch keeps the XP.");
             out.put(skill, lines);
         });
         if (!smelting.isEmpty()) {
@@ -236,7 +317,86 @@ public final class GatheringCatalog {
         return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
     }
 
+    /** A vanilla tool tier by the material that has it: 1 stone, 2 iron, 3 diamond, 4 netherite (0: any). */
+    public static String tierName(int tier) {
+        return switch (tier) {
+            case 0 -> "any";
+            case 1 -> "stone";
+            case 2 -> "iron";
+            case 3 -> "diamond";
+            case 4 -> "netherite";
+            default -> "tier " + tier;
+        };
+    }
+
     // ── loading ───────────────────────────────────────────────────
+
+    /**
+     * Entries updates added to the shipped resources.yml, by section. A server whose resources.yml has edits of its own
+     * keeps its file (ShippedConfig), so each of these that the file doesn't mention at all is taken from the plugin's
+     * own file ({@link #addUpdates}); "id: off" in the server's file leaves one out. When an update adds an entry to the
+     * shipped file, list it here.
+     */
+    static final Map<String, List<String>> ADDED_BY_UPDATES = addedByUpdates();
+
+    private static Map<String, List<String>> addedByUpdates() {
+        Map<String, List<String>> m = new LinkedHashMap<>();
+        // 2026-10-26, the Woodcutting loop
+        m.put("resources", List.of("oak", "birch", "spruce", "jungle", "acacia", "cherry", "dark_oak", "mangrove", "pale_oak",
+                "crimson_stem", "warped_stem"));
+        m.put("items", List.of("heartwood"));
+        m.put("upgrades", List.of("heartwood_grip", "heartwood_limbs"));
+        return Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * Adds to {@code server} (in memory: the file on disk never changes) each entry of {@link #ADDED_BY_UPDATES} that the
+     * plugin's own file {@code shipped} has and {@code server} doesn't mention, so an edited file from an older version
+     * still gets what the update added. Returns a note per section that got something.
+     */
+    public static List<String> addUpdates(ConfigurationSection server, ConfigurationSection shipped) {
+        List<String> notes = new ArrayList<>();
+        if (server == null || shipped == null) return notes;
+        Set<String> taken = new java.util.HashSet<>(); // blocks the server's own resources already are: theirs win
+        ConfigurationSection own = server.getConfigurationSection("resources");
+        if (own != null) for (String id : own.getKeys(false)) {
+            for (String b : own.getStringList(id + ".blocks")) taken.add(b.trim().toUpperCase(Locale.ROOT));
+        }
+        for (Map.Entry<String, List<String>> e : ADDED_BY_UPDATES.entrySet()) {
+            List<String> added = new ArrayList<>();
+            for (String id : e.getValue()) {
+                String path = e.getKey() + "." + id;
+                if (server.contains(path) || !(shipped.get(path) instanceof ConfigurationSection s)) continue;
+                List<String> clash = s.getStringList("blocks").stream().filter(b -> taken.contains(b.trim().toUpperCase(Locale.ROOT))).toList();
+                if (!clash.isEmpty()) {
+                    notes.add(path + ": not added, your file already has " + String.join(", ", clash));
+                    continue;
+                }
+                server.createSection(path, values(s));
+                added.add(id);
+            }
+            if (!added.isEmpty()) notes.add(e.getKey() + ": " + String.join(", ", added) + " not in this file (an update added "
+                    + (added.size() == 1 ? "it" : "them") + "), so the plugin's own " + (added.size() == 1 ? "entry is" : "entries are")
+                    + " used; write \"<id>: off\" to leave one out");
+        }
+        return notes;
+    }
+
+    /** A section's values as plain maps and lists, for copying it into another configuration. */
+    private static Map<String, Object> values(ConfigurationSection s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (String k : s.getKeys(false)) {
+            Object v = s.get(k);
+            out.put(k, v instanceof ConfigurationSection c ? values(c) : v);
+        }
+        return out;
+    }
+
+    /** "id: off" (YAML reads off as false): an entry the owner left out on purpose, skipped without a warning. */
+    private static boolean off(ConfigurationSection parent, String id) {
+        Object v = parent.get(id);
+        return Boolean.FALSE.equals(v) || "off".equalsIgnoreCase(String.valueOf(v));
+    }
 
     public static GatheringCatalog from(ConfigurationSection root) {
         return from(root, java.util.function.UnaryOperator.identity());
@@ -251,6 +411,7 @@ public final class GatheringCatalog {
         Map<String, ItemDef> items = new LinkedHashMap<>();
         ConfigurationSection is = root == null ? null : root.getConfigurationSection("items");
         if (is != null) for (String id : is.getKeys(false)) {
+            if (off(is, id)) continue;
             ConfigurationSection s = is.getConfigurationSection(id);
             Material m = s == null ? null : material(s.getString("material"));
             if (m == null) { problems.add("item " + id + ": unknown material " + (s == null ? null : s.getString("material"))); continue; }
@@ -280,6 +441,7 @@ public final class GatheringCatalog {
         Map<String, ResourceDef> resources = new LinkedHashMap<>();
         ConfigurationSection rs = root == null ? null : root.getConfigurationSection("resources");
         if (rs != null) for (String id : rs.getKeys(false)) {
+            if (off(rs, id)) continue;
             ConfigurationSection s = rs.getConfigurationSection(id);
             if (s == null) { problems.add("resource " + id + ": not a section"); continue; }
             List<String> why = new ArrayList<>();
@@ -305,6 +467,40 @@ public final class GatheringCatalog {
             }
             int tier = s.getInt("tier", 0);
             if (tier < 0 || tier > 100) why.add("tier " + tier + " outside 0-100");
+            Object fo = s.get("fortune");
+            boolean fortune = false;
+            Attributes.Yield fortuneYield = null;
+            if (fo instanceof Boolean b) {
+                fortune = b;
+                if (b) fortuneYield = defaultYield(skill);
+            } else if (fo != null) {
+                String f = String.valueOf(fo).trim().toLowerCase(Locale.ROOT);
+                if (f.equals("true") || f.equals("yes")) { fortune = true; fortuneYield = defaultYield(skill); }
+                else if (f.equals("general")) fortune = true; // only Fortune that counts everywhere (a luck skill's)
+                else if (!f.equals("false") && !f.equals("no")) {
+                    fortuneYield = Attributes.Yield.parse(f);
+                    if (fortuneYield == null) why.add("fortune " + fo + " is not true, false, ore, wood or general");
+                    else fortune = true;
+                }
+            }
+            TreeDef tree = null;
+            ConfigurationSection tr = s.isConfigurationSection("tree") ? s.getConfigurationSection("tree") : null;
+            if (tr != null) {
+                Set<Material> leaves = java.util.EnumSet.noneOf(Material.class);
+                for (String l : tr.getStringList("leaves")) {
+                    Material m = material(l);
+                    if (m == null) why.add("unknown leaves " + l);
+                    else leaves.add(m);
+                }
+                if (leaves.isEmpty() && why.isEmpty()) why.add("a tree needs leaves");
+                double heart = tr.getDouble("heartwood", 0);
+                if (!(heart >= 0 && heart <= 1)) why.add("heartwood " + heart + " outside 0-1");
+                double disc = tr.getDouble("discovery-xp", 0);
+                if (!(disc >= 0 && disc <= 100_000)) why.add("discovery-xp " + disc + " outside 0-100000");
+                int trunk = tr.getInt("trunk", 2);
+                if (trunk < 1 || trunk > 5) why.add("trunk " + trunk + " outside 1-5");
+                tree = new TreeDef(Collections.unmodifiableSet(leaves), heart, disc, trunk);
+            }
             List<Drop> drops = new ArrayList<>();
             for (Map<?, ?> d : s.getMapList("drops")) {
                 Object item = d.get("item");
@@ -316,7 +512,7 @@ public final class GatheringCatalog {
             }
             if (!why.isEmpty()) { problems.add("resource " + id + ": " + String.join("; ", why)); continue; }
             ResourceDef def = new ResourceDef(id, skill, Collections.unmodifiableSet(blocks), tool == null ? null : tool.toLowerCase(Locale.ROOT),
-                    tier, level, xp, s.getBoolean("fortune", false), List.copyOf(drops));
+                    tier, level, xp, fortune, List.copyOf(drops), fortuneYield, tree);
             resources.put(id, def);
             for (Material m : blocks) byBlock.put(m, def);
         }
@@ -372,11 +568,77 @@ public final class GatheringCatalog {
         int gap = wk == null ? 20 : Math.max(0, wk.getInt("level-gap", 20));
         double factor = wk == null ? 0.25 : Math.max(0, Math.min(1, wk.getDouble("factor", 0.25)));
 
+        WoodRules wood = woodRules(root == null ? null : root.getConfigurationSection("woodcutting"), items, problems);
+        double weakTool = root == null ? 0.25 : Math.max(0, Math.min(1, root.getDouble("woodcutting.weak-axe", 0.25)));
+
+        Map<String, UpgradeDef> upgrades = new LinkedHashMap<>();
+        ConfigurationSection us = root == null ? null : root.getConfigurationSection("upgrades");
+        if (us != null) for (String id : us.getKeys(false)) {
+            if (off(us, id)) continue;
+            ConfigurationSection u = us.getConfigurationSection(id);
+            if (u == null) { problems.add("upgrade " + id + ": not a section"); continue; }
+            List<String> why = new ArrayList<>();
+            String item = u.getString("item");
+            if (item == null || items.get(item) == null) why.add("unknown item " + item + " (items:)");
+            Set<String> on = new LinkedHashSet<>();
+            // "for", never "on": YAML reads a bare on as true
+            for (String k : u.isList("for") ? u.getStringList("for") : List.of(u.getString("for", ""))) {
+                String kind = k.trim().toLowerCase(Locale.ROOT);
+                if (kind.isEmpty()) continue;
+                if (!ITEM_KINDS.contains(kind)) why.add("unknown item kind " + k + " (" + String.join(", ", ITEM_KINDS) + ")");
+                else on.add(kind);
+            }
+            if (on.isEmpty() && why.isEmpty()) why.add("for: names no item kind");
+            Attributes.Stat stat = Attributes.Stat.parse(u.getString("stat"));
+            if (stat == null || !stat.isSecondary()) why.add("stat " + u.getString("stat") + " is not a speed stat");
+            double amount = u.getDouble("amount", 0);
+            if (!(amount > 0 && amount <= 1)) why.add("amount " + amount + " outside (0, 1]");
+            if (!why.isEmpty()) { problems.add("upgrade " + id + ": " + String.join("; ", why)); continue; }
+            upgrades.put(id, new UpgradeDef(id, item, Collections.unmodifiableSet(on), stat, amount, u.getString("name", id)));
+        }
+
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), problems);
+    }
+
+    /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */
+    static Attributes.Yield defaultYield(String skill) {
+        return Attributes.Yield.defaultFor(skill);
+    }
+
+    /** The {@code woodcutting:} section; anything missing keeps the defaults (WoodRules.DEFAULTS). */
+    static WoodRules woodRules(ConfigurationSection w, Map<String, ItemDef> items, List<String> problems) {
+        WoodRules d = WoodRules.DEFAULTS;
+        if (w == null) return d;
+        java.util.TreeMap<Integer, Integer> at = new java.util.TreeMap<>(d.fellingAt());
+        ConfigurationSection fa = w.getConfigurationSection("felling.at");
+        if (fa != null) {
+            at.clear();
+            for (String k : fa.getKeys(false)) {
+                int level, logs = fa.getInt(k, -1);
+                try { level = Integer.parseInt(k.trim()); } catch (NumberFormatException e) { level = -1; }
+                if (level < 1 || level > 1000 || logs < 1 || logs > 1024) problems.add("woodcutting.felling.at " + k + ": level 1-1000 and logs 1-1024");
+                else at.put(level, logs);
+            }
+        }
+        int giant = w.getInt("felling.giant-trunks-at", d.giantAt());
+        long rest = Math.round(w.getDouble("felling.rest-per-log", d.restPerLogMs() / 1000.0) * 1000);
+        if (rest < 0 || rest > 60_000) { problems.add("woodcutting.felling.rest-per-log: 0-60 seconds"); rest = d.restPerLogMs(); }
+        int halved = w.getInt("felling.rest-halved-at", d.restHalvedAt());
+        int canopy = w.getInt("canopy-at", d.canopyAt());
+        TreeScan.Reach reach = new TreeScan.Reach(w.getInt("reach.sideways", d.reach().sideways()), w.getInt("reach.up", d.reach().up()),
+                w.getInt("reach.down", d.reach().down()));
+        int minLeaves = w.getInt("min-natural-leaves", d.minLeaves());
+        String heartwood = w.getString("heartwood.item", d.heartwoodItem());
+        if (heartwood != null && !heartwood.isBlank() && items.get(heartwood) == null) {
+            problems.add("woodcutting.heartwood.item: unknown item " + heartwood + " (items:) - no heartwood drops");
+            heartwood = null;
+        }
+        double factor = w.getDouble("heartwood.level-factor", d.levelFactor());
+        return new WoodRules(at, giant, rest, halved, canopy, reach, minLeaves, heartwood, factor);
     }
 
     /** A material by name, without the server's registry (unit tests read the shipped file too). */

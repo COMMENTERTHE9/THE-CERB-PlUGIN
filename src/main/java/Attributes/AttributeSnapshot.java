@@ -20,6 +20,7 @@ public final class AttributeSnapshot {
     private final double maxManaMultiplier, manaRegenMultiplier, spellDamageMultiplier;
     private final double[] secondary, secondaryRaw;        // per Stat (speed/handling stats only)
     private final double[] attackSpeed, attackSpeedRaw;    // per WeaponClass
+    private final double[] fortune;                        // per Yield: general + that yield's Fortune, capped
     private final List<Contribution> contributions;
     private final int ignored;
 
@@ -28,7 +29,7 @@ public final class AttributeSnapshot {
                       double maxHpMultiplier, double armorBonus, double defenseBarMultiplier, double resist,
                       double maxManaMultiplier, double manaRegenMultiplier, double spellDamageMultiplier,
                       double[] secondary, double[] secondaryRaw, double[] attackSpeed, double[] attackSpeedRaw,
-                      List<Contribution> contributions, int ignored) {
+                      double[] fortune, List<Contribution> contributions, int ignored) {
         this.rules = rules;
         this.realm = realm;
         this.totals = totals;
@@ -48,6 +49,7 @@ public final class AttributeSnapshot {
         this.secondaryRaw = secondaryRaw;
         this.attackSpeed = attackSpeed;
         this.attackSpeedRaw = attackSpeedRaw;
+        this.fortune = fortune;
         this.contributions = List.copyOf(contributions);
         this.ignored = ignored;
     }
@@ -72,6 +74,18 @@ public final class AttributeSnapshot {
 
     /** The same stat before diminishing returns (what the sources add up to). */
     public double secondaryRaw(Stat s) { return secondaryRaw[s.ordinal()]; }
+
+    /**
+     * Fortune counting on {@code y}: the general part ({@link #get}) plus what counts only there (Mining's on ore,
+     * Woodcutting's on wood). Null: the general part.
+     */
+    public double fortune(Yield y) { return y == null ? get(Attribute.FORTUNE) : fortune[y.ordinal()]; }
+
+    /** True when some Fortune counts only on one yield (the Stats page then shows each). */
+    public boolean fortuneScoped() {
+        for (double f : fortune) if (Math.abs(f - get(Attribute.FORTUNE)) > 1e-9) return true;
+        return false;
+    }
 
     /** Attack speed bonus for hits with {@code c}: all-weapon part plus that weapon's skill. */
     public double attackSpeed(WeaponClass c) { return attackSpeed[c.ordinal()]; }

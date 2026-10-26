@@ -25,7 +25,8 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - a deep Woodcutting loop.
 - **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
 - **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage needs your decision (Decisions, item 14).
-- **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10). **Next:** Woodcutting.
+- **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10).
+- **Done:** **Woodcutting**, the second complete gathering loop: eleven woods, Felling and the Canopy as milestone techniques, heartwood upgrades, discoveries, and protection for builds, claims and Folia regions (section "Done: Woodcutting" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §11). **Next:** your playtest, then Farming or Fishing, one complete loop.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -49,6 +50,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 | Defense | Resistance → armor → defense bar; resistance and armor together capped at 75%, the bar a separate pool; PvP hits use the pre-attribute defense as the same share of health. Fire resistance covers flames, burning, campfires, magma and fire spells fully and lava at half (`combat.yml fire-resistance`). Checked by `progression.js defense`, `defense-cap`, `pvp` and `fire`; details in `docs/ATTRIBUTES_ENGINE.md`. |
 | Kill XP v2 | Based on mob level and tier: Common L1 40, L50 334, Rare L50 668; ×0.25 for mobs 20+ levels below your skill. |
 | Gathering | Mining XP for natural stone and ore broken by hand (stone 1 … ancient debris 100; a quarter 20+ levels above a resource). Mining raises gathering speed and Fortune, a chance of one extra ore. Placed, generator-made and piston-moved blocks, creative mode, explosions and machines pay nothing. Everything is data in `resources.yml`, custom ores, tools and drops included. Verified with `tools/playtest/gathering.js`. |
+| Woodcutting | XP for natural logs cut with an axe, by wood (11 woods, oak 4 … Nether stems 10; a too-weak axe a quarter). Placed, piston-moved and sapling-grown logs pay nothing. Vitality, Fortune for wood (an extra log) and chopping speed. Felling from level 10 (Sneak + cut: the whole tree, 6 to 128 logs by level, giants from 50), the Canopy at 75, a rest between fellings; never a build, a claim's blocks or another region's. Heartwood (rare) upgrades an axe or a bow; a discovery per wood. Verified with `tools/playtest/woodcutting.js`. |
 | Smithing | XP for taking metal out of a furnace, forging tools, weapons and armor, and the netherite upgrade; paid once per item really made. Forged gear rolls a quality (Common, Fine, Superior, Masterwork; better with Smithing) that adds Power, Fortitude or Fortune through the attribute engine. |
 | XP display | Every XP gain shows briefly on the HUD, merged per skill ("+86 Mining"), below ability messages. `/xpdisplay compact|detailed|off`, saved per player. Kill XP no longer goes to chat; level-ups still do. |
 | Classes (prototype) | Warrior, Mage and Duelist: opened by skills, ranks 1–50, 7 abilities each unlocking by rank, 3 loadouts (5 actives, 3 passives, keystone) mixing any classes, cast with quick keys (right-click / F / Q, Sneak + right-click / Sneak + F) or click combos, chosen per player, with a HUD message and sound for every press and an ability bar. Player Menu → Classes & Abilities, `/class`, `/cerb class <player> <class> rank <n>`. Abilities affect mobs only. Verified with `tools/playtest/classes.js` and `abilities.js` (every ability on its own, `docs/ABILITY_AUDIT.md`). |
@@ -58,8 +60,8 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 
 | Area | State |
 |---|---|
-| **Skill effects** | Through attributes (vs mobs): weapon skills, crit skills, defensive skills and magic skills now matter, and weapon/bow/movement/spell skills also make the action faster (Played). Mining (gathering speed, Fortune) and Smithing (forged quality) matter too. PvP still uses the old per-skill bonuses (a design decision for later). The other gathering and crafting skills feed nothing yet. Each skill page lists what is live, PvP-only or not active. Most old per-skill `applyEffect` code is still never called. |
-| **XP sources** | Combat, spells, damage taken, new-chunk discovery, mining, smelting and forging grant XP. Woodcutting, Farming, Fishing, Crafting, Alchemy, Enchanting, Herbalism, Cooking and 13 more have **no XP source**. |
+| **Skill effects** | Through attributes (vs mobs): weapon skills, crit skills, defensive skills and magic skills now matter, and weapon/bow/movement/spell skills also make the action faster (Played). Mining (gathering speed, Fortune for ore), Smithing (forged quality) and Woodcutting (Vitality, Fortune for wood, chopping speed, Felling) matter too. PvP still uses the old per-skill bonuses (a design decision for later). The other gathering and crafting skills feed nothing yet. Each skill page lists what is live, PvP-only or not active. Most old per-skill `applyEffect` code is still never called. |
+| **XP sources** | Combat, spells, damage taken, new-chunk discovery, mining, smelting, forging and woodcutting grant XP. Farming, Fishing, Crafting, Alchemy, Enchanting, Herbalism, Cooking and 13 more have **no XP source**. |
 | Realms | Every player is Awakened; realm advancement (and its attribute bonuses) is not built. |
 | Old stat managers | Strength / Luck / Magic Find / Yield managers exist but nothing reachable calls them (Fortune will replace Luck / Magic Find). |
 | Crafting & traps | About 2,860 lines of quality-crafting, item-buff and trap code, unreachable and unsafe if wired (duplication, unbounded multipliers, "[Broken]" items): `docs/SKILL_AUDIT.md`. Replaced, not wired, by the gathering loop; still in the code, for a later clean-up. |
@@ -678,6 +680,95 @@ The way into the Mage is still yours to decide (Decisions, item 14, with options
 - **Level-ups:** `load.js levels` has 9 players levelling Mining from real XP about every 2 s each. The presentation's frames were 2–5 samples per 60 s recording, and Cerberus as a whole measured 0.024 / 0.037 ms per tick, against 0.025 / 0.024 before.
 - **XP integrity:** no measurable cost in `combat`, `abilities` or `gather`.
 
+## Done: Woodcutting (2026-10-26)
+
+**Before:** Woodcutting had no XP source at all (the audit's "disconnected"; an axe kill trained Weapon Mastery). A log was just a block.
+
+**Now** (`docs/design/WOODCUTTING.md`; `Gathering/Woodcutting`, `TreeScan`, `WoodRules`, `Upgrades`; every number in `resources.yml` and `attributes.yml`):
+- **Eleven woods,** each with its own level, XP, axe and rare-drop chance: oak and birch for a beginner, then spruce, jungle, acacia, cherry, dark oak, mangrove, and at the top pale oak and the Nether's crimson and warped stems (level 35–40, an iron axe).
+- **XP per natural log, cut with an axe:**
+  - by hand the wood drops with no XP, and the HUD says to use an axe;
+  - too weak an axe pays a quarter, and the HUD names the axe that pays in full;
+  - a wood 20 or more levels below you pays a quarter, as weak ore and weak mobs do.
+- **Placed, moved and grown logs pay nothing.** A log a player places, a piston moves or a sapling grows into gives its wood only: no XP, no Felling, no rare drop, no discovery. Planting and bone-mealing trees never pays.
+- **What a level gives:**
+  - Vitality 0.25;
+  - Fortune for wood 0.5: an extra log, about 1 in 8 at level 50 and 1 in 4 at 100;
+  - chopping speed with an axe in hand: about +14% at level 100.
+
+  Fortune is now scoped: Mining's counts on ore (same numbers as before), Woodcutting's on wood.
+- **Felling, the technique that changes how Woodcutting plays.** Sneak while cutting a natural tree's log, and the tree comes down:
+  - up to 6 logs at 10, 24 at 25, 64 and giant 2×2 trunks at 50, 128 at 100;
+  - at 75 (Canopy) its leaves come down too, with their saplings, sticks and apples;
+  - the logs land at the stump in a few stacks, and the axe pays a point per log;
+  - XP, Fortune and the rare drop count for every log;
+  - the next felling waits 0.3 s per log (halved at 100), and the HUD says when it is ready.
+
+  A tree too big for your level, a giant below 50, a build, a natural tree a build touches, or one with logs built against its base: one log, and the HUD says why.
+- **Heartwood,** the rare drop: 0.2% a log for oak up to 1.5% for Nether stems, three times that at level 100.
+  - Crafted with an axe it becomes a heartwood grip (faster chopping while held); with a bow, heartwood limbs (faster draw).
+  - Once per item. The item keeps its quality, enchantments and name; no Smithing XP, no new quality roll.
+  - Heartwood can't be placed, burnt, smelted or made into planks, and a crafter block won't use it.
+- **Discoveries:** the first natural log of each wood pays bonus XP (20 for oak … 200 for Nether stems), with a chat line and a chime, once. The Woodcutting page lists the woods found and the ones still to find.
+- **Protecting your world:**
+  - a felling offers every log to protection plugins as your own break, and stops at the first refusal;
+  - it reads and changes only blocks its region thread owns (Folia), checked again at every step; past a region's edge the rest is cut by hand;
+  - it never takes a placed log or goes past one, and never fells a build: no natural leaves of its own, planks, glass, doors, torches and the like touching any of its logs (an old log house, a village), or a base wider than a trunk (a log fence or palisade against it);
+  - 8 logs a tick, so no plugin handles a whole tree in one tick;
+  - it stops when the axe leaves your hand, would break, or you leave.
+- **Data:** a new wood or a custom tree is one entry in `resources.yml`. The synthetic test tree (mushroom stems as logs) worked with no code change. If you edited `resources.yml` during the mining playtest, your file is kept, and the woods, heartwood and upgrades are added from the plugin's own file in memory (`id: off` leaves one out).
+- **Admin:** `/cerb gather tree` shows what Felling sees in the tree you look at; `/cerb gather info` shows Fortune for ore and for wood; `/cerb gather stats` counts fellings, refusals, scans, heartwood and discoveries.
+
+**Checks** (`tools/playtest/woodcutting.js`, each rule with a positive control; on the final build):
+- **The loop:** cut 5/5, farm 3/3 (placed logs and a bone-mealed tree pay nothing, a natural log beside them does), felling 19/19 (sizes, giants, the rest, builds, a log palisade, a placed log, the axe, a real vanilla oak), protection 2/2 (a sandbox-only claim plugin stops a felling at its edge), Fortune 3/3, speed 3/3, heartwood and upgrades 10/10, discoveries and the woods list 4/4, the synthetic custom tree 3/3, canopy 2/2, machines 6/6.
+- **An older install whose owner edited both config files:** 8/8. The files stay untouched on disk, the woods, heartwood and Woodcutting's stats arrive from the plugin's own files, and the log says so.
+- **Found by these checks and fixed:**
+  - **A mushroom-like cap never counted as leaves.** The synthetic tree's cap sits on its stem's top, touching it by one face only, so Felling refused it. Leaves now count by a side, an edge or a corner, as logs connect.
+  - **Upgrades were refused at load:** YAML reads a bare `on:` as `true`, so the upgrade key is `for:`.
+  - **An upgraded Masterwork axe would have been rerolled and paid Smithing XP:** the forge listener now leaves upgrades alone.
+  - "a iron axe" in the hint.
+- **Found by the independent review, and fixed** (a separate reviewer read the whole change; seven findings):
+  1. **A crafter turned the upgrade recipe into free items.** A crafter block fires none of the crafting-table events, so it handed out the recipe's own result: a wooden axe and any stripped dark oak wood made a copper axe. It also made heartwood into planks, and a furnace made it into charcoal. Each of these reproduced on the build before the fix (`woodcutting.js machines`). Now a crafter never makes an upgrade or crafts with heartwood, and a furnace leaves heartwood alone; each check has a working control (a crafter making planks, a furnace making charcoal).
+  2. **A palisade of old logs against a natural tree** (logs only, no plank, torch or door) could have come down with it. A tree whose lowest layer of logs is wider than a trunk is now left standing (`trunk:` per wood, 3 for the Nether's thick fungi).
+  3. **Crafting cost:** the upgrade listener asked every crafting grid for its recipe, the call the gathering milestone found expensive. It now looks only at grids holding a custom item's material.
+  4. **An edited `attributes.yml` from before this update** would have made Mining's Fortune count on wood too. A Fortune line without `yield:` now counts on the skill's own resource (Mining ore, Woodcutting wood); `yield: all` counts everywhere. In `resources.yml`, `fortune: general` replaces the ambiguous `all`.
+  5. **A relog ended the rest between fellings.** A running rest now outlasts it.
+  6. **The canopy's search had no real limit** in a dense forest. It now looks at 2,000 blocks at most and walks only through leaves about to decay.
+  7. **Smaller:**
+     - the rest counts what came down, so a felling stopped early rests less;
+     - a tall tree at a low Felling level now says it is too big, not "not a tree the world grew";
+     - `/cerb gather tree` was one log off;
+     - a discovery in the first second after joining (skills still loading) could lose its bonus;
+     - the Stats page and the admin simulator showed Fortune for ore and wood as 0;
+     - a reload re-registered the upgrade recipes even when nothing changed.
+- **Found by reading the design again, and closed:**
+  - an old log house or a village built against a natural tree has logs nothing remembers as placed, so it could have come down with the tree; a tree a build touches is now never felled;
+  - the design's promised list of woods discovered was missing from the Woodcutting page;
+  - an edited `resources.yml` from the mining playtest would have had no woods at all.
+- **Regression:**
+  - smoke 14/14;
+  - `menu.js` nav 63/63, motion 22/22, names 4/4;
+  - `gathering.js` mine, farm, fortune, smelt, forge, upgrade, gear and xpdisplay 66/67, the last check passing after a harness correction (gear 9/9), and custom 9/9;
+  - `progression.js` killxp 5/5, projectile 7/7, speed 13/13, stats 14/14;
+  - `xp.js` 35/35;
+  - `levelup.js` 19/19, requires 6/6;
+  - `classes.js` learn 7/7, trees 8/8, menu 15/15, exploits 22/22;
+  - `abilities.js` mage 24/24, fixes 20/20, mixed 20/20, combos 13/13.
+
+  Three harness corrections came out of it, none a plugin defect:
+  - `gathering.js` read the old unscoped Fortune line; it now reads Fortune for ore, and checks that a pickaxe adds none on wood;
+  - `gathering.js custom` added its test items to an `items: {}` line the shipped file no longer has;
+  - two of Woodcutting's own Fortune cross-checks allowed one chance extra drop where the bot's baseline Fortune makes two possible; they now allow three, still far from the eight a leak would give.
+
+  `classes.js exploits` failed its last check twice when run straight after other phases had changed the test character. It failed the same way on the build before Woodcutting, and passes 22/22 from the state `abilities.js neutral` leaves, as in the regression order.
+- **Unit tests:** 240 (212 before this loop), including `TreeScanTest` (15: trees, leaves by side, edge or corner, builds, base width, giants, reach), `WoodRulesTest`, and new cases in `GatheringTest` (woods, upgrades, the update delivery for an edited `resources.yml`), `AttributesConfigDeliveryTest` (scoped Fortune, the yield default) and `LevelUpsTest` (technique lines).
+
+**Performance** (`docs/PERFORMANCE.md`; 9 players, before and after in one session, TPS 19.93–20.00 throughout):
+- **Cutting wood** costs what it did (`wood` 0.019–0.023 ms per tick on both builds, one first run at 0.054), although logs now pay XP.
+- **Felling** with 9 players felling non-stop (about 5 trees a second across the server): 0.05–0.08 ms per tick, about what cutting those logs by hand costs.
+- **Mining** is unchanged (`gather` 0.019 / 0.019 against 0.019 / 0.022).
+- **Crafting** reads 0.066 / 0.050 against 0.055 / 0.036. The upgrade listener is 3–5 samples a minute of that; the rest is in code this loop didn't touch and within the run-to-run spread.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.
@@ -735,6 +826,11 @@ The way into the Mage is still yours to decide (Decisions, item 14, with options
     - **Pace:** strip mining by hand (about 2 blocks a second) pays about 8,000 Mining XP an hour at level 1, so level 10 (17,900 XP) takes about 2 hours, the same order as fighting.
     - **The fast case:** an Efficiency V pickaxe with a Haste II beacon breaks stone instantly, 10 to 20 blocks a second. That is 36,000 to 72,000 Mining XP an hour until level 21 (152,000 XP, 2 to 4 hours), then a quarter of it.
     - **Recommendation:** keep it (it needs an end-game beacon), or pay stone and deepslate 0.5 XP if you want it slower.
-18. **Gathering speed applies to every block,** dirt and wood included, as one block-breaking stat. Woodcutting and Excavation could get their own later; for now Mining drives it alone.
+18. ~~Gathering speed for every block~~: settled by Woodcutting as `SKILL_PROGRESSION.md` proposed. With an axe in hand, Woodcutting's chopping speed applies; with anything else, Mining's gathering speed (dirt and sand included until Excavation has its own).
 19. ~~Iron and gold farms and Smithing~~: built as a protection after the review (above). Gear forged from iron, gold or copper you didn't smelt yourself is plain. To pay for any metal instead, empty the list: `forging.needs-smelted: []`.
 20. **Quality bonuses don't depend on the metal.** A Masterwork golden chestplate gives the same +4 Fortitude as a Masterwork netherite one (the armor itself is much weaker). Keep the flat bonuses, or scale them by material?
+21. **Woodcutting numbers** (`resources.yml`, `attributes.yml`, all yours to tune):
+    - **Pace:** cutting oak and birch by hand pays about 6,000 XP an hour at the start, like mining, so level 10 (Felling) takes about 3 hours. Felling then speeds it up a lot: a 6-log tree comes down in one cut.
+    - **Felling** sizes (6 / 24 / 64 / 128 logs at 10 / 25 / 50 / 100) and the rest (0.3 s per log, halved at 100).
+    - **Heartwood:** 0.2% (oak) to 1.5% (Nether stems) per log, three times that at 100: a beginner finds one in about 500 oak logs, a master in about 170. The grip and limbs give +8 speed points each.
+    - **Recommendation:** play it as it is and tell me what feels slow or too generous.

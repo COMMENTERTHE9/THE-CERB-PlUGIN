@@ -111,6 +111,8 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - **Trees and techniques:** different trees matter. Basic trees stay easy, and at least one higher-level technique visibly changes how Woodcutting plays.
    - **Protection:** natural and placed wood are told apart, and placed logs or artificial regrowth can't be farmed. Large effects respect protected areas, builds, chunk and region boundaries and player intent.
    - **Data:** everything is data-driven, proven by a synthetic custom tree. No forest generator.
+
+   **Done 2026-10-26** (`docs/design/WOODCUTTING.md`; `docs/STATUS.md` → "Done: Woodcutting"; `tools/playtest/woodcutting.js`): eleven woods, Felling I–IV and the Canopy, heartwood grip and limbs, discoveries, Fortune scoped to wood, chopping speed, and protection for builds, claims and Folia regions.
 5. **Independent review and finish.**
 6. **Report, and propose the next loop:** Farming or Fishing, one complete loop at a time.
 
@@ -132,6 +134,40 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 - **Stays on the roadmap, not built early:** classes, mastery, Awakening, world generation.
 
 **Later (owner's direction):** Farming and Fishing next, then every remaining profession, each as deep as Mining and Woodcutting. The long-term aim is that depth across combat, mining, woodcutting, fishing, farming, hunting, crafting and the other disciplines: 35 disciplines worth mastering, not 35 XP bars.
+
+### The next loop: proposal (2026-10-26, waiting for the owner's choice)
+
+**Recommendation: Fishing first, then Farming together with Cooking.**
+- **Fishing has a live problem today.** Every fish caught has a flat 5% chance to spawn a Rare Sea Monster on the player, with no level, no cap and no idle check (`CerberusPlugin.onPlayerFish`, `docs/SKILL_AUDIT.md`). An AFK fish farm keeps spawning them, and they pay full kill XP. Building Fishing properly fixes that.
+- **Fishing's rewards connect to what exists:**
+  - sea creatures are fights, through the mob registry, the level scaling and the classes;
+  - catches fill a Bestiary-style journal;
+  - Fortune already belongs to Fishing;
+  - rods take upgrades through the data the heartwood grip uses.
+- **Farming's rewards mostly feed Cooking and Alchemy, which aren't built.** Its "resources that feed other systems" step would be thin until they exist. Farming also needs a new integrity rule: every crop is planted by a player, and bone meal is cheap. So it fits best together with Cooking.
+
+**Fishing, the loop** (the same shape as Woodcutting; principles studied, nothing copied):
+1. **Cast in open water** (vanilla's own open-water test), and catch by water and place: river, ocean, warm and cold seas, swamps, later lava in the Nether. Time and weather shift the odds.
+2. **XP per catch, by rarity.** A spot fished out pays less and recovers over time; AFK farms, creative mode and closed water pay nothing and call no creatures.
+3. **What a level gives:** Fortune for fish (an extra catch), lure speed with a rod in hand, a treasure chance, and a capped sea-creature chance.
+4. **Milestones:**
+   - 10: faster bites;
+   - 25: the treasure table;
+   - 50: sea creatures by level, fought with your class abilities, rewarding drops;
+   - 75: double catches;
+   - 100: an apex creature per water.
+5. **Discoveries:** the first catch of each kind, in a journal.
+6. **Equipment:** rare materials from creatures upgrade rods (lure speed, treasure) through the same `upgrades:` data.
+7. **Data:** catches, waters and creatures in config, proven by a synthetic catch and creature; a fishing load in `load.js`, measured before and after.
+
+**Decisions for you:**
+1. Fishing or Farming next (recommended: Fishing).
+2. Sea creatures:
+   - **(recommended)** real fights with levelled mobs from `mobs.yml`, kill XP to the weapon's skill plus a Fishing share;
+   - or a catch-only reward with no fight.
+3. AFK fishing:
+   - **(recommended)** pays nothing and spawns nothing;
+   - or allowed at a small fraction.
 
 ## Gameplay Depth & Systems Completion (owner, 2026-10-25, approved): done, 2026-10-25
 

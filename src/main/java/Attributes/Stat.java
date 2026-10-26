@@ -26,10 +26,12 @@ public enum Stat {
     DRAW_SPEED("Bow draw speed"),
     MOVE_SPEED("Movement speed"),
     COOLDOWN_RECOVERY("Spell cooldown recovery"),
-    GATHER_SPEED("Gathering speed");
+    GATHER_SPEED("Gathering speed"),
+    /** Gathering speed with an axe in hand (Woodcutting's); every other item uses {@link #GATHER_SPEED} (Mining's). */
+    CHOP_SPEED("Chopping speed");
 
     /** The speed and handling stats, in display order. */
-    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED);
+    public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED, CHOP_SPEED);
 
     public boolean isSecondary() { return SECONDARY.contains(this); }
 

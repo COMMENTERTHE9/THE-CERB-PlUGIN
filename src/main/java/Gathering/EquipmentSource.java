@@ -6,6 +6,7 @@ import Attributes.AttributeService;
 import Attributes.AttributeSource;
 import Attributes.Contribution;
 import Attributes.WeaponClass;
+import Attributes.Yield;
 import io.papermc.paper.event.entity.EntityEquipmentChangedEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -30,8 +31,9 @@ import java.util.function.Supplier;
  * Forged gear in the attribute engine (docs/design/GATHERING.md, "Equipment in the attribute
  * engine"): the quality of the item in hand and of each armor piece worn becomes Power, Fortune
  * and Fortitude contributions, so it goes through the engine's caps and the PvP rule like any
- * other source. It never adds item modifiers (those would enter a hit before Power, outside the
- * caps).
+ * other source. A tool's Fortune counts on what it gathers (an axe's on wood, a pickaxe's on ore).
+ * Upgrades on the item in hand (heartwood: docs/design/WOODCUTTING.md §8) add their speed stat. It
+ * never adds item modifiers (those would enter a hit before Power, outside the caps).
  *
  * <p>What is worn is read on the player's thread when their equipment changes, reduced to a
  * signature (the qualities, nothing else), and the snapshot is rebuilt only when the signature
@@ -41,8 +43,20 @@ public final class EquipmentSource implements AttributeSource, Listener {
 
     public static final String SOURCE_PREFIX = "gear:";
 
-    /** One forged item: what kind of gear, the weapon type it hits as, its quality, a label. */
-    public record Piece(GatheringCatalog.Gear gear, WeaponClass weapon, Quality quality, String label) {}
+    /**
+     * One item that adds something: what kind of gear, the weapon type it hits as, its quality (null: none), what its
+     * Fortune counts on (null: everything), its item kind for upgrades (GearItems.kind: axe, bow...), its upgrades, a label.
+     */
+    public record Piece(GatheringCatalog.Gear gear, WeaponClass weapon, Quality quality, Yield yield, String kind, List<String> upgrades,
+                        String label) {
+        public Piece {
+            upgrades = upgrades == null ? List.of() : List.copyOf(upgrades);
+        }
+
+        public Piece(GatheringCatalog.Gear gear, WeaponClass weapon, Quality quality, String label) {
+            this(gear, weapon, quality, null, null, List.of(), label);
+        }
+    }
 
     /** What a player has on, as far as qualities go. {@code hand} is null when the item in hand adds nothing. */
     public record Worn(Piece hand, List<Piece> armor) {
@@ -70,11 +84,17 @@ public final class EquipmentSource implements AttributeSource, Listener {
     @Override
     public List<Contribution> contributions(UUID player, AttributeRules rules) {
         Worn w = worn.get(player);
-        return w == null ? List.of() : contributions(w, catalog.get().quality());
+        GatheringCatalog c = catalog.get();
+        return w == null ? List.of() : contributions(w, c.quality(), c.upgrades());
     }
 
-    /** Pure: what {@code w} adds under {@code q}'s numbers (Common adds nothing). */
+    /** Pure: what {@code w} adds under {@code q}'s numbers (Common adds nothing), without upgrades. */
     public static List<Contribution> contributions(Worn w, GatheringCatalog.QualityRules q) {
+        return contributions(w, q, Map.of());
+    }
+
+    /** Pure: what {@code w} adds under {@code q}'s numbers and these upgrades (one the item no longer qualifies for adds nothing). */
+    public static List<Contribution> contributions(Worn w, GatheringCatalog.QualityRules q, Map<String, GatheringCatalog.UpgradeDef> upgrades) {
         List<Contribution> out = new ArrayList<>();
         Piece h = w.hand();
         if (h != null && h.quality() != null) {
@@ -83,8 +103,14 @@ public final class EquipmentSource implements AttributeSource, Listener {
                 add(out, "hand", h.label(), Attribute.POWER, at(q.weaponPower(), i), h.weapon());
             }
             if (h.gear() == GatheringCatalog.Gear.TOOL || h.gear() == GatheringCatalog.Gear.WEAPON_AND_TOOL) {
-                add(out, "hand", h.label(), Attribute.FORTUNE, at(q.toolFortune(), i), null);
+                double amount = at(q.toolFortune(), i);
+                if (amount > 0 && Double.isFinite(amount)) out.add(Contribution.fortune(SOURCE_PREFIX + "hand", h.label(), amount, h.yield()));
             }
+        }
+        if (h != null) for (String id : h.upgrades()) {
+            GatheringCatalog.UpgradeDef u = upgrades.get(id);
+            if (u == null || u.stat() == null || !(u.amount() > 0) || !u.on().contains(h.kind())) continue;
+            out.add(Contribution.stat(SOURCE_PREFIX + "hand", h.label() + " · " + u.name(), u.stat(), u.amount(), null));
         }
         for (Piece a : w.armor()) {
             if (a.quality() != null && a.gear() == GatheringCatalog.Gear.ARMOR) {
@@ -128,15 +154,23 @@ public final class EquipmentSource implements AttributeSource, Listener {
         }
     }
 
-    /** The piece {@code it} is, or null when it adds nothing (no quality, not gear, or armor held in hand). */
+    /**
+     * The piece {@code it} is, or null when it adds nothing: no quality above Common and no upgrade, not gear, or armor
+     * held in hand.
+     */
     static Piece piece(ItemStack it, boolean worn) {
         if (it == null || it.getType().isAir()) return null;
-        Quality q = GearItems.quality(it);
-        if (q == null || q == Quality.COMMON) return null;
         String material = it.getType().name();
         GatheringCatalog.Gear g = GatheringCatalog.gear(material);
-        if (g == null || (g == GatheringCatalog.Gear.ARMOR) != worn) return null;
-        return new Piece(g, WeaponClass.ofMaterial(material), q, q.displayName + " " + GearItems.label(material).toLowerCase(java.util.Locale.ROOT));
+        Quality q = GearItems.quality(it);
+        if (q == Quality.COMMON || g == null) q = null;
+        List<String> ups = worn ? List.of() : GearItems.upgrades(it);
+        if (q == null && ups.isEmpty()) return null;
+        if ((g == GatheringCatalog.Gear.ARMOR) != worn) return null;
+        String kind = GearItems.kind(it.getType());
+        Yield y = "axe".equals(kind) ? Yield.WOOD : "pickaxe".equals(kind) ? Yield.ORE : null;
+        String label = GearItems.label(material);
+        return new Piece(g, WeaponClass.ofMaterial(material), q, y, kind, ups, q == null ? label : q.displayName + " " + label.toLowerCase(java.util.Locale.ROOT));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

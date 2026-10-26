@@ -191,6 +191,7 @@ public final class SkillView {
     static String weightLine(AttributeRules.SkillWeight w, double amount, boolean perLevel) {
         return w.attribute().color + "+" + one(amount) + " " + w.attribute().displayName
                 + ChatColor.GRAY + (w.weapon() != null ? " (" + w.weapon().displayName.toLowerCase(Locale.ROOT) + ")" : "")
+                + (w.yield() != null ? " (" + w.yield().id + ")" : "")
                 + (perLevel ? ChatColor.DARK_GRAY + " per level" : "");
     }
 
@@ -228,10 +229,13 @@ public final class SkillView {
                     rows.put("Spell damage (mobs)", new String[]{Fmt.mult(now.spellDamageMultiplier()), Fmt.mult(next.spellDamageMultiplier())});
                 }
                 case FORTUNE -> {
+                    // The chance where this skill's Fortune counts: Mining's on ore, Woodcutting's on wood.
                     Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
-                    rows.put("Extra ore chance", new String[]{
-                            Fmt.pct(Gathering.GatherRules.bonusChance(now.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax())),
-                            Fmt.pct(Gathering.GatherRules.bonusChance(next.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax()))});
+                    Attributes.Yield y = w.yield();
+                    String label = y == Attributes.Yield.WOOD ? "Extra log chance" : y == Attributes.Yield.ORE ? "Extra ore chance" : "Extra drop chance";
+                    rows.put(label, new String[]{
+                            Fmt.pct(Gathering.GatherRules.bonusChance(now.fortune(y), gc.fortunePerPoint(), gc.fortuneMax())),
+                            Fmt.pct(Gathering.GatherRules.bonusChance(next.fortune(y), gc.fortunePerPoint(), gc.fortuneMax()))});
                 }
             }
         }
@@ -257,6 +261,8 @@ public final class SkillView {
             case PERCENT -> Fmt.pct(v);
             case MULTIPLIER -> Fmt.mult(v);
             case REALM_POINTS -> "+" + Numbers.hud(v * realm) + " points";
+            case LOGS -> v <= 0 ? "not yet (from level " + Gathering.GatheringCatalog.current().wood().firstFellingLevel() + ")"
+                    : Numbers.hud(v) + " logs";
         };
     }
 

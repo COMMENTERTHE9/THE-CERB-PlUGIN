@@ -84,6 +84,13 @@ final class AttributeSimulatorMenu extends AdminMenu {
                     if (w == WeaponClass.OTHER || (now.power(w) <= 0 && sim.power(w) <= 0)) continue;
                     l.raw(ChatColor.WHITE + "  " + w.displayName + ": " + change(now.powerMultiplier(w), sim.powerMultiplier(w), true));
                 }
+            } else if (a == Attribute.FORTUNE) { // scoped parts too: Mining's Fortune counts on ore, Woodcutting's on wood
+                l.raw(ChatColor.WHITE + "  " + a.displayName + ": " + change(now.get(a), sim.get(a), false));
+                for (Attributes.Yield y : Attributes.Yield.values()) {
+                    if (now.fortune(y) != now.get(a) || sim.fortune(y) != sim.get(a)) {
+                        l.raw(ChatColor.WHITE + "  " + a.displayName + " (" + y.id + "): " + change(now.fortune(y), sim.fortune(y), false));
+                    }
+                }
             } else {
                 l.raw(ChatColor.WHITE + "  " + a.displayName + ": " + change(now.get(a), sim.get(a), false));
             }
@@ -91,7 +98,8 @@ final class AttributeSimulatorMenu extends AdminMenu {
             for (int k = 0; k < after.size(); k++) {
                 if (!after.get(k).equals(k < before.size() ? before.get(k) : "")) l.raw(ChatColor.DARK_GREEN + "  now: " + after.get(k));
             }
-            boolean changed = a == Attribute.POWER ? differs(now, sim) : now.get(a) != sim.get(a);
+            boolean changed = a == Attribute.POWER ? differs(now, sim) : now.get(a) != sim.get(a)
+                    || (a == Attribute.FORTUNE && java.util.Arrays.stream(Attributes.Yield.values()).anyMatch(y -> now.fortune(y) != sim.fortune(y)));
             v.set(10 + i + (i >= 3 ? 1 : 0), Ui.glow(Ui.item(AttributeView.icon(a), a.color + a.displayName
                     + (changed ? ChatColor.GREEN + " (changes)" : ChatColor.DARK_GRAY + " (no change)"), l.build()), changed));
         }

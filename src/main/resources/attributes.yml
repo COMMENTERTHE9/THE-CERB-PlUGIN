@@ -42,7 +42,9 @@ xp-integrity:
 
 # ── Attributes: derived automatically from skills (no manual points yet) ──
 # Each skill level adds `per-level` points. `weapon` limits Power to one weapon type
-# (sword, axe, mace, trident, spear, bow, unarmed); leave it out for "all weapons".
+# (sword, axe, mace, trident, spear, bow, unarmed); leave it out for "all weapons". `yield` limits
+# Fortune to what it counts on (ore, wood, or all for everything); left out, Mining's counts on ore,
+# Woodcutting's on wood and any other skill's on everything.
 # A skill this file doesn't mention gets the plugin's own entry (so a skill added by an update
 # works in an older copy of this file); write "Skill: []" to give a skill nothing.
 attributes:
@@ -73,7 +75,10 @@ attributes:
     Lockpicking:          [ { attribute: fortune, per-level: 0.5 } ]
     Trading:              [ { attribute: fortune, per-level: 0.5 } ]
     Fishing:              [ { attribute: fortune, per-level: 0.5 } ]
-    Mining:               [ { attribute: fortune, per-level: 0.5 } ]   # Fortune: a chance of one extra ore (resources.yml)
+    Mining:               [ { attribute: fortune, per-level: 0.5, yield: ore } ]   # a chance of one extra ore (resources.yml)
+    Woodcutting:                                                                    # docs/design/WOODCUTTING.md
+      - { attribute: vitality, per-level: 0.25 }
+      - { attribute: fortune, per-level: 0.5, yield: wood }                         # a chance of one extra log
 
   # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
   caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }
@@ -135,6 +140,7 @@ attributes:
       movement-speed:    { enabled: true, driver: agility, per-point: 0.0005, cap: 0.20 } # +20% = Speed I
       cooldown-recovery: { enabled: true, driver: essence, per-point: 0.002,  cap: 0.50 } # spell cooldown / (1 + this)
       gather-speed:      { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # breaking blocks; only gathering skills raise it
+      chop-speed:        { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # the same with an axe in hand (Woodcutting's)
     skills:
       Blade Mastery:    [ { stat: attack-speed, per-level: 0.003, weapon: sword } ]
       Weapon Mastery:
@@ -146,3 +152,4 @@ attributes:
       Navigation:       [ { stat: movement-speed, per-level: 0.001 } ]
       Spell Weaving:    [ { stat: cooldown-recovery, per-level: 0.003 } ]
       Mining:           [ { stat: gather-speed, per-level: 0.002 } ]
+      Woodcutting:      [ { stat: chop-speed, per-level: 0.002 } ]

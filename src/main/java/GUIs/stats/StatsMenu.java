@@ -178,10 +178,13 @@ public final class StatsMenu extends PlayerMenu {
                 + ChatColor.GRAY + String.format(java.util.Locale.ROOT, "  Fireball every %.2f s", fireball / 1000.0));
         l.raw(ChatColor.AQUA + "Gathering speed: " + ChatColor.WHITE + Fmt.signedPct(s.secondary(Attributes.Stat.GATHER_SPEED))
                 + ChatColor.GRAY + "  breaking blocks");
+        l.raw(ChatColor.AQUA + "Chopping speed: " + ChatColor.WHITE + Fmt.signedPct(s.secondary(Attributes.Stat.CHOP_SPEED))
+                + ChatColor.GRAY + "  with an axe in hand");
         l.gap().text("Raised by Agility (Essence for spells)")
                 .text("and by the skill behind each action:")
                 .text("Blade Mastery, Weapon Mastery, Ranged")
-                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving, Mining.");
+                .text("Precision, " + Skills.SkillNames.display("Navigation") + ", Spell Weaving, Mining,")
+                .text("Woodcutting.");
         l.gap();
         if (paused) l.raw(ChatColor.YELLOW + "⏸ Paused: you are in PvP combat");
         else {
@@ -325,5 +328,20 @@ public final class StatsMenu extends PlayerMenu {
     /** Exact below 100,000 ("1,020"), compact above ("12.3M"), so small changes stay visible. */
     private static String num(double v) {
         return v < 100_000 ? Fmt.grouped(Math.round(v)) : Fmt.compact(v);
+    }
+
+    /**
+     * Fortune as players read it: one number when it counts everywhere, else where each part counts ("ore 50 · wood 20";
+     * Mining's counts on ore, Woodcutting's on wood, docs/design/WOODCUTTING.md §7).
+     */
+    public static String fortuneText(Attributes.AttributeSnapshot s) {
+        if (!s.fortuneScoped()) return Fmt.one(s.get(Attributes.Attribute.FORTUNE));
+        StringBuilder b = new StringBuilder();
+        for (Attributes.Yield y : Attributes.Yield.values()) {
+            double v = s.fortune(y);
+            if (v <= 0) continue;
+            b.append(b.isEmpty() ? "" : " · ").append(y.id).append(' ').append(Fmt.one(v));
+        }
+        return b.isEmpty() ? Fmt.one(s.get(Attributes.Attribute.FORTUNE)) : b.toString();
     }
 }

@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting
 
-*2026-10-25, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 7, mining, smelting, forging and the XP display (about 20 minutes).** Section 6 (the ability controls) is from the last round; sections 1–5 from earlier milestones.*
+*2026-10-26, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: sections 8–11: the mob labels you found, XP that can't be farmed, level-ups and class ranks, and Woodcutting (about 45 minutes, half of it Woodcutting).** Section 7 (mining and forging) is from the last round; sections 1–6 from earlier milestones.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -199,6 +199,25 @@ What a level-up looks and sounds like now (`docs/design/LEVEL_UP.md`). Admin com
 | 7 | Use the admin tools: `/cerb skill <you> <skill> level 30`, the admin panel's skill editor, `/cerb class <you> warrior rank 9`. Then rejoin. | Only the admin's confirmation, no celebration. Rejoining replays nothing. |
 | 8 | Overall feel. | Tell me if anything is too loud, too long, too often or too small. Volumes, particles and title times are easy to tune. |
 
-## 11. Afterwards
+## 11. Woodcutting
+
+The new loop (`docs/design/WOODCUTTING.md`). The XP display (`/xpdisplay compact`) shows every gain. `/cerb skill <you> Woodcutting level <n>` sets a level quietly; `/cerb gather tree` (looking at a log) shows what Felling sees.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Cut an oak or birch log with any axe, in survival. Then cut one by hand. | +4 Woodcutting XP with the axe. By hand the log drops, with no XP, and the HUD says logs pay with an axe. The first log of each wood is also a **discovery**: a chat line, a chime and its bonus XP, once. |
+| 2 | Find a harder wood (cherry, dark oak, mangrove, a pale garden's pale oak, a Nether stem) and cut it with a wooden axe, then with a better one. | A too-weak axe pays a quarter, and the HUD names the axe that pays in full (cherry, dark oak and mangrove: stone; pale oak and Nether stems: iron). |
+| 3 | Place a log and cut it. Plant a sapling, bone-meal it, and cut the tree. | The wood drops, with no XP (placed and grown wood never pays). |
+| 4 | At Woodcutting 10, **Sneak** while cutting the bottom log of a small oak or birch. | The whole tree comes down at once; its logs land at the stump in one or two stacks; the axe loses a point per log. Without Sneak, one log as always. |
+| 5 | Fell another tree right after. | "Felling is ready again in N s": a short rest, longer after a bigger tree. |
+| 6 | At 10 try a tall tree; at 25 the same; at 25 a dark oak (2x2), then at 50. | Too big for your level: one log, and the HUD gives the limit (6 logs at 10, 24 at 25). Giant trunks fall from 50. |
+| 7 | Sneak + cut a log of one of your own log builds. Then put a plank or a torch against a natural tree's trunk and Sneak + cut that tree; then a short fence of logs against another tree's base. | One log only, each time: Felling brings down only trees the world grew, never a tree a build touches, and never one with logs built against its base (the HUD says which). Your old builds and villages stay standing. |
+| 8 | At 75, fell a tree. | Half a second later its leaves come down too, with their saplings, sticks and apples. |
+| 9 | Get a **heartwood** (rare from natural logs; for testing, `/cerb gather item heartwood`). Craft it with an axe, then with a bow. | The axe gets a **heartwood grip**: the Stats page's Chopping speed rises while you hold it. The bow gets **heartwood limbs** (draw speed). Quality, enchantments and name stay; a second grip on the same axe isn't offered. Heartwood can't be placed, burnt, smelted or made into planks, and a crafter block won't use it. |
+| 10 | At Woodcutting 50 or more, watch how many logs you get. | Fortune for wood: about one extra log in eight at 50, one in four at 100. Mining's Fortune doesn't add logs, and Woodcutting's doesn't add ore. |
+| 11 | The Player Menu → Skills → Utility → Woodcutting, and → Stats. | What a level gives (Vitality, Fortune on wood, chopping speed), what Felling takes at your level, the heartwood chance, and the woods you have discovered and the ones still to find. On the Stats page, Fortune by where it counts and Chopping speed. |
+| 12 | Overall feel. | Too slow, too fast, Felling too strong, the rest too long, heartwood too rare? Every number is in `resources.yml` and `attributes.yml`. |
+
+## 12. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

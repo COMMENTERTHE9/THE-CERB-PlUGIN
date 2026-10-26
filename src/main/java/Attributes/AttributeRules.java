@@ -26,8 +26,13 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         this(skillWeights, caps, derived, limits, curves, switches, DEFAULT_SECONDARY);
     }
 
-    /** {@code perLevel} points of {@code attribute} per skill level; {@code weapon} null = all weapons. */
-    public record SkillWeight(Attribute attribute, double perLevel, WeaponClass weapon) {}
+    /**
+     * {@code perLevel} points of {@code attribute} per skill level; {@code weapon} null = all weapons; {@code yield}
+     * (Fortune only) what the points count on, null = everything.
+     */
+    public record SkillWeight(Attribute attribute, double perLevel, WeaponClass weapon, Yield yield) {
+        public SkillWeight(Attribute attribute, double perLevel, WeaponClass weapon) { this(attribute, perLevel, weapon, null); }
+    }
 
     /** How attribute points turn into derived stats (per point). */
     public record Derived(double powerDamage, double vitalityHp, double fortitudeArmor,
@@ -125,7 +130,8 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         m.put("Lockpicking", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Trading", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Fishing", List.of(new SkillWeight(L, 0.5, null)));
-        m.put("Mining", List.of(new SkillWeight(L, 0.5, null)));
+        m.put("Mining", List.of(new SkillWeight(L, 0.5, null, Yield.ORE)));
+        m.put("Woodcutting", List.of(new SkillWeight(V, 0.25, null), new SkillWeight(L, 0.5, null, Yield.WOOD)));
         DEFAULT_SKILL_WEIGHTS = java.util.Collections.unmodifiableMap(m);
     }
 
@@ -148,6 +154,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         stats.put(Stat.MOVE_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0005, 0.20));
         stats.put(Stat.COOLDOWN_RECOVERY, new SecondaryStat(true, Attribute.ESSENCE, 0.002, 0.50));
         stats.put(Stat.GATHER_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0, 0.25)); // the gathering skills only
+        stats.put(Stat.CHOP_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0, 0.25));   // Woodcutting only, an axe in hand
         Map<String, List<StatWeight>> w = new LinkedHashMap<>();
         w.put("Blade Mastery", List.of(new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.SWORD)));
         w.put("Weapon Mastery", List.of(
@@ -157,6 +164,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         w.put("Navigation", List.of(new StatWeight(Stat.MOVE_SPEED, 0.001, null)));
         w.put("Spell Weaving", List.of(new StatWeight(Stat.COOLDOWN_RECOVERY, 0.003, null)));
         w.put("Mining", List.of(new StatWeight(Stat.GATHER_SPEED, 0.002, null)));
+        w.put("Woodcutting", List.of(new StatWeight(Stat.CHOP_SPEED, 0.002, null)));
         DEFAULT_SECONDARY = new Secondary(stats, w, false, 15);
     }
 

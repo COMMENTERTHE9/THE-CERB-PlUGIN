@@ -47,9 +47,11 @@ public final class ShippedConfig {
                     "ab9ecdf0e6d78a9824828546b58150a10f35299241db3f9724e7bed61fb843ab",  // speed and handling stats
                     "cb17940f48676bdf2543988f01131f3f34e012ec648da447d817206643291fd2",  // owner decisions (75% cap)
                     "ad4e8c0fd68ce07a064242a817a43fb490c6d22e63423e19ca057c1f191eb01f",  // PvP off for now, not permanently
-                    "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b"), // Mining: gathering speed, Fortune
+                    "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b",  // Mining: gathering speed, Fortune
+                    "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373"), // XP integrity
             "resources.yml", Set.of(
-                    "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9")); // the gathering loop, first cut
+                    "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9",  // the gathering loop, first cut
+                    "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942")); // the gathering loop, as shipped
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

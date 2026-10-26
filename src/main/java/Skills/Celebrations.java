@@ -69,6 +69,15 @@ public final class Celebrations implements Listener, TabExecutor {
         List<Celebration> unlockedBy(Player p, String skill, int from, int to);
     }
 
+    /**
+     * Techniques a skill's new levels opened ("Felling I: Sneak while cutting a natural tree to bring down up to 6 logs"),
+     * each "Name: what it does" (docs/design/WOODCUTTING.md §6).
+     */
+    @FunctionalInterface
+    public interface Techniques {
+        List<String> opened(String skill, int from, int to);
+    }
+
     /** One skill's levels gained in this batch. */
     private record SkillLevels(String skill, int from, int to) {}
 
@@ -85,6 +94,7 @@ public final class Celebrations implements Listener, TabExecutor {
     private final Map<UUID, State> states = new ConcurrentHashMap<>();
     private final LongAdder shown = new LongAdder(), effects = new LongAdder();
     private volatile AbilityUnlocks unlocks = (p, skill, from, to) -> List.of();
+    private volatile Techniques techniques = (skill, from, to) -> List.of();
 
     public Celebrations(Plugin plugin, PlayerHUDManager hud, AttributeService attributes) {
         this.plugin = plugin;
@@ -93,6 +103,8 @@ public final class Celebrations implements Listener, TabExecutor {
     }
 
     public void setAbilityUnlocks(AbilityUnlocks unlocks) { this.unlocks = unlocks; }
+
+    public void setTechniques(Techniques techniques) { this.techniques = techniques; }
 
     // ── what arrives (any thread) ─────────────────────────────────
 
@@ -130,6 +142,7 @@ public final class Celebrations implements Listener, TabExecutor {
         List<Celebration> all = new ArrayList<>();
         for (SkillLevels lv : mergeLevels(events)) {
             all.add(skillCelebration(p, lv));
+            for (String t : techniques.opened(lv.skill(), lv.from(), lv.to())) all.add(technique(t));
             all.addAll(unlocks.unlockedBy(p, lv.skill(), lv.from(), lv.to()));
         }
         for (Object e : events) if (e instanceof Celebration c) all.add(c);
@@ -167,6 +180,14 @@ public final class Celebrations implements Listener, TabExecutor {
         return new Celebration(Celebration.Kind.SKILL_LEVEL, Celebration.Tier.ORDINARY,
                 "§a▲ §f" + name + " §a" + levels + best, "§a▲ §f" + name + " §a" + levels, null, null,
                 List.of("§a▲ §f" + name + " §7reached level §a" + lv.to() + detail), -1);
+    }
+
+    /** "✦ New technique: Felling I: Sneak while cutting..." (the milestone it came with carries the title). */
+    static Celebration technique(String text) {
+        int cut = text.indexOf(": ");
+        String name = cut > 0 ? text.substring(0, cut) : text, what = cut > 0 ? text.substring(cut + 2) : "";
+        return new Celebration(Celebration.Kind.TECHNIQUE, Celebration.Tier.MAJOR, "§a✦ §f" + name, "§a✦ §f" + name, null, null,
+                List.of("§a✦ New technique: §f" + name + (what.isEmpty() ? "" : "§7: " + what)), -1);
     }
 
     /** The real gain: the player's attributes with the skill at its old level and at its new one (diminishing returns included). */
@@ -211,6 +232,10 @@ public final class Celebrations implements Listener, TabExecutor {
                 if (b.tier() != Celebration.Tier.ORDINARY) p.playSound(p, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.8f, 1.0f);
             }
             case SKILL_LEVEL -> p.playSound(p, Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.4f);
+            case DISCOVERY -> {
+                p.playSound(p, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.9f, 1.2f);
+                p.playSound(p, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 0.9f);
+            }
             default -> {
                 p.playSound(p, Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.1f);
                 p.playSound(p, Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.55f, 1.0f);

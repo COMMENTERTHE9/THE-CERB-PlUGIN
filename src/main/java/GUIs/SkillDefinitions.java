@@ -69,7 +69,7 @@ public final class SkillDefinitions {
     }
 
     /** How an effect value reads: +12.0%, x1.85, +340 points (realm-scaled points grow with the realm). */
-    public enum Unit { PERCENT, MULTIPLIER, REALM_POINTS }
+    public enum Unit { PERCENT, MULTIPLIER, REALM_POINTS, LOGS }
 
     /** The size of an effect at a skill level, computed by the gameplay code's own function. */
     @FunctionalInterface
@@ -225,6 +225,13 @@ public final class SkillDefinitions {
     // ── The catalog ──────────────────────────────────────────────
 
     /** The chance a piece forged at Smithing {@code level} comes out {@code q} or better (resources.yml's odds). */
+    /** The chance of heartwood from one natural log of {@code wood} at {@code level} (0 when the wood isn't in resources.yml). */
+    private static double heartwood(String wood, int level) {
+        Gathering.GatheringCatalog c = Gathering.GatheringCatalog.current();
+        Gathering.GatheringCatalog.ResourceDef r = c.resources().get(wood);
+        return r == null || r.tree() == null ? 0 : c.wood().heartwoodChance(r.tree().heartwood(), level);
+    }
+
     private static double forged(Gathering.Quality q, int level) {
         Gathering.GatheringCatalog.QualityRules r = Gathering.GatheringCatalog.current().quality();
         return Gathering.Quality.chanceAtLeast(q, level, r.oddsAt1(), r.oddsAt100());
@@ -303,8 +310,11 @@ public final class SkillDefinitions {
         d.add(new SkillDef("Mining", "Working stone and ore.", List.of(), Material.DIAMOND_PICKAXE, U, List.of()));
         d.add(new SkillDef("Farming", "Growing and harvesting crops.", List.of(), Material.DIAMOND_HOE, U,
                 List.of(SkillEffect.planned("Better crop yields"))));
-        d.add(new SkillDef("Woodcutting", "Felling trees.", List.of(), Material.DIAMOND_AXE, U,
-                List.of(SkillEffect.planned("Better wood yields"))));
+        // Woodcutting trains through resources.yml too (its woods, techniques and heartwood: docs/design/WOODCUTTING.md).
+        d.add(new SkillDef("Woodcutting", "Felling trees.", List.of(), Material.DIAMOND_AXE, U, List.of(
+                SkillEffect.live("Felling: logs one Sneak + cut brings down", (cfg, lvl) -> Gathering.GatheringCatalog.current().wood().capacity(lvl), Unit.LOGS),
+                SkillEffect.live("Heartwood chance per oak log", (cfg, lvl) -> heartwood("oak", lvl), PCT),
+                SkillEffect.live("Heartwood chance per pale oak log", (cfg, lvl) -> heartwood("pale_oak", lvl), PCT))));
         d.add(new SkillDef("Fishing", "Rod, line and patience.", List.of(), Material.FISHING_ROD, U,
                 List.of(SkillEffect.planned("Rarer catches"))));
         d.add(new SkillDef("Crafting", "Making tools and goods.", List.of(), Material.CRAFTING_TABLE, U,

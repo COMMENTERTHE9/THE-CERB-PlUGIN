@@ -9,9 +9,15 @@ import java.util.Objects;
  * breakdowns.
  *
  * @param sourceId stable id of the source that produced it ("skill:Blade Mastery", "buff:dev")
+ * @param yield    for Fortune: what it counts on (Woodcutting's on wood); null = everything
  */
 public record Contribution(String sourceId, String label, Attribute attribute, Stat stat,
-                           double amount, WeaponClass weapon) {
+                           double amount, WeaponClass weapon, Yield yield) {
+
+    /** Counts on everything. */
+    public Contribution(String sourceId, String label, Attribute attribute, Stat stat, double amount, WeaponClass weapon) {
+        this(sourceId, label, attribute, stat, amount, weapon, null);
+    }
 
     public Contribution {
         Objects.requireNonNull(sourceId, "sourceId");
@@ -23,6 +29,11 @@ public record Contribution(String sourceId, String label, Attribute attribute, S
 
     public static Contribution attribute(String sourceId, String label, Attribute a, double amount, WeaponClass weapon) {
         return new Contribution(sourceId, label, a, null, amount, weapon);
+    }
+
+    /** Fortune that counts only on {@code yield} (null: everywhere). */
+    public static Contribution fortune(String sourceId, String label, double amount, Yield yield) {
+        return new Contribution(sourceId, label, Attribute.FORTUNE, null, amount, null, yield);
     }
 
     public static Contribution stat(String sourceId, String label, Stat s, double amount, WeaponClass weapon) {

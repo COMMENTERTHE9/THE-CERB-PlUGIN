@@ -49,6 +49,8 @@ public final class AttributeView {
                 any = true;
             }
             if (!any) l.stat("Power", "0");
+        } else if (a == Attribute.FORTUNE) { // where each part counts: Mining's on ore, Woodcutting's on wood
+            l.stat(a.displayName, StatsMenu.fortuneText(s) + ChatColor.DARK_GRAY + "  (max " + (int) rules.cap(a) + ")");
         } else {
             l.stat(a.displayName, Fmt.one(s.get(a)) + ChatColor.DARK_GRAY + "  (max " + (int) rules.cap(a) + ")");
         }
@@ -60,7 +62,8 @@ public final class AttributeView {
         for (int i = 0; i < Math.min(4, src.size()); i++) {
             Contribution c = src.get(i);
             l.raw(ChatColor.WHITE + "  " + c.label() + ChatColor.GRAY + ": +" + Fmt.one(c.amount())
-                    + (c.weapon() != null ? " (" + c.weapon().displayName.toLowerCase(Locale.ROOT) + ")" : ""));
+                    + (c.weapon() != null ? " (" + c.weapon().displayName.toLowerCase(Locale.ROOT) + ")" : "")
+                    + (c.yield() != null ? " (" + c.yield().id + ")" : ""));
         }
         if (src.size() > 4) l.raw(ChatColor.DARK_GRAY + "  and " + (src.size() - 4) + " more");
         l.gap();
@@ -91,9 +94,13 @@ public final class AttributeView {
                 out.add(g + "Spell damage: " + w + Fmt.mult(s.spellDamageMultiplier()));
             }
             case FORTUNE -> {
+                // Mining's Fortune counts on ore, Woodcutting's on wood (docs/design/WOODCUTTING.md §7).
                 Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
-                double chance = Gathering.GatherRules.bonusChance(s.get(Attribute.FORTUNE), gc.fortunePerPoint(), gc.fortuneMax());
-                out.add(g + "Extra ore when mining: " + w + Fmt.pct(chance) + g + " (max " + Fmt.pct(gc.fortuneMax()) + ")");
+                double ore = Gathering.GatherRules.bonusChance(s.fortune(Attributes.Yield.ORE), gc.fortunePerPoint(), gc.fortuneMax());
+                double wood = Gathering.GatherRules.bonusChance(s.fortune(Attributes.Yield.WOOD), gc.fortunePerPoint(), gc.fortuneMax());
+                out.add(g + "Extra ore when mining: " + w + Fmt.pct(ore) + g + " (max " + Fmt.pct(gc.fortuneMax()) + ")");
+                out.add(g + "Extra log when chopping: " + w + Fmt.pct(wood));
+                if (s.fortuneScoped()) out.add(g + "Fortune by where it counts: " + w + StatsMenu.fortuneText(s));
             }
         }
         return out;

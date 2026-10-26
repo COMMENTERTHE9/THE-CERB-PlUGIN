@@ -17,7 +17,7 @@ import java.util.List;
  */
 public record Celebration(Kind kind, Tier tier, String hud, String brief, String title, String subtitle, List<String> chat, int rgb) {
 
-    public enum Kind { SKILL_LEVEL, SKILL_MILESTONE, CLASS_RANK, ABILITY, REALM_BREAKTHROUGH, MASTERY_TRIAL, AWAKENING }
+    public enum Kind { SKILL_LEVEL, SKILL_MILESTONE, CLASS_RANK, ABILITY, TECHNIQUE, DISCOVERY, REALM_BREAKTHROUGH, MASTERY_TRIAL, AWAKENING }
 
     /** How strong the presentation is. GRAND is for realm breakthroughs, mastery trials and Awakenings (nothing uses it yet). */
     public enum Tier { ORDINARY, MAJOR, GRAND }

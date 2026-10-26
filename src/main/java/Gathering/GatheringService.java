@@ -27,10 +27,14 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class GatheringService {
 
-    /** One block as the rules see it, for a player and the item in their hand. */
+    /**
+     * One block as the rules see it, for a player and the item in their hand. {@code weakTool}: a wood cut with an axe
+     * below the tier it wants (a soft gate, docs/design/WOODCUTTING.md §4: part of the XP, no bonus, no Felling, no
+     * heartwood).
+     */
     public record Evaluation(Block block, GatheringCatalog.ResourceDef resource, GatherRules.Method method, boolean placed,
                              GatherRules.Tool tool, boolean toolFits, boolean silk, GatherRules.Decision decision,
-                             double xp, double bonusChance) {}
+                             double xp, double bonusChance, boolean weakTool) {}
 
     /** What a machine's extraction did: the drops, or why it couldn't. */
     public record Extraction(boolean done, List<ItemStack> drops, String why) {}
@@ -75,18 +79,27 @@ public final class GatheringService {
         boolean wasPlaced = placed != null && placed.isPlaced(b);
         GatherRules.Tool tool = GearItems.tool(hand, c);
         boolean fits = GatherRules.toolFits(r.tool(), r.tier(), tool == null ? null : tool.kinds(), tool == null ? 0 : tool.tier());
+        // A wood and an axe below its tier: a soft gate (part of the XP), never a wall.
+        boolean weakTool = !fits && r.isTree() && !r.replacesDrops()
+                && GatherRules.toolFits(r.tool(), 0, tool == null ? null : tool.kinds(), tool == null ? 0 : tool.tier());
         boolean silk = !hand.getType().isAir() && hand.getEnchantmentLevel(Enchantment.SILK_TOUCH) > 0;
         boolean vanillaDrops = r.replacesDrops() || b.isPreferredTool(hand);
-        GatherRules.Decision d = GatherRules.decide(method, wasPlaced, r.replacesDrops(), fits, vanillaDrops, silk, r.fortune());
+        GatherRules.Decision d = GatherRules.decide(method, wasPlaced, r.replacesDrops(), fits || weakTool, vanillaDrops, silk, r.fortune() && !weakTool);
         double xp = d.xp() ? GatherRules.xp(r.xp(), r.level(), skills.getSkillLevel(p, r.skill()), c.weakGap(), c.weakFactor()) : 0;
-        double chance = d.bonus() ? bonusChance(p.getUniqueId()) : 0;
-        return new Evaluation(b, r, method, wasPlaced, tool, fits, silk, d, xp, chance);
+        if (weakTool) xp *= c.weakToolFactor();
+        double chance = d.bonus() ? bonusChance(p.getUniqueId(), r.fortuneYield()) : 0;
+        return new Evaluation(b, r, method, wasPlaced, tool, fits, silk, d, xp, chance, weakTool);
     }
 
-    /** The player's chance of one extra drop now: their Fortune through resources.yml's rule. */
+    /** The player's chance of one extra ore now (Fortune on ore). */
     public double bonusChance(UUID player) {
+        return bonusChance(player, Attributes.Yield.ORE);
+    }
+
+    /** The player's chance of one extra drop of {@code yield} now: their Fortune there, through resources.yml's rule. */
+    public double bonusChance(UUID player, Attributes.Yield yield) {
         GatheringCatalog c = catalog;
-        return GatherRules.bonusChance(attributes.get(player).get(Attribute.FORTUNE), c.fortunePerPoint(), c.fortuneMax());
+        return GatherRules.bonusChance(attributes.get(player).fortune(yield), c.fortunePerPoint(), c.fortuneMax());
     }
 
     /** Pay an evaluation's XP (fractions carry over). Player's thread. */

@@ -21,6 +21,9 @@
 //            pickaxes, about two a second; finished pickaxes are cleared so the inventory never fills.
 //   wood   - each bot chops a small grove in survival (a netherite axe and Haste II): three oak trees, four logs tall
 //            under a leaf canopy, refilled when cut down; drops are picked up. The Woodcutting baseline (2026-10-26).
+//   felling - like wood, but each bot is at Woodcutting 25 and Sneaks while it cuts, and its trees are six logs tall: a
+//            cut fells the trunk when Felling is ready, and single logs fall meanwhile (the rest between fellings). The
+//            tree scan, the felling's steps, its merged drops and one protection event per log are the workload.
 //   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
 //            again from real XP: many level-ups at once across the server (the progression feedback's workload).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
@@ -114,16 +117,18 @@ function oreCube(controller, x, y, z) {
   }
 }
 
-/** Three oak trees in front of bot i (+z side), four logs tall under a leaf canopy, on a floor to stand on. */
-function grove(controller, x, y, z) {
+/** Three oak trees in front of bot i (+z side), `height` logs tall under a leaf canopy, on a floor to stand on. */
+function grove(controller, x, y, z, height = 4) {
   controller.chat(`/fill ${x - 3} ${y - 1} ${z - 1} ${x + 3} ${y - 1} ${z + 6} grass_block`);
-  controller.chat(`/fill ${x - 3} ${y} ${z - 1} ${x + 3} ${y + 6} ${z + 6} air`);
-  controller.chat(`/fill ${x - 3} ${y + 3} ${z + 2} ${x + 3} ${y + 5} ${z + 5} oak_leaves`);
-  for (const [dx, dz] of [[-2, 3], [0, 4], [2, 3]]) controller.chat(`/fill ${x + dx} ${y} ${z + dz} ${x + dx} ${y + 3} ${z + dz} oak_log`);
+  controller.chat(`/fill ${x - 3} ${y} ${z - 1} ${x + 3} ${y + height + 2} ${z + 6} air`);
+  controller.chat(`/fill ${x - 3} ${y + height - 1} ${z + 2} ${x + 3} ${y + height + 1} ${z + 5} oak_leaves`);
+  for (const [dx, dz] of [[-2, 3], [0, 4], [2, 3]]) controller.chat(`/fill ${x + dx} ${y} ${z + dz} ${x + dx} ${y + height - 1} ${z + dz} oak_log`);
 }
 
-async function wood(b, deadline, controller) {
+async function wood(b, deadline, controller, felling = false) {
   const n = b.username;
+  const height = felling ? 6 : 4;
+  if (felling) { controller.chat(`/cerb skill ${n} Woodcutting level 25`); await sleep(400); }
   b.chat('/gamemode survival'); await sleep(400);
   b.chat('/clear @s'); await sleep(300);
   b.chat('/give @s netherite_axe'); await sleep(800);
@@ -132,20 +137,29 @@ async function wood(b, deadline, controller) {
   const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_axe' && i >= 36 && i <= 44);
   if (slot >= 0) b.setQuickBarSlot(slot - 36);
   const home = b.entity.position.floored();
-  const fill = async () => { grove(controller, home.x, home.y, home.z); bump(n, 'groves'); await sleep(900); };
+  const fill = async () => { grove(controller, home.x, home.y, home.z, height); bump(n, 'groves'); await sleep(900); };
   await fill();
+  if (felling) b.setControlState('sneak', true);
   const vec3 = require('vec3');
   while (Date.now() < deadline) {
     let target = null; // the lowest log still standing, nearest trunk first
-    for (const [dx, dz] of [[0, 4], [-2, 3], [2, 3]]) for (let dy = 0; dy <= 3 && !target; dy++) {
+    for (const [dx, dz] of [[0, 4], [-2, 3], [2, 3]]) for (let dy = 0; dy < height && !target; dy++) {
       const bl = b.blockAt(new vec3(home.x + dx, home.y + dy, home.z + dz));
       if (bl && bl.name === 'oak_log') target = bl;
     }
     if (!target) { b.chat(`/tp @s ${home.x + 0.5} ${home.y} ${home.z + 0.5} 0 0`); await sleep(300); await fill(); continue; }
-    try { await b.dig(target, true); bump(n, 'logs'); } catch (e) { bump(n, 'digfail'); if (!counts.firstError) counts.firstError = { [n]: String(e.message || e).slice(0, 120) }; await sleep(200); }
+    try {
+      await b.dig(target, true); bump(n, 'logs');
+      if (felling && target.position.y < home.y + height - 1) { // the cut log had another above it: felled if that one fell too
+        await sleep(150);
+        const up = b.blockAt(target.position.offset(0, 1, 0));
+        if (up && up.name !== 'oak_log') bump(n, 'fellings');
+      }
+    } catch (e) { bump(n, 'digfail'); if (!counts.firstError) counts.firstError = { [n]: String(e.message || e).slice(0, 120) }; await sleep(200); }
     if (b.inventory.emptySlotCount() < 3) { b.chat('/clear @s oak_log'); b.chat('/clear @s oak_sapling'); b.chat('/clear @s stick'); b.chat('/clear @s apple'); }
     await sleep(200);
   }
+  if (felling) { b.setControlState('sneak', false); controller.chat(`/cerb skill ${n} Woodcutting level 1`); }
 }
 
 async function levels(b, deadline, controller) {
@@ -297,8 +311,8 @@ async function menuidle(b, deadline) {
     try {
       const b = await join(name);
       bots.push(b);
-      // gather, levels, wood: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
-      const lanes = ['gather', 'levels', 'wood'].includes(MODE);
+      // gather, levels, wood, felling: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
+      const lanes = ['gather', 'levels', 'wood', 'felling'].includes(MODE);
       const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
@@ -312,7 +326,8 @@ async function menuidle(b, deadline) {
     const m = pick(i);
     const run = m === 'combat' ? combat(b, deadline) : m === 'abilities' ? abilities(b, deadline, controller) : m === 'hurt' ? hurt(b, deadline, controller)
         : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
-        : m === 'wood' ? wood(b, deadline, controller) : m === 'levels' ? levels(b, deadline, controller)
+        : m === 'wood' ? wood(b, deadline, controller) : m === 'felling' ? wood(b, deadline, controller, true)
+        : m === 'levels' ? levels(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));

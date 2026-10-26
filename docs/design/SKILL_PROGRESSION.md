@@ -105,8 +105,8 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 
 | Skill | Primary | Secondary and profession stats | What changes in play | Milestones | Needs | Today |
 |---|---|---|---|---|---|---|
-| **Mining** | Fortune (ore) 0.5 | Gathering speed (non-axe), +0.2% per level, cap 25% | More ore, faster mining | 50: tier-5 resources (custom ores need tier and level, `resources.yml`). Later: ore techniques | Custom ore tiers, distance-tiered nodes | **Working**: XP, speed, extra ore. The scope (ore) comes with Woodcutting; numbers unchanged |
-| **Woodcutting** | Vitality 0.25 | Fortune (wood) 0.5; chopping speed (axe in hand); Felling (logs one technique can take) | More wood, faster chopping, whole sections or trees at once | 10, 25, 50, 75, 100: techniques (`docs/design/WOODCUTTING.md`) | — (this milestone) | **Building now** |
+| **Mining** | Fortune (ore) 0.5 | Gathering speed (non-axe), +0.2% per level, cap 25% | More ore, faster mining | 50: tier-5 resources (custom ores need tier and level, `resources.yml`). Later: ore techniques | Custom ore tiers, distance-tiered nodes | **Working**: XP, speed, extra ore. Fortune scoped to ore since Woodcutting, numbers unchanged |
+| **Woodcutting** | Vitality 0.25 | Fortune (wood) 0.5; chopping speed (axe in hand); Felling (logs one technique can take) | More wood, faster chopping, whole sections or trees at once | 10, 25, 50, 75, 100: techniques (`docs/design/WOODCUTTING.md`) | — | **Working** (2026-10-26): XP from natural logs, all three stats, Felling I–IV, Canopy, heartwood upgrades, discoveries |
 | **Farming** | Vitality 0.25 | Fortune (crops) 0.5; harvesting speed (hoe in hand); planned: replanting | More and better crops | 10: replant on harvest. 25: wide harvest. 50: crop quality | Ripe-crop rules, crop tiers | **Planned** (next loop candidate) |
 | **Fishing** | Fortune (fish) 0.5 (today: unscoped) | Planned: lure speed; treasure chance; sea-creature chance, capped | Faster bites, rarer catches, encounters worth having | 10: lure speed. 25: treasure. 50: sea creatures by level | XP per catch, idle check, encounter design | **Partial**: Fortune only; catches roll an uncapped Sea Monster (next loop candidate) |
 | **Herbalism** | Essence 0.25 | Fortune (herbs) 0.5; planned: herb potency for Alchemy | Wild plants yield more and better reagents | 25: rare herbs. 50: reagent quality | The scope decision against Farming (wild plants vs crops) | **Planned** |
@@ -138,7 +138,7 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 
 ## What this milestone builds of it
 
-1. **Woodcutting, complete** (`docs/design/WOODCUTTING.md`):
+1. **Woodcutting, complete** (`docs/design/WOODCUTTING.md`; built 2026-10-26):
    - Vitality 0.25;
    - Fortune scoped to wood;
    - chopping speed with an axe in hand;

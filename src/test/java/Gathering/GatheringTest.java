@@ -47,6 +47,57 @@ class GatheringTest {
     }
 
     @Test
+    void anEditedFileFromBeforeWoodcuttingGetsWhatTheUpdateAdded() throws Exception {
+        YamlConfiguration shipped = new YamlConfiguration();
+        shipped.loadFromString(java.nio.file.Files.readString(new File("src/main/resources/resources.yml").toPath()).replace("\r\n", "\n"));
+        String older = """
+                resources:
+                  stone: { skill: Mining, blocks: [STONE], tool: pickaxe, level: 1, xp: 2 }
+                  iron_ore: { skill: Mining, blocks: [IRON_ORE], tool: pickaxe, level: 10, xp: 8, fortune: true }
+                weak-resources: { level-gap: 20, factor: 0.25 }
+                fortune: { chance-per-point: 0.005, max-chance: 0.5 }
+                tools: {}
+                items: {}
+                """;
+        YamlConfiguration server = new YamlConfiguration();
+        server.loadFromString(older);
+        List<String> notes = GatheringCatalog.addUpdates(server, shipped);
+        assertEquals(3, notes.size(), notes.toString());
+        assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
+        GatheringCatalog c = GatheringCatalog.from(server);
+        assertEquals(List.of(), c.problems());
+        assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");
+        assertEquals(11, c.woods().size(), "every wood the update added");
+        assertEquals(4, c.resource(Material.OAK_LOG).xp());
+        assertNotNull(c.item("heartwood"));
+        assertEquals(Set.of("heartwood_grip", "heartwood_limbs"), c.upgrades().keySet());
+        assertTrue(c.wood().capacity(10) > 0, "Felling from the code's defaults (no woodcutting: section in the file)");
+        assertEquals(List.of(), GatheringCatalog.addUpdates(server, shipped), "nothing twice");
+
+        // The owner leaves one out, or has an entry of their own: both stay as written.
+        YamlConfiguration mine = new YamlConfiguration();
+        mine.loadFromString(older.replace("items: {}", "items: {}\nupgrades:\n  heartwood_limbs: off\n")
+                .replace("  iron_ore:", "  oak: off\n  birch: { skill: Woodcutting, blocks: [BIRCH_LOG], tool: axe, level: 1, xp: 9 }\n  iron_ore:"));
+        GatheringCatalog.addUpdates(mine, shipped);
+        GatheringCatalog m = GatheringCatalog.from(mine);
+        assertEquals(List.of(), m.problems(), "off is quiet");
+        assertNull(m.resource(Material.OAK_LOG));
+        assertEquals(9, m.resource(Material.BIRCH_LOG).xp());
+        assertEquals(Set.of("heartwood_grip"), m.upgrades().keySet());
+
+        // An entry of the owner's own that already is a wood's logs, under another name: the update's wood stays out.
+        YamlConfiguration logs = new YamlConfiguration();
+        logs.loadFromString(older.replace("  iron_ore:", "  my_logs: { skill: Woodcutting, blocks: [SPRUCE_LOG, OAK_LOG], tool: axe, level: 1, xp: 3 }\n  iron_ore:"));
+        List<String> said = GatheringCatalog.addUpdates(logs, shipped);
+        GatheringCatalog l = GatheringCatalog.from(logs);
+        assertEquals(List.of(), l.problems(), "no clash reported as a broken entry");
+        assertEquals("my_logs", l.resource(Material.OAK_LOG).id());
+        assertEquals("my_logs", l.resource(Material.SPRUCE_LOG).id());
+        assertEquals("birch", l.resource(Material.BIRCH_LOG).id(), "the other woods still arrive");
+        assertTrue(said.contains("resources.oak: not added, your file already has OAK_LOG"), said.toString());
+    }
+
+    @Test
     void xpRules() {
         assertEquals(8, GatherRules.xp(8, 10, 1, 20, 0.25), "a new miner gets the full XP");
         assertEquals(8, GatherRules.xp(8, 10, 29, 20, 0.25), "19 levels above: still full");
@@ -282,6 +333,100 @@ class GatheringTest {
         assertEquals(10, snap.power(Attributes.WeaponClass.SWORD), 1e-9);
         assertEquals(0, snap.power(Attributes.WeaponClass.AXE), 1e-9);
         assertEquals(16, snap.get(Attributes.Attribute.FORTITUDE), 1e-9);
+    }
+
+    @Test
+    void woodsTechniquesHeartwoodAndUpgradesAreData() throws Exception {
+        GatheringCatalog c = shipped();
+        assertEquals(11, c.woods().size(), c.woods().stream().map(GatheringCatalog.ResourceDef::id).toList().toString());
+        GatheringCatalog.ResourceDef oak = c.resource(Material.OAK_LOG), pale = c.resource(Material.PALE_OAK_LOG);
+        assertEquals("oak", oak.id());
+        assertTrue(oak.isTree() && oak.tree().leaves().contains(Material.AZALEA_LEAVES), "azalea trees are oak");
+        assertEquals(Attributes.Yield.WOOD, oak.fortuneYield(), "fortune: true counts Woodcutting's own Fortune: wood");
+        assertEquals(Attributes.Yield.ORE, c.resource(Material.IRON_ORE).fortuneYield(), "...and Mining's: ore");
+        assertEquals(2, pale.tier(), "pale oak pays in full from an iron axe");
+        assertEquals(10, pale.xp());
+        assertTrue(c.resource(Material.CRIMSON_STEM).tree().leaves().contains(Material.NETHER_WART_BLOCK));
+        assertEquals(3, c.resource(Material.CRIMSON_STEM).tree().trunk(), "some huge fungi grow 3x3 stems");
+        assertEquals(2, oak.tree().trunk(), "a trunk is 1 or 2 wide unless the wood says otherwise");
+        assertNull(c.resource(Material.STRIPPED_OAK_LOG), "stripped logs are made by players: no resource");
+        assertNull(c.resource(Material.OAK_LEAVES), "leaves are part of a tree, not a resource");
+        assertTrue(c.tracked(Material.OAK_LOG), "a placed log is remembered");
+        assertEquals(0.25, c.weakToolFactor());
+        WoodRules w = c.wood();
+        assertEquals(WoodRules.DEFAULTS.fellingAt(), w.fellingAt(), "the shipped techniques are the built-in ones");
+        assertEquals(300, w.restPerLogMs());
+        assertEquals("heartwood", w.heartwoodItem());
+        assertNotNull(c.item("heartwood"));
+        GatheringCatalog.UpgradeDef grip = c.upgrade("heartwood_grip"), limbs = c.upgrade("heartwood_limbs");
+        assertEquals(Set.of("axe"), grip.on());
+        assertEquals(Attributes.Stat.CHOP_SPEED, grip.stat());
+        assertEquals(Set.of("bow"), limbs.on());
+        assertEquals(Attributes.Stat.DRAW_SPEED, limbs.stat());
+        // The skill page's training lines speak of trees for a skill made of woods.
+        List<String> lines = c.trainingLines().get("Woodcutting");
+        assertTrue(lines.get(0).startsWith("Cut logs of natural trees with an axe"), lines.toString());
+        assertTrue(lines.stream().anyMatch(l -> l.contains("pale oak: iron")), lines.toString());
+    }
+
+    @Test
+    void aBadWoodOrUpgradeIsRefusedOnItsOwn() throws Exception {
+        GatheringCatalog c = of("""
+                resources:
+                  good: { skill: Woodcutting, blocks: [OAK_LOG], tool: axe, xp: 4, fortune: wood, tree: { leaves: [OAK_LEAVES] } }
+                  leafless: { skill: Woodcutting, blocks: [BIRCH_LOG], tool: axe, xp: 4, tree: { leaves: [] } }
+                  oddleaves: { skill: Woodcutting, blocks: [SPRUCE_LOG], tool: axe, xp: 4, tree: { leaves: [NOT_A_LEAF] } }
+                  sure: { skill: Woodcutting, blocks: [JUNGLE_LOG], tool: axe, xp: 4, fortune: gems, tree: { leaves: [JUNGLE_LEAVES] } }
+                  lucky: { skill: Mining, blocks: [COAL_ORE], tool: pickaxe, xp: 4, fortune: general }
+                items:
+                  heartwood: { material: STRIPPED_DARK_OAK_WOOD, name: Heartwood }
+                upgrades:
+                  grip: { item: heartwood, for: [axe], stat: chop-speed, amount: 0.08 }
+                  nothing: { item: heartwood, for: [spoon], stat: chop-speed, amount: 0.08 }
+                  toomuch: { item: heartwood, for: [bow], stat: draw-speed, amount: 5 }
+                  power: { item: heartwood, for: [bow], stat: damage, amount: 0.1 }
+                  ghost: { item: nothing, for: [bow], stat: draw-speed, amount: 0.1 }
+                woodcutting:
+                  felling: { at: { 5: 3, 0: 9, 20: 2000 } }
+                  heartwood: { item: missing }
+                """);
+        assertEquals(Set.of("good", "lucky"), c.resources().keySet(), String.join("\n", c.problems()));
+        assertNull(c.resource(Material.COAL_ORE).fortuneYield(), "fortune: general counts only Fortune that counts everywhere");
+        assertEquals(Set.of("grip"), c.upgrades().keySet(), String.join("\n", c.problems()));
+        assertEquals(3, c.wood().capacity(5), "the valid felling step stays; level 0 and 2000 logs are refused");
+        assertEquals(0, c.wood().capacity(4));
+        assertNull(c.wood().heartwoodItem(), "an unknown heartwood item: no heartwood drops");
+        String all = String.join("\n", c.problems());
+        for (String bad : List.of("leafless", "oddleaves", "sure", "nothing", "toomuch", "power", "ghost", "felling.at")) assertTrue(all.contains(bad), bad + " in " + all);
+    }
+
+    @Test
+    void forgedToolsCountWhereTheyGatherAndUpgradesWhileHeld() {
+        GatheringCatalog.QualityRules q = GatheringCatalog.empty().quality();
+        q = new GatheringCatalog.QualityRules("Smithing", q.oddsAt1(), q.oddsAt100(), new double[] {0, 3, 6, 10},
+                new double[] {0, 1, 2, 4}, new double[] {0, 3, 6, 10});
+        java.util.Map<String, GatheringCatalog.UpgradeDef> ups = java.util.Map.of("grip",
+                new GatheringCatalog.UpgradeDef("grip", "heartwood", Set.of("axe"), Attributes.Stat.CHOP_SPEED, 0.08, "Heartwood grip"));
+        EquipmentSource.Piece axe = new EquipmentSource.Piece(GatheringCatalog.Gear.WEAPON_AND_TOOL, Attributes.WeaponClass.AXE, Quality.FINE,
+                Attributes.Yield.WOOD, "axe", List.of("grip"), "Fine iron axe");
+        EquipmentSource.Piece pick = new EquipmentSource.Piece(GatheringCatalog.Gear.TOOL, Attributes.WeaponClass.OTHER, Quality.SUPERIOR,
+                Attributes.Yield.ORE, "pickaxe", List.of(), "Superior iron pickaxe");
+        Attributes.AttributeSnapshot a = Attributes.AttributeCalculator.compute(EquipmentSource.contributions(new EquipmentSource.Worn(axe, List.of()), q, ups),
+                Attributes.AttributeRules.DEFAULTS);
+        assertEquals(3, a.fortune(Attributes.Yield.WOOD), 1e-9, "a forged axe's Fortune counts on wood");
+        assertEquals(0, a.fortune(Attributes.Yield.ORE), 1e-9, "...not on ore");
+        assertEquals(0.08, a.secondaryRaw(Attributes.Stat.CHOP_SPEED), 1e-9, "the grip adds chopping speed");
+        Attributes.AttributeSnapshot p = Attributes.AttributeCalculator.compute(EquipmentSource.contributions(new EquipmentSource.Worn(pick, List.of()), q, ups),
+                Attributes.AttributeRules.DEFAULTS);
+        assertEquals(6, p.fortune(Attributes.Yield.ORE), 1e-9, "a forged pickaxe's on ore");
+        assertEquals(0, p.fortune(Attributes.Yield.WOOD), 1e-9);
+        // An upgrade the file no longer has (or a stat it no longer names) adds nothing.
+        assertEquals(1, EquipmentSource.contributions(new EquipmentSource.Worn(axe, List.of()), q, java.util.Map.of()).size() - 1,
+                "without its definition the grip adds nothing (Power and Fortune stay)");
+        EquipmentSource.Piece plainAxe = new EquipmentSource.Piece(null, Attributes.WeaponClass.AXE, null, Attributes.Yield.WOOD, "axe", List.of("grip"), "Iron axe");
+        assertEquals(1, EquipmentSource.contributions(new EquipmentSource.Worn(plainAxe, List.of()), q, ups).size(), "an upgrade adds its stat to an unforged item");
+        EquipmentSource.Piece bow = new EquipmentSource.Piece(null, Attributes.WeaponClass.BOW, null, null, "bow", List.of("grip"), "Bow");
+        assertEquals(0, EquipmentSource.contributions(new EquipmentSource.Worn(bow, List.of()), q, ups).size(), "a grip on a bow (the file says axes) adds nothing");
     }
 
     @Test

@@ -19,6 +19,7 @@ import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
+import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -34,7 +35,7 @@ import java.util.function.Supplier;
 /**
  * Resource blocks that did not grow in the world (docs/design/GATHERING.md, "What can't be farmed"):
  * placed by a player, formed by a generator (lava and water make stone and basalt), moved by a
- * piston, faded or spread into a resource, or set by a mob. Breaking one pays nothing. Blocks placed
+ * piston, faded or spread into a resource, set by a mob, or grown from a planted sapling. Breaking one pays nothing. Blocks placed
  * before this was installed, and blocks of a material added to resources.yml later, count as natural. Kept in each chunk's own data, so it is saved with the world
  * (no database), and cached while the chunk is loaded; only blocks that are some resource are
  * remembered. Every call runs on the thread that owns the block's chunk (Folia: its region thread).
@@ -155,6 +156,21 @@ public final class PlacedBlocks implements Listener {
     public void onEntityChange(EntityChangeBlockEvent e) {
         if (catalog.get().tracked(e.getTo())) mark(e.getBlock());
         else if (tracked(e.getBlock())) unmark(e.getBlock());
+    }
+
+    /**
+     * A tree, huge fungus or huge mushroom grown from something a player planted or bone-mealed (docs/design/WOODCUTTING.md
+     * §5): its logs and stems count as placed, so a tree farm gives wood but no XP. The world's own trees are generated,
+     * never grown, so they never come through here.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onGrow(StructureGrowEvent e) {
+        GatheringCatalog c = catalog.get();
+        for (org.bukkit.block.BlockState st : e.getBlocks()) {
+            if (!c.tracked(st.getType())) continue;
+            Block b = st.getBlock();
+            if (Bukkit.isOwnedByCurrentRegion(b)) mark(b);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

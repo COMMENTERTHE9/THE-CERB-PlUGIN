@@ -60,9 +60,11 @@ public final class LevelUps {
         List<Gain> out = new ArrayList<>();
         for (AttributeRules.SkillWeight w : rules.skillWeights().getOrDefault(skill, List.of())) {
             boolean scoped = w.attribute() == Attribute.POWER && w.weapon() != null;
-            double b = scoped ? before.power(w.weapon()) : before.get(w.attribute());
-            double a = scoped ? after.power(w.weapon()) : after.get(w.attribute());
-            String name = w.attribute().displayName + (scoped ? " (" + w.weapon().displayName.toLowerCase(Locale.ROOT) + ")" : "");
+            boolean yielded = w.attribute() == Attribute.FORTUNE && w.yield() != null; // Mining's on ore, Woodcutting's on wood
+            double b = scoped ? before.power(w.weapon()) : yielded ? before.fortune(w.yield()) : before.get(w.attribute());
+            double a = scoped ? after.power(w.weapon()) : yielded ? after.fortune(w.yield()) : after.get(w.attribute());
+            String name = w.attribute().displayName + (scoped ? " (" + w.weapon().displayName.toLowerCase(Locale.ROOT) + ")"
+                    : yielded ? " (" + w.yield().id + ")" : "");
             add(out, new Gain(name, b, a, false));
         }
         for (AttributeRules.StatWeight w : rules.secondary().skillWeights().getOrDefault(skill, List.of())) {

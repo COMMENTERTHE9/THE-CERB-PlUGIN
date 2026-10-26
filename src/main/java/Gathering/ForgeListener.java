@@ -184,6 +184,11 @@ public final class ForgeListener implements Listener {
 
     // ── Forging ──────────────────────────────────────────────────
 
+    /** Recipes that make gear without forging it (an upgrade: docs/design/WOODCUTTING.md §8): no XP, no new quality. */
+    private volatile java.util.function.Predicate<Recipe> notForging = r -> false;
+
+    public void setNotForging(java.util.function.Predicate<Recipe> notForging) { this.notForging = notForging; }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraft(CraftItemEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
@@ -192,6 +197,7 @@ public final class ForgeListener implements Listener {
         Recipe recipe = e.getRecipe();
         // Gear recipes only: the repair recipe (two worn tools into one) and other special recipes pay nothing.
         if (!(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) return;
+        if (notForging.test(recipe)) return; // an upgrade keeps the item's own quality and pays no forging
         ItemStack result = e.getCurrentItem();
         if (result == null || result.getType().isAir()) return;
         Material m = result.getType();
@@ -230,7 +236,7 @@ public final class ForgeListener implements Listener {
         Pending pd = pending.get(who.getUniqueId());
         if (pd == null || pd.batchQuality() == null || pd.view() != e.getView() || !pd.live(System.nanoTime())) return;
         Recipe recipe = e.getRecipe();
-        if (e.isRepair() || !(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) return;
+        if (e.isRepair() || !(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe) || notForging.test(recipe)) return;
         ItemStack result = e.getInventory().getResult();
         if (result == null || result.getType() != pd.material()) return;
         if (!(who instanceof Player p) || !covered(p, service.catalog(), pd.material())) return;

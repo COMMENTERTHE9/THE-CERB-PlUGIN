@@ -8,13 +8,15 @@ Find stone and ore → mine it (**Mining XP**) → smelt it (**Smithing XP**) �
 
 Vanilla resources first. Everything a later custom ore, tool, drill or machine needs is a definition in a config file, proven by a synthetic resource and tool that exist only in a test config.
 
+**The second loop, Woodcutting** (`WOODCUTTING.md`, built 2026-10-26), runs on the same rules and data: woods are resources with a tree, placed and grown logs pay nothing, and Fortune is now scoped by resource (Mining's counts on ore, Woodcutting's on wood, with the same numbers as before).
+
 ## What a level changes
 
 | Skill | Today | After |
 |---|---|---|
 | Mining | nothing | XP per natural block; **gathering speed** (+0.2% per level, toward a 25% cap); **Fortune** (+0.5 per level): a chance of one extra drop from ore |
 | Smithing | nothing | XP for smelting metal and forging gear; a better **quality roll** on forged gear |
-| Fortune (attribute) | display-only | the extra-ore chance (and later fishing, scavenging and loot) |
+| Fortune (attribute) | display-only | the extra-ore chance (and later fishing, scavenging and loot); since Woodcutting, scoped by resource: Mining's Fortune counts on ore |
 
 ## Resources (`resources.yml`, shipped, refreshed when unedited like `abilities.yml`)
 

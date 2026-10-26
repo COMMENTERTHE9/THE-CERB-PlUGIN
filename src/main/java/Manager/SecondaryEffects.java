@@ -75,7 +75,8 @@ public final class SecondaryEffects implements Listener {
         WeaponClass held = WeaponClass.ofMaterial(p.getInventory().getItemInMainHand().getType().name());
         set(p, Attribute.ATTACK_SPEED, ATTACK_SPEED_KEY, off ? 0.0 : s.attackSpeed(held));
         set(p, Attribute.MOVEMENT_SPEED, MOVE_SPEED_KEY, off ? 0.0 : s.secondary(Stat.MOVE_SPEED));
-        set(p, Attribute.BLOCK_BREAK_SPEED, GATHER_SPEED_KEY, off ? 0.0 : s.secondary(Stat.GATHER_SPEED));
+        // An axe in hand chops at Woodcutting's speed; anything else breaks blocks at Mining's (docs/design/WOODCUTTING.md §7).
+        set(p, Attribute.BLOCK_BREAK_SPEED, GATHER_SPEED_KEY, off ? 0.0 : s.secondary(held == WeaponClass.AXE ? Stat.CHOP_SPEED : Stat.GATHER_SPEED));
     }
 
     /** Replace our modifier only when the amount changed (each change sends the client an update). */

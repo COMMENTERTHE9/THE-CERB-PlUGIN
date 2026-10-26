@@ -44,14 +44,19 @@ public final class GatheringListener implements Listener {
 
     private final Map<UUID, Bonus> bonus = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastNotice = new ConcurrentHashMap<>();
+    /** Woodcutting's techniques after a cut (heartwood, discoveries, Felling); null until wired. */
+    private volatile Woodcutting woodcutting;
 
     public GatheringListener(GatheringService service, BiConsumer<Player, String> notice) {
         this.service = service;
         this.notice = notice;
     }
 
+    public void setWoodcutting(Woodcutting w) { this.woodcutting = w; }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreakDecide(BlockBreakEvent e) {
+        if (e instanceof Woodcutting.FellingBreak) return; // a felling pays its own logs
         Player p = e.getPlayer();
         bonus.remove(p.getUniqueId()); // a new break: an earlier block's bonus never carries over
         GatheringService.Evaluation ev = service.evaluate(p, e.getBlock());
@@ -74,6 +79,7 @@ public final class GatheringListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent e) {
+        if (e instanceof Woodcutting.FellingBreak) return;
         Player p = e.getPlayer();
         Block b = e.getBlock();
         bonus.remove(p.getUniqueId()); // also here: HIGH is skipped for a break another plugin cancelled and then allowed
@@ -87,10 +93,14 @@ public final class GatheringListener implements Listener {
             for (ItemStack it : service.customDrops(ev.resource(), extra)) b.getWorld().dropItemNaturally(at, it);
         } else if (ev.decision().bonus() && e.isDropItems()) {
             Set<Material> types = EnumSet.noneOf(Material.class);
-            for (ItemStack d : b.getDrops(p.getInventory().getItemInMainHand(), p)) if (d.getType() != b.getType()) types.add(d.getType());
+            // A log drops itself, and Fortune for wood adds one more of it; an ore's bonus never goes to the block itself.
+            boolean self = ev.resource().isTree();
+            for (ItemStack d : b.getDrops(p.getInventory().getItemInMainHand(), p)) if (self || d.getType() != b.getType()) types.add(d.getType());
             if (!types.isEmpty()) bonus.put(p.getUniqueId(), new Bonus(ev, types));
         }
         service.payXp(p, ev);
+        Woodcutting w = woodcutting;
+        if (w != null && ev.resource().isTree()) w.afterCut(p, ev); // before the unmark: it still reads the cut as placed or not
         if (service.placedBlocks() != null) service.placedBlocks().unmark(b);
     }
 

@@ -55,13 +55,13 @@
 
 | Status | Count | Skills |
 |---|---|---|
-| Functional | 6 (was 4) | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin); **Mining, Smithing** (built after the audit) |
+| Functional | 7 (was 4) | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin); **Mining, Smithing, Woodcutting** (built after the audit) |
 | Partial | 10 | Martial Expertise, Heavy Armor Mastery, Critical Strike, Survival; Intelligence, Arcane Knowledge, Elemental Mastery, Spell Weaving; Field Medicine, Stealth |
-| Disconnected | 9 (was 11) | Essence Regeneration, Defensive Magic; Crafting, Woodcutting, Farming, Fishing, Enchanting, Herbalism; Trap Mastery |
+| Disconnected | 8 (was 11) | Essence Regeneration, Defensive Magic; Crafting, Farming, Fishing, Enchanting, Herbalism; Trap Mastery |
 | Placeholder | 10 | Dual Wielding; Summoning; Alchemy, Cooking; Scavenging, Repairing, Trading, Animal Taming, Riding, Lockpicking |
 | Design-only | 0 | Every skill has at least placeholder code behind its page. |
 
-**23 of the 35 skills have no XP source at all.** Only fighting, spells, damage taken and new chunks pay XP; no block break, craft, furnace, brew, enchant, catch, tame or trade does.
+**23 of the 35 skills had no XP source at all** at the audit (20 now: Mining, Smithing and Woodcutting have one). Only fighting, spells, damage taken and new chunks pay XP; no block break, craft, furnace, brew, enchant, catch, tame or trade does.
 
 ### What holds across all 35
 
@@ -174,7 +174,7 @@ Ranked by value to players against effort.
 | Mining | Gathering | **Functional** (since the loop) | Natural stone and ore broken by hand (`resources.yml`) | Gathering speed, Fortune (extra ore) |
 | Smithing | Production | **Functional** (since the loop) | Smelting metal, forging gear, the netherite upgrade | Forged gear quality odds |
 | Crafting | Production | Disconnected | None | Nothing |
-| Woodcutting | Gathering | Disconnected | None | Nothing |
+| Woodcutting | Gathering | **Functional** (since its loop, 2026-10-26) | Natural logs cut with an axe (`resources.yml`), a discovery per wood | Vitality, Fortune (extra log), chopping speed; Felling, Canopy, heartwood upgrades |
 | Farming | Gathering | Disconnected | None | Nothing |
 | Fishing | Gathering | Disconnected | None (catches only roll a Sea Monster) | Fortune, which does nothing |
 | Alchemy | Production | Placeholder | None | Nothing |
@@ -414,7 +414,7 @@ The ten questions, short. **XP** = 1–2, **Effects** = 3, **Not working** = 4, 
 - **Future:** recipe unlocks, the Crafter block.
 - **Now / later:** gear-recipe XP in the loop now.
 
-**Woodcutting: disconnected.**
+**Woodcutting: disconnected** at the audit. **Functional since 2026-10-26** (`docs/design/WOODCUTTING.md`): XP per natural log by wood, Vitality, Fortune for wood and chopping speed, Felling from level 10, heartwood upgrades and discoveries; the old look-at code below stays unwired. As audited:
 - **XP:** none (an axe kill trains Weapon Mastery).
 - **Effects:** none.
 - **Not working:** the same look-at duplication; six overworld logs only.

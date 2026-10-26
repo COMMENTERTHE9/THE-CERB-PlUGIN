@@ -24,7 +24,7 @@ import java.util.Locale;
  */
 public final class GatherCommand {
 
-    static final List<String> SUBS = List.of("info", "tool", "item", "quality", "extract", "stats", "credit");
+    static final List<String> SUBS = List.of("info", "tool", "item", "quality", "extract", "stats", "credit", "tree");
 
     private final CerberusPlugin plugin;
 
@@ -44,7 +44,8 @@ public final class GatherCommand {
             case "extract" -> extract(p, svc);
             case "stats" -> stats(p, svc);
             case "credit" -> credit(p, svc, args);
-            default -> p.sendMessage(ChatColor.YELLOW + "Use: /cerb gather <info|tool <id>|item <id> [n]|quality <q>|extract|stats|credit <metal> <n>>");
+            case "tree" -> tree(p, svc);
+            default -> p.sendMessage(ChatColor.YELLOW + "Use: /cerb gather <info|tool <id>|item <id> [n]|quality <q>|extract|stats|credit <metal> <n>|tree>");
         }
     }
 
@@ -82,8 +83,9 @@ public final class GatherCommand {
         var snap = plugin.getAttributeService().get(p.getUniqueId());
         Attributes.WeaponClass wc = Attributes.WeaponClass.ofMaterial(hand.getType().name());
         p.sendMessage(ChatColor.GRAY + "  attributes now: " + ChatColor.WHITE + String.format(Locale.ROOT,
-                "Power %.2f (%s), Fortitude %.2f, Fortune %.2f", snap.power(wc), wc.singular.toLowerCase(Locale.ROOT),
-                snap.get(Attributes.Attribute.FORTITUDE), snap.get(Attributes.Attribute.FORTUNE)));
+                "Power %.2f (%s), Fortitude %.2f, Fortune %.2f (ore %.2f, wood %.2f)", snap.power(wc), wc.singular.toLowerCase(Locale.ROOT),
+                snap.get(Attributes.Attribute.FORTITUDE), snap.get(Attributes.Attribute.FORTUNE),
+                snap.fortune(Attributes.Yield.ORE), snap.fortune(Attributes.Yield.WOOD)));
         StringBuilder smelted = new StringBuilder();
         for (String metal : svc.catalog().needsSmelted()) {
             smelted.append(smelted.isEmpty() ? "" : ", ").append(metal).append(' ').append(ForgeListener.credit(p, metal));
@@ -92,7 +94,9 @@ public final class GatherCommand {
         p.sendMessage(ChatColor.GRAY + "  in hand: " + ChatColor.WHITE + hand.getType().name().toLowerCase(Locale.ROOT)
                 + (q != null ? ChatColor.GRAY + ", quality " + q.color + q.displayName : "")
                 + (GearItems.toolId(hand) != null ? ChatColor.GRAY + ", custom tool " + GearItems.toolId(hand) : "")
-                + ChatColor.GRAY + String.format(Locale.ROOT, "  your bonus chance: %.1f%%", svc.bonusChance(p.getUniqueId()) * 100));
+                + (GearItems.upgrades(hand).isEmpty() ? "" : ChatColor.GRAY + ", upgrades " + GearItems.upgrades(hand))
+                + ChatColor.GRAY + String.format(Locale.ROOT, "  your bonus chance: ore %.1f%%, wood %.1f%%",
+                svc.bonusChance(p.getUniqueId(), Attributes.Yield.ORE) * 100, svc.bonusChance(p.getUniqueId(), Attributes.Yield.WOOD) * 100));
     }
 
     private void tool(Player p, GatheringService svc, String[] args) {
@@ -155,8 +159,51 @@ public final class GatherCommand {
                 + placed.chunkReads() + " chunk reads, " + placed.writes() + " writes");
         var xp = plugin.getXpDisplay();
         if (xp != null) p.sendMessage(ChatColor.GOLD + "XP display: " + ChatColor.WHITE + xp.updates() + " HUD updates");
+        var wc = plugin.getWoodcutting();
+        if (wc != null) p.sendMessage(ChatColor.GOLD + "Woodcutting: " + ChatColor.WHITE + wc.fellings() + " fellings (" + wc.felledLogs()
+                + " logs), " + wc.refusals() + " refused, " + wc.scans() + " tree scans, " + wc.canopyLeaves() + " canopy leaves, "
+                + wc.heartwoods() + " heartwood, " + wc.discoveries() + " discoveries");
         var attrs = plugin.getAttributeService();
         if (attrs != null) p.sendMessage(ChatColor.GOLD + "Attribute snapshots built: " + ChatColor.WHITE + attrs.rebuildCount());
+    }
+
+    /** The tree you look at, as Felling sees it (docs/design/WOODCUTTING.md §5, §6). */
+    private void tree(Player p, GatheringService svc) {
+        Block b = p.getTargetBlockExact(6);
+        Gathering.Woodcutting wc = plugin.getWoodcutting();
+        GatheringCatalog c = svc.catalog();
+        GatheringCatalog.ResourceDef r = b == null ? null : c.resource(b.getType());
+        if (b == null || r == null || !r.isTree() || wc == null || !Bukkit.isOwnedByCurrentRegion(b)) {
+            p.sendMessage(ChatColor.RED + "Look at a log of a wood in resources.yml, within 6 blocks.");
+            return;
+        }
+        int level = plugin.getSkillManager().getSkillLevel(p, r.skill());
+        Gathering.WoodRules w = c.wood();
+        Gathering.TreeScan.Tree t = wc.inspect(b, r, 1024);
+        boolean placed = svc.placedBlocks() != null && svc.placedBlocks().isPlaced(b);
+        p.sendMessage(ChatColor.GOLD + "Tree: " + ChatColor.WHITE + r.displayName() + ChatColor.GRAY + " (level " + r.level() + ", " + r.xp()
+                + " XP a log, " + GatheringCatalog.tierName(r.tier()) + " axe)");
+        p.sendMessage(ChatColor.GRAY + "  this log: " + ChatColor.WHITE + (placed ? "placed (pays nothing)" : "natural")
+                + ChatColor.GRAY + "  logs: " + ChatColor.WHITE + t.size() + (t.capped() ? "+" : "")
+                + ChatColor.GRAY + "  its natural leaves: " + ChatColor.WHITE + t.naturalLeaves() + (t.naturalLeaves() >= Gathering.TreeScan.LEAF_COUNT_LIMIT ? "+" : "")
+                + ChatColor.GRAY + "  trunk: " + ChatColor.WHITE + (t.giant() ? "giant (2x2)" : "single")
+                + ChatColor.GRAY + "  base: " + ChatColor.WHITE + t.baseWidth() + " wide (a trunk: up to " + r.tree().trunk() + ")"
+                + (t.build() ? ChatColor.YELLOW + "  touches a build" : "")
+                + (t.edge() ? ChatColor.YELLOW + "  (reaches past what this region can read)" : ""));
+        int cap = w.capacity(level);
+        String fell = cap <= 0 ? "no: Felling opens at " + r.skill() + " " + w.firstFellingLevel()
+                : t.size() > cap + 1 ? "no: more than " + cap + " logs besides the cut"
+                : !t.natural(w.minLeaves()) ? "no: not a tree the world grew"
+                : t.build() ? "no: it touches a build (planks, glass, a door...)"
+                : t.baseWidth() > r.tree().trunk() ? "no: its base is wider than a trunk"
+                : t.giant() && !w.giantTrunks(level) ? "no: giant trunks from " + w.giantAt()
+                : "yes (" + w.fellingName(level) + ", up to " + cap + " logs)";
+        long rest = wc.restLeft(p.getUniqueId());
+        p.sendMessage(ChatColor.GRAY + "  Felling at your " + r.skill() + " " + level + ": " + ChatColor.WHITE + fell
+                + (rest > 0 ? ChatColor.GRAY + ", ready in " + (rest + 999) / 1000 + " s" : ""));
+        p.sendMessage(ChatColor.GRAY + "  heartwood chance per log: " + ChatColor.WHITE
+                + String.format(Locale.ROOT, "%.2f%%", w.heartwoodChance(r.tree().heartwood(), level) * 100)
+                + ChatColor.GRAY + "  discovered: " + ChatColor.WHITE + wc.discovered(p).contains(r.id()));
     }
 
     /** Test helper: set your smelted-metal units for forging (what smelting would have given). */

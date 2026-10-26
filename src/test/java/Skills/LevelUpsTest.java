@@ -48,6 +48,29 @@ class LevelUpsTest {
     }
 
     @Test
+    void woodcuttingsGainNamesWhereItsFortuneCounts() {
+        AttributeRules r = AttributeRules.DEFAULTS;
+        List<LevelUps.Gain> g = LevelUps.gains("Woodcutting", r, snapshot(r, Map.of("Woodcutting", 49, "Mining", 30)),
+                snapshot(r, Map.of("Woodcutting", 50, "Mining", 30)));
+        List<String> names = g.stream().map(LevelUps.Gain::name).toList();
+        assertTrue(names.containsAll(List.of("Vitality", "Fortune (wood)", "Chopping speed")), names.toString());
+        LevelUps.Gain f = g.stream().filter(x -> x.name().equals("Fortune (wood)")).findFirst().orElseThrow();
+        assertEquals(24.5, f.before(), 1e-9, "Woodcutting's own Fortune, not Mining's ore Fortune");
+        assertEquals(25, f.after(), 1e-9);
+        List<LevelUps.Gain> m = LevelUps.gains("Mining", r, snapshot(r, Map.of("Mining", 9)), snapshot(r, Map.of("Mining", 10)));
+        assertTrue(m.stream().anyMatch(x -> x.name().equals("Fortune (ore)")), m.toString());
+    }
+
+    @Test
+    void aTechniqueLineNamesItAndWhatItDoes() {
+        Celebration t = Celebrations.technique("Felling I: Sneak while cutting a natural tree to bring down up to 6 logs");
+        assertEquals(Celebration.Kind.TECHNIQUE, t.kind());
+        assertEquals(Celebration.Tier.MAJOR, t.tier());
+        assertEquals(List.of("§a✦ New technique: §fFelling I§7: Sneak while cutting a natural tree to bring down up to 6 logs"), t.chat());
+        assertNull(t.title(), "the milestone it comes with carries the title");
+    }
+
+    @Test
     void numbersReadCleanly() {
         assertEquals("+0.9", LevelUps.signed(0.9));
         assertEquals("+0.04", LevelUps.signed(0.04));

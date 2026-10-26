@@ -1,7 +1,9 @@
-# Gathering and forging (docs/design/GATHERING.md). Every resource, tool and item is data: a stable id
-# (never rename one; saved items and other configs refer to it), the blocks it is, the tool kind and tier
-# it needs, its level (for the weak-resource rule), its XP, and whether Fortune can add one extra drop.
-# A bad entry is refused on its own and logged; the rest still loads.
+# Gathering and forging (docs/design/GATHERING.md, docs/design/WOODCUTTING.md). Every resource, tool and item
+# is data: a stable id (never rename one; saved items and other configs refer to it), the blocks it is, the
+# tool kind and tier it needs, its level (for the weak-resource rule), its XP, and whether Fortune can add
+# one extra drop (fortune: true counts the skill's own Fortune: Mining's on ore, Woodcutting's on wood; or
+# write ore, wood, or general for only the Fortune that counts everywhere, such as a luck skill's). A bad
+# entry is refused on its own and logged; the rest still loads.
 #
 # Rules the code keeps whatever this file says (docs/design/GATHERING.md, "What can't be farmed"):
 #   - only blocks broken by a player in survival or adventure pay XP or a bonus;
@@ -26,6 +28,34 @@ resources:
   emerald_ore:    { skill: Mining, blocks: [EMERALD_ORE, DEEPSLATE_EMERALD_ORE], tool: pickaxe, level: 30, xp: 50, fortune: true }
   ancient_debris: { skill: Mining, blocks: [ANCIENT_DEBRIS], tool: pickaxe, level: 40, xp: 100 }
 
+  # Woods (docs/design/WOODCUTTING.md §4): logs of natural trees, cut with an axe. "tier" is the axe that pays
+  # in full (0 any, 1 stone, 2 iron); a weaker axe pays woodcutting.weak-axe of the XP and opens no technique.
+  # "tree": the leaves its natural trees grow (Felling needs some), the chance of heartwood per natural log
+  # at level 0, the XP its first natural log pays as a discovery, and how wide its trunk can be at the base
+  # (trunk: 2 unless written; a wider base is logs built against the tree, which Felling leaves standing).
+  oak:          { skill: Woodcutting, blocks: [OAK_LOG], tool: axe, tier: 0, level: 1, xp: 4, fortune: true,
+                  tree: { leaves: [OAK_LEAVES, AZALEA_LEAVES, FLOWERING_AZALEA_LEAVES], heartwood: 0.002, discovery-xp: 20 } }
+  birch:        { skill: Woodcutting, blocks: [BIRCH_LOG], tool: axe, tier: 0, level: 1, xp: 4, fortune: true,
+                  tree: { leaves: [BIRCH_LEAVES], heartwood: 0.002, discovery-xp: 20 } }
+  spruce:       { skill: Woodcutting, blocks: [SPRUCE_LOG], tool: axe, tier: 0, level: 5, xp: 5, fortune: true,
+                  tree: { leaves: [SPRUCE_LEAVES], heartwood: 0.003, discovery-xp: 40 } }
+  jungle:       { skill: Woodcutting, blocks: [JUNGLE_LOG], tool: axe, tier: 0, level: 10, xp: 5, fortune: true,
+                  tree: { leaves: [JUNGLE_LEAVES], heartwood: 0.003, discovery-xp: 60 } }
+  acacia:       { skill: Woodcutting, blocks: [ACACIA_LOG], tool: axe, tier: 0, level: 10, xp: 6, fortune: true,
+                  tree: { leaves: [ACACIA_LEAVES], heartwood: 0.004, discovery-xp: 60 } }
+  cherry:       { skill: Woodcutting, blocks: [CHERRY_LOG], tool: axe, tier: 1, level: 15, xp: 6, fortune: true,
+                  tree: { leaves: [CHERRY_LEAVES], heartwood: 0.005, discovery-xp: 80 } }
+  dark_oak:     { skill: Woodcutting, blocks: [DARK_OAK_LOG], tool: axe, tier: 1, level: 20, xp: 7, fortune: true,
+                  tree: { leaves: [DARK_OAK_LEAVES], heartwood: 0.006, discovery-xp: 100 } }
+  mangrove:     { skill: Woodcutting, blocks: [MANGROVE_LOG], tool: axe, tier: 1, level: 25, xp: 8, fortune: true,
+                  tree: { leaves: [MANGROVE_LEAVES], heartwood: 0.008, discovery-xp: 125 } }
+  pale_oak:     { skill: Woodcutting, blocks: [PALE_OAK_LOG], tool: axe, tier: 2, level: 35, xp: 10, fortune: true,
+                  tree: { leaves: [PALE_OAK_LEAVES], heartwood: 0.012, discovery-xp: 175 } }
+  crimson_stem: { skill: Woodcutting, blocks: [CRIMSON_STEM], tool: axe, tier: 2, level: 40, xp: 10, fortune: true,
+                  tree: { leaves: [NETHER_WART_BLOCK, SHROOMLIGHT], heartwood: 0.015, discovery-xp: 200, trunk: 3 } }
+  warped_stem:  { skill: Woodcutting, blocks: [WARPED_STEM], tool: axe, tier: 2, level: 40, xp: 10, fortune: true,
+                  tree: { leaves: [WARPED_WART_BLOCK, SHROOMLIGHT], heartwood: 0.015, discovery-xp: 200, trunk: 3 } }
+
 # A resource pays a quarter of its XP to a player this many levels above it (like a weak mob's kill).
 weak-resources: { level-gap: 20, factor: 0.25 }
 
@@ -33,10 +63,42 @@ weak-resources: { level-gap: 20, factor: 0.25 }
 # resource marked "fortune: true", never multiplied by the Fortune enchantment.
 fortune: { chance-per-point: 0.005, max-chance: 0.5 }
 
-# Custom tools and items (future custom ores, drills, machines). A tool is an item carrying its id; a
-# resource can need one of its kinds ("drill") and its tier, and drop custom items instead of its own.
+# Woodcutting's techniques (docs/design/WOODCUTTING.md §6): Felling (Sneak while cutting a natural tree's log
+# with an axe that fits) takes up to this many logs from these levels on; giant 2x2 trunks from giant-trunks-at;
+# the next felling waits rest-per-log seconds per log taken (halved from rest-halved-at); from canopy-at the
+# felled tree's natural leaves come down too. reach: how far from the cut a tree may spread. A tree needs at
+# least min-natural-leaves of its own leaves (the world's, never placed ones) to be felled.
+woodcutting:
+  felling:
+    at: { 10: 6, 25: 24, 50: 64, 100: 128 }
+    giant-trunks-at: 50
+    rest-per-log: 0.3
+    rest-halved-at: 100
+  canopy-at: 75
+  reach: { sideways: 7, up: 32, down: 1 }
+  min-natural-leaves: 2
+  weak-axe: 0.25
+  # Heartwood: the chance per natural log is the wood's own x (1 + Woodcutting level / level-factor).
+  heartwood: { item: heartwood, level-factor: 50 }
+
+# Custom tools and items (custom ores, drills, machines, heartwood). A tool is an item carrying its id; a
+# resource can need one of its kinds ("drill") and its tier, and drop custom items instead of its own. A
+# custom item is never placed, burnt or used in a vanilla recipe.
 tools: {}
-items: {}
+items:
+  heartwood:
+    material: STRIPPED_DARK_OAK_WOOD
+    name: Heartwood
+    lore:
+      - "The dense core of an old tree."
+      - "Craft it with an axe for a heartwood grip,"
+      - "or with a bow for heartwood limbs."
+
+# Upgrades (docs/design/WOODCUTTING.md §8): a custom item crafted with a tool or weapon of these kinds gives
+# that item the stat while it is held. Once per item; the item keeps its enchantments, damage and quality.
+upgrades:
+  heartwood_grip:  { item: heartwood, for: [axe], stat: chop-speed, amount: 0.08, name: Heartwood grip }
+  heartwood_limbs: { item: heartwood, for: [bow], stat: draw-speed, amount: 0.08, name: Heartwood limbs }
 
 # XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
 smelting:

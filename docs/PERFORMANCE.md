@@ -238,10 +238,36 @@ Plain hits fall in between. The `combat` load shows what players who don't cast 
 - **XP integrity costs nothing measurable either.** `combat` is slightly lower than before, `abilities` the same.
 - **A first attempt was confounded:** about 400 mobs had built up near spawn over earlier test sessions, with mob spawning on. That run measured mob labels and damage numbers, which the baseline never saw (`levels` 0.082 / 0.057). The runs above were taken after clearing them, with mob spawning off, as in the baseline. **Method note:** clear mobs near spawn and turn mob spawning off before every recording.
 
+## Progression Depth: Woodcutting (2026-10-26)
+
+**Method:** as above (9 bots, 80 s load, a warm-up run of every load, two 60 s JFR runs from 10 s after "LOAD START", `tps` halfway), with mobs near spawn cleared and mob spawning off before each set. One load is new in `load.js`:
+- `felling`: each bot at Woodcutting 25, with Sneak held, chops three 6-log oaks. A cut fells its trunk when Felling is ready: one tree scan, one step of 5 logs, their drops merged, a protection event per log. Single logs fall during the rest, and the grove is refilled when it is down.
+
+**Before:** the build before the Woodcutting code (d6213c3), measured in the same session. There, `felling` is the same work with no Felling: each sneaking cut takes one log, and logs pay nothing. **After:** the build committed with this section.
+
+TPS was 19.93–20.00 in every run.
+
+| Load | Before, ms per tick (two runs) | After | Work per bot in 80 s |
+|---|---|---|---|
+| `wood` | 0.019 / 0.021 | 0.054 / 0.020; two more runs: 0.019 / 0.023 | 142 logs, both builds |
+| `felling` | 0.013 / 0.017 | 0.079 / 0.051 | before: 121 logs, one per cut; after: 48 fellings and 98 cuts, 338 logs |
+| `gather` | 0.019 / 0.022 | 0.019 / 0.019 | 127 stone, 10 ore |
+| `craft` (each set right after a restart) | 0.055 / 0.036 | 0.066 / 0.050 | 116–121 iron pickaxes |
+
+- **Cutting wood by hand costs what it did,** although logs now pay XP. Three of the four `wood` runs match the old build; the first measured run (0.054) didn't repeat. What is new per log: the XP, the XP display's HUD line, and a coalesced skill save on an async thread.
+- **Felling: 0.05–0.08 ms per tick with 9 players felling non-stop,** about 5 trees a second across the server and 2.8 times the logs per minute of the old build. Per log that is about what cutting by hand costs. In the profile:
+  - the felling's own steps take 8–13 samples a minute, the tree scans 3–4;
+  - the XP display's HUD line takes 12–16;
+  - there is no database work on region threads (one sample).
+- **Mining is unchanged** (`gather`).
+- **Crafting:** the upgrade listener now looks at a grid's materials before anything else, so ordinary crafting never pays for a recipe lookup. Its own cost is 3–5 samples a minute. The rest of the gap is in code this loop didn't touch (the HUD redraw, the forge listener) and is about the spread between two runs of one build (0.055 vs 0.036 before).
+- **A first `craft` set taken after an hour of tests** read 0.076 / 0.053, with twice the region-thread samples of a fresh server. **Method note:** restart before each set, as for mobs and mob spawning.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.
+- **Woodcutting:** met. Cutting wood costs what it did; Felling costs about what cutting the same logs by hand would. It runs 8 logs a tick, does nothing per tick when idle, and writes nothing to the database per block. For Farming or Fishing: add a load for the loop (`load.js`), measure before and after on freshly restarted servers, and look at the XP display's HUD line, which is now the largest per-gain cost.
 - **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

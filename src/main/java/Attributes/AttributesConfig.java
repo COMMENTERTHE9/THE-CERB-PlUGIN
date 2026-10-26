@@ -138,7 +138,18 @@ public final class AttributesConfig {
                         problems.accept("skills." + skill + ": unknown weapon '" + weapon + "' - skipped");
                         continue;
                     }
-                    list.add(new AttributeRules.SkillWeight(a, n.doubleValue(), w));
+                    Object yieldName = m.get("yield");
+                    // No yield: the skill's own (Mining's Fortune on ore, as in a file from before scoping); "all": everything.
+                    Yield y = yieldName == null ? (a == Attribute.FORTUNE ? Yield.defaultFor(skill) : null) : Yield.parse(String.valueOf(yieldName));
+                    if (yieldName != null && y == null && !String.valueOf(yieldName).trim().equalsIgnoreCase("all")) {
+                        problems.accept("skills." + skill + ": unknown yield '" + yieldName + "' (ore, wood, all) - skipped");
+                        continue;
+                    }
+                    if (y != null && a != Attribute.FORTUNE) {
+                        problems.accept("skills." + skill + ": a yield only limits fortune - '" + yieldName + "' ignored for " + a.displayName);
+                        y = null;
+                    }
+                    list.add(new AttributeRules.SkillWeight(a, n.doubleValue(), w, y));
                 }
                 if (!list.isEmpty()) weights.put(skill, List.copyOf(list));
             }
@@ -249,7 +260,9 @@ public final class AttributesConfig {
      * their own file before (older files said "skills not listed here add nothing") stays deleted.
      * When an update adds a skill's entry to the shipped file, add the skill here.
      */
-    static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of("Mining"); // 2026-10-25, the gathering loop
+    static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of(
+            "Mining",       // 2026-10-25, the gathering loop
+            "Woodcutting"); // 2026-10-26, the Woodcutting loop
 
     /**
      * The skills {@code sk} lists, plus each skill in {@link #ADDED_BY_UPDATES} that the shipped file

@@ -559,7 +559,8 @@ async function exploits() {
   await sleep(400);
   const pvp = traces(at).filter(x => /Incoming/.test(x));
   check('A Sneak-attack on a player is a normal PvP hit (Flurry is not cast)', !!tp && !barSince(/✦/, t0) && pvp.length === 1,
-    `${bars.filter(b => b.t >= t0 && !/♥/.test(b.m)).map(b => b.m).join(' / ')}; ${pvp.join(' / ').slice(0, 140) || 'no PvP trace'}`);
+    `${bars.filter(b => b.t >= t0 && !/♥/.test(b.m)).map(b => b.m).join(' / ')}; ${pvp.join(' / ').slice(0, 140) || 'no PvP trace'}`
+    + (pvp.length === 1 ? '' : `; target ${tp ? 'at ' + tp.position.distanceTo(bot.entity.position).toFixed(1) + ' blocks' : 'not seen'}, holding ${bot.heldItem ? bot.heldItem.name : 'nothing'}, chat: ${chat.slice(at).join(' | ').slice(0, 300)}`));
   target.quit();
   await debug(false);
 }

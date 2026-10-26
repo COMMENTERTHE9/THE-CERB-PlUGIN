@@ -693,9 +693,12 @@ async function gear() {
   const info = async () => {
     const a = await cmd('/cerb gather info', 900);
     const t = chat.slice(a).join(' ');
-    const m = t.match(/Power ([\d.]+) \(([^)]+)\), Fortitude ([\d.]+), Fortune ([\d.]+)/);
-    const c = t.match(/your bonus chance: ([\d.]+)%/);
-    return m ? { power: Number(m[1]), weapon: m[2], fort: Number(m[3]), luck: Number(m[4]), chance: c ? Number(c[1]) : NaN } : {};
+    // Since Woodcutting, Fortune is scoped: "Fortune <general> (ore <x>, wood <y>)", and the bonus chance is given per
+    // resource. A pickaxe's Fortune counts on ore, so `luck` and `chance` read ore's (the general one on older builds).
+    const m = t.match(/Power ([\d.]+) \(([^)]+)\), Fortitude ([\d.]+), Fortune ([\d.]+)(?: \(ore ([\d.]+), wood ([\d.]+)\))?/);
+    const c = t.match(/your bonus chance: (?:ore )?([\d.]+)%/);
+    return m ? { power: Number(m[1]), weapon: m[2], fort: Number(m[3]), luck: Number(m[5] ?? m[4]), wood: Number(m[6] ?? m[4]),
+      chance: c ? Number(c[1]) : NaN } : {};
   };
   await setblock(2, 0, 0, 'stone'); // something to look at
   await give('iron_sword'); await hold('iron_sword');
@@ -736,7 +739,8 @@ async function gear() {
   const p0 = await info();
   await cmd('/cerb gather quality superior', 900);
   const p1 = await info();
-  check('A Superior pickaxe in hand: +6 Fortune, +3% bonus chance', Math.abs(p1.luck - p0.luck - 6) < 1e-6 && Math.abs(p1.chance - p0.chance - 3) < 0.11, `${p0.luck} -> ${p1.luck}, ${p0.chance}% -> ${p1.chance}%`);
+  check('A Superior pickaxe in hand: +6 Fortune on ore, +3% bonus chance', Math.abs(p1.luck - p0.luck - 6) < 1e-6 && Math.abs(p1.chance - p0.chance - 3) < 0.11, `${p0.luck} -> ${p1.luck}, ${p0.chance}% -> ${p1.chance}%`);
+  check('...and none of it on wood (a pickaxe gathers ore)', Math.abs(p1.wood - p0.wood) < 1e-6, `wood ${p0.wood} -> ${p1.wood}`);
 
   // Rebuilds: switching between plain items rebuilds nothing; to and from a forged one rebuilds.
   await cmd('/clear @s', 300);
@@ -766,8 +770,12 @@ async function custom() {
   if (!dir) { check('SERVER_DIR names the sandbox server (its resources.yml gets the test entries for this phase)', false); return; }
   const file = `${dir}/plugins/CerberusPlugin/resources.yml`;
   const original = fs.readFileSync(file, 'utf8');
-  const test = original.replace(/^tools: \{\}$/m, 'tools:\n' + TEST_RESOURCES.tools).replace(/^items: \{\}$/m, 'items:\n' + TEST_RESOURCES.items)
+  // "items:" is "items: {}" in older files and a list of items (heartwood) since Woodcutting: add to either.
+  const withItems = /^items: \{\}$/m.test(original) ? original.replace(/^items: \{\}$/m, 'items:\n' + TEST_RESOURCES.items)
+      : original.replace(/^items:$/m, 'items:\n' + TEST_RESOURCES.items);
+  const test = withItems.replace(/^tools: \{\}$/m, 'tools:\n' + TEST_RESOURCES.tools)
       .replace(/^resources:$/m, 'resources:\n' + TEST_RESOURCES.resource);
+  if (!test.includes('test_crystal:')) { check('the test entries could be written into resources.yml', false, 'no items: section found'); return; }
   fs.writeFileSync(file, test);
   try {
     let a = await cmd('/cerb reload', 2500);

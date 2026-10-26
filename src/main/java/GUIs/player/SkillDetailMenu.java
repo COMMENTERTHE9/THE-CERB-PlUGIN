@@ -110,8 +110,10 @@ public final class SkillDetailMenu extends PlayerMenu {
         v.set(24, Ui.item(d.effects().stream().anyMatch(e -> e.status() != SkillDefinitions.EffectStatus.NOT_ACTIVE)
                 ? Material.BLAZE_POWDER : Material.GUNPOWDER, ChatColor.GOLD + "What it does", eff.build()));
 
-        // ── Row 3: what the next levels bring ──────────────────
+        // ── Row 3: what the next levels bring (and, for a skill with woods, the woods found) ──
         v.set(31, upcomingTile(svc, rules, id, d, pr, realm));
+        ItemStack woods = woodsTile(p, d);
+        if (woods != null) v.set(33, woods);
 
         // ── Row 4: browse the category in place ────────────────
         List<SkillDef> siblings = SkillDefinitions.byCategory(d.category());
@@ -160,6 +162,30 @@ public final class SkillDetailMenu extends PlayerMenu {
         if (seen == null || seen.level() != level || required <= 0) return 0;
         int was = (int) Math.round((double) Math.max(0, seen.xp()) / required * length);
         return Math.max(0, Math.min(filled, was));
+    }
+
+    /**
+     * The woods a skill cuts (resources.yml) and which ones the player has discovered (docs/design/WOODCUTTING.md §9):
+     * found ones in green, the rest with the level and axe they ask for. Null for a skill without woods. Read from the
+     * player's own data, kept in memory while they are online: no database.
+     */
+    private ItemStack woodsTile(Player p, SkillDef d) {
+        Gathering.Woodcutting wc = plugin.getWoodcutting();
+        Gathering.GatheringCatalog c = Gathering.GatheringCatalog.current();
+        if (wc == null || c == null) return null;
+        List<Gathering.GatheringCatalog.ResourceDef> woods = c.woods().stream().filter(r -> r.skill().equals(d.name())).toList();
+        if (woods.isEmpty()) return null;
+        java.util.Set<String> found = wc.discovered(p);
+        long have = woods.stream().filter(r -> found.contains(r.id())).count();
+        Ui.Lore l = Ui.lore();
+        for (Gathering.GatheringCatalog.ResourceDef r : woods) {
+            String axe = r.tier() <= 0 ? "any axe" : Gathering.GatheringCatalog.tierName(r.tier()) + " axe";
+            l.raw(found.contains(r.id()) ? ChatColor.GREEN + "✔ " + ChatColor.WHITE + r.displayName()
+                    : ChatColor.DARK_GRAY + "✘ " + ChatColor.GRAY + r.displayName() + ChatColor.DARK_GRAY + " · level " + r.level() + " · " + axe);
+        }
+        l.gap();
+        for (String w : PlayerTheme.wrap("The first natural log of each wood pays a discovery bonus, once.", SkillView.WIDTH)) l.text(w);
+        return Ui.item(Material.OAK_SAPLING, ChatColor.GOLD + "Woods: " + have + " of " + woods.size() + " discovered", l.build());
     }
 
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {
