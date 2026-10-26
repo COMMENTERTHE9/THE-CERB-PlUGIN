@@ -652,7 +652,9 @@ async function upgrade() {
   await cmd('/clear @s', 300);
 
   // Negative control: a shift-click that fails for want of room makes nothing, even when a netherite sword lands in
-  // the inventory in that same tick (swapped in from the cursor). Counting the inventory a tick later paid 50 for it.
+  // the inventory in that same tick (swapped in from the cursor). Counting the inventory a tick later paid 50 for it
+  // (this check failed with +50 on that build, 2026-10-26). The two clicks are sent back to back and the server
+  // normally takes them in one tick; nothing here proves it did, but the payment now never depends on the timing.
   await give('netherite_upgrade_smithing_template'); await give('diamond_sword'); await give('netherite_ingot'); await give('netherite_sword');
   await give('dirt', 32 * 64, 900); // every other slot full
   w = await openAt(2, 0, 0);

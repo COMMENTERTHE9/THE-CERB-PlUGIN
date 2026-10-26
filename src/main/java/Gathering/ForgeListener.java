@@ -45,7 +45,7 @@ import java.util.function.Supplier;
  * a click that makes nothing pays nothing, and a shift-click or Ctrl+Q batch pays every item.
  *
  * <ul>
- *   <li><b>Smelting</b> pays as metal is taken out of a furnace or blast furnace block by a player
+ *   <li><b>Smelting</b> pays as metal is taken out of a furnace, blast furnace or smoker block by a player
  *       (the statistic rises while that window is open; a number key or F onto an empty slot is
  *       counted from the click, the one take the statistic misses). Hoppers pay nobody. Each ingot
  *       taken also covers one unit of forging of that metal.</li>
@@ -171,9 +171,10 @@ public final class ForgeListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onFurnaceSwap(InventoryClickEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p) || !(e.getClickedInventory() instanceof FurnaceInventory f) || !furnace(f)) return;
+        if (!(e.getWhoClicked() instanceof Player p) || !(e.getClickedInventory() instanceof FurnaceInventory f)) return;
         if (e.getSlotType() != InventoryType.SlotType.RESULT) return;
         if (e.getClick() != ClickType.NUMBER_KEY && e.getClick() != ClickType.SWAP_OFFHAND) return;
+        if (!furnace(f)) return; // last: it looks the block up
         ItemStack out = e.getCurrentItem();
         if (out == null || out.getType().isAir()) return;
         ItemStack target = e.getClick() == ClickType.NUMBER_KEY ? p.getInventory().getItem(e.getHotbarButton()) : p.getInventory().getItemInOffHand();
@@ -185,8 +186,9 @@ public final class ForgeListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraft(CraftItemEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p) || creative(p)) return;
-        pending.remove(p.getUniqueId()); // any other craft disarms an earlier click's payment
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        pending.remove(p.getUniqueId()); // any other craft disarms an earlier click's payment, in creative too
+        if (creative(p)) return;
         Recipe recipe = e.getRecipe();
         // Gear recipes only: the repair recipe (two worn tools into one) and other special recipes pay nothing.
         if (!(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) return;
@@ -252,8 +254,9 @@ public final class ForgeListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSmith(SmithItemEvent e) {
-        if (!(e.getWhoClicked() instanceof Player p) || creative(p)) return;
-        pending.remove(p.getUniqueId());
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        pending.remove(p.getUniqueId()); // as in onCraft: disarm first, in creative too
+        if (creative(p)) return;
         trace(p, () -> "smithing click (" + e.getClick() + "): recipe " + (e.getInventory().getRecipe() == null ? "none"
                 : e.getInventory().getRecipe().getClass().getSimpleName()) + ", result " + (e.getCurrentItem() == null ? "none" : e.getCurrentItem().getType()));
         if (!(e.getInventory().getRecipe() instanceof SmithingTransformRecipe)) return; // trims pay nothing
@@ -283,7 +286,7 @@ public final class ForgeListener implements Listener {
         if (e.getStatistic() != Statistic.CRAFT_ITEM) return;
         Player p = e.getPlayer();
         int made = e.getNewValue() - e.getPreviousValue();
-        if (e.getMaterial() == null || e.getMaterial().isAir()) { // no item: a shift-click's take at the smithing table
+        if (e.getMaterial() == null || e.getMaterial().isAir()) { // no item: an emptied stack's take (see emptyTake)
             if (made == 0) emptyTake(p);
             return;
         }
@@ -312,11 +315,17 @@ public final class ForgeListener implements Listener {
 
     /**
      * A shift-click at the smithing table moved its result into the inventory: vanilla then counts the emptied
-     * stack, which raises the statistic for no item by 0 (and only after a real move). Pays the armed upgrade once.
+     * stack, which raises the statistic for no item by 0 (and only after a real move). Pays the armed upgrade once:
+     * a netherite result never stacks and the base slot holds one item, so one click makes one.
+     *
+     * <p>Furnace, stonecutter and cartography shift-clicks raise the same signal in their own windows; the armed
+     * window rules them out. No time limit here (unlike the other payments): the signal comes in the same call as
+     * the click that armed it, and the next tick or the next click disarms it, so a slow listener or a GC pause in
+     * between can't lose a real upgrade.
      */
     private void emptyTake(Player p) {
         Pending pd = pending.get(p.getUniqueId());
-        if (pd == null || !pd.emptyTake() || !pd.live(System.nanoTime()) || p.getOpenInventory() != pd.view()) return;
+        if (pd == null || !pd.emptyTake() || p.getOpenInventory() != pd.view()) return;
         if (!pending.remove(p.getUniqueId(), pd)) return;
         payUpgrade(p, pd.material(), 1);
     }
