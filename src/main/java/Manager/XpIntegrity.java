@@ -120,14 +120,22 @@ public final class XpIntegrity implements Listener {
     }
 
     /**
-     * Where {@code mob} came from, as a spawn reason name: the one its spawn event gave, where Paper's record differs
-     * ({@link #onSpawn}), else Paper's (kept through restarts). Null when unknown.
+     * Where {@code mob} came from, as a spawn reason name: of the origin kept on it ({@link #onSpawn}: a spawn egg's;
+     * {@link #onTransform}: the mob it turned from) and Paper's record (kept through restarts), the one that pays less, so
+     * neither a lineage (a spawner's drowned) nor a rule for the record itself (a slime split's) is lost. Null when unknown.
      */
     public String origin(LivingEntity mob) {
-        String recorded = mob.getPersistentDataContainer().get(originKey, PersistentDataType.STRING);
-        if (recorded != null) return recorded;
         var reason = mob.getEntitySpawnReason();
-        return reason == null ? null : reason.name();
+        XpRules r = rules.get();
+        return lowerShare(mob.getPersistentDataContainer().get(originKey, PersistentDataType.STRING), reason == null ? null : reason.name(),
+                r::originFactor);
+    }
+
+    /** Of a kept origin and Paper's record, the one whose share is lower, the kept one on a tie; either may be null (pure). */
+    static String lowerShare(String kept, String record, java.util.function.ToDoubleFunction<String> share) {
+        if (kept == null) return record;
+        if (record == null) return kept;
+        return share.applyAsDouble(record) < share.applyAsDouble(kept) ? record : kept;
     }
 
     /** {@code p} hit {@code mob} with something that trains {@code skill}: a kill soon after is credited to it. */

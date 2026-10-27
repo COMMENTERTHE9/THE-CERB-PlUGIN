@@ -55,4 +55,26 @@ class XpWithheldTest {
         assertNull(XpIntegrity.originToKeep("CUSTOM", "DEFAULT", "SPAWNER_EGG"));
         assertNull(XpIntegrity.originToKeep("SHOULDER_ENTITY", "DEFAULT", "SPAWNER_EGG"));
     }
+
+    /** attributes.yml's shipped shares, and a server's own rule for slime splits. */
+    private static double share(String reason) {
+        return switch (reason) {
+            case "SPAWNER", "VILLAGE_DEFENSE", "NETHER_PORTAL" -> 0.25;
+            case "BREEDING", "EGG", "SPAWNER_EGG", "DISPENSE_EGG", "BUILD_IRONGOLEM", "BUILD_SNOWMAN" -> 0.0;
+            case "SLIME_SPLIT" -> 0.25;
+            default -> 1.0;
+        };
+    }
+
+    @Test
+    void theOriginThatPaysLessDecides() {
+        assertEquals("SPAWNER", XpIntegrity.lowerShare("SPAWNER", "DROWNED", XpWithheldTest::share), "a spawner's zombie that drowned");
+        assertEquals("SPAWNER_EGG", XpIntegrity.lowerShare("SPAWNER_EGG", "DEFAULT", XpWithheldTest::share), "a spawn egg's mob");
+        // The re-check: a natural slime's children carry NATURAL from the split, and a rule for SLIME_SPLIT still applies.
+        assertEquals("SLIME_SPLIT", XpIntegrity.lowerShare("NATURAL", "SLIME_SPLIT", XpWithheldTest::share));
+        assertEquals("NATURAL", XpIntegrity.lowerShare("NATURAL", "DROWNED", XpWithheldTest::share), "a tie keeps the kept one");
+        assertEquals("SPAWNER", XpIntegrity.lowerShare(null, "SPAWNER", XpWithheldTest::share), "nothing kept: Paper's record");
+        assertEquals("SPAWNER_EGG", XpIntegrity.lowerShare("SPAWNER_EGG", null, XpWithheldTest::share));
+        assertNull(XpIntegrity.lowerShare(null, null, XpWithheldTest::share));
+    }
 }
