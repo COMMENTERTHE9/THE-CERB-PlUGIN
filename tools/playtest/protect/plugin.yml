@@ -3,11 +3,15 @@ version: 1.0
 main: cerbtest.Protect
 api-version: '1.21'
 folia-supported: true
-description: Sandbox-only stand-in for a protection plugin (tools/playtest/woodcutting.js protect). Never ship it.
+description: Sandbox-only test helpers (woodcutting.js protect, fishing.js crash-set). Never ship it.
 commands:
   testprotect:
     description: Refuse block breaks inside a box (x1 y1 z1 x2 y2 z2), or "off".
     usage: /testprotect <x1> <y1> <z1> <x2> <y2> <z2> | off
+    permission: cerbtest.protect
+  testsave:
+    description: Write a player's data to disk now (Folia has no save-all).
+    usage: /testsave <player>
     permission: cerbtest.protect
 permissions:
   cerbtest.protect:

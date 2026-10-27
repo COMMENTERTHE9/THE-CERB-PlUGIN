@@ -12,6 +12,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * A stand-in for a protection plugin, for the sandbox only (tools/playtest/woodcutting.js protect): it refuses every
  * block break inside one box, the way claim plugins refuse breaks in a claim. Never shipped with Cerberus.
  * {@code /testprotect <x1> <y1> <z1> <x2> <y2> <z2>} sets the box, {@code /testprotect off} clears it.
+ * {@code /testsave <player>} writes a player's data to disk now (Folia has no save-all; fishing.js crash-set uses it).
  */
 public final class Protect extends JavaPlugin implements Listener {
 
@@ -25,6 +26,12 @@ public final class Protect extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("testsave")) {
+            org.bukkit.entity.Player p = args.length == 1 ? getServer().getPlayerExact(args[0]) : null;
+            if (p == null) return false;
+            p.getScheduler().run(this, t -> { p.saveData(); sender.sendMessage("testsave: saved " + p.getName()); }, null);
+            return true;
+        }
         if (args.length == 1 && args[0].equalsIgnoreCase("off")) {
             box = null;
             sender.sendMessage("testprotect: off (" + refused + " breaks refused)");

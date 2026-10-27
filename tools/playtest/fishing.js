@@ -50,7 +50,7 @@ function connect(name = NAME) {
     });
     bot = b;
   }
-  b.on('kicked', r => { console.log('KICKED', name, r); process.exit(2); });
+  b.on('kicked', r => { console.log('KICKED', name, r); if (!serverGoing) process.exit(2); });
   return new Promise(r => b.once('spawn', () => r(b)));
 }
 async function cmd(c, wait = 600) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }
@@ -670,7 +670,9 @@ async function persistCheck() {
   check('After the restart: the same journal and lures', j.found.length === s.found && JSON.stringify(j.lures) === JSON.stringify(s.lures), `${JSON.stringify(s)} vs ${JSON.stringify(j.lures)} ${j.found.length}`);
 }
 /** The bot stays online until the server goes (the outer script stops or kills it on "READY"). */
+let serverGoing = false;
 async function holdUntilServerGoes() {
+  serverGoing = true; // the kick that follows is expected
   console.log('READY');
   await new Promise(res => { bot.once('end', res); setTimeout(res, 240000); });
 }
@@ -695,8 +697,8 @@ async function restartCheck() {
   check('After the restart its lure is back (once), no fight is open and no creature is out', (j.lures.river_lurker || 0) === s.before && !j.fight && st.out === 0,
     `before ${s.before}, now ${JSON.stringify(j.lures)}, fight ${j.fight}, out ${st.out}`);
 }
-// A crash mid-fight: the player's data was saved with the fight open (a short player autosave in the sandbox), the server dies
-// without stopping, and the next join gives the lure back once.
+// A crash mid-fight: the player's data was saved with the fight open (the sandbox-only test plugin's /testsave, as an
+// autosave would), the server dies without stopping, and the next join gives the lure back once.
 async function crashSet() {
   await arena(520, 1);
   await biome('river');
@@ -708,7 +710,8 @@ async function crashSet() {
   fs.writeFileSync(STATE, JSON.stringify({ before: j0.lures.river_lurker || 0 }));
   check('A creature is out, its fight on the journal', r.answered && (j1.lures.river_lurker || 0) === (j0.lures.river_lurker || 0) - 1 && !!j1.fight,
     `${JSON.stringify(j0.lures)} -> ${JSON.stringify(j1.lures)} fight ${j1.fight}`);
-  await sleep(15000); // a player autosave records the open fight
+  const at = await cmd(`/testsave ${NAME}`, 1500); // the player's data on disk now holds the open fight
+  check('...and the player\'s data was written with it (sandbox test plugin)', !!saw(/testsave: saved/, at), sawAll(/testsave|Unknown/, at).join(' / ') || 'no answer');
   await holdUntilServerGoes();
 }
 async function crashCheck() {
