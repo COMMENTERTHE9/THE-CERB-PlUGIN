@@ -380,7 +380,9 @@ async function bow() {
   check('The HUD says why the spawn-egg sword kill paid nothing', eggHud.some(m => /No Blade Mastery XP from mobs out of spawn eggs/.test(m)),
     eggHud.filter(m => /No |egg/i.test(m)).join(' | ').slice(0, 200) || 'nothing about it on the HUD');
 
-  // A spawn-egg animal: Paper's record for an animal falls back to NATURAL, not DEFAULT.
+  // A spawn-egg animal: Paper's record for an animal falls back to NATURAL, not DEFAULT. Back on the spot first: the sword
+  // fight steps after a knocked-back zombie, and an egg used beyond reach spawns nothing.
+  await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 180 0`, 800);
   await cmd('/kill @e[type=cow]', 600);
   await cmd('/give @s cow_spawn_egg 2', 600);
   select('cow_spawn_egg'); await sleep(300);
