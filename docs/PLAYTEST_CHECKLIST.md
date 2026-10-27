@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports
 
-*2026-10-27, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 13, Fishing (about 45 minutes), and two small changes from your decisions: the Mage opens at Spell Weaving 5 (§6), and mob arrows and fireballs scale with the mob's level (§13, step 14).** Section 12 is from your Woodcutting playtest; sections 1–11 from earlier milestones.*
+*2026-10-27, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 14, your two XP reports (Fishing XP, bow kills; about 15 minutes), fixed.** Section 13 (Fishing, about 45 minutes) and two small changes from your decisions, the Mage opening at Spell Weaving 5 (§6) and mob arrows and fireballs scaling with the mob's level (§13, step 14), are from the build before; section 12 from your Woodcutting playtest; sections 1–11 from earlier milestones.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -253,10 +253,25 @@ The third gathering loop (`docs/design/FISHING.md`), built on your decisions 1�
 | 10 | Craft a rod with a creature drop or treasure in a crafting table (rod + Lurker Scale; `/cerb gather item lurker_scale` for a test). | The same rod with **Scaled grip** in its lore, enchantments and name kept; a second scale on the same rod makes nothing. With it in hand, Player Menu → Stats → Speed & handling shows a higher **Lure speed**. Sea Glass and the Pearl make floats (treasure chance), Bog Resin a line (sea-creature chance), Heartwood a handle. Creature drops and treasure can't be placed or burnt. |
 | 11 | Run your usual AFK fish farm for 10 minutes or more (a held right-click on a pressure plate or trapdoor setup, an auto-clicker, anything you'd normally use). | Full XP and catches the whole time, no "idle" or "AFK" message, no mob spawning on you. Lures are banked by the farm as by hand. With a full inventory the catch stays on the ground, its XP is paid and a lure is still banked. (A farm run while **holding Sneak** would call a creature with each cast: Sneak + cast is the call. Tell me if your setup needs Sneak held.) |
 | 12 | At Fishing 50, call a creature. At 75 and 100, watch your catches (`/cerb fish force <you> apex` to see an apex). | From 50, called creatures come as **Elite** (half again the health and XP, one more roll of their drops). From 75, Fortune's extra fish can come twice. At 100 each water's apex can take the bait (very rare, 1 catch in 2,000): the Drowned Monarch in rivers, lakes, swamps and caves, the Leviathan at sea. |
-| 13 | Fish in creative. | No Fishing XP, no species and no lure: nothing really happened. Survival pays again. |
+| 13 | Fish in creative. | No Fishing XP, no species and no lure: nothing really happened. The HUD says so ("No Fishing XP in creative mode"). Survival pays again. |
 | 14 | **Decision 10:** fight a high-level skeleton or blaze (far from spawn, or `/cerb spawn` a level-60 one) at your normal levels. | Its arrows and fireballs hit like its level now, as melee does (a level-1 skeleton is unchanged). One shot takes at most 35% of your maximum health and never less than vanilla's own damage. |
 | 15 | Overall feel. | Too slow, too generous, lures too rare, fights too hard or too easy? Every number is data: `resources.yml` → `fishing:` (waters, species, creatures, techniques, XP), `upgrades:` and `items:`; `attributes.yml` → `Fishing:` under `skills` (Fortune) and under `secondary.skills` (lure speed, treasure chance, sea-creature chance). `fishing: off` in `resources.yml` turns all of it off. |
 
-## 14. Afterwards
+## 14. Your XP reports: Fishing XP and bow kills
+
+What you saw (Fishing level 0, XP 0 / 115, nothing on the HUD; bow kills with no Ranged Precision) is exactly what **creative mode** gives: creative earns no skill XP, by the XP-integrity rule (unchanged). It used to give it silently; now the HUD says so. Four real defects were found on the way and fixed (`docs/STATUS.md` → "Done: your XP reports"). **Set your game mode first:** `/gamemode survival` (the HUD looks the same in both modes).
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Join, then Player Menu → Skills → Utility. | **No skill shows level 0 any more.** Every skill that was at level 0 is level 1 now, with its XP kept (a "Fishing 0, 40 / 115" becomes "Fishing 1, 40 / 115"). The server log shows one line for you: "…N skill(s) stored at level 0 start at level 1 now (their XP kept)". Your Stats are slightly higher (a level in every skill); a brand-new character starts at health 102, Essence 1,035. |
+| 2 | In **survival**, fish your superflat pond for a few minutes (`/xpdisplay compact`). | Every catch pays and the HUD shows it ("+10 Fishing"); about a third of fish and junk bites are Pond Bream from the first cast (at level 0 none could bite). The Fishing tile's XP moves with each catch. |
+| 3 | Leave and rejoin, then restart the server and rejoin. | Fishing keeps the exact level and XP it had. |
+| 4 | In survival, kill a zombie with a bow (`/summon zombie`, or a natural one). Then shoot one and switch to a sword before the arrow lands. | Ranged Precision XP both times, no Blade Mastery. Same with a crossbow's arrows. |
+| 5 | Load a crossbow with a firework rocket (rocket in your off hand, then charge), shoot a zombie and switch to a sword before it hits. | **Ranged Precision**, no Blade Mastery (it trained Blade Mastery before this fix). |
+| 6 | Kill a zombie from a **spawn egg**, with a bow and with a sword. | **No XP**, and the HUD says "No Ranged Precision XP from mobs out of spawn eggs" (or Blade Mastery). That's the rule in `attributes.yml` (`xp-integrity.by-origin.SPAWNER_EGG: 0`), which the server never applied before: spawn-egg mobs paid in full. **For testing kill XP, use `/summon`, `/cerb spawn`, or natural mobs, not spawn eggs.** |
+| 7 | Do steps 2 and 4 in **creative**. | No XP, and the HUD says why, once per skill every 5 minutes: "No Fishing XP in creative mode · survival and adventure train skills". The same in survival pays. |
+| 8 | Chop a log and mine an ore in creative with the right tool. | No XP, and the HUD says why (Woodcutting, Mining), as in step 7. |
+
+## 15. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

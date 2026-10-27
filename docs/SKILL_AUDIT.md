@@ -142,7 +142,7 @@ Ranked by value to players against effort.
 
 ### Smaller things found
 
-- **New players start every skill at level 0.** The attribute code's comment says unlearned skills count as 1; that comment is stale.
+- **New players start every skill at level 0.** The attribute code's comment says unlearned skills count as 1; that comment is stale. *(Fixed 2026-10-27: every skill starts at level 1, and a stored level 0 is lifted on join with its XP kept; `docs/STATUS.md` → "Done: your XP reports".)*
 - **Doc drift:**
   - `docs/design/CLASSES.md` says the Warrior needs Blade or Weapon Mastery 10; `classes.yml` says 5.
   - `SkillManager`'s comment says 19M XP to level 100; the formula gives 13.2M.
