@@ -210,6 +210,8 @@ async function basic() {
   await biome('plains');
   await survivalSetup(1);
   await cmd('/cerb fish force ' + NAME + ' clear', 300); // no forced catch left from an earlier phase
+  // A character that found Pond Bream in an earlier run checks the other side: no second discovery.
+  const knewBream = (await journal()).found.some(l => /Pond Bream/.test(l));
   const before = await fishXp();
   const deltas = [];
   let last = before, at0 = chat.length, t0 = Date.now();
@@ -226,11 +228,13 @@ async function basic() {
     deltas.every(d => allowed.has(d)), deltas.join(','));
   const bream = named('Pond Bream');
   check('Some fish came up as the water\'s own species (Pond Bream in a lake)', bream > 0, `Pond Bream ${bream}, other fish ${count(it => /cod|salmon|tropical|pufferfish/.test(it.name)) - bream}`);
-  check('The first one was a discovery with its bonus', !!saw(/New species: .*Pond Bream/, at0) && deltas.includes(62), sawAll(/New species/, at0).join(' / '));
+  if (knewBream) check('Pond Bream was found in an earlier run: no discovery again, just its 12 XP', !saw(/New species: .*Pond Bream/, at0) && !deltas.includes(62),
+    sawAll(/New species/, at0).join(' / ') || 'no discovery');
+  else check('The first one was a discovery with its bonus', !!saw(/New species: .*Pond Bream/, at0) && deltas.includes(62), sawAll(/New species/, at0).join(' / '));
   const hud = hudSince(t0).filter(m => /Pond Bream|Fishing/.test(m));
   check('The HUD named the catch and its weight', hud.some(m => /Pond Bream .*\d+\.\d+ kg/.test(m)), hud.slice(0, 3).join(' / '));
   const at = await cmd('/fishing', 1200);
-  check('/fishing shows the journal by water', !!saw(/Lakes and ponds: 1 of 4/, at), chat.slice(at).join(' / ').slice(0, 240));
+  check('/fishing shows the journal by water', !!saw(/Lakes and ponds: [1-4] of 4/, at) && !!saw(/species \d+ of 31/, at), chat.slice(at).join(' / ').slice(0, 240));
 }
 
 async function waters() {
