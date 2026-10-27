@@ -98,6 +98,17 @@ public final class Upgrades implements Listener {
         return out;
     }
 
+    /**
+     * A Cerberus item that must stay out of vanilla's uses: every custom item except those marked {@code vanilla} (a fish
+     * species is eaten and cooked like any fish).
+     */
+    boolean guarded(ItemStack it) {
+        String id = GearItems.itemId(it);
+        if (id == null) return false;
+        GatheringCatalog.ItemDef d = catalog.get().item(id);
+        return d == null || !d.vanilla();
+    }
+
     /** True for one of this plugin's upgrade recipes. */
     public boolean isUpgrade(Recipe r) {
         return r instanceof Keyed k && keys.contains(k.getKey());
@@ -141,7 +152,7 @@ public final class Upgrades implements Listener {
             return;
         }
         for (ItemStack it : inv.getMatrix()) {
-            if (GearItems.itemId(it) != null) { inv.setResult(null); return; } // never planks, sticks or a vanilla recipe's part
+            if (guarded(it)) { inv.setResult(null); return; } // never planks, sticks or a vanilla recipe's part
         }
     }
 
@@ -156,25 +167,25 @@ public final class Upgrades implements Listener {
             if (expected == null || shown == null || !expected.isSimilar(shown)) e.setCancelled(true);
             return;
         }
-        for (ItemStack it : inv.getMatrix()) if (GearItems.itemId(it) != null) { e.setCancelled(true); return; }
+        for (ItemStack it : inv.getMatrix()) if (guarded(it)) { e.setCancelled(true); return; }
     }
 
     /** A Cerberus item is never placed as a block (it would lose what it is). */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent e) {
-        if (GearItems.itemId(e.getItemInHand()) != null) e.setCancelled(true);
+        if (guarded(e.getItemInHand())) e.setCancelled(true);
     }
 
     /** ...nor burnt as fuel... */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBurn(FurnaceBurnEvent e) {
-        if (GearItems.itemId(e.getFuel()) != null) e.setCancelled(true);
+        if (guarded(e.getFuel())) e.setCancelled(true);
     }
 
     /** ...nor smelted (heartwood would make charcoal): it stays in the furnace. */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onSmelt(FurnaceSmeltEvent e) {
-        if (GearItems.itemId(e.getSource()) != null) e.setCancelled(true);
+        if (guarded(e.getSource())) e.setCancelled(true);
     }
 
     /**
@@ -188,6 +199,6 @@ public final class Upgrades implements Listener {
         if (customMaterials.isEmpty() || !(e.getBlock().getState(false) instanceof org.bukkit.block.Crafter crafter)) return;
         ItemStack[] grid = crafter.getInventory().getContents();
         if (!mayHoldCustom(grid)) return;
-        for (ItemStack it : grid) if (GearItems.itemId(it) != null) { e.setCancelled(true); return; }
+        for (ItemStack it : grid) if (guarded(it)) { e.setCancelled(true); return; }
     }
 }

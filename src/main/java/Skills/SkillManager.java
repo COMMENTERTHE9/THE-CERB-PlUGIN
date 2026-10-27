@@ -1,6 +1,5 @@
 package Skills;
 
-import CustomEntities.SeaMonsterManager;
 import Manager.*;
 import Listener.CraftingListener;
 import Manager.PlayerVirtualHealthManager;
@@ -30,7 +29,6 @@ public class SkillManager {
     private final Inventory skillMenu;
     private final DatabaseManager databaseManager;
     private final Map<UUID, CustomPlayer> customPlayers;
-    private SeaMonsterManager seaMonsterManager;
     private final Map<UUID, Map<String,Integer>> playerSkillLevels = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String,Integer>> playerSkillXP     = new ConcurrentHashMap<>();
 
@@ -56,8 +54,7 @@ public class SkillManager {
                         PlayerDefenseManager playerDefenseManager,
                         CraftingManager craftingManager,
                         CraftingListener craftingListener,
-                        PlayerStrengthManager strengthManager,
-                        SeaMonsterManager seaMonsterManager) {
+                        PlayerStrengthManager strengthManager) {
 
         this.asyncSaver = plugin.getAsyncSaver();  // ← initialize it here
         this.plugin = plugin;
@@ -76,7 +73,6 @@ public class SkillManager {
         this.craftingManager = craftingManager;
         this.craftingListener = craftingListener;
         this.strengthManager = strengthManager;
-        this.seaMonsterManager = seaMonsterManager;
 
         rebuildSkillRegistry();
     }
@@ -166,10 +162,6 @@ public class SkillManager {
         this.craftingManager = craftingManager;
     }
 
-    public void setSeaMonsterManager(SeaMonsterManager seaMonsterManager) {
-        this.seaMonsterManager = seaMonsterManager;
-    }
-
     public void setResourceYieldManager(ResourceYieldManager resourceYieldManager) {
         this.resourceYieldManager = resourceYieldManager;
     }
@@ -218,7 +210,7 @@ public class SkillManager {
             skills.put("Mining", new MiningSkill("Mining", resourceYieldManager));
             skills.put("Farming", new FarmingSkill("Farming", resourceYieldManager));
             skills.put("Woodcutting", new WoodcuttingSkill("Woodcutting", resourceYieldManager));
-            skills.put("Fishing", new FishingSkill("Fishing", resourceYieldManager, seaMonsterManager, plugin));
+            skills.put("Fishing", new FishingSkill("Fishing")); // fishing itself: Gathering.Fishing (docs/design/FISHING.md)
         }
 
         skills.put("Crafting", new CraftingSkill("Crafting", craftingManager, craftingListener));
@@ -454,7 +446,7 @@ public class SkillManager {
 
     /**
      * Pure XP-curve function: XP required to advance FROM {@code level} to the next.
-     * Per-level cost ~115 (L1) to ~372k (L99); cumulative to 100 ≈ 19M. Monotonic and
+     * Per-level cost ~115 (L1) to ~373k (L99); cumulative to 100 = 13,199,772. Monotonic and
      * overflow-safe. Static so it is unit-testable without constructing the manager.
      */
     public static int xpForLevel(int level) {

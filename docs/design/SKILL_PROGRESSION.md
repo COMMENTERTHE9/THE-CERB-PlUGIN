@@ -108,7 +108,7 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 | **Mining** | Fortune (ore) 0.5 | Gathering speed (non-axe), +0.2% per level, cap 25% | More ore, faster mining | 50: tier-5 resources (custom ores need tier and level, `resources.yml`). Later: ore techniques | Custom ore tiers, distance-tiered nodes | **Working**: XP, speed, extra ore. Fortune scoped to ore since Woodcutting, numbers unchanged |
 | **Woodcutting** | Vitality 0.25 | Fortune (wood) 0.5; chopping speed (axe in hand); Felling (logs one technique can take) | More wood, faster chopping, whole sections or trees at once | 10, 25, 50, 75, 100: techniques (`docs/design/WOODCUTTING.md`) | — | **Working** (2026-10-26): XP from logs of trees (generated in full, grown from a sapling 80%, bone meal 50%, placed nothing), all three stats, Felling I–IV, Canopy, heartwood upgrades, discoveries |
 | **Farming** | Vitality 0.25 | Fortune (crops) 0.5; harvesting speed (hoe in hand); planned: replanting | More and better crops | 10: replant on harvest. 25: wide harvest. 50: crop quality | Ripe-crop rules, crop tiers | **Planned** (next loop candidate) |
-| **Fishing** | Fortune (fish) 0.5 (today: unscoped) | Planned: lure speed; treasure chance; sea-creature chance, capped | Faster bites, rarer catches, encounters worth having | 10: lure speed. 25: treasure. 50: sea creatures by level | XP per catch, idle check, encounter design | **Partial**: Fortune only; catches roll an uncapped Sea Monster (next loop candidate) |
+| **Fishing** | Fortune (fish) 0.5 | Lure speed (rod in hand), +0.2% per level, cap 30%; treasure chance, +0.05% per level, cap 15%; sea-creature chance, +0.04% per level, cap 10% | Faster bites, rarer catches, encounters worth having | 5: sea creatures take the bait. 10: Quick Bite. 25: Treasure Sense. 50: Deep Waters (elite creatures). 75: Twin Catch. 100: the apexes (`docs/design/FISHING.md`) | — | **Working** (2026-10-27): XP for every legitimate catch (no idle check, decision 3), 31 species by water, treasure, banked sea-creature fights, rod upgrades, discoveries; Fortune scoped to fish |
 | **Herbalism** | Essence 0.25 | Fortune (herbs) 0.5; planned: herb potency for Alchemy | Wild plants yield more and better reagents | 25: rare herbs. 50: reagent quality | The scope decision against Farming (wild plants vs crops) | **Planned** |
 
 ### Production (6)
@@ -149,7 +149,9 @@ The engine already limits Power to one weapon type ("Power (swords)"). The same 
 3. **Milestone celebrations** for every skill at 10, 25, 50, 75 and 100 (item 3). Until a skill's own milestone capabilities exist, its milestone shows the stat it gained and the title.
 4. **Smithing's own growth** (owner, 2026-10-26, after the playtest: its page said "This skill gives no attribute points or speed"): Fortitude 0.25 a level and wear resistance, through the same engine; the forged-quality odds are unchanged. A new stat followed the rules below: one `Stat` value (`WEAR_RESISTANCE`), applied in one place (`SecondaryEffects.onItemDamage`), a Stats-page line, paused in PvP with the other secondary stats.
 
-Everything else above is built with its own gameplay: Farming or Fishing next, then the rest, one complete loop at a time.
+5. **Fishing** (2026-10-27, `docs/design/FISHING.md`): Fortune scoped to fish, and three new secondary stats through the same engine and the same rules: lure speed (applied to the bobber's wait, rod in hand), treasure chance and sea-creature chance (rolled on a catch), each a Stats-page line, paused in PvP.
+
+Everything else above is built with its own gameplay: Farming (with Cooking) next, then the rest, one complete loop at a time.
 
 ## Rules for adding a skill's part later
 

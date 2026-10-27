@@ -55,7 +55,7 @@
 
 | Status | Count | Skills |
 |---|---|---|
-| Functional | 7 (was 4) | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin); **Mining, Smithing, Woodcutting** (built after the audit) |
+| Functional | 8 (was 4) | Blade Mastery, Weapon Mastery, Ranged Precision; Pathfinding (thin); **Mining, Smithing, Woodcutting, Fishing** (built after the audit) |
 | Partial | 10 | Martial Expertise, Heavy Armor Mastery, Critical Strike, Survival; Intelligence, Arcane Knowledge, Elemental Mastery, Spell Weaving; Field Medicine, Stealth |
 | Disconnected | 8 (was 11) | Essence Regeneration, Defensive Magic; Crafting, Farming, Fishing, Enchanting, Herbalism; Trap Mastery |
 | Placeholder | 10 | Dual Wielding; Summoning; Alchemy, Cooking; Scavenging, Repairing, Trading, Animal Taming, Riding, Lockpicking |
@@ -176,7 +176,7 @@ Ranked by value to players against effort.
 | Crafting | Production | Disconnected | None | Nothing |
 | Woodcutting | Gathering | **Functional** (since its loop, 2026-10-26) | Natural logs cut with an axe (`resources.yml`), a discovery per wood | Vitality, Fortune (extra log), chopping speed; Felling, Canopy, heartwood upgrades |
 | Farming | Gathering | Disconnected | None | Nothing |
-| Fishing | Gathering | Disconnected | None (catches only roll a Sea Monster) | Fortune, which does nothing |
+| Fishing | Gathering | **Functional** (since its loop, 2026-10-27) | Every legitimate catch, by hand or by a farm: junk, fish, 31 species by water, treasure; creature fights (`resources.yml`) | Fortune (extra fish), lure speed, treasure chance, sea-creature chance; banked sea-creature fights, rod upgrades, discoveries |
 | Alchemy | Production | Placeholder | None | Nothing |
 | Enchanting | Production | Disconnected | None | Nothing |
 | Herbalism | Gathering | Disconnected | None | Nothing |
@@ -436,7 +436,7 @@ The ten questions, short. **XP** = 1–2, **Effects** = 3, **Not working** = 4, 
 - **Future:** scythes, food for Cooking.
 - **Now / later:** ripe-crop XP on the gathering infrastructure next.
 
-**Fishing: disconnected.**
+**Fishing: disconnected** (as audited; **built 2026-10-27**: `docs/design/FISHING.md`, `docs/STATUS.md` → "Done: Fishing". The Sea Monster is gone; catches bank lures for fights the player starts, no idle check, by the owner's decision 3).
 - **XP:** none. Catches only roll a Sea Monster (5%, no cap, ignores the level), so an AFK fish farm keeps spawning Rare mobs.
 - **Effects:** Fortune, which does nothing.
 - **Not working:** its own effect code.

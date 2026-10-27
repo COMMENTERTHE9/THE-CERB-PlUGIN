@@ -32,6 +32,10 @@ public class MobRegistry {
 
     // Primary store: mobId → entry
     private volatile Map<String, MobEntry> entriesById = Map.of();
+    // Mobs other catalogs define by id (Fishing's sea creatures, resources.yml): matched by their tag only; a mobs.yml entry
+    // with the same id wins.
+    private volatile Map<String, MobEntry> catalogById = Map.of();
+    private final NamespacedKey healthFactorKey; // a plugin spawn's health multiple (a sea creature's), read by scaling
 
     // Secondary indexes (rebuilt on every load/reload)
     private volatile Map<String, MobEntry> byCustomNameExact = Map.of();
@@ -114,6 +118,7 @@ public class MobRegistry {
         this.spawnLevelKey = new NamespacedKey(plugin, "cerb_spawn_level");
         this.testSpawnKey = new NamespacedKey(plugin, "cerb_test_spawn");
         this.playerNamedKey = new NamespacedKey(plugin, "cerb_player_named");
+        this.healthFactorKey = new NamespacedKey(plugin, "cerb_health_factor");
         reload();
     }
 
@@ -152,6 +157,7 @@ public class MobRegistry {
                 .get(mobIdKey, PersistentDataType.STRING);
         if (pdcId != null) {
             MobEntry entry = entriesById.get(pdcId);
+            if (entry == null) entry = catalogById.get(pdcId);
             if (entry != null) {
                 return entry.toContext(new MatchReason(MatchReason.Type.PDC_TAG, pdcId));
             }
@@ -251,6 +257,32 @@ public class MobRegistry {
         entity.getPersistentDataContainer().set(spawnLevelKey, PersistentDataType.INTEGER, Math.max(1, level));
     }
 
+    /** Set before a plugin spawn: its health pool is this many times a normal mob's of its level and tier (kept on the mob). */
+    public void requestHealthFactor(LivingEntity entity, double factor) {
+        if (factor > 0 && factor != 1.0 && Double.isFinite(factor)) {
+            entity.getPersistentDataContainer().set(healthFactorKey, PersistentDataType.DOUBLE, Math.min(1000.0, factor));
+        }
+    }
+
+    /** The health multiple a plugin spawn asked for, else 1. */
+    public double healthFactor(LivingEntity entity) {
+        Double f = entity.getPersistentDataContainer().get(healthFactorKey, PersistentDataType.DOUBLE);
+        return f == null || !(f > 0) || !Double.isFinite(f) ? 1.0 : f;
+    }
+
+    /**
+     * Mobs another catalog defines (Fishing's sea creatures): id → tier and XP multiplier, matched only by the id tag a plugin
+     * spawn carries. Replaces the previous set; a mobs.yml entry with the same id wins.
+     */
+    public void setCatalogEntries(Map<String, Tier> tiers, Map<String, Double> xpMultipliers, Map<String, EntityType> types) {
+        Map<String, MobEntry> m = new LinkedHashMap<>();
+        for (Map.Entry<String, Tier> e : tiers.entrySet()) {
+            m.put(e.getKey(), new MobEntry(e.getKey(), e.getValue(), xpMultipliers.getOrDefault(e.getKey(), e.getValue().xpMultiplier),
+                    types.get(e.getKey()), null, null, true, false));
+        }
+        catalogById = java.util.Collections.unmodifiableMap(m);
+    }
+
     /** Take (read and remove) a pending spawn-level request, or null if none. */
     public Integer takeRequestedSpawnLevel(LivingEntity entity) {
         Integer level = entity.getPersistentDataContainer().get(spawnLevelKey, PersistentDataType.INTEGER);
@@ -303,6 +335,12 @@ public class MobRegistry {
     // ----------------------------------------------------------------
     // Direct lookup by mob ID
     // ----------------------------------------------------------------
+    /** A mobs.yml entry, else a catalog's (a sea creature), by id; null when neither has it. */
+    public MobEntry getAnyEntry(String mobId) {
+        MobEntry e = mobId == null ? null : entriesById.get(mobId);
+        return e != null ? e : mobId == null ? null : catalogById.get(mobId);
+    }
+
     public MobEntry getEntry(String mobId) {
         return entriesById.get(mobId);
     }

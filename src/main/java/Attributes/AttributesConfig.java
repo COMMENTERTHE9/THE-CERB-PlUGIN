@@ -212,7 +212,7 @@ public final class AttributesConfig {
                 driver = d.driver();
             }
             double cap = num(one, "cap", d.cap(), problems);
-            double most = stat == Stat.WEAR_RESISTANCE ? MAX_WEAR_CAP : 2.0; // a chance: never gear that can't wear
+            double most = stat.isChance() ? MAX_WEAR_CAP : 2.0; // a chance: never gear that can't wear, never every catch
             if (cap <= 0 || cap > most) {
                 problems.accept("secondary.stats." + key + ".cap must be in (0, " + most + "] - using " + d.cap());
                 cap = d.cap();
@@ -267,7 +267,8 @@ public final class AttributesConfig {
     static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of(
             "Mining",       // 2026-10-25, the gathering loop
             "Woodcutting",  // 2026-10-26, the Woodcutting loop
-            "Smithing");    // 2026-10-26, Smithing's Fortitude and wear resistance
+            "Smithing",     // 2026-10-26, Smithing's Fortitude and wear resistance
+            "Fishing");     // 2026-10-27, Fishing's lure speed, treasure and sea-creature chances
 
     /**
      * The skills {@code sk} lists, plus each skill in {@link #ADDED_BY_UPDATES} that the shipped file

@@ -94,12 +94,14 @@ public final class AttributeView {
                 out.add(g + "Spell damage: " + w + Fmt.mult(s.spellDamageMultiplier()));
             }
             case FORTUNE -> {
-                // Mining's Fortune counts on ore, Woodcutting's on wood (docs/design/WOODCUTTING.md §7).
+                // Mining's Fortune counts on ore, Woodcutting's on wood, Fishing's on fish (docs/design/FISHING.md §6).
                 Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
                 double ore = Gathering.GatherRules.bonusChance(s.fortune(Attributes.Yield.ORE), gc.fortunePerPoint(), gc.fortuneMax());
                 double wood = Gathering.GatherRules.bonusChance(s.fortune(Attributes.Yield.WOOD), gc.fortunePerPoint(), gc.fortuneMax());
                 out.add(g + "Extra ore when mining: " + w + Fmt.pct(ore) + g + " (max " + Fmt.pct(gc.fortuneMax()) + ")");
                 out.add(g + "Extra log when chopping: " + w + Fmt.pct(wood));
+                double fish = Gathering.GatherRules.bonusChance(s.fortune(Attributes.Yield.FISH), gc.fortunePerPoint(), gc.fortuneMax());
+                out.add(g + "Extra fish when fishing: " + w + Fmt.pct(fish));
                 if (s.fortuneScoped()) out.add(g + "Fortune by where it counts: " + w + StatsMenu.fortuneText(s));
             }
         }

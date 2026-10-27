@@ -4,11 +4,13 @@ import java.util.Locale;
 
 /**
  * What a gathering bonus counts on (docs/design/SKILL_PROGRESSION.md, "Fortune, scoped by resource"): Mining's Fortune
- * on ore, Woodcutting's on wood. Fortune with no yield (luck skills, later talismans) counts on everything.
+ * on ore, Woodcutting's on wood, Fishing's on fish. Fortune with no yield (luck skills, later talismans) counts on everything.
  */
 public enum Yield {
     ORE("ore"),
-    WOOD("wood");
+    WOOD("wood"),
+    /** Fishing's catches (docs/design/FISHING.md §6). */
+    FISH("fish");
 
     /** As written in the config files and shown to players: "Fortune (wood)". */
     public final String id;
@@ -23,6 +25,7 @@ public enum Yield {
     public static Yield defaultFor(String skill) {
         if ("Mining".equals(skill)) return ORE;
         if ("Woodcutting".equals(skill)) return WOOD;
+        if ("Fishing".equals(skill)) return FISH;
         return null;
     }
 

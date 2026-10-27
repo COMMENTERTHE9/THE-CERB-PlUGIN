@@ -129,7 +129,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         m.put("Scavenging", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Lockpicking", List.of(new SkillWeight(L, 0.5, null)));
         m.put("Trading", List.of(new SkillWeight(L, 0.5, null)));
-        m.put("Fishing", List.of(new SkillWeight(L, 0.5, null)));
+        m.put("Fishing", List.of(new SkillWeight(L, 0.5, null, Yield.FISH)));
         m.put("Mining", List.of(new SkillWeight(L, 0.5, null, Yield.ORE)));
         m.put("Woodcutting", List.of(new SkillWeight(V, 0.25, null), new SkillWeight(L, 0.5, null, Yield.WOOD)));
         m.put("Smithing", List.of(new SkillWeight(F, 0.25, null)));
@@ -157,6 +157,9 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         stats.put(Stat.GATHER_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0, 0.25)); // the gathering skills only
         stats.put(Stat.CHOP_SPEED, new SecondaryStat(true, Attribute.AGILITY, 0.0, 0.25));   // Woodcutting only, an axe in hand
         stats.put(Stat.WEAR_RESISTANCE, new SecondaryStat(true, Attribute.FORTITUDE, 0.0, 0.35)); // Smithing only
+        stats.put(Stat.LURE_SPEED, new SecondaryStat(true, Attribute.FORTUNE, 0.0, 0.30));          // Fishing only, a rod in hand
+        stats.put(Stat.TREASURE_CHANCE, new SecondaryStat(true, Attribute.FORTUNE, 0.0, 0.15));     // Fishing, from Treasure Sense
+        stats.put(Stat.SEA_CREATURE_CHANCE, new SecondaryStat(true, Attribute.FORTUNE, 0.0, 0.10)); // Fishing
         Map<String, List<StatWeight>> w = new LinkedHashMap<>();
         w.put("Blade Mastery", List.of(new StatWeight(Stat.ATTACK_SPEED, 0.003, WeaponClass.SWORD)));
         w.put("Weapon Mastery", List.of(
@@ -168,6 +171,8 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         w.put("Mining", List.of(new StatWeight(Stat.GATHER_SPEED, 0.002, null)));
         w.put("Woodcutting", List.of(new StatWeight(Stat.CHOP_SPEED, 0.002, null)));
         w.put("Smithing", List.of(new StatWeight(Stat.WEAR_RESISTANCE, 0.003, null)));
+        w.put("Fishing", List.of(new StatWeight(Stat.LURE_SPEED, 0.002, null), new StatWeight(Stat.TREASURE_CHANCE, 0.0005, null),
+                new StatWeight(Stat.SEA_CREATURE_CHANCE, 0.0004, null)));
         DEFAULT_SECONDARY = new Secondary(stats, w, false, 15);
     }
 

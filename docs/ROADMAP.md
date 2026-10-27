@@ -72,7 +72,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
-## Fishing, and respecting the player's time (owner, 2026-10-27, approved): the current milestone
+## Fishing, and respecting the player's time (owner, 2026-10-27, approved): built, waiting for the owner's playtest
 
 **Why.** The owner settled all 23 open decisions (`docs/DECISIONS.md`) and found Woodcutting's Felling "fantastic", the feeling every discipline should reach. Fishing is next, built to the same standard, under a new guiding philosophy.
 
@@ -85,8 +85,8 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 - It guides Fishing first, then Mining, Farming, Woodcutting, combat training, crafting and every other discipline. The existing anti-farming rules are reviewed against it; the conflicting ones go to the owner with replacements, none removed automatically.
 
 **In order:**
-1. **Record the decisions and the philosophy** (`docs/DECISIONS.md`, this section, `CLAUDE.md`).
-2. **The small approved changes:**
+1. **Record the decisions and the philosophy** (`docs/DECISIONS.md`, this section, `CLAUDE.md`). **Done 2026-10-27.**
+2. **The small approved changes** (**done 2026-10-27**; `docs/STATUS.md` → "Done: Fishing", checklist §6 and §13):
    - Spell Weaving 5 opens the Mage (decision 4, option A);
    - mob arrows and fireballs scale with mob level and tier, with caps, tested against players of different levels (decision 10);
    - `lib/DTR-1.0.0.jar` and `libs/Volor.jar` deleted once nothing is found to depend on them (decision 23).
@@ -111,7 +111,9 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
    - economy and duplication boundaries.
 
    An independent agent reviews the important changes.
-4. **Proposals for the owner, not changes** (they must not delay Fishing):
+
+   **Done 2026-10-27** (`docs/STATUS.md` → "Done: Fishing"; `tools/playtest/fishing.js`; checklist §13).
+4. **Proposals for the owner, not changes** (they must not delay Fishing; **written 2026-10-27**, waiting for the owner):
    - the anti-farming review (`docs/AUTOMATION_REVIEW.md`);
    - environmental damage with representative calculations (`docs/design/ENVIRONMENTAL_DAMAGE.md`);
    - the own-skill XP bonus investigation (`docs/design/XP_EFFICIENCY.md`).
@@ -390,10 +392,11 @@ Every PvP limit so far is **temporary**. None of it is a decision against PvP; t
 | Off for now | Where it is switched | To turn it on |
 |---|---|---|
 | Attributes on defense in PvP (Vitality, Fortitude, realm): PvP hits use the pre-Attributes-2.0 defense | `attributes.yml` → `integration.pvp-defense: false` | Set `true`, then tune |
-| Speed and handling bonuses in PvP (attack, movement, bow draw, spell cooldown, gathering and chopping speed, Smithing's wear resistance) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
+| Speed and handling bonuses in PvP (attack, movement, bow draw, spell cooldown, gathering and chopping speed, Smithing's wear resistance, Fishing's lure speed, treasure and sea-creature chances) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
 | Attributes on offense in PvP (Power, crits, lifesteal): PvP hits still use the old per-skill bonuses | Code: `Manager/PveOffense` runs only on player → mob hits; PvP goes through `Manager/CombatSkillProcessor` | A PvP offense path with PvP coefficients |
 | Abilities hitting players: every ability targets mobs only (Cleave, Fireball...), never another player's pet or a mount a player rides; Riposte only counters mobs that belong to no player; Feint's crit only on mob hits; a left-click on a player is a plain hit | Code: `Classes/AbilityCaster.valid` and `Manager/AbilityTargets`, the counter hook in `Listener/VirtualHealthListener`, `Manager/PveOffense.meleeHit`, `Spells/FireballSpell.castFromAbility`, `Classes/AbilityListener.onAttack` | `docs/design/CLASSES.md` §10 decision 5 (PvP coefficients), then one switch |
 | Class XP from fights with players | Code: `Listener/MobKillListener` gives no class share for player kills; casts never reach players; a self cast in a fight with no enemy in it (a PvP tag) earns nothing (`Classes/ClassService.fightFoeLevel`) | Together with abilities in PvP, with rules against farming each other |
+| Sea creatures and players: a called creature is hurt only by its owner (their arrows, pets and spells) and hurts only its owner; its drops are its owner's | Code: `Gathering/Fishing.guard` (through `VirtualHealthListener.setDamageGuard`) and `onTarget` | A rule for shared or contested fights (parties, PvP zones) |
 | Skill XP from fights with players: a player kill's weapon-skill XP, and Survival and Heavy Armor Mastery for a hit taken from a player (or their arrow, pet, potion cloud, TNT) | `attributes.yml` → `xp-integrity.pvp-xp: false` (`Manager/XpIntegrity`) | Set `true` (the idle rule still applies), with rules against two players farming each other |
 
 ## Reporting, per milestone

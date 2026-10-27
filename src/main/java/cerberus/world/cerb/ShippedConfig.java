@@ -50,11 +50,13 @@ public final class ShippedConfig {
                     "ad4e8c0fd68ce07a064242a817a43fb490c6d22e63423e19ca057c1f191eb01f",  // PvP off for now, not permanently
                     "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b",  // Mining: gathering speed, Fortune
                     "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373",  // XP integrity
-                    "37d1d9e68d88a05114f3a6c67ffded6160f7f66cfd39cd225b4608aafdabda8f"), // Woodcutting
+                    "37d1d9e68d88a05114f3a6c67ffded6160f7f66cfd39cd225b4608aafdabda8f",  // Woodcutting
+                    "b4dc2bf1a58dfb99945197a71b82a61563a634eae742e8b3d571cc61b39b935c"), // grown trees, Smithing's growth
             "resources.yml", Set.of(
                     "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9",  // the gathering loop, first cut
                     "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942",  // the gathering loop, as shipped
-                    "6d600fab84c4508630dee251232b5809770fb408d674859f4928f17039b829f7")); // Woodcutting
+                    "6d600fab84c4508630dee251232b5809770fb408d674859f4928f17039b829f7",  // Woodcutting
+                    "47345bec2da7986655418171ed4b32ffba90a61d54ea43a567b55a2d3b378d43")); // grown trees
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

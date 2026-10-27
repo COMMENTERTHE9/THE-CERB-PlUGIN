@@ -69,7 +69,7 @@ public final class SkillDefinitions {
     }
 
     /** How an effect value reads: +12.0%, x1.85, +340 points (realm-scaled points grow with the realm). */
-    public enum Unit { PERCENT, MULTIPLIER, REALM_POINTS, LOGS }
+    public enum Unit { PERCENT, MULTIPLIER, REALM_POINTS, LOGS, COUNT }
 
     /** The size of an effect at a skill level, computed by the gameplay code's own function. */
     @FunctionalInterface
@@ -226,6 +226,14 @@ public final class SkillDefinitions {
 
     /** The chance a piece forged at Smithing {@code level} comes out {@code q} or better (resources.yml's odds). */
     /** The chance of heartwood from one natural log of {@code wood} at {@code level} (0 when the wood isn't in resources.yml). */
+    /** How many species (or regular creatures) Fishing's level allows, across every water (resources.yml). */
+    private static double fishCount(int level, boolean species) {
+        Gathering.FishingRules r = Gathering.GatheringCatalog.current().fishing();
+        if (species) return r.allSpecies().values().stream().filter(s -> s.level() <= level).count();
+        return level < r.techniques().creatures() ? 0 : r.creatures().values().stream().filter(c -> !c.apex() && c.level() <= level).count()
+                + (r.apex(level) ? r.creatures().values().stream().filter(c -> c.apex()).count() : 0);
+    }
+
     private static double heartwood(String wood, int level) {
         Gathering.GatheringCatalog c = Gathering.GatheringCatalog.current();
         Gathering.GatheringCatalog.ResourceDef r = c.resources().get(wood);
@@ -315,8 +323,10 @@ public final class SkillDefinitions {
                 SkillEffect.live("Felling: logs one Sneak + cut brings down", (cfg, lvl) -> Gathering.GatheringCatalog.current().wood().capacity(lvl), Unit.LOGS),
                 SkillEffect.live("Heartwood chance per oak log", (cfg, lvl) -> heartwood("oak", lvl), PCT),
                 SkillEffect.live("Heartwood chance per pale oak log", (cfg, lvl) -> heartwood("pale_oak", lvl), PCT))));
-        d.add(new SkillDef("Fishing", "Rod, line and patience.", List.of(), Material.FISHING_ROD, U,
-                List.of(SkillEffect.planned("Rarer catches"))));
+        // Fishing trains through resources.yml's fishing: section (docs/design/FISHING.md): its waters, species and creatures.
+        d.add(new SkillDef("Fishing", "Rod, line and patience: every water's species, and what bites back.", List.of(), Material.FISHING_ROD, U, List.of(
+                SkillEffect.live("Species you can catch", (cfg, lvl) -> fishCount(lvl, true), Unit.COUNT),
+                SkillEffect.live("Sea creatures that can take your bait", (cfg, lvl) -> fishCount(lvl, false), Unit.COUNT))));
         d.add(new SkillDef("Crafting", "Making tools and goods.", List.of(), Material.CRAFTING_TABLE, U,
                 List.of(SkillEffect.planned("Advanced recipes"))));
         d.add(new SkillDef("Smithing", "Smelting metal, forging gear and keeping it in shape.", List.of(), Material.ANVIL, U, List.of(

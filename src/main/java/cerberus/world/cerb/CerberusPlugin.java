@@ -7,14 +7,12 @@ import org.bukkit.plugin.PluginManager;
 import Listener.CraftingListener;
 import Commands.*;
 import java.util.Objects;
-import CustomEntities.SeaMonster;
 import Listener.*;
 import Manager.*;
 import GUIs.*;
 import Skills.*;
 // SpeedLimiterListener REMOVED — moved to PlayerSessionManager
 import Spells.SpellManager;
-import CustomEntities.SeaMonsterManager;
 import Commands.SpawnZombieCommand;
 import org.bukkit.command.CommandSender;
 import Listener.CustomItemListener;
@@ -55,7 +53,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private PlayerMenuGUI playerMenuGUI;
     private DatabaseManager databaseManager;
     private SpellManager spellManager;
-    private SeaMonsterManager seaMonsterManager;
     private PlayerVirtualHealthManager playerVirtualHealthManager;
     private PlayerDefenseManager playerDefenseManager;
     private PlayerManaManager playerManaManager;
@@ -180,7 +177,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         if (classService != null) classService.shutdown(); // writes every loaded class profile now
 
         if (damageDisplayListener != null) damageDisplayListener.shutdown();
-        if (seaMonsterManager != null) seaMonsterManager.clearSeaMonsters();
         if (trapManager != null)       trapManager.cleanup();
         if (mobLabelManager != null)   mobLabelManager.clear();
 
@@ -308,10 +304,14 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private XpDisplay xpDisplay;
     private Celebrations celebrations;
     private Gathering.Woodcutting woodcutting;
+    private Gathering.Fishing fishing;
+    private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
 
     /** Woodcutting's techniques after a cut (docs/design/WOODCUTTING.md); null until gathering is up. */
     public Gathering.Woodcutting getWoodcutting() { return woodcutting; }
+    public Gathering.Fishing getFishing() { return fishing; }
+    public Celebrations getCelebrations() { return celebrations; }
 
     /** Gathering and forging (docs/design/GATHERING.md): resources.yml, Mining and Smithing XP, placed blocks. */
     public Gathering.GatheringService getGatheringService() { return gatheringService; }
@@ -433,8 +433,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 null, // will set later
                 craftingManager,
                 craftingListener,
-                playerStrengthManager,
-                null // seaMonsterManager set later
+                playerStrengthManager
         );
 
         playerDefenseManager = new PlayerDefenseManager(skillManager, playerVirtualHealthManager);
@@ -448,7 +447,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         trapManager = new TrapManager(this, craftingManager);
         effectManager = new EffectManager(playerVirtualHealthManager, playerDefenseManager, playerManaManager, skillManager);
         spellManager = new SpellManager(effectManager, playerManaManager, this);
-        seaMonsterManager = new SeaMonsterManager();
 
         // Now that these managers exist, set them in skillManager
         skillManager.setPlayerDefenseManager(playerDefenseManager);
@@ -458,7 +456,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         skillManager.setTrapManager(trapManager);
         skillManager.setLuckManager(luckManager);
         skillManager.setMagicFindManager(magicFindManager);
-        skillManager.setSeaMonsterManager(seaMonsterManager);
         skillManager.rebuildSkillRegistry();
 
         // Combat system: config, elemental, skill processor
@@ -536,7 +533,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy).
         celebrations.setTechniques((skill, from, to) -> {
             Gathering.GatheringCatalog c = gatheringService == null ? null : gatheringService.catalog();
-            return c == null || !skill.equals(c.woodSkill()) ? List.of() : c.wood().openedBetween(from, to);
+            if (c == null) return List.of();
+            if (skill.equals(c.fishing().skill())) return c.fishing().openedBetween(from, to);
+            return !skill.equals(c.woodSkill()) ? List.of() : c.wood().openedBetween(from, to);
         });
     }
 
@@ -585,12 +584,19 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var levelUpCmd = Objects.requireNonNull(getCommand("levelup"));
         levelUpCmd.setExecutor(celebrations);
         levelUpCmd.setTabCompleter(celebrations);
+        fishingCommand = new Commands.FishingCommand(this);
+        var fishCmd = Objects.requireNonNull(getCommand("fishing"));
+        fishCmd.setExecutor(fishingCommand);
+        fishCmd.setTabCompleter(fishingCommand);
     }
 
     private Commands.ClassCommand classCommand;
 
     /** /class, and the admin /cerb class subcommand. */
     public Commands.ClassCommand getClassCommand() { return classCommand; }
+
+    /** /fishing, and the admin /cerb fish subcommand. */
+    public Commands.FishingCommand getFishingCommand() { return fishingCommand; }
 
     private void initListeners() {
         PluginManager pm = getServer().getPluginManager();
@@ -696,6 +702,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         gatheringListener.setWoodcutting(woodcutting);
         pm.registerEvents(gatheringListener, this);
         pm.registerEvents(woodcutting, this);
+        // Fishing (docs/design/FISHING.md): species, lures, called sea creatures (only their owner can hurt them).
+        fishing = new Gathering.Fishing(this, gatheringService, skillManager);
+        fishing.registerCreatures(mobRegistry);
+        virtualHealthListener.setDamageGuard(fishing::guard);
+        pm.registerEvents(fishing, this);
         upgrades = new Gathering.Upgrades(this, gatheringService::catalog);
         upgrades.register(gatheringService.catalog());
         pm.registerEvents(upgrades, this);
@@ -745,6 +756,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (next != null) {
                 gatheringService.setCatalog(next);
                 if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
+                if (fishing != null) fishing.registerCreatures(mobRegistry); // its sea creatures by id
                 if (attributeService != null) attributeService.markAllDirty(); // forged gear's numbers may have changed
                 if (attributeEffects != null) attributeEffects.refreshAll();
             }
@@ -1072,15 +1084,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
 
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)  // <<< NEW flags
-    public void onPlayerFish(PlayerFishEvent e) {
-        if (e.getState() != PlayerFishEvent.State.CAUGHT_FISH) return;  // only when fish caught
-        if (random.nextDouble() < 0.05) {
-            Player player = e.getPlayer();
-            SeaMonster sm = seaMonsterManager.spawnSeaMonster(player.getLocation());
-            sm.attackPlayer(player);
-        }
-    }
+    // Fishing: Gathering.Fishing (docs/design/FISHING.md). The old flat 5% Sea Monster on every catch is gone: sea creatures
+    // are banked as lures and called by their owner.
 
 
     // Navigation skill on-move handling is in MobKillListener — removed duplicate here
@@ -1263,7 +1268,6 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     /** Which skill a weapon/item trains (skills.yml). */
     public ConfigSkillMapper getSkillMapper() { return skillMapper; }
     public SpellManager getSpellManager() { return spellManager; }
-    public SeaMonsterManager getSeaMonsterManager() { return seaMonsterManager; }
     public SkillManager getSkillManager() { return skillManager; }
     public PlayerManaManager getPlayerManaManager() { return playerManaManager; }
     public PlayerDefenseManager getPlayerDefenseManager() { return playerDefenseManager; }

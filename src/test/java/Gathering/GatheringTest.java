@@ -62,15 +62,18 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(3, notes.size(), notes.toString());
+        assertEquals(4, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
+        assertTrue(notes.get(3).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(3));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
         assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");
         assertEquals(11, c.woods().size(), "every wood the update added");
         assertEquals(4, c.resource(Material.OAK_LOG).xp());
         assertNotNull(c.item("heartwood"));
-        assertEquals(Set.of("heartwood_grip", "heartwood_limbs"), c.upgrades().keySet());
+        assertTrue(c.upgrades().keySet().containsAll(Set.of("heartwood_grip", "heartwood_limbs", "scaled_grip", "heartwood_handle", "leviathan_line")),
+                "the woods' and the rods' upgrades: " + c.upgrades().keySet());
+        assertTrue(c.fishing().enabled() && c.fishing().allSpecies().size() == 31, "Fishing came whole, its species with it");
         assertTrue(c.wood().capacity(10) > 0, "Felling from the code's defaults (no woodcutting: section in the file)");
         assertEquals(List.of(), GatheringCatalog.addUpdates(server, shipped), "nothing twice");
 
@@ -83,7 +86,7 @@ class GatheringTest {
         assertEquals(List.of(), m.problems(), "off is quiet");
         assertNull(m.resource(Material.OAK_LOG));
         assertEquals(9, m.resource(Material.BIRCH_LOG).xp());
-        assertEquals(Set.of("heartwood_grip"), m.upgrades().keySet());
+        assertTrue(m.upgrades().containsKey("heartwood_grip") && !m.upgrades().containsKey("heartwood_limbs"), "heartwood_limbs: off stays out");
 
         // An entry of the owner's own that already is a wood's logs, under another name: the update's wood stays out.
         YamlConfiguration logs = new YamlConfiguration();

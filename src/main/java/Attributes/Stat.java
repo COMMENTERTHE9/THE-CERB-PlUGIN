@@ -30,11 +30,20 @@ public enum Stat {
     /** Gathering speed with an axe in hand (Woodcutting's); every other item uses {@link #GATHER_SPEED} (Mining's). */
     CHOP_SPEED("Chopping speed"),
     /** The chance each point of wear on a tool, weapon or piece of armour is avoided (Smithing's: a smith keeps gear in shape). */
-    WEAR_RESISTANCE("Wear resistance");
+    WEAR_RESISTANCE("Wear resistance"),
+    /** How much sooner fish bite, with a rod in hand (Fishing's; docs/design/FISHING.md §6). */
+    LURE_SPEED("Lure speed"),
+    /** The chance a catch in open water is Cerberus treasure, from Treasure Sense (Fishing's). */
+    TREASURE_CHANCE("Treasure chance"),
+    /** The chance a catch banks a sea creature's lure (Fishing's). */
+    SEA_CREATURE_CHANCE("Sea-creature chance");
 
     /** The speed and handling stats, in display order. */
     public static final java.util.List<Stat> SECONDARY = java.util.List.of(ATTACK_SPEED, DRAW_SPEED, MOVE_SPEED, COOLDOWN_RECOVERY, GATHER_SPEED, CHOP_SPEED,
-            WEAR_RESISTANCE);
+            WEAR_RESISTANCE, LURE_SPEED, TREASURE_CHANCE, SEA_CREATURE_CHANCE);
+
+    /** The chances among them: a value of 1 would be every time, so they are kept well below it. */
+    public boolean isChance() { return this == WEAR_RESISTANCE || this == TREASURE_CHANCE || this == SEA_CREATURE_CHANCE; }
 
     public boolean isSecondary() { return SECONDARY.contains(this); }
 

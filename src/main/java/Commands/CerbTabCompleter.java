@@ -29,7 +29,7 @@ public class CerbTabCompleter implements TabCompleter {
             "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
-            "speed", "spawn", "mobs", "labels", "gather"
+            "speed", "spawn", "mobs", "labels", "gather", "fish"
     );
 
     private static final List<String> ON_OFF = List.of("on", "off");
@@ -83,6 +83,7 @@ public class CerbTabCompleter implements TabCompleter {
             // spawn <mobId>
             case "spawn" -> args.length == 2 ? filterMobIds(args[1]) : List.of();
             case "gather" -> completeGather(args);
+            case "fish" -> completeFish(args);
 
             // No further args
             default -> List.of();
@@ -142,6 +143,26 @@ public class CerbTabCompleter implements TabCompleter {
         return options.stream()
                 .filter(s -> s.toLowerCase().startsWith(lower))
                 .collect(Collectors.toList());
+    }
+
+    private List<String> completeFish(String[] args) {
+        Gathering.FishingRules r = Gathering.GatheringCatalog.current().fishing();
+        if (args.length == 2) return filter(FishingCommand.ADMIN, args[1]);
+        String sub = args[1].toLowerCase(java.util.Locale.ROOT);
+        if (args.length == 3 && !sub.equals("info") && !sub.equals("stats")) {
+            return filter(org.bukkit.Bukkit.getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList(), args[2]);
+        }
+        if (args.length == 4 && sub.equals("lure")) return filter(List.copyOf(r.creatures().keySet()), args[3]);
+        if (args.length == 4 && sub.equals("force")) return filter(List.of("species", "treasure", "lure", "apex", "clear"), args[3]);
+        if (args.length == 5 && sub.equals("force")) {
+            return switch (args[3].toLowerCase(java.util.Locale.ROOT)) {
+                case "species" -> filter(List.copyOf(r.allSpecies().keySet()), args[4]);
+                case "treasure" -> filter(r.treasure().stream().map(Gathering.FishingRules.Treasure::id).toList(), args[4]);
+                case "lure", "apex" -> filter(List.copyOf(r.creatures().keySet()), args[4]);
+                default -> List.of();
+            };
+        }
+        return List.of();
     }
 
     private List<String> completeGather(String[] args) {

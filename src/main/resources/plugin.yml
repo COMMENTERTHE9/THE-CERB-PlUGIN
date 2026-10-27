@@ -28,6 +28,10 @@ commands:
     description: How level-ups and rank-ups show - full, reduced or off.
     usage: /<command> [full|reduced|off]
     aliases: [levelups]
+  fishing:
+    description: Your fishing journal, banked lures and which creature a Sneak-cast calls.
+    usage: /<command> [journal [water] | lures | call <creature>]
+    aliases: [fish]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

@@ -194,6 +194,7 @@ public final class GearItems {
             case "CROSSBOW" -> "crossbow";
             case "TRIDENT" -> "trident";
             case "MACE" -> "mace";
+            case "FISHING_ROD" -> "rod";
             default -> null;
         };
     }

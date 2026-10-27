@@ -100,7 +100,7 @@ public class MobScalingListener implements Listener {
                   : requested != null ? Math.max(1, Math.min(scaling.getMaxLevel(), requested))
                   : scaling.levelForDistance(distanceToSpawn(entity));
         Tier tier = registry.resolve(entity).tier();
-        double maxHealth = scaling.calculate(tier, level);
+        double maxHealth = scaling.calculate(tier, level) * registry.healthFactor(entity); // a sea creature's ×2 etc.
 
         if (!alreadyTagged) {
             maxHealthAttr.setBaseValue(MobVirtualHealthManager.COSMETIC_MAX_HEALTH);
@@ -164,7 +164,6 @@ public class MobScalingListener implements Listener {
     public void onDeath(EntityDeathEvent event) {
         MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
         if (mvh != null) mvh.remove(event.getEntity().getUniqueId());
-        if (plugin.getSeaMonsterManager() != null) plugin.getSeaMonsterManager().removeSeaMonster(event.getEntity().getUniqueId());
         if (plugin.getMobLabelManager() != null) plugin.getMobLabelManager().remove(event.getEntity());
     }
 

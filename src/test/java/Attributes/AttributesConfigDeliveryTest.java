@@ -53,10 +53,10 @@ class AttributesConfigDeliveryTest {
         server.setDefaults(shipped()); // as AttributesConfig.reload does with the jar's copy
         List<String> problems = new ArrayList<>();
         AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
-        assertEquals(6, problems.size(), problems.toString());
+        assertEquals(7, problems.size(), problems.toString());
         assertTrue(problems.stream().allMatch(p -> p.contains("Mining") && p.contains("Mining: []") || p.contains("Woodcutting") && p.contains("Woodcutting: []")
-                        || p.contains("Smithing") && p.contains("Smithing: []")),
-                "the log says where Mining, Woodcutting and Smithing came from: " + problems);
+                        || p.contains("Smithing") && p.contains("Smithing: []") || p.contains("secondary.skills.Fishing") && p.contains("Fishing: []")),
+                "the log says where Mining, Woodcutting, Smithing and Fishing's stats came from: " + problems);
         assertEquals(2.0, r.skillWeights().get("Blade Mastery").get(0).perLevel(), "the owner's own number stays");
         assertFalse(r.skillWeights().containsKey("Fishing"), "\"Fishing: []\" turns it off");
         assertEquals(0.5, r.skillWeights().get("Mining").get(0).perLevel(), "Mining arrives from the shipped file");
@@ -166,13 +166,15 @@ class AttributesConfigDeliveryTest {
                     Mining: [ { attribute: fortune, per-level: 0.5 } ]
                     Woodcutting: [ { attribute: fortune, per-level: 0.5 } ]
                     Fishing: [ { attribute: fortune, per-level: 0.5 } ]
+                    Scavenging: [ { attribute: fortune, per-level: 0.5 } ]
                     Trading: [ { attribute: fortune, per-level: 0.5, yield: all } ]
                 """);
         List<String> problems = new ArrayList<>();
         AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
         assertEquals(Yield.ORE, r.skillWeights().get("Mining").get(0).yield());
         assertEquals(Yield.WOOD, r.skillWeights().get("Woodcutting").get(0).yield());
-        assertNull(r.skillWeights().get("Fishing").get(0).yield(), "any other skill's Fortune counts everywhere");
+        assertEquals(Yield.FISH, r.skillWeights().get("Fishing").get(0).yield(), "Fishing's counts on fish (2026-10-27), even in a file from before");
+        assertNull(r.skillWeights().get("Scavenging").get(0).yield(), "any other skill's Fortune counts everywhere");
         assertNull(r.skillWeights().get("Trading").get(0).yield(), "yield: all counts everywhere");
         assertEquals(List.of(), problems);
         AttributeSnapshot s = AttributeCalculator.compute(SkillAttributes.contributions(java.util.Map.of("Mining", 100), r), r);

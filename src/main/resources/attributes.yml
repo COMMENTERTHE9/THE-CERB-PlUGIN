@@ -74,7 +74,7 @@ attributes:
     Scavenging:           [ { attribute: fortune, per-level: 0.5 } ]
     Lockpicking:          [ { attribute: fortune, per-level: 0.5 } ]
     Trading:              [ { attribute: fortune, per-level: 0.5 } ]
-    Fishing:              [ { attribute: fortune, per-level: 0.5 } ]
+    Fishing:              [ { attribute: fortune, per-level: 0.5, yield: fish } ]  # a chance of one extra fish (docs/design/FISHING.md)
     Mining:               [ { attribute: fortune, per-level: 0.5, yield: ore } ]   # a chance of one extra ore (resources.yml)
     Woodcutting:                                                                    # docs/design/WOODCUTTING.md
       - { attribute: vitality, per-level: 0.25 }
@@ -143,6 +143,9 @@ attributes:
       gather-speed:      { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # breaking blocks; only gathering skills raise it
       chop-speed:        { enabled: true, driver: agility, per-point: 0,      cap: 0.25 } # the same with an axe in hand (Woodcutting's)
       wear-resistance:   { enabled: true, driver: fortitude, per-point: 0,    cap: 0.35 } # the chance a point of wear on your gear is avoided (Smithing's)
+      lure-speed:        { enabled: true, driver: fortune, per-point: 0,      cap: 0.30 } # bites come sooner with a rod in hand (Fishing's)
+      treasure-chance:   { enabled: true, driver: fortune, per-point: 0,      cap: 0.15 } # a catch in open water is treasure, from Treasure Sense
+      sea-creature-chance: { enabled: true, driver: fortune, per-point: 0,    cap: 0.10 } # a catch banks a sea creature's lure
     skills:
       Blade Mastery:    [ { stat: attack-speed, per-level: 0.003, weapon: sword } ]
       Weapon Mastery:
@@ -156,3 +159,7 @@ attributes:
       Mining:           [ { stat: gather-speed, per-level: 0.002 } ]
       Woodcutting:      [ { stat: chop-speed, per-level: 0.002 } ]
       Smithing:         [ { stat: wear-resistance, per-level: 0.003 } ]               # 3% at 10, 7% at 25, 12% at 50, 20% at 100
+      Fishing:                                                                        # docs/design/FISHING.md §6
+        - { stat: lure-speed, per-level: 0.002 }                                      # 2% at 10, 5% at 25, 9% at 50, 15% at 100
+        - { stat: treasure-chance, per-level: 0.0005 }                                # 1.2% at 25, 2.3% at 50, 4.2% at 100
+        - { stat: sea-creature-chance, per-level: 0.0004 }                            # 0.4% at 10, 1.8% at 50, 3.3% at 100

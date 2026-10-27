@@ -81,6 +81,14 @@ public class VirtualHealthListener implements Listener {
      */
     private volatile @Nullable java.util.function.BiPredicate<Player, LivingEntity> counterHook;
 
+    /**
+     * A hit nobody is allowed to land, cancelled before anything else looks at it: a called sea creature is its owner's fight
+     * alone (Gathering.Fishing.guard). Set once at startup.
+     */
+    private volatile @Nullable java.util.function.Predicate<EntityDamageByEntityEvent> damageGuard;
+
+    public void setDamageGuard(java.util.function.Predicate<EntityDamageByEntityEvent> guard) { this.damageGuard = guard; }
+
     public void setCounterHook(java.util.function.BiPredicate<Player, LivingEntity> counterHook) {
         this.counterHook = counterHook;
     }
@@ -118,6 +126,11 @@ public class VirtualHealthListener implements Listener {
     public void onEntityDamage(EntityDamageEvent event) {
         if (event.getDamage() <= 0) return;
         if (!(event.getEntity() instanceof LivingEntity)) return;
+        var guard = damageGuard;
+        if (guard != null && event instanceof EntityDamageByEntityEvent ede && guard.test(ede)) {
+            event.setCancelled(true);
+            return;
+        }
         if (event.getEntity() instanceof Player p) {
             if (!hasActiveSession(p)) {
                 event.setCancelled(true);

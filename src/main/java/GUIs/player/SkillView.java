@@ -232,7 +232,8 @@ public final class SkillView {
                     // The chance where this skill's Fortune counts: Mining's on ore, Woodcutting's on wood.
                     Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
                     Attributes.Yield y = w.yield();
-                    String label = y == Attributes.Yield.WOOD ? "Extra log chance" : y == Attributes.Yield.ORE ? "Extra ore chance" : "Extra drop chance";
+                    String label = y == Attributes.Yield.WOOD ? "Extra log chance" : y == Attributes.Yield.ORE ? "Extra ore chance"
+                            : y == Attributes.Yield.FISH ? "Extra fish chance" : "Extra drop chance";
                     rows.put(label, new String[]{
                             Fmt.pct(Gathering.GatherRules.bonusChance(now.fortune(y), gc.fortunePerPoint(), gc.fortuneMax())),
                             Fmt.pct(Gathering.GatherRules.bonusChance(next.fortune(y), gc.fortunePerPoint(), gc.fortuneMax()))});
@@ -263,6 +264,7 @@ public final class SkillView {
             case REALM_POINTS -> "+" + Numbers.hud(v * realm) + " points";
             case LOGS -> v <= 0 ? "not yet (from level " + Gathering.GatheringCatalog.current().wood().firstFellingLevel() + ")"
                     : Numbers.hud(v) + " logs";
+            case COUNT -> Numbers.hud(v);
         };
     }
 

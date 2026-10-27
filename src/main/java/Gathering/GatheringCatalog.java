@@ -67,7 +67,7 @@ public final class GatheringCatalog {
     public record UpgradeDef(String id, String item, Set<String> on, Attributes.Stat stat, double amount, String name) {}
 
     /** Item kinds an upgrade can go on (GearItems.kind). */
-    static final Set<String> ITEM_KINDS = Set.of("axe", "pickaxe", "shovel", "hoe", "sword", "spear", "bow", "crossbow", "trident", "mace");
+    static final Set<String> ITEM_KINDS = Set.of("axe", "pickaxe", "shovel", "hoe", "sword", "spear", "bow", "crossbow", "trident", "mace", "rod");
 
     /** A drop: a Cerberus item id or a material, {@code min} to {@code max} of it. */
     public record Drop(String item, int min, int max) {}
@@ -75,8 +75,14 @@ public final class GatheringCatalog {
     /** A custom tool: an item carrying this id, gathering what its kinds allow up to its tier. */
     public record ToolDef(String id, Material material, String name, Set<String> kinds, int tier) {}
 
-    /** A custom item (a custom resource's drop). */
-    public record ItemDef(String id, Material material, String name, List<String> lore) {}
+    /**
+     * A custom item (a custom resource's drop, a fish species, a creature's drop). {@code vanilla}: it behaves as its material
+     * in vanilla uses (a species is eaten and cooked like any fish); otherwise it is never placed, burnt or used in a vanilla
+     * recipe (Upgrades).
+     */
+    public record ItemDef(String id, Material material, String name, List<String> lore, boolean vanilla) {
+        public ItemDef(String id, Material material, String name, List<String> lore) { this(id, material, name, lore, false); }
+    }
 
     /** What forged gear's quality adds, by quality (index = ordinal; Common adds nothing). */
     public record QualityRules(String skill, double[] oddsAt1, double[] oddsAt100, double[] weaponPower,
@@ -109,6 +115,7 @@ public final class GatheringCatalog {
     private final WoodRules wood;
     private final double weakToolFactor;
     private final Map<String, UpgradeDef> upgrades;
+    private final FishingRules fishing;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
@@ -116,7 +123,7 @@ public final class GatheringCatalog {
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
-                             List<String> problems) {
+                             FishingRules fishing, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -136,6 +143,7 @@ public final class GatheringCatalog {
         this.wood = wood;
         this.weakToolFactor = weakToolFactor;
         this.upgrades = upgrades;
+        this.fishing = fishing;
         this.problems = List.copyOf(problems);
     }
 
@@ -188,6 +196,8 @@ public final class GatheringCatalog {
     public double weakToolFactor() { return weakToolFactor; }
     public Map<String, UpgradeDef> upgrades() { return upgrades; }
     public UpgradeDef upgrade(String id) { return id == null ? null : upgrades.get(id); }
+    /** Fishing's rules (docs/design/FISHING.md); {@link FishingRules#NONE} without a fishing section. */
+    public FishingRules fishing() { return fishing; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -313,6 +323,16 @@ public final class GatheringCatalog {
             out.computeIfAbsent(forgingSkill, k -> new ArrayList<>())
                     .add("Upgrade gear to netherite at a smithing table: " + number(netheriteUpgrade) + " XP.");
         }
+        if (fishing.enabled()) {
+            FishingRules.Xp x = fishing.xp();
+            List<String> lines = out.computeIfAbsent(fishing.skill(), k -> new ArrayList<>());
+            lines.add("Fish in survival, by hand or with a farm: the same XP for every catch. Junk " + number(x.junk()) + ", a fish "
+                    + number(x.fish()) + ", treasure " + number(x.treasure()) + "; a species of the water " + number(x.of(FishingRules.Rarity.COMMON))
+                    + " (common) to " + number(x.of(FishingRules.Rarity.LEGENDARY)) + " (legendary) XP.");
+            lines.add("Each water has its own species (" + fishing.waters().size() + " waters, " + fishing.allSpecies().size()
+                    + " species); time and weather change what bites. The first of each species is a discovery.");
+            lines.add("From level " + fishing.techniques().creatures() + " a catch can bank a sea creature's lure: Sneak and cast to call it and fight it.");
+        }
         return out;
     }
 
@@ -334,6 +354,18 @@ public final class GatheringCatalog {
 
     // ── loading ───────────────────────────────────────────────────
 
+    /** The custom items Fishing added on 2026-10-27: its species, its treasure, its creatures' drops. */
+    static final List<String> FISHING_ITEMS = List.of(
+            "silver_dace", "river_perch", "brook_char", "goldfin_trout", "old_whiskers", "riverking_sturgeon",
+            "pond_bream", "reed_pike", "moonlit_carp", "emerald_tench",
+            "mud_loach", "bog_eel", "mire_gar", "witchlight_bowfin",
+            "sea_bass", "striped_mackerel", "silver_tarpon", "bluefin_tuna", "abyssal_angler",
+            "reef_wrasse", "coral_snapper", "sunburst_parrotfish", "sailfin_marlin",
+            "ice_cod", "arctic_char", "frostfin_halibut", "glacier_wolffish",
+            "blind_cavefish", "glowgill", "dripstone_eel", "crystal_eye",
+            "sunken_coins", "sea_glass", "drowned_locket", "pearl_of_the_depths",
+            "lurker_scale", "bog_resin", "tide_pearl", "rime_shard", "anglers_lantern", "reef_eye", "monarchs_seal", "leviathan_scale");
+
     /**
      * Entries updates added to the shipped resources.yml, by section. A server whose resources.yml has edits of its own
      * keeps its file (ShippedConfig), so each of these that the file doesn't mention at all is taken from the plugin's
@@ -349,8 +381,17 @@ public final class GatheringCatalog {
                 "crimson_stem", "warped_stem"));
         m.put("items", List.of("heartwood"));
         m.put("upgrades", List.of("heartwood_grip", "heartwood_limbs"));
+        // 2026-10-27, Fishing (its own "fishing:" section comes whole when a file has none: addUpdates)
+        List<String> items = new ArrayList<>(m.get("items"));
+        items.addAll(FISHING_ITEMS);
+        m.put("items", List.copyOf(items));
+        List<String> ups = new ArrayList<>(m.get("upgrades"));
+        ups.addAll(List.of("scaled_grip", "rime_hook", "heartwood_handle", "pearl_float", "sea_glass_float", "lantern_bob",
+                "resin_line", "reef_eye_lens", "pearl_inlay", "monarchs_blessing", "leviathan_line"));
+        m.put("upgrades", List.copyOf(ups));
         return Collections.unmodifiableMap(m);
     }
+
 
     /**
      * Adds to {@code server} (in memory: the file on disk never changes) each entry of {@link #ADDED_BY_UPDATES} that the
@@ -381,6 +422,11 @@ public final class GatheringCatalog {
             if (!added.isEmpty()) notes.add(e.getKey() + ": " + String.join(", ", added) + " not in this file (an update added "
                     + (added.size() == 1 ? "it" : "them") + "), so the plugin's own " + (added.size() == 1 ? "entry is" : "entries are")
                     + " used; write \"<id>: off\" to leave one out");
+        }
+        // Fishing (2026-10-27) comes as a whole section: a file without "fishing:" gets the plugin's own; "fishing: off" none.
+        if (!server.contains("fishing") && shipped.get("fishing") instanceof ConfigurationSection f) {
+            server.createSection("fishing", values(f));
+            notes.add("fishing: not in this file (an update added it), so the plugin's own section is used; write \"fishing: off\" to turn fishing's rules off");
         }
         return notes;
     }
@@ -418,7 +464,7 @@ public final class GatheringCatalog {
             ConfigurationSection s = is.getConfigurationSection(id);
             Material m = s == null ? null : material(s.getString("material"));
             if (m == null) { problems.add("item " + id + ": unknown material " + (s == null ? null : s.getString("material"))); continue; }
-            items.put(id, new ItemDef(id, m, s.getString("name", id), List.copyOf(s.getStringList("lore"))));
+            items.put(id, new ItemDef(id, m, s.getString("name", id), List.copyOf(s.getStringList("lore")), s.getBoolean("vanilla", false)));
         }
 
         Map<String, ToolDef> tools = new LinkedHashMap<>();
@@ -600,11 +646,13 @@ public final class GatheringCatalog {
             upgrades.put(id, new UpgradeDef(id, item, Collections.unmodifiableSet(on), stat, amount, u.getString("name", id)));
         }
 
+        FishingRules fishing = FishingRules.from(root == null ? null : root.getConfigurationSection("fishing"), items, skills, problems);
+
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, problems);
     }
 
     /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */

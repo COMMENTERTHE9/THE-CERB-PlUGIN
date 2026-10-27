@@ -114,6 +114,7 @@ public final class SkillDetailMenu extends PlayerMenu {
         v.set(31, upcomingTile(svc, rules, id, d, pr, realm));
         ItemStack woods = woodsTile(p, d);
         if (woods != null) v.set(33, woods);
+        fishingTiles(p, d, v);
 
         // ── Row 4: browse the category in place ────────────────
         List<SkillDef> siblings = SkillDefinitions.byCategory(d.category());
@@ -186,6 +187,55 @@ public final class SkillDetailMenu extends PlayerMenu {
         l.gap();
         for (String w : PlayerTheme.wrap("The first log of each wood you cut from a tree pays a discovery bonus, once.", SkillView.WIDTH)) l.text(w);
         return Ui.item(Material.OAK_SAPLING, ChatColor.GOLD + "Woods: " + have + " of " + woods.size() + " discovered", l.build());
+    }
+
+    /**
+     * Fishing's page (docs/design/FISHING.md): the journal by water (species found, the rest with the level and moment they
+     * ask for), and the banked lures, where a click chooses which one a Sneak-cast calls (kept for the session, no database).
+     */
+    private void fishingTiles(Player p, SkillDef d, MenuView v) {
+        Gathering.Fishing f = plugin.getFishing();
+        Gathering.FishingRules r = Gathering.GatheringCatalog.current().fishing();
+        if (f == null || !r.enabled() || !d.name().equals(r.skill())) return;
+        Gathering.FishingJournal j = f.journal(p);
+        Ui.Lore l = Ui.lore();
+        long found = 0;
+        for (Gathering.FishingRules.Water w : r.waters()) {
+            List<Gathering.FishingRules.Species> sp = r.species(w.id());
+            if (sp.isEmpty()) continue;
+            long have = sp.stream().filter(s -> j.caught(s.id())).count();
+            found += have;
+            l.raw((have == sp.size() ? ChatColor.GREEN + "✔ " : ChatColor.GRAY + "• ") + ChatColor.WHITE + w.name() + ChatColor.GRAY + ": " + have + " of " + sp.size());
+        }
+        l.gap();
+        for (String w : PlayerTheme.wrap("Each water has its own species; time and weather change what bites. A first catch is a discovery, a heavier one a personal best. /fishing journal lists them.", SkillView.WIDTH)) l.text(w);
+        v.set(33, Ui.item(Material.TROPICAL_FISH, ChatColor.GOLD + "Journal: " + found + " of " + r.allSpecies().size() + " species", l.build()));
+
+        Ui.Lore lu = Ui.lore();
+        String sel = f.selected(p);
+        if (j.totalLures() == 0) {
+            for (String w : PlayerTheme.wrap("None banked yet. From Fishing " + r.techniques().creatures() + ", a catch can bring a sea creature's lure: "
+                    + "Sneak and cast into water to call it, and fight it when you are ready.", SkillView.WIDTH)) lu.text(w);
+        } else {
+            for (java.util.Map.Entry<String, Integer> e : j.lures().entrySet()) {
+                Gathering.FishingRules.Creature c = r.creature(e.getKey());
+                if (c == null) continue;
+                lu.raw((e.getKey().equals(sel) ? ChatColor.AQUA + "▶ " : ChatColor.GRAY + "  ") + c.rarity().color + c.name() + ChatColor.GRAY + " ×" + e.getValue());
+            }
+            lu.gap();
+            for (String w : PlayerTheme.wrap("Sneak and cast into water to call " + (sel != null ? "the chosen one" : "one") + ". If it gets away, its lure comes back.", SkillView.WIDTH)) lu.text(w);
+            lu.hint("Click to choose which one");
+        }
+        lu.raw(ChatColor.DARK_GRAY + "Defeated: " + j.creaturesDefeated().size() + " of " + r.creatures().size() + " creatures");
+        ItemStack lures = Ui.item(Material.PRISMARINE_SHARD, ChatColor.AQUA + "Lures: " + j.totalLures(), lu.build());
+        if (j.totalLures() == 0) { v.set(29, lures); return; }
+        v.button(29, lures, c -> {
+            List<String> have = new java.util.ArrayList<>(j.lures().keySet());
+            String now = f.selected(c.player());
+            int at = now == null ? -1 : have.indexOf(now);
+            f.select(c.player(), have.get((at + 1) % have.size()));
+            menus.replace(c.player(), new SkillDetailMenu(plugin, d.name()));
+        });
     }
 
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {

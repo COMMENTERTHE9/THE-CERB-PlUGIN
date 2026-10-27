@@ -87,7 +87,204 @@ woodcutting:
   grown:     { xp: 0.8, heartwood: 0.8 }
   bone-meal: { xp: 0.5, heartwood: 0 }
 
-# Custom tools and items (custom ores, drills, machines, heartwood). A tool is an item carrying its id; a
+# Fishing (docs/design/FISHING.md). Rules the code keeps whatever this file says: only catches a player reels in, in
+# survival or adventure, pay; by hand or with a farm, the same; hooking an entity or an item is no catch. Sea creatures
+# never spawn from a catch: a catch banks a lure, and its owner calls the creature (Sneak and cast), one at a time.
+fishing:
+  skill: Fishing
+  # Where the bobber floats: an underground water (no sky light, below sea level), else the first water listing the
+  # biome, else the fallback. Biome keys as in /locate biome, without "minecraft:".
+  waters:
+    cave:  { name: Cave pools, underground: true }
+    river: { name: Rivers, biomes: [river, frozen_river] }
+    swamp: { name: Swamps, biomes: [swamp, mangrove_swamp] }
+    ocean: { name: Temperate seas, biomes: [ocean, deep_ocean] }
+    warm:  { name: Warm seas, biomes: [warm_ocean, lukewarm_ocean, deep_lukewarm_ocean] }
+    cold:  { name: Cold seas, biomes: [cold_ocean, deep_cold_ocean, frozen_ocean, deep_frozen_ocean] }
+    fresh: { name: Lakes and ponds, fallback: true }
+  # Vanilla still decides junk, fish or treasure. A fish or junk bite stays vanilla this share of the time, else it is a
+  # species of the water the level and the moment allow (by weight: common 60, uncommon 25, rare 10, epic 4, legendary 1
+  # unless set). Vanilla treasure is always kept.
+  vanilla-share: { at-level-1: 0.7, at-level-100: 0.35 }
+  # Species: water, item (items:), rarity, the Fishing level they need, weight range in kg; optional time (day, night),
+  # weather (clear, rain, thunder), biomes (some of the water's), weight, xp.
+  species:
+    silver_dace:         { water: river, rarity: common, level: 1, kg: [0.05, 0.4] }
+    river_perch:         { water: river, rarity: uncommon, level: 5, kg: [0.2, 1.6] }
+    brook_char:          { water: river, rarity: uncommon, level: 15, time: night, kg: [0.3, 2.5] }
+    goldfin_trout:       { water: river, rarity: rare, level: 25, kg: [0.5, 4.5] }
+    old_whiskers:        { water: river, rarity: epic, level: 45, time: night, kg: [3, 40] }
+    riverking_sturgeon:  { water: river, rarity: legendary, level: 75, weather: rain, kg: [20, 220] }
+    pond_bream:          { water: fresh, rarity: common, level: 1, kg: [0.1, 1.2] }
+    reed_pike:           { water: fresh, rarity: uncommon, level: 10, kg: [0.5, 8] }
+    moonlit_carp:        { water: fresh, rarity: rare, level: 20, time: night, kg: [1, 15] }
+    emerald_tench:       { water: fresh, rarity: epic, level: 50, kg: [0.8, 6] }
+    mud_loach:           { water: swamp, rarity: common, level: 1, kg: [0.02, 0.2] }
+    bog_eel:             { water: swamp, rarity: uncommon, level: 10, kg: [0.3, 3] }
+    mire_gar:            { water: swamp, rarity: rare, level: 30, kg: [2, 25] }
+    witchlight_bowfin:   { water: swamp, rarity: epic, level: 55, time: night, kg: [1, 9] }
+    sea_bass:            { water: ocean, rarity: common, level: 1, kg: [0.4, 4] }
+    striped_mackerel:    { water: ocean, rarity: uncommon, level: 10, kg: [0.3, 2.5] }
+    silver_tarpon:       { water: ocean, rarity: rare, level: 35, kg: [10, 120] }
+    bluefin_tuna:        { water: ocean, rarity: epic, level: 55, kg: [60, 550] }
+    abyssal_angler:      { water: ocean, rarity: legendary, level: 85, time: night, biomes: [deep_ocean], kg: [2, 30] }
+    reef_wrasse:         { water: warm, rarity: common, level: 1, kg: [0.05, 0.6] }
+    coral_snapper:       { water: warm, rarity: uncommon, level: 15, kg: [0.5, 7] }
+    sunburst_parrotfish: { water: warm, rarity: rare, level: 30, kg: [1, 12] }
+    sailfin_marlin:      { water: warm, rarity: epic, level: 60, kg: [40, 400] }
+    ice_cod:             { water: cold, rarity: common, level: 1, kg: [0.5, 6] }
+    arctic_char:         { water: cold, rarity: uncommon, level: 15, kg: [0.5, 9] }
+    frostfin_halibut:    { water: cold, rarity: rare, level: 35, kg: [5, 180] }
+    glacier_wolffish:    { water: cold, rarity: epic, level: 60, kg: [2, 18] }
+    blind_cavefish:      { water: cave, rarity: common, level: 5, kg: [0.02, 0.15] }
+    glowgill:            { water: cave, rarity: uncommon, level: 20, kg: [0.1, 0.8] }
+    dripstone_eel:       { water: cave, rarity: rare, level: 40, kg: [0.5, 5] }
+    crystal_eye:         { water: cave, rarity: epic, level: 70, kg: [0.2, 2] }
+  # Cerberus treasure: a catch in open water can be one from Treasure Sense on (the treasure-chance stat, attributes.yml).
+  treasure:
+    sunken_coins:        { rarity: common, level: 25 }
+    sea_glass:           { rarity: uncommon, level: 25 }
+    drowned_locket:      { rarity: rare, level: 35 }
+    pearl_of_the_depths: { rarity: epic, level: 50 }
+  # Sea creatures (docs/design/FISHING.md §7): a catch banks a lure for one of its water's (the sea-creature-chance stat);
+  # its owner calls it. Its level follows their Fishing level (never below its own level or the world's there); health
+  # multiplies a normal mob's of that level and tier; fishing-share pays that share of its kill XP as Fishing XP too.
+  # Drops: an item of items: or a vanilla material, with a chance and an amount.
+  creatures:
+    river_lurker:
+      name: River Lurker
+      entity: DROWNED
+      waters: [river, fresh]
+      level: 5
+      tier: COMMON
+      rarity: uncommon
+      health: 2.0
+      xp-multiplier: 1.5
+      scale: 1.1
+      weight: 10
+      equipment: { hand: FISHING_ROD }
+      drops:
+        - { item: lurker_scale, chance: 0.4 }
+        - { item: COD, chance: 0.8, min: 1, max: 3 }
+    bog_stalker:
+      name: Bog Stalker
+      entity: BOGGED
+      waters: [swamp]
+      level: 10
+      tier: COMMON
+      rarity: uncommon
+      health: 2.0
+      xp-multiplier: 1.5
+      weight: 10
+      drops:
+        - { item: bog_resin, chance: 0.4 }
+        - { item: BONE, chance: 0.8, min: 1, max: 2 }
+    tidecaller:
+      name: Tidecaller
+      entity: DROWNED
+      waters: [ocean, warm]
+      level: 20
+      tier: COMMON
+      rarity: rare
+      health: 2.5
+      xp-multiplier: 1.75
+      scale: 1.15
+      weight: 10
+      equipment: { hand: TRIDENT }
+      drops:
+        - { item: tide_pearl, chance: 0.35 }
+        - { item: PRISMARINE_SHARD, chance: 0.5, min: 1, max: 2 }
+    frostbound_mariner:
+      name: Frostbound Mariner
+      entity: STRAY
+      waters: [cold]
+      level: 20
+      tier: COMMON
+      rarity: rare
+      health: 2.5
+      xp-multiplier: 1.75
+      weight: 10
+      equipment: { hand: BOW }
+      drops:
+        - { item: rime_shard, chance: 0.35 }
+        - { item: ARROW, chance: 0.6, min: 2, max: 6 }
+    hollow_angler:
+      name: Hollow Angler
+      entity: DROWNED
+      waters: [cave]
+      level: 30
+      tier: COMMON
+      rarity: rare
+      health: 3.0
+      xp-multiplier: 2.0
+      weight: 10
+      equipment: { hand: FISHING_ROD, off-hand: LANTERN }
+      drops:
+        - { item: anglers_lantern, chance: 0.3 }
+        - { item: GLOW_INK_SAC, chance: 0.5, min: 1, max: 2 }
+    reef_guardian:
+      name: Reef Guardian
+      entity: GUARDIAN
+      waters: [warm, ocean]
+      level: 35
+      tier: COMMON
+      rarity: epic
+      health: 4.0
+      xp-multiplier: 2.0
+      scale: 1.3
+      weight: 6
+      drops:
+        - { item: reef_eye, chance: 0.3 }
+        - { item: PRISMARINE_CRYSTALS, chance: 0.5, min: 1, max: 3 }
+    drowned_monarch:
+      name: Drowned Monarch
+      entity: DROWNED
+      apex: true
+      waters: [river, fresh, swamp, cave]
+      level: 100
+      tier: UNCOMMON
+      rarity: legendary
+      health: 1.0
+      xp-multiplier: 3.0
+      scale: 1.8
+      equipment: { hand: TRIDENT, helmet: GOLDEN_HELMET }
+      drops:
+        - { item: monarchs_seal, chance: 1.0 }
+        - { item: GOLD_INGOT, chance: 1.0, min: 2, max: 5 }
+    leviathan:
+      name: Leviathan
+      entity: GUARDIAN
+      apex: true
+      waters: [ocean, warm, cold]
+      level: 100
+      tier: UNCOMMON
+      rarity: legendary
+      health: 1.0
+      xp-multiplier: 3.0
+      scale: 2.5
+      drops:
+        - { item: leviathan_scale, chance: 1.0 }
+        - { item: PRISMARINE_CRYSTALS, chance: 1.0, min: 4, max: 8 }
+  # Milestones (docs/design/FISHING.md §5).
+  techniques:
+    something-stirs: 5                                    # sea creatures take the bait (the first catch from here brings a lure)
+    quick-bite: { at: 10, wait: 0.85 }                    # the wait for a bite x0.85
+    treasure-sense: 25                                    # Cerberus treasure in open water
+    deep-waters: { at: 50, health: 1.5, xp: 1.5, drop-rolls: 1 }   # called creatures come as elites
+    twin-catch: 75                                        # Fortune's extra fish can come twice
+    apex: { at: 100, chance: 0.0005 }                     # the apex of each water, per catch
+  wait-floor: 0.4                                         # lure speed and Quick Bite never cut a wait below 40% of vanilla's
+  # Called creatures: one per player at a time; at most this many out on the server; one leaves when its owner is farther
+  # than leash-blocks for leash-seconds, or after fight-seconds (its lure comes back either way). level-spread: +/- levels.
+  calls: { server: 32, leash-blocks: 48, leash-seconds: 30, fight-seconds: 300, level-spread: 3 }
+  xp:
+    junk: 2
+    fish: 10          # a vanilla fish
+    treasure: 30      # vanilla treasure (books, saddles, name tags...)
+    rarity:    { common: 12, uncommon: 25, rare: 60, epic: 150, legendary: 400 }   # species and Cerberus treasure
+    discovery: { common: 50, uncommon: 120, rare: 300, epic: 750, legendary: 2000 } # the first of each
+
+# Custom tools and items (custom ores, drills, machines, heartwood, Fishing's catches). A tool is an item carrying its id; a
 # resource can need one of its kinds ("drill") and its tier, and drop custom items instead of its own. A
 # custom item is never placed, burnt or used in a vanilla recipe.
 tools: {}
@@ -99,12 +296,129 @@ items:
       - "The dense core of an old tree."
       - "Craft it with an axe for a heartwood grip,"
       - "or with a bow for heartwood limbs."
+  # Fishing's species (docs/design/FISHING.md §4): fish like any other ("vanilla: true": eaten and cooked as their material).
+  silver_dace: { material: COD, name: "Silver Dace", vanilla: true, lore: ["A quick silver river fish."] }
+  river_perch: { material: COD, name: "River Perch", vanilla: true, lore: ["Striped, bold and always hungry."] }
+  brook_char: { material: SALMON, name: "Brook Char", vanilla: true, lore: ["Rises to the bait after dark."] }
+  goldfin_trout: { material: SALMON, name: "Goldfin Trout", vanilla: true, lore: ["Its fins catch the light like coins."] }
+  old_whiskers: { material: COD, name: "Old Whiskers", vanilla: true, lore: ["A river catfish older than the bridges."] }
+  riverking_sturgeon: { material: SALMON, name: "Riverking Sturgeon", vanilla: true, lore: ["Comes up the river only in the rain."] }
+  pond_bream: { material: COD, name: "Pond Bream", vanilla: true, lore: ["Flat, bronze and plentiful."] }
+  reed_pike: { material: COD, name: "Reed Pike", vanilla: true, lore: ["Waits in the reeds, then strikes."] }
+  moonlit_carp: { material: SALMON, name: "Moonlit Carp", vanilla: true, lore: ["Pale scales that shine at night."] }
+  emerald_tench: { material: TROPICAL_FISH, name: "Emerald Tench", vanilla: true, lore: ["Green as old copper, and as rare."] }
+  mud_loach: { material: COD, name: "Mud Loach", vanilla: true, lore: ["Lives in the mud and likes it there."] }
+  bog_eel: { material: COD, name: "Bog Eel", vanilla: true, lore: ["Slippery, and stronger than it looks."] }
+  mire_gar: { material: SALMON, name: "Mire Gar", vanilla: true, lore: ["A long jaw full of needle teeth."] }
+  witchlight_bowfin: { material: TROPICAL_FISH, name: "Witchlight Bowfin", vanilla: true, lore: ["Glows faintly in swamp water at night."] }
+  sea_bass: { material: COD, name: "Sea Bass", vanilla: true, lore: ["The everyday catch of the open sea."] }
+  striped_mackerel: { material: COD, name: "Striped Mackerel", vanilla: true, lore: ["Fast, schooling, silver and blue."] }
+  silver_tarpon: { material: SALMON, name: "Silver Tarpon", vanilla: true, lore: ["Leaps when hooked, every time."] }
+  bluefin_tuna: { material: SALMON, name: "Bluefin Tuna", vanilla: true, lore: ["Heavy, fast and hard to land."] }
+  abyssal_angler: { material: TROPICAL_FISH, name: "Abyssal Angler", vanilla: true, lore: ["A lantern-fish from the deep ocean's night."] }
+  reef_wrasse: { material: TROPICAL_FISH, name: "Reef Wrasse", vanilla: true, lore: ["Bright as the coral it lives in."] }
+  coral_snapper: { material: TROPICAL_FISH, name: "Coral Snapper", vanilla: true, lore: ["Red-scaled, with a temper."] }
+  sunburst_parrotfish: { material: TROPICAL_FISH, name: "Sunburst Parrotfish", vanilla: true, lore: ["Every colour of a warm sunset."] }
+  sailfin_marlin: { material: SALMON, name: "Sailfin Marlin", vanilla: true, lore: ["Its fin cuts the water like a sail."] }
+  ice_cod: { material: COD, name: "Ice Cod", vanilla: true, lore: ["Thrives where the sea freezes."] }
+  arctic_char: { material: SALMON, name: "Arctic Char", vanilla: true, lore: ["Red-bellied, from the coldest water."] }
+  frostfin_halibut: { material: COD, name: "Frostfin Halibut", vanilla: true, lore: ["A flat giant with frost-white fins."] }
+  glacier_wolffish: { material: COD, name: "Glacier Wolffish", vanilla: true, lore: ["Crushes shells with its teeth."] }
+  blind_cavefish: { material: COD, name: "Blind Cavefish", vanilla: true, lore: ["Pale, eyeless, and never seen the sun."] }
+  glowgill: { material: TROPICAL_FISH, name: "Glowgill", vanilla: true, lore: ["Its gills light the cave water."] }
+  dripstone_eel: { material: COD, name: "Dripstone Eel", vanilla: true, lore: ["Hides among the stalagmites."] }
+  crystal_eye: { material: TROPICAL_FISH, name: "Crystal-eye", vanilla: true, lore: ["Eyes like polished amethyst."] }
+  # Fishing's treasure (open water, from Treasure Sense) and its creatures' drops: never placed, burnt or used in vanilla recipes.
+  sunken_coins:
+    material: GOLD_NUGGET
+    name: "Sunken Coins"
+    lore:
+      - "Coins from a ship nobody remembers."
+      - "Kept for trading, when it comes."
+  sea_glass:
+    material: PRISMARINE_SHARD
+    name: "Sea Glass"
+    lore:
+      - "Worn smooth by the tide."
+      - "Craft it with a fishing rod for a sea-glass float."
+  drowned_locket:
+    material: CLOCK
+    name: "Drowned Locket"
+    lore:
+      - "Someone's keepsake, lost at sea."
+      - "Kept for enchanting, when it comes."
+  pearl_of_the_depths:
+    material: HEART_OF_THE_SEA
+    name: "Pearl of the Depths"
+    lore:
+      - "It glows a little in the dark."
+      - "Craft it with a fishing rod for a pearl inlay."
+  lurker_scale:
+    material: TURTLE_SCUTE
+    name: "Lurker Scale"
+    lore:
+      - "From a River Lurker."
+      - "Craft it with a fishing rod for a scaled grip."
+  bog_resin:
+    material: RESIN_CLUMP
+    name: "Bog Resin"
+    lore:
+      - "From a Bog Stalker. Sticky and strong."
+      - "Craft it with a fishing rod for a resin line."
+  tide_pearl:
+    material: PRISMARINE_CRYSTALS
+    name: "Tide Pearl"
+    lore:
+      - "From a Tidecaller."
+      - "Craft it with a fishing rod for a pearl float."
+  rime_shard:
+    material: QUARTZ
+    name: "Rime Shard"
+    lore:
+      - "From a Frostbound Mariner. Never melts."
+      - "Craft it with a fishing rod for a rime hook."
+  anglers_lantern:
+    material: LANTERN
+    name: "Angler's Lantern"
+    lore:
+      - "From a Hollow Angler."
+      - "Craft it with a fishing rod for a lantern bob."
+  reef_eye:
+    material: ECHO_SHARD
+    name: "Reef Eye"
+    lore:
+      - "From a Reef Guardian. It still watches."
+      - "Craft it with a fishing rod for a reef-eye lens."
+  monarchs_seal:
+    material: NETHER_STAR
+    name: "Monarch's Seal"
+    lore:
+      - "From the Drowned Monarch."
+      - "Craft it with a fishing rod for the Monarch's blessing."
+  leviathan_scale:
+    material: SHULKER_SHELL
+    name: "Leviathan Scale"
+    lore:
+      - "From the Leviathan."
+      - "Craft it with a fishing rod for a Leviathan line."
 
 # Upgrades (docs/design/WOODCUTTING.md §8): a custom item crafted with a tool or weapon of these kinds gives
 # that item the stat while it is held. Once per item; the item keeps its enchantments, damage and quality.
 upgrades:
   heartwood_grip:  { item: heartwood, for: [axe], stat: chop-speed, amount: 0.08, name: Heartwood grip }
   heartwood_limbs: { item: heartwood, for: [bow], stat: draw-speed, amount: 0.08, name: Heartwood limbs }
+  # Rods (docs/design/FISHING.md §8): counted on the rod in your main hand, each stat within its cap (attributes.yml).
+  scaled_grip:       { item: lurker_scale, for: [rod], stat: lure-speed, amount: 0.06, name: Scaled grip }
+  rime_hook:         { item: rime_shard, for: [rod], stat: lure-speed, amount: 0.04, name: Rime hook }
+  heartwood_handle:  { item: heartwood, for: [rod], stat: lure-speed, amount: 0.04, name: Heartwood handle }
+  pearl_float:       { item: tide_pearl, for: [rod], stat: treasure-chance, amount: 0.02, name: Pearl float }
+  sea_glass_float:   { item: sea_glass, for: [rod], stat: treasure-chance, amount: 0.015, name: Sea-glass float }
+  lantern_bob:       { item: anglers_lantern, for: [rod], stat: treasure-chance, amount: 0.015, name: Lantern bob }
+  resin_line:        { item: bog_resin, for: [rod], stat: sea-creature-chance, amount: 0.01, name: Resin line }
+  reef_eye_lens:     { item: reef_eye, for: [rod], stat: sea-creature-chance, amount: 0.015, name: Reef-eye lens }
+  pearl_inlay:       { item: pearl_of_the_depths, for: [rod], stat: sea-creature-chance, amount: 0.01, name: Pearl inlay }
+  monarchs_blessing: { item: monarchs_seal, for: [rod], stat: lure-speed, amount: 0.08, name: "Monarch's blessing" }
+  leviathan_line:    { item: leviathan_scale, for: [rod], stat: sea-creature-chance, amount: 0.02, name: Leviathan line }
 
 # XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
 smelting:
