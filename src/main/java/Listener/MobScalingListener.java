@@ -171,10 +171,11 @@ public class MobScalingListener implements Listener {
      * Pool cleanup for permanent removals (natural despawn, /kill, plugins) — without this
      * the pool map leaks an entry per despawned mob. UNLOAD is deliberately kept: the pool
      * survives a chunk unload so a reloading mob keeps its damaged HP (see onEntitiesLoad).
+     * A mob that is never saved (a sea creature) never comes back, so its pool goes at unload too.
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemove(EntityRemoveEvent event) {
-        if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD) return;
+        if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD && event.getEntity().isPersistent()) return;
         if (!(event.getEntity() instanceof LivingEntity)) return;
         MobVirtualHealthManager mvh = plugin.getMobVirtualHealthManager();
         if (mvh != null) mvh.remove(event.getEntity().getUniqueId());

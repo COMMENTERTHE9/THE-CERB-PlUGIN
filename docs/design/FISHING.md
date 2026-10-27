@@ -62,7 +62,7 @@ The water is read where the bobber floats:
 
 ## 6. What Fishing gives (attribute engine, `attributes.yml`)
 
-- **Fortune (fish)** 0.5 per level: a chance of one extra fish per catch (the shared Fortune rule: 0.5% per point, at most 50%). Never on treasure, lures or junk. Fishing's Fortune now counts on fish only, as `SKILL_PROGRESSION.md` planned.
+- **Fortune (fish)** 0.5 per level: a chance of one extra fish per catch (the shared Fortune rule: 0.5% per point, at most 50%), in the same stack as the catch so it flies to you with it. Never on treasure, lures or junk. Fishing's Fortune now counts on fish only, as `SKILL_PROGRESSION.md` planned.
 - **Lure speed** (new secondary stat, a rod in hand): bites come sooner. 0.2% per level, capped at 30% with diminishing returns; rod upgrades add to it.
 - **Treasure chance** (new): from Treasure Sense, the chance a catch in open water is Cerberus treasure. 0.05% per level, capped at 15%.
 - **Sea-creature chance** (new): the chance a catch banks a lure. 0.04% per level (about 2% at 50, 3.3% at 100 after its curve), capped at 10%; rod upgrades add to it.
@@ -77,7 +77,7 @@ All three show on the Stats page, the skill page and in level-up messages, and p
 
 **Banking.** Lures are stored on the player (saved with the player like their inventory, no item to lose in a full AFK inventory, nothing to duplicate). They show in the Fishing page and `/fishing`.
 
-**Calling.** Sneak and cast with a lure banked. The bobber settles, and on the next bite the creature surfaces at the bobber instead of a fish: a splash, a sound, a title. The lure is spent only when the creature is really there. Which one: the lure you chose in the Fishing page or with `/fishing call <creature>`, else one of the water you cast into, else your first.
+**Calling.** Sneak and cast with a lure banked. The bobber settles, and on the next bite the creature surfaces at the bobber instead of a fish: a splash, a sound, a title. The lure is spent only when the creature is really there. A call that can't be answered (your creature is already out, the server is at its limit) is a plain cast at the usual pace, and the HUD says why: calling never makes fishing faster. Which one: the lure you chose in the Fishing page or with `/fishing call <creature>`, else one of the water you cast into, else your first.
 
 **The fight.**
 - The creature's level follows your Fishing level (a little spread), and never below the world's own level there. Its health, damage, armor penetration and ranged attacks scale through the normal mob pipeline (`combat.yml`), so classes, abilities and attributes all apply.

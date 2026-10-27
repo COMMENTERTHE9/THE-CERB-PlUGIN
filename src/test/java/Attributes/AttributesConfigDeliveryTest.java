@@ -72,6 +72,28 @@ class AttributesConfigDeliveryTest {
     }
 
     @Test
+    void fishingDeletedFromAnOlderFileStaysDeletedButGetsItsNewStats() throws Exception {
+        // Fishing's Fortune was in the first attributes.yml, which said "skills not listed here add nothing": an owner who
+        // deleted it gave Fishing nothing, and an update must not bring it back. Its secondary stats are new (2026-10-27).
+        YamlConfiguration server = new YamlConfiguration();
+        server.loadFromString("""
+                attributes:
+                  skills:
+                    Blade Mastery: [ { attribute: power, per-level: 2.0, weapon: sword } ]
+                  secondary:
+                    skills:
+                      Blade Mastery: [ { stat: attack-speed, per-level: 0.01, weapon: sword } ]
+                """);
+        server.setDefaults(shipped());
+        List<String> problems = new ArrayList<>();
+        AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
+        assertFalse(r.skillWeights().containsKey("Fishing"), "the owner's deletion stands: " + problems);
+        assertEquals(List.of(Stat.LURE_SPEED, Stat.TREASURE_CHANCE, Stat.SEA_CREATURE_CHANCE),
+                r.secondary().skillWeights().get("Fishing").stream().map(AttributeRules.StatWeight::stat).toList(), "its new stats arrive");
+        assertTrue(problems.stream().noneMatch(p -> p.startsWith("attributes.skills.Fishing") || p.startsWith("skills.Fishing")), problems.toString());
+    }
+
+    @Test
     void smithingGivesFortitudeAndWearResistanceWithDiminishingReturns() {
         AttributeSnapshot s = AttributeCalculator.compute(SkillAttributes.contributions(java.util.Map.of("Smithing", 100), AttributeRules.DEFAULTS),
                 AttributeRules.DEFAULTS);

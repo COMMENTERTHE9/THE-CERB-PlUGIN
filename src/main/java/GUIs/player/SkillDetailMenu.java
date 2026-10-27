@@ -230,10 +230,15 @@ public final class SkillDetailMenu extends PlayerMenu {
         ItemStack lures = Ui.item(Material.PRISMARINE_SHARD, ChatColor.AQUA + "Lures: " + j.totalLures(), lu.build());
         if (j.totalLures() == 0) { v.set(29, lures); return; }
         v.button(29, lures, c -> {
-            List<String> have = new java.util.ArrayList<>(j.lures().keySet());
-            String now = f.selected(c.player());
-            int at = now == null ? -1 : have.indexOf(now);
-            f.select(c.player(), have.get((at + 1) % have.size()));
+            // Only creatures this server still has; the last lure may have gone while the page was open.
+            Gathering.FishingRules now = Gathering.GatheringCatalog.current().fishing();
+            List<String> have = new java.util.ArrayList<>(f.journal(c.player()).lures().keySet());
+            have.removeIf(id -> now.creature(id) == null);
+            if (!have.isEmpty()) {
+                String chosen = f.selected(c.player());
+                int at = chosen == null ? -1 : have.indexOf(chosen);
+                f.select(c.player(), have.get((at + 1) % have.size()));
+            }
             menus.replace(c.player(), new SkillDetailMenu(plugin, d.name()));
         });
     }

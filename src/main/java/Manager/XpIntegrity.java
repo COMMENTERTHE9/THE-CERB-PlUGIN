@@ -217,8 +217,9 @@ public final class XpIntegrity implements Listener {
         credit.forget(e.getEntity().getUniqueId());
     }
 
+    /** Gone for good (a mob that is never saved leaves for good at unload too): its credit goes. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRemove(EntityRemoveEvent e) {
-        if (e.getCause() != EntityRemoveEvent.Cause.UNLOAD) credit.forget(e.getEntity().getUniqueId());
+        if (e.getCause() != EntityRemoveEvent.Cause.UNLOAD || !e.getEntity().isPersistent()) credit.forget(e.getEntity().getUniqueId());
     }
 }

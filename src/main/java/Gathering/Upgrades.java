@@ -13,6 +13,7 @@ import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceBurnEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
+import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Recipe;
@@ -180,6 +181,13 @@ public final class Upgrades implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBurn(FurnaceBurnEvent e) {
         if (guarded(e.getFuel())) e.setCancelled(true);
+    }
+
+    /** ...nor used at a smithing table (a Rime Shard is quartz, an armor trim's material)... */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onSmithing(PrepareSmithingEvent e) {
+        org.bukkit.inventory.SmithingInventory inv = e.getInventory();
+        if (guarded(inv.getInputTemplate()) || guarded(inv.getInputEquipment()) || guarded(inv.getInputMineral())) e.setResult(null);
     }
 
     /** ...nor smelted (heartwood would make charcoal): it stays in the furnace. */

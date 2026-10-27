@@ -83,11 +83,12 @@ public final class Fishing implements Listener {
         final double treasure, creature, fortune;
         final String call;     // a creature id when this cast calls one
         final boolean chosen;  // the player chose that creature; otherwise one of the bobber's water is preferred
+        final int minWait, maxWait; // the wait a plain cast fishes with (lure speed, Quick Bite)
         volatile String water;
         volatile FishingRules.Species pending;
-        volatile boolean rolled, calledOut;
+        volatile boolean rolled, calledOut, callFailed;
 
-        Cast(UUID player, int level, double treasure, double creature, double fortune, String call, boolean chosen) {
+        Cast(UUID player, int level, double treasure, double creature, double fortune, String call, boolean chosen, int minWait, int maxWait) {
             this.player = player;
             this.level = level;
             this.treasure = treasure;
@@ -95,12 +96,14 @@ public final class Fishing implements Listener {
             this.fortune = fortune;
             this.call = call;
             this.chosen = chosen;
+            this.minWait = minWait;
+            this.maxWait = maxWait;
         }
     }
 
     /** What a catch was decided to be (at HIGH), paid at MONITOR when the catch really happened. */
     private record Outcome(Kind kind, FishingRules.Species species, FishingRules.Treasure treasure, double kg, double xp,
-                           String water, int level, Cast cast, Force force) {}
+                           String water, int level, Cast cast, Force force, int extra) {}
 
     private enum Kind { JUNK, FISH, VANILLA_TREASURE, SPECIES, TREASURE }
 
@@ -135,6 +138,7 @@ public final class Fishing implements Listener {
     private final Map<UUID, Fight> fights = new ConcurrentHashMap<>();   // by creature entity
     private final Map<UUID, UUID> fightOf = new ConcurrentHashMap<>();   // owner → creature entity
     private final Map<UUID, Fight> wins = new ConcurrentHashMap<>();     // creature → a win not yet on its owner's journal
+    private final java.util.concurrent.atomic.AtomicInteger out = new java.util.concurrent.atomic.AtomicInteger(); // creatures out (reserved before a spawn)
     private final Map<UUID, FishingJournal> journals = new ConcurrentHashMap<>();
     private final Map<UUID, String> selected = new ConcurrentHashMap<>();
     private final Map<UUID, Force> forced = new ConcurrentHashMap<>();
@@ -163,10 +167,10 @@ public final class Fishing implements Listener {
         p.getPersistentDataContainer().set(JOURNAL, PersistentDataType.STRING, j.encode());
     }
 
-    /** The lure {@code p} chose to call next ({@code /fishing call}, the Fishing page), if they still have one. */
+    /** The lure {@code p} chose to call next ({@code /fishing call}, the Fishing page), if they still have one and it is configured. */
     public String selected(Player p) {
         String s = selected.get(p.getUniqueId());
-        return s != null && journal(p).lures(s) > 0 ? s : null;
+        return s != null && journal(p).lures(s) > 0 && rules().creature(s) != null ? s : null;
     }
 
     public void select(Player p, String creature) {
@@ -215,30 +219,41 @@ public final class Fishing implements Listener {
         double treasure = sec == null ? 0 : sec.active(id, Stat.TREASURE_CHANCE);
         double creature = sec == null ? 0 : sec.active(id, Stat.SEA_CREATURE_CHANCE);
         double fortune = service.bonusChance(id, Yield.FISH);
+        // The wait a plain cast fishes with: lure speed and Quick Bite, never below the floor.
+        double factor = r.waitFactor(lure, level);
+        int min = hook.getMinWaitTime(), max = hook.getMaxWaitTime();
+        if (factor < 1.0) {
+            min = Math.max(1, (int) Math.round(min * factor));
+            max = Math.max(min, (int) Math.round(max * factor));
+        }
         String call = null;
         boolean chosen = false;
         if (p.isSneaking()) {
             FishingJournal j = journal(p);
-            call = callFor(p, j);
-            if (call != null) {
+            String want = callFor(p, j);
+            String blocked = want == null ? null : callBlocked(id, j, r);
+            if (blocked != null) { // a plain cast at its usual pace: a call that can't be answered never brings a quicker bite
+                refused.increment();
+                hint(p, blocked, 2500);
+            } else if (want != null) {
+                call = want;
                 chosen = selected(p) != null;
-                FishingRules.Creature c = r.creature(call);
-                hint(p, chosen ? "§b✦ Calling: " + c.name() + " §7(" + j.lures(call) + " lure" + (j.lures(call) == 1 ? "" : "s") + ") · wait for the bite"
+                hint(p, chosen ? "§b✦ Calling: " + r.creature(call).name() + " §7(" + j.lures(call) + " lure" + (j.lures(call) == 1 ? "" : "s") + ") · wait for the bite"
                         : "§b✦ Calling a creature of these waters §7(" + j.totalLures() + " lure" + (j.totalLures() == 1 ? "" : "s") + ") · wait for the bite", 2500);
-                hook.setWaitTime(30, 60); // the call answers in two to three seconds
             }
         }
-        if (call == null) {
-            double f = r.waitFactor(lure, level);
-            if (f < 1.0) {
-                int min = Math.max(1, (int) Math.round(hook.getMinWaitTime() * f));
-                int max = Math.max(min, (int) Math.round(hook.getMaxWaitTime() * f));
-                hook.setWaitTime(min, max);
-            }
-        }
+        if (call != null) hook.setWaitTime(30, 60); // the call answers in two to three seconds
+        else if (factor < 1.0) hook.setWaitTime(min, max);
         UUID old = castOf.put(id, hook.getUniqueId());
         if (old != null && !old.equals(hook.getUniqueId())) { casts.remove(old); outcomes.remove(old); } // a bobber gone without an event
-        casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen));
+        casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen, min, max));
+    }
+
+    /** Why a call can't be answered now (one creature per player, the server's limit), or null. */
+    private String callBlocked(UUID player, FishingJournal j, FishingRules r) {
+        if (j.active() != null || fightOf.containsKey(player)) return "§cFinish your fight first: one creature at a time.";
+        if (out.get() >= r.calls().server()) return "§cThe waters are crowded: too many creatures are out on the server. Try again soon.";
+        return null;
     }
 
     /** A bite (the bobber's thread): a call surfaces its creature; otherwise the bite's species is rolled and a rare one shows. */
@@ -247,7 +262,19 @@ public final class Fishing implements Listener {
         Cast c = casts.get(hook.getUniqueId());
         if (c == null) return;
         bites.increment();
-        if (c.call != null && !c.calledOut && summon(hook, r, c)) return;
+        if (c.call != null && !c.calledOut && !c.callFailed) {
+            String why = summon(hook, r, c);
+            if (why == null) return;
+            // Unanswered (a fight already out, the server's limit, a spawn refused): this quick bite brings nothing, the cast
+            // fishes on at its usual pace, and nothing is spent.
+            c.callFailed = true;
+            refused.increment();
+            e.setCancelled(true);
+            hook.setWaitTime(c.minWait, c.maxWait);
+            Player p = Bukkit.getPlayer(c.player);
+            if (p != null && Bukkit.isOwnedByCurrentRegion(p)) hint(p, why + " §7You fish on as usual.", 2500);
+            return;
+        }
         Location at = hook.getLocation();
         FishingRules.Moment m = moment(r, at);
         c.water = m.water();
@@ -317,26 +344,35 @@ public final class Fishing implements Listener {
         boolean forceTreasure = f != null && "treasure".equals(f.kind());
         boolean forceSpecies = f != null && "species".equals(f.kind());
         if (kind == Kind.VANILLA_TREASURE && !forceSpecies && !forceTreasure) {
-            o = new Outcome(Kind.VANILLA_TREASURE, null, null, 0, x.treasure(), water, level, c, f);
+            o = new Outcome(Kind.VANILLA_TREASURE, null, null, 0, x.treasure(), water, level, c, f, 0);
         } else if (forceTreasure || (r.treasureSense(level) && hook.isInOpenWater() && rnd.nextDouble() < treasureChance)) {
             FishingRules.Treasure t = forceTreasure && f.id() != null ? r.treasureById(f.id()) : r.rollTreasure(level, rnd.nextDouble());
             GatheringCatalog.ItemDef def = t == null ? null : service.catalog().item(t.item());
-            if (def == null) o = new Outcome(kind, null, null, 0, kind == Kind.FISH ? x.fish() : x.junk(), water, level, c, f);
+            if (def == null) o = new Outcome(kind, null, null, 0, kind == Kind.FISH ? x.fish() : x.junk(), water, level, c, f, 0);
             else {
                 item.setItemStack(GearItems.makeItem(def, 1));
-                o = new Outcome(Kind.TREASURE, null, t, 0, t.xp() >= 0 ? t.xp() : x.of(t.rarity()), water, level, c, f);
+                o = new Outcome(Kind.TREASURE, null, t, 0, t.xp() >= 0 ? t.xp() : x.of(t.rarity()), water, level, c, f, 0);
             }
         } else {
             FishingRules.Species s = forceSpecies ? r.speciesById(f.id())
                     : c != null && c.rolled ? c.pending
                     : r.rollSpecies(new FishingRules.Moment(water, m.biome(), m.night(), m.rain(), m.thunder()), level, rnd.nextDouble(), rnd.nextDouble());
             GatheringCatalog.ItemDef def = s == null ? null : service.catalog().item(s.item());
-            if (def == null) o = new Outcome(kind, null, null, 0, kind == Kind.FISH ? x.fish() : x.junk(), water, level, c, f);
+            if (def == null) o = new Outcome(kind, null, null, 0, kind == Kind.FISH ? x.fish() : x.junk(), water, level, c, f, 0);
             else {
                 double kg = FishingRules.kg(s, rnd.nextDouble());
                 item.setItemStack(GearItems.makeItem(def, 1));
-                o = new Outcome(Kind.SPECIES, s, null, kg, s.xp() >= 0 ? s.xp() : x.of(s.rarity()), water, level, c, f);
+                o = new Outcome(Kind.SPECIES, s, null, kg, s.xp() >= 0 ? s.xp() : x.of(s.rarity()), water, level, c, f, 0);
             }
+        }
+        // Fortune (fish): one more of the same fish, never of treasure or junk; from Twin Catch it can come twice. They go into
+        // the caught stack: the catch is thrown to the player after this event, so separate items would stay at the bobber.
+        if ((o.kind() == Kind.SPECIES || o.kind() == Kind.FISH) && c != null && c.fortune > 0 && rnd.nextDouble() < c.fortune) {
+            int extra = 1 + (r.twinCatch(level) && rnd.nextDouble() < c.fortune ? 1 : 0);
+            ItemStack stack = item.getItemStack();
+            stack.setAmount(Math.min(stack.getMaxStackSize(), stack.getAmount() + extra));
+            item.setItemStack(stack);
+            o = new Outcome(o.kind(), o.species(), o.treasure(), o.kg(), o.xp(), o.water(), o.level(), o.cast(), o.force(), extra);
         }
         outcomes.put(hook.getUniqueId(), o);
     }
@@ -353,7 +389,8 @@ public final class Fishing implements Listener {
                 if (o != null && !e.isCancelled() && e.getCaught() instanceof Item item) pay(e.getPlayer(), o, item, c);
             }
             case FISHING -> { if (e.isCancelled()) { casts.remove(hook); castOf.remove(who, hook); } }
-            case REEL_IN, FAILED_ATTEMPT, IN_GROUND, CAUGHT_ENTITY -> { casts.remove(hook); outcomes.remove(hook); castOf.remove(who, hook); }
+            // FAILED_ATTEMPT (a missed bite) keeps the cast: the bobber stays in the water and the next bite rolls again.
+            case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> { casts.remove(hook); outcomes.remove(hook); castOf.remove(who, hook); }
             default -> { }
         }
     }
@@ -398,27 +435,10 @@ public final class Fishing implements Listener {
             }
             default -> { }
         }
-        // Fortune (fish): one more of the same fish, never of treasure or junk; from Twin Catch it can come twice.
-        if ((o.kind() == Kind.SPECIES || o.kind() == Kind.FISH) && c != null && c.fortune > 0) {
-            int extra = 0;
-            ThreadLocalRandom rnd = ThreadLocalRandom.current();
-            if (rnd.nextDouble() < c.fortune) {
-                extra++;
-                if (r.twinCatch(o.level()) && rnd.nextDouble() < c.fortune) extra++;
-            }
-            for (int i = 0; i < extra; i++) {
-                ItemStack one = item.getItemStack().clone();
-                one.setAmount(1);
-                Item more = item.getWorld().dropItem(item.getLocation(), one);
-                more.setVelocity(item.getVelocity());
-                more.setPickupDelay(0); // as the catch itself: dropItem's half-second delay let it fly past the player
-                if (item.getOwner() != null) more.setOwner(item.getOwner());
-                extras.increment();
-            }
-            if (extra > 0) {
-                p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.8f);
-                line = (line == null ? "§f◆ Fish" : line) + " §a+" + extra;
-            }
+        if (o.extra() > 0) { // Fortune's extra fish, in the caught stack (decide)
+            extras.add(o.extra());
+            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.8f);
+            line = (line == null ? "§f◆ Fish" : line) + " §a+" + o.extra();
         }
         if (line != null) hint(p, line, 1800);
         if (xp > 0) skills.addXpAndCheckLevelUp(r.skill(), xp, p);
@@ -491,25 +511,36 @@ public final class Fishing implements Listener {
 
     /**
      * The bite of a call (the bobber's thread): the creature surfaces at the bobber and the lure is spent, both here, on the
-     * thread that owns the player and the bobber. False (nothing spent) when it can't happen now.
+     * thread that owns the player and the bobber. Null when it surfaced; otherwise why not (nothing spent).
      */
-    private boolean summon(FishHook hook, FishingRules r, Cast c) {
+    private String summon(FishHook hook, FishingRules r, Cast c) {
         Player p = Bukkit.getPlayer(c.player);
-        if (p == null || !Bukkit.isOwnedByCurrentRegion(p) || !Bukkit.isOwnedByCurrentRegion(hook.getLocation())) return false;
+        if (p == null || !Bukkit.isOwnedByCurrentRegion(p) || !Bukkit.isOwnedByCurrentRegion(hook.getLocation())) return "§7Nothing answered the call.";
         FishingJournal j = journal(p);
         FishingRules.Creature cr = r.creature(c.chosen ? c.call : r.lureFor(j.lures().keySet(), moment(r, hook.getLocation()).water(), c.call));
-        if (cr == null || j.lures(cr.id()) <= 0) return false;
-        boolean busy = j.active() != null || fightOf.containsKey(p.getUniqueId()); // one creature at a time (the journal holds one fight)
-        if (busy || fightOf.size() >= r.calls().server()) {
-            refused.increment();
-            hint(p, busy ? "§cFinish your fight first: one creature at a time."
-                    : "§cThe waters are crowded: too many creatures are out on the server. Try again soon.", 2500);
-            return false;
-        }
+        if (cr == null || j.lures(cr.id()) <= 0) return "§7Nothing answered the call: no lure for it.";
+        String blocked = callBlocked(p.getUniqueId(), j, r);
+        if (blocked != null) return blocked;
         EntityType type;
-        try { type = EntityType.valueOf(cr.entity()); } catch (IllegalArgumentException ex) { return false; }
+        try { type = EntityType.valueOf(cr.entity()); } catch (IllegalArgumentException ex) { return "§7Nothing answered the call."; }
         Class<? extends Entity> cls = type.getEntityClass();
-        if (cls == null || !LivingEntity.class.isAssignableFrom(cls)) return false;
+        if (cls == null || !LivingEntity.class.isAssignableFrom(cls)) return "§7Nothing answered the call.";
+        // The server's limit, exactly: a place is reserved before the spawn and given up if the creature doesn't come.
+        if (out.incrementAndGet() > r.calls().server()) {
+            out.decrementAndGet();
+            return "§cThe waters are crowded: too many creatures are out on the server. Try again soon.";
+        }
+        boolean surfaced = false;
+        try {
+            surfaced = surface(p, hook, r, c, j, cr, cls);
+            return surfaced ? null : "§7Nothing answered the call.";
+        } finally {
+            if (!surfaced) out.decrementAndGet();
+        }
+    }
+
+    /** The creature spawns at the bobber and the lure is spent; false when the spawn didn't happen (nothing spent). */
+    private boolean surface(Player p, FishHook hook, FishingRules r, Cast c, FishingJournal j, FishingRules.Creature cr, Class<? extends Entity> cls) {
         Location at = hook.getLocation();
         int worldLevel = worldLevel(at);
         Manager.CombatConfig cc = plugin.getCombatConfig();
@@ -554,7 +585,7 @@ public final class Fishing implements Listener {
             }
         });
         long now = System.currentTimeMillis();
-        if (!mob.isValid() || !j.spend(cr.id(), mob.getUniqueId(), now)) { mob.remove(); return false; }
+        if (!mob.isValid() || !j.spend(cr.id(), mob.getUniqueId(), now)) { mob.remove(); return false; } // e.g. another plugin refused the spawn
         save(p, j);
         c.calledOut = true;
         Fight f = new Fight(owner, mob.getUniqueId(), cr.id(), elite, level, now);
@@ -616,6 +647,7 @@ public final class Fishing implements Listener {
     private void end(Fight f) {
         fights.remove(f.entity);
         fightOf.remove(f.owner, f.entity);
+        out.decrementAndGet();
         ScheduledTask t = f.task;
         if (t != null) t.cancel();
     }
@@ -721,9 +753,10 @@ public final class Fishing implements Listener {
         if (!j.finish(entity)) return;
         won.increment();
         FishingRules.Creature cr = r.creature(f.creature);
-        boolean first = cr != null && j.defeat(cr.id());
+        boolean pays = XpIntegrity.earns(p); // an owner who switched to creative mid-fight: the win counts, it pays nothing
+        boolean first = pays && cr != null && j.defeat(cr.id());
         save(p, j);
-        if (cr == null) return;
+        if (cr == null || !pays) return;
         var cfg = plugin.getAttributesConfig() != null ? plugin.getAttributesConfig().killXp() : null;
         int fishing = skills.getSkillLevel(p, r.skill());
         double xp = cfg == null ? 0 : Attributes.KillXp.compute(f.level, cr.xpMultiplier(), fishing, cfg) * cr.fishingShare()
