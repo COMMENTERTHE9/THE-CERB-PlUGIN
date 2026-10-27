@@ -330,6 +330,23 @@ Each 6x step follows the same rule: a performance baseline first, at most two ne
 | 7 | **Roster** | Keep all 25 with the §3 refinements (Scout as mobility support; Arcanist as the advanced magic class). Confirm Warrior, Mage and Duelist for the prototype. |
 | 8 | **Weapon display names** | The §4 table (Straight Sword, Saber, Quarterstaff, Warhammer, Runeblade, Furnace Hammer, Essence Repeater…). The owner prefers Furnace Hammer and Runeblade (2026-10-25); settled when the weapons are built. |
 
+**The owner's answers (2026-10-27; `docs/DECISIONS.md` 15–20): the recommended foundation is accepted.**
+- **1:** one unified system, with Manuals as an unlock source.
+- **2:** both control schemes stay, Quick Keys and Click Combos; the owner plays R-R-R combos.
+- **3:** class ranks stay the main progression, with no mandatory points or respec. Some advanced abilities may also need:
+  - a class rank or a skill level;
+  - a boss or special enemy defeated;
+  - a quest or challenge;
+  - an NPC, an item or a training manual;
+  - a location or a mastery trial.
+
+  Requirements are shown to the player, and **a locked ability never stops the class from gaining ranks**. Only rank and skill-level requirements are built (`abilities.yml requires:`). The other kinds come with their systems; the requirement list keeps room for them.
+- **4:** the slots as recommended.
+- **5:** abilities in PvP stay off for now, not permanently (`docs/ROADMAP.md` → PvP).
+- **6:** classes open from skill progression, and a player may develop several classes.
+- **7:** keep the roster of about 25 classes; no rush to add more.
+- **8:** the naming direction is approved; Furnace Hammer and Runeblade stay.
+
 ## 11. Prototype status (Step 5, 2026-10-25)
 
 **Built and verified in game** (`tools/playtest/classes.js`, 91 checks on a Folia 1.21.11 sandbox; `docs/STATUS.md`):

@@ -72,7 +72,68 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
-## Progression Depth & Woodcutting (owner, 2026-10-26, approved): the current milestone
+## Fishing, and respecting the player's time (owner, 2026-10-27, approved): the current milestone
+
+**Why.** The owner settled all 23 open decisions (`docs/DECISIONS.md`) and found Woodcutting's Felling "fantastic", the feeling every discipline should reach. Fishing is next, built to the same standard, under a new guiding philosophy.
+
+**Principle: respect the player's time (approved, permanent; full text in `docs/DECISIONS.md`).**
+- Automation is acceptable. Exploiting bugs, duplicating items, destroying the economy or harming server performance is not.
+- AFK farming, macros for ordinary actions and clever farms are legitimate, and their normal rewards don't disappear.
+- No inactivity timers, no anti-macro detection, no movement or interaction challenges.
+- Duplication, fabricated reward events, crashes and uncontrolled entity spawning stay protected against.
+- Active play earns more through challenges, discoveries, special encounters and opportunities, never by making passive play worthless.
+- It guides Fishing first, then Mining, Farming, Woodcutting, combat training, crafting and every other discipline. The existing anti-farming rules are reviewed against it; the conflicting ones go to the owner with replacements, none removed automatically.
+
+**In order:**
+1. **Record the decisions and the philosophy** (`docs/DECISIONS.md`, this section, `CLAUDE.md`).
+2. **The small approved changes:**
+   - Spell Weaving 5 opens the Mage (decision 4, option A);
+   - mob arrows and fireballs scale with mob level and tier, with caps, tested against players of different levels (decision 10);
+   - `lib/DTR-1.0.0.jar` and `libs/Volor.jar` deleted once nothing is found to depend on them (decision 23).
+3. **Fishing, a complete loop** (`docs/design/FISHING.md`):
+   - satisfying from the first cast;
+   - meaningful XP and attributes;
+   - increasingly valuable discoveries and rewards;
+   - milestones that unlock new capabilities;
+   - different fish, different waters, rare encounters;
+   - rod upgrades and useful resources;
+   - real sea-creature battles: earned by any legitimate catch as a banked encounter, started when the player is ready, level-scaled, through the mob levels, combat engine, classes and abilities;
+   - the same normal catch rewards for manual and automated fishing;
+   - no uncontrolled mob spawning, no serious performance cost.
+
+   It starts as a focused, playable version on the existing world and the gathering and combat systems, measured before and after. **Tested:**
+   - ordinary fishing;
+   - automation;
+   - storing and redeeming rare encounters;
+   - inventory edge cases;
+   - persistence;
+   - combat rewards;
+   - economy and duplication boundaries.
+
+   An independent agent reviews the important changes.
+4. **Proposals for the owner, not changes** (they must not delay Fishing):
+   - the anti-farming review (`docs/AUTOMATION_REVIEW.md`);
+   - environmental damage with representative calculations (`docs/design/ENVIRONMENTAL_DAMAGE.md`);
+   - the own-skill XP bonus investigation (`docs/design/XP_EFFICIENCY.md`).
+5. **Report:** full results, manual playtest instructions, and the exact Git commands to update and launch the owner's server.
+
+**Rules:**
+- Performance first: measure before and after.
+- Protect the owner's world and database: development and automated tests stay in the sandbox.
+- Routine development and testing go ahead under the recorded decisions. Major new architectural choices, destructive changes and substantial new resource costs go to the owner.
+- No automatic merge into `master`.
+- Not redesigning every skill at once.
+
+**Afterwards (approved, not started):**
+- Farming, ideally together with Cooking.
+- A Folia compatibility milestone: upgrading to a supported version with backups, plugin testing and a migration plan (decision 21). The owner's server and world are never upgraded automatically.
+- Waiting for their milestones:
+  - flat quality bonuses (equipment balancing);
+  - the defense bar's capacity limit (the first bosses);
+  - splitting Weapon Mastery (weapons);
+  - a craftable beginner focus (magic equipment).
+
+## Progression Depth & Woodcutting (owner, 2026-10-26, approved): done, 2026-10-26
 
 **Why.** The owner playtested Mining → Smithing → Equipment and the XP display ("taking us in the right direction"). Next: every skill becomes a discipline worth mastering, progression feels alive, and gathering becomes deep, starting with Woodcutting. The quality target is the gameplay depth of Hypixel SkyBlock's foraging updates (0.23, June 2025; 0.27, August 2026). They are studied for design principles only: Cerberus copies no names, assets, maps, menus, formulas or implementations. Comparable depth comes over time, not in one milestone.
 
@@ -137,7 +198,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Later (owner's direction):** Farming and Fishing next, then every remaining profession, each as deep as Mining and Woodcutting. The long-term aim is that depth across combat, mining, woodcutting, fishing, farming, hunting, crafting and the other disciplines: 35 disciplines worth mastering, not 35 XP bars.
 
-### The next loop: proposal (2026-10-26, waiting for the owner's choice)
+### The next loop: proposal (2026-10-26; decided 2026-10-27: Fishing, with the owner's changes)
 
 **Recommendation: Fishing first, then Farming together with Cooking.**
 - **Fishing has a live problem today.** Every fish caught has a flat 5% chance to spawn a Rare Sea Monster on the player, with no level, no cap and no idle check (`CerberusPlugin.onPlayerFish`, `docs/SKILL_AUDIT.md`). An AFK fish farm keeps spawning them, and they pay full kill XP. Building Fishing properly fixes that.
@@ -162,14 +223,10 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 6. **Equipment:** rare materials from creatures upgrade rods (lure speed, treasure) through the same `upgrades:` data.
 7. **Data:** catches, waters and creatures in config, proven by a synthetic catch and creature; a fishing load in `load.js`, measured before and after.
 
-**Decisions for you:**
-1. Fishing or Farming next (recommended: Fishing).
-2. Sea creatures:
-   - **(recommended)** real fights with levelled mobs from `mobs.yml`, kill XP to the weapon's skill plus a Fishing share;
-   - or a catch-only reward with no fight.
-3. AFK fishing:
-   - **(recommended)** pays nothing and spawns nothing;
-   - or allowed at a small fraction.
+**The owner's answers (2026-10-27, `docs/DECISIONS.md` 1–3):**
+1. Fishing first; Farming next, ideally together with Cooking.
+2. Real, level-scaled sea-creature fights, earned as banked encounters that any legitimate catch can earn and the player starts when ready.
+3. AFK fishing is allowed with full normal XP and catch rewards; no inactivity timers. This replaces items 2–3 of the loop above ("AFK farms … pay nothing and call no creatures").
 
 ## Gameplay Depth & Systems Completion (owner, 2026-10-25, approved): done, 2026-10-25
 

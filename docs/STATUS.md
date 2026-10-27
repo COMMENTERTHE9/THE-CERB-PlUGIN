@@ -1,6 +1,6 @@
 # Cerberus — Project Status
 
-*Last updated 2026-10-26 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
+*Last updated 2026-10-27 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
 **Current milestone:** Steps 0–2 of `docs/ROADMAP.md` are done and verified in game on the cloud sandbox:
 - **Step 0**, the owner's decisions: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis.
@@ -28,6 +28,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10).
 - **Done:** **Woodcutting**, the second complete gathering loop: eleven woods, Felling and the Canopy as milestone techniques, heartwood upgrades, discoveries, and protection for builds, claims and Folia regions (section "Done: Woodcutting" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §11).
 - **Your Woodcutting playtest (2026-10-26):** trees grown from saplings now pay Woodcutting XP (80%, with bone meal 50%; placed logs nothing), and Smithing grows Fortitude and a new wear resistance (section "Done: grown trees and Smithing's growth" below; checklist §12). **Next:** your playtest, then Farming or Fishing, one complete loop.
+- **2026-10-27:** you settled all 23 open decisions (`docs/DECISIONS.md`) and set the guiding philosophy, *respect the player's time*. **Current milestone: Fishing** (`docs/ROADMAP.md`).
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -822,62 +823,9 @@ The way into the Mage is still yours to decide (Decisions, item 14, with options
 
 ## Decisions
 
-**Made on 2026-10-25:**
-- **Merging:** a reviewed pull request into `master` after your playtest; never merged automatically.
-- **PvP: off for now, not permanent.** Every PvP limit (attributes, speed bonuses, abilities, class XP) is temporary: not turned on yet, not decided against. A later PvP pass turns them all on. What is off and where each switch is: `docs/ROADMAP.md` → PvP.
-- **Damage-reduction cap:** 75% kept, applied to resistance × armor (built).
-- **Weapon Mastery:** its all-weapon bonus stays (analysed).
-- **A–E** (speed in PvP, shelves, Survival fire, projectile XP, spears): decided and built (Step 2).
+Every decision the owner has made, with its state, is in **`docs/DECISIONS.md`** (the register: check it before asking anything). On 2026-10-27 the owner settled all 23 decisions that were open here, and set the guiding philosophy, **respect the player's time**: automation and AFK play are legitimate; duplication, fabricated rewards, economic damage, crashes and uncontrolled spawning are not.
 
-**Made after the controls playtest (2026-10-25):**
-- **Both control schemes stay, permanently:** quick keys and click combos, each player's own choice. The choice is saved, switching never touches progress or equipped abilities, and both stay supported and tested.
-- **The owner prefers click combos** (R R R). The server default stays quick keys until broader player feedback (`classes.yml controls.default-scheme`).
-- **The next milestone is Gameplay Depth & Systems Completion** (`docs/ROADMAP.md`): the 35-skill audit, then Mining → Smithing → Equipment. The six next classes wait, not cancelled.
-- **Movement: 1.2 s at most, from now on.** Every movement ability (a dash or a blink), and the lockout they share, comes back in 1.2 s or less; Blink well under half a second. Built (above). I added one guard to it: Charge's stun and strike, and Lunge's strike, keep their old 10 s and 7 s. To have them strike every 1.2 s, delete the two `strike-cooldown:` lines in `abilities.yml`.
-- **Real-time XP display** (requested): XP gains shown briefly on the HUD, repeated gains merged, combat and ability messages first, with Compact / Detailed / Off settings. A small task in this milestone (`docs/ROADMAP.md`).
-
-**Still yours:**
-1. **Big hits and the defense bar.** One hit larger than about 430 (for a 300-point bar) is still taken at the bar's full rate, so the bar absorbs more than it holds. Today only extreme hits reach that. Recommendation: limit the bar to its points when the first bosses with big telegraphed hits arrive (`ATTRIBUTES_ENGINE.md`).
-2. **Weapon Mastery's double role.** Recommendation: split it at the weapons and classes design step (Step 4), so every weapon needs two skills for 125 Power (`ATTRIBUTES_ENGINE.md`).
-3. ~~Where gathering and crafting go~~: decided (Gameplay Depth first) and the first loop is built.
-4. **Folia version.** 1.21.11 left PaperMC support on 2026-10-14 (current: 26.x). Recommend planning the upgrade now that Attributes v1 is in.
-5. **Labels on all mobs.** Keep (current choice from June), or label hostiles only to save entities?
-6. **`lib/DTR-1.0.0.jar` and `libs/Volor.jar`.** Now unused by the build. Delete them from this repo, or keep them as references?
-7. **Ranged mobs ignore mob level.** Melee mob damage scales with the mob's level and tier (`combat.yml mob-damage-scaling`); arrows, fireballs and other mob projectiles do vanilla damage at any level. A level-100 skeleton shoots like a level-1 one. Recommendation: scale mob projectiles the same way, as a separate small change, because it makes ranged mobs much more dangerous.
-8. ~~Idle damage farms~~: built as recommended (2026-10-26, "Done: XP integrity" above). Survival and Heavy Armor Mastery stop after a minute without any input, and each mob's hits pay them at most what its kill pays (`attributes.yml xp-integrity`).
-9. **Environmental damage is vanilla-sized.** Falls, fire and lava deal vanilla amounts against a 100–300 health pool: lava costs 1–4% of health per hit where vanilla's 20 hearts lose 20%. Fire resistance now lowers that further. If lava and falls should stay dangerous, scale environmental damage with max health; that is a separate design decision.
-10. **Classes and abilities:** eight decisions in `docs/design/CLASSES.md` §10, each with a recommendation:
-    - abilities = the designed Techniques;
-    - how to cast;
-    - unlock by rank;
-    - slot counts;
-    - abilities in PvP;
-    - skill-based class entry;
-    - the roster;
-    - weapon display names.
-
-    The prototype uses the recommendations until you decide, with one exception: abilities in PvP (item 5) are off for now. That is not permanent: PvP gets turned on later (`docs/ROADMAP.md` → PvP). How to cast (item 2) is now built as two schemes, see item 11.
-11. ~~The default control scheme~~: decided (above).
-12. **Execute needs Momentum** (built, reversible). At 0 Momentum it was a plain hit that spent its 8 s cooldown, so it is now refused and spends nothing. To keep the old behaviour, set `needs: 0` on its resource effect.
-13. ~~Cast XP from a mob that never dies~~: built as recommended (each mob pays cast XP only up to its kill XP; above).
-14. **A way into magic for normal players** (`docs/SKILL_AUDIT.md`; reviewed again on 2026-10-26 with the XP fixes). The Mage opens at Intelligence 5, and only spells train Intelligence. Spells come from the Mage itself or the admin-only Fireball Wand, so a normal player can never open it. Magic XP is now paid only when a spell reaches an enemy (built, above). The options:
-    - **A. Spell Weaving 5 opens the Mage (recommended).** Kills with a focus in hand (a stick, blaze rod, breeze rod or end rod: `skills.yml`) already train Spell Weaving. Any player gets there by fighting with one, as the Warrior opens at Blade Mastery 5: about 60 kills of level-1 mobs, fewer of stronger ones. From then on the Mage's spells train Intelligence. It is one line in `classes.yml` (`entry: { Spell Weaving: 5 }`), and a class once open stays open.
-    - **B. Focus kills also train Intelligence** (a share of each kill), keeping Intelligence 5. Also cheap, but Intelligence would come from hitting mobs with a stick, and one kill would pay two skills.
-    - **C. A craftable apprentice focus** that casts a weak spell from the start; its hits train Intelligence. It fits best, but it is new content (an item, a recipe, a spell to tune), suited to the later magic-gear step.
-    - **D. No gate:** the Mage open to everyone. Simplest, but it breaks "skills open classes".
-
-    My recommendation: A now (one line, reversible), C later with magic gear. Nothing changes until you decide.
-15. **Lifesteal for everyone from level 1.** Weapon Mastery gives every player 2.7% lifesteal on mob hits from the start, the only healing in a fight. Keep it, or start it at 0 and let it grow with the skill?
-16. **Blink chaining.** At 0.4 s and 20 Essence, Blink costs exactly the base Essence regeneration, so it can chain indefinitely at about 15 blocks a second (like a teleport item limited only by mana). Keep it, or raise its Essence cost so a chain runs dry after a few seconds?
-17. **Gathering numbers** (`resources.yml`, all yours to tune): Mining XP per block, the weak-resource quarter, Fortune's 0.5% per point and 50% cap, the quality odds and bonuses.
-    - **Pace:** strip mining by hand (about 2 blocks a second) pays about 8,000 Mining XP an hour at level 1, so level 10 (17,900 XP) takes about 2 hours, the same order as fighting.
-    - **The fast case:** an Efficiency V pickaxe with a Haste II beacon breaks stone instantly, 10 to 20 blocks a second. That is 36,000 to 72,000 Mining XP an hour until level 21 (152,000 XP, 2 to 4 hours), then a quarter of it.
-    - **Recommendation:** keep it (it needs an end-game beacon), or pay stone and deepslate 0.5 XP if you want it slower.
-18. ~~Gathering speed for every block~~: settled by Woodcutting as `SKILL_PROGRESSION.md` proposed. With an axe in hand, Woodcutting's chopping speed applies; with anything else, Mining's gathering speed (dirt and sand included until Excavation has its own).
-19. ~~Iron and gold farms and Smithing~~: built as a protection after the review (above). Gear forged from iron, gold or copper you didn't smelt yourself is plain. To pay for any metal instead, empty the list: `forging.needs-smelted: []`.
-20. **Quality bonuses don't depend on the metal.** A Masterwork golden chestplate gives the same +4 Fortitude as a Masterwork netherite one (the armor itself is much weaker). Keep the flat bonuses, or scale them by material?
-21. **Woodcutting numbers** (`resources.yml`, `attributes.yml`, all yours to tune):
-    - **Pace:** cutting oak and birch by hand pays about 6,000 XP an hour at the start, like mining, so level 10 (Felling) takes about 3 hours. Felling then speeds it up a lot: a 6-log tree comes down in one cut.
-    - **Felling** sizes (6 / 24 / 64 / 128 logs at 10 / 25 / 50 / 100) and the rest (0.3 s per log, halved at 100).
-    - **Heartwood:** 0.2% (oak) to 1.5% (Nether stems) per log, three times that at 100: a beginner finds one in about 500 oak logs, a master in about 170. The grip and limbs give +8 speed points each.
-    - **Recommendation:** play it as it is and tell me what feels slow or too generous.
+**Waiting for the owner (proposals, nothing changes until approved):**
+- the anti-farming rules that conflict with the philosophy, with replacements (`docs/AUTOMATION_REVIEW.md`);
+- environmental damage, with representative calculations (`docs/design/ENVIRONMENTAL_DAMAGE.md`);
+- the own-skill XP bonus investigation (`docs/design/XP_EFFICIENCY.md`).
