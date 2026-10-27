@@ -99,6 +99,10 @@ public final class GatheringListener implements Listener {
             if (!types.isEmpty()) bonus.put(p.getUniqueId(), new Bonus(ev, types));
         }
         service.payXp(p, ev);
+        // A natural resource cut with a tool that fits it pays in survival: in creative, the HUD says why it didn't.
+        if (ev.method() == GatherRules.Method.CREATIVE && !ev.placed() && (ev.toolFits() || ev.weakTool())) {
+            service.withheld(p, ev.resource().skill(), Manager.XpIntegrity.whyNot(p));
+        }
         Woodcutting w = woodcutting;
         if (w != null && ev.resource().isTree()) w.afterCut(p, ev); // before the unmark: it still reads the cut as placed or not
         if (service.placedBlocks() != null) service.placedBlocks().unmark(b);

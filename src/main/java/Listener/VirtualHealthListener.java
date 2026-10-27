@@ -425,6 +425,26 @@ public class VirtualHealthListener implements Listener {
         return scale != null && scale > 1.0 && Double.isFinite(scale) ? dmg / scale : dmg;
     }
 
+    /**
+     * The weapon behind a shot, as skills.yml names it: a thrown trident, an arrow's bow or crossbow, a crossbow's
+     * firework rocket (one shot at an angle; a rocket used on a block or for an elytra boost flies straight up). Null
+     * for anything else (a snowball, a potion). Kill credit uses it, so a kill after a switch to a sword stays the shot's.
+     */
+    static String firedBy(Projectile projectile) {
+        if (projectile instanceof org.bukkit.entity.Trident) return "TRIDENT";
+        if (projectile instanceof org.bukkit.entity.AbstractArrow arrow) {
+            org.bukkit.inventory.ItemStack w = arrow.getWeapon();
+            return arrowWeapon(w == null ? null : w.getType());
+        }
+        if (projectile instanceof org.bukkit.entity.Firework rocket && rocket.isShotAtAngle()) return "CROSSBOW";
+        return null;
+    }
+
+    /** An arrow's weapon: the crossbow that fired it, else a bow (an arrow no weapon fired, a command's, counts as one). */
+    static String arrowWeapon(org.bukkit.Material weapon) {
+        return weapon == org.bukkit.Material.CROSSBOW ? "CROSSBOW" : "BOW";
+    }
+
     private void handleProjectileHit(Projectile projectile, Entity target, EntityDamageEvent event) {
         double dmg = event.getDamage();
         Entity shooter = projectile.getShooter() instanceof Entity e ? e : null;
@@ -507,10 +527,11 @@ public class VirtualHealthListener implements Listener {
                 hit = hitPool(target, dmg);
                 event.setDamage(hit.vanillaDamage());
             }
-            // The kill is the bow's or the trident's, whatever is in hand when it lands.
+            // The kill is the weapon's that fired the shot, whatever is in hand when it lands.
             Manager.XpIntegrity xi = xpIntegrity;
-            if (xi != null && shooter instanceof Player p && weapon != null && target instanceof org.bukkit.entity.Mob mob && hit.dealt() > 0) {
-                xi.creditHit(p, mob, xi.skillOf(weapon == Attributes.WeaponClass.TRIDENT ? "TRIDENT" : "BOW"));
+            if (xi != null && shooter instanceof Player p && target instanceof org.bukkit.entity.Mob mob && hit.dealt() > 0) {
+                String firedBy = firedBy(projectile);
+                if (firedBy != null) xi.creditHit(p, mob, xi.skillOf(firedBy));
             }
         }
     }

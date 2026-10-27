@@ -49,4 +49,10 @@ class XpLineTest {
         assertEquals(XpLine.Mode.DETAILED, XpLine.Mode.parse(" Detailed "));
         assertNull(XpLine.Mode.parse("loud"));
     }
+
+    @Test
+    void aWithheldNoticeNamesTheSkillAndWhy() {
+        assertEquals("§7No §fFishing§7 XP in creative mode", XpDisplay.withheldLine("Fishing", "in creative mode"));
+        assertEquals("§7No §fRanged Precision§7 XP from mobs out of spawn eggs", XpDisplay.withheldLine("Ranged Precision", "from mobs out of spawn eggs"));
+    }
 }

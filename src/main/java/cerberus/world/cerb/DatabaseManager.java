@@ -77,7 +77,7 @@ public class DatabaseManager {
                 CREATE TABLE IF NOT EXISTS player_skills (
                     custom_id   TEXT,
                     skill_name  TEXT,
-                    skill_level INTEGER DEFAULT 0,
+                    skill_level INTEGER DEFAULT 1,
                     skill_xp    INTEGER DEFAULT 0,
                     PRIMARY KEY (custom_id, skill_name)
                 )""");
@@ -198,9 +198,10 @@ public class DatabaseManager {
      * Initialize skill rows synchronously — called from background DB thread,
      * must complete before loadSkillLevels reads them.
      */
+    /** A new character's skill rows: every skill at level 1 with no XP (versions before 2026-10-27 wrote level 0). */
     private void initializePlayerSkills(String customId) {
         String sql = "INSERT INTO player_skills(custom_id,skill_name,skill_level,skill_xp) "
-                + "VALUES(?,?,0,0) ON CONFLICT(custom_id,skill_name) DO NOTHING";
+                + "VALUES(?,?," + Skills.SkillProgression.MIN_LEVEL + ",0) ON CONFLICT(custom_id,skill_name) DO NOTHING";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             for (String skill : ALL_SKILL_NAMES) {

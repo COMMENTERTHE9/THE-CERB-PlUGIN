@@ -393,6 +393,9 @@ public final class Fishing implements Listener {
                 Cast c = casts.remove(hook);
                 castOf.remove(who, hook);
                 if (o != null && !e.isCancelled() && e.getCaught() instanceof Item item) pay(e.getPlayer(), o, item, c);
+                else if (o == null && !e.isCancelled() && e.getCaught() instanceof Item && !XpIntegrity.earns(e.getPlayer()) && rules().enabled()) {
+                    skills.xpWithheld(e.getPlayer(), rules().skill(), XpIntegrity.whyNot(e.getPlayer())); // a vanilla catch in creative
+                }
             }
             case FISHING -> { if (e.isCancelled()) { casts.remove(hook); castOf.remove(who, hook); } }
             // FAILED_ATTEMPT (a missed bite) keeps the cast: the bobber stays in the water and the next bite rolls again.

@@ -128,12 +128,25 @@ public class SkillManager {
     /** Every XP award that added something: the real-time XP display (Skills.XpDisplay). Called on the awarding thread. */
     public interface XpListener {
         void gained(Player player, String skill, long amount, SkillProgression.Result after);
+
+        /** {@code player} did something that trains {@code skill} and it paid nothing on purpose, {@code why} ("in creative mode"). */
+        default void withheld(Player player, String skill, String why) {}
     }
 
     private volatile XpListener xpListener;
 
     public void setXpListener(XpListener listener) {
         this.xpListener = listener;
+    }
+
+    /**
+     * An action that trains {@code skill} paid nothing on purpose (creative mode, a mob from a spawn egg): the XP stays
+     * withheld and the XP display says why, so "no progress" never looks like a fault. The rules stay where they are
+     * (Manager.XpIntegrity, the sources); this only tells the player. Any thread.
+     */
+    public void xpWithheld(Player player, String skill, String why) {
+        XpListener feed = xpListener;
+        if (feed != null && player != null && skill != null && !skill.isEmpty() && why != null) feed.withheld(player, skill, why);
     }
 
     /**
@@ -533,11 +546,12 @@ public class SkillManager {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = new ConcurrentHashMap<>();
         Map<String, Integer> xp = new ConcurrentHashMap<>();
-        int repaired = 0;
+        int repaired = 0, started = 0;
         for (Map.Entry<String, Integer> e : skillLevels.entrySet()) {
-            int raw = e.getValue() == null ? 0 : e.getValue();
+            int raw = e.getValue() == null ? SkillProgression.MIN_LEVEL : e.getValue();
             int fixed = SkillProgression.clampLevel(raw);
-            if (fixed != raw) repaired++;
+            if (raw == 0) started++; // written by an older version at level 0: level 1 now, its XP kept
+            else if (fixed != raw) repaired++;
             levels.put(e.getKey(), fixed);
         }
         for (Map.Entry<String, Integer> e : skillXP.entrySet()) {
@@ -556,6 +570,13 @@ public class SkillManager {
         playerSkillLevels.put(uid, levels);
         playerSkillXP    .put(uid, xp);
         levelListener.loaded(uid);
+        // Every skill starts at level 1; older versions wrote a new character's skills at level 0 (the menu said
+        // "level 0, 0 / 115"). Written back now, so the database says what the game shows.
+        if (started > 0) {
+            plugin.getLogger().info("[SkillManager] " + player.getName() + ": " + started
+                    + " skill(s) stored at level 0 start at level 1 now (their XP kept).");
+            saveSkills(player);
+        }
     }
 
     public int getPlayerLevel(Player player) {

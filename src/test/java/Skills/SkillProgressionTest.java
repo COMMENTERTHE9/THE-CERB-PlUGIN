@@ -71,8 +71,28 @@ class SkillProgressionTest {
         assertEquals(4, r.level());
         assertEquals(5, r.xp());
         assertEquals(0, SkillProgression.clampXp(-1));
-        assertEquals(0, SkillProgression.clampLevel(-3));
+        assertEquals(SkillProgression.MIN_LEVEL, SkillProgression.clampLevel(-3));
         assertEquals(SkillProgression.MAX_LEVEL, SkillProgression.clampLevel(9999));
+    }
+
+    @Test
+    void everySkillStartsAtLevelOneAndAnOldLevelZeroKeepsItsXp() {
+        // Versions before 2026-10-27 wrote a new character's skills at level 0 (the owner's Fishing "level 0, 0 / 115").
+        assertEquals(1, SkillProgression.MIN_LEVEL);
+        assertEquals(1, SkillProgression.clampLevel(0));
+        assertEquals(1, SkillProgression.clampLevel(1));
+        assertEquals(100, SkillProgression.sanitizeStoredXp(0, 100), "XP earned at level 0 counts at level 1: both need 115");
+        assertEquals(SkillManager.xpForLevel(0), SkillManager.xpForLevel(1));
+
+        SkillProgression.Result kept = SkillProgression.award(0, 100, 0);
+        assertEquals(1, kept.level());
+        assertEquals(100, kept.xp());
+        assertEquals(0, kept.levelsGained(), "reading an old level 0 is no level-up");
+
+        SkillProgression.Result next = SkillProgression.award(0, 100, 20); // 120 of the 115 level 1 needs
+        assertEquals(2, next.level());
+        assertEquals(5, next.xp());
+        assertEquals(1, next.levelsGained());
     }
 
     @Test

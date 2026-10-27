@@ -50,6 +50,8 @@ public final class XpIntegrity implements Listener {
     private final Supplier<KillXp.Params> killXp;
     private final Supplier<XpRules> rules;
     private final NamespacedKey playerNamedKey;
+    /** A mob's spawn reason as its spawn event gave it, where Paper's own record differs ({@link #onSpawn}). */
+    private final NamespacedKey originKey;
     private final KillCredit credit = new KillCredit();
     private final XpBudgetLedger ledger = new XpBudgetLedger();
 
@@ -60,6 +62,7 @@ public final class XpIntegrity implements Listener {
         this.killXp = killXp;
         this.rules = rules;
         this.playerNamedKey = registry.getPlayerNamedKey();
+        this.originKey = new NamespacedKey(plugin, "spawn_origin");
     }
 
     public XpRules rules() { return rules.get(); }
@@ -87,10 +90,44 @@ public final class XpIntegrity implements Listener {
         return m == GameMode.SURVIVAL || m == GameMode.ADVENTURE;
     }
 
-    /** The share {@code mob} pays for where it came from (Paper keeps the spawn reason through restarts). */
+    /** Why {@code p} earns nothing now, for the withheld-XP notice (SkillManager.xpWithheld): "in creative mode ...". */
+    public static String whyNot(Player p) {
+        return whyNot(p.getGameMode());
+    }
+
+    static String whyNot(GameMode m) {
+        return (m == GameMode.SPECTATOR ? "in spectator mode" : "in creative mode") + " §8· §7survival and adventure train skills";
+    }
+
+    /**
+     * Why a kill paid nothing when its mob's origin ({@link #origin}) has a share of 0, for the withheld-XP notice: "from
+     * mobs out of spawn eggs" (attributes.yml xp-integrity.by-origin).
+     */
+    public static String originWhy(String reason) {
+        if (reason == null) return "from this mob";
+        return switch (reason) {
+            case "SPAWNER_EGG", "DISPENSE_EGG" -> "from mobs out of spawn eggs";
+            case "BREEDING" -> "from animals you bred";
+            case "EGG" -> "from chickens out of thrown eggs";
+            case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER", "BUILD_COPPERGOLEM" -> "from mobs you built";
+            default -> "from mobs spawned this way (" + reason.toLowerCase(java.util.Locale.ROOT).replace('_', ' ') + ")";
+        };
+    }
+
+    /** The share {@code mob} pays for where it came from ({@link #origin}). */
     public double originFactor(LivingEntity mob) {
+        return rules.get().originFactor(origin(mob));
+    }
+
+    /**
+     * Where {@code mob} came from, as a spawn reason name: the one its spawn event gave, where Paper's record differs
+     * ({@link #onSpawn}), else Paper's (kept through restarts). Null when unknown.
+     */
+    public String origin(LivingEntity mob) {
+        String recorded = mob.getPersistentDataContainer().get(originKey, PersistentDataType.STRING);
+        if (recorded != null) return recorded;
         var reason = mob.getEntitySpawnReason();
-        return rules.get().originFactor(reason == null ? null : reason.name());
+        return reason == null ? null : reason.name();
     }
 
     /** {@code p} hit {@code mob} with something that trains {@code skill}: a kill soon after is credited to it. */
@@ -153,13 +190,14 @@ public final class XpIntegrity implements Listener {
      * origin and weak-mob shares. Call on the region thread that owns the mobs.
      */
     public void spellCast(Player p, java.util.Collection<? extends LivingEntity> reached, CustomDamageType type) {
-        if (p == null || reached == null || reached.isEmpty() || !earns(p)) return;
+        if (p == null || reached == null || reached.isEmpty()) return;
         java.util.List<LivingEntity> mobs = new java.util.ArrayList<>(reached.size());
         for (LivingEntity e : reached) {
             if (e instanceof org.bukkit.entity.Mob && Bukkit.isOwnedByCurrentRegion(e)
                     && !AbilityTargets.belongsToAPlayer(e) && !AbilityTargets.unhurtable(e)) mobs.add(e);
         }
         if (mobs.isEmpty()) return;
+        if (!earns(p)) { skills.xpWithheld(p, "Spell Weaving", whyNot(p)); return; }
         payCast(p, mobs, "Spell Weaving", SPELL_WEAVING_CAST_XP);
         payCast(p, mobs, "Intelligence", INTELLIGENCE_CAST_XP);
         String school = schoolOf(type);
@@ -203,6 +241,21 @@ public final class XpIntegrity implements Listener {
     }
 
     // ── Events ──────────────────────────────────────────────────
+
+    /**
+     * A mob's spawn reason as its spawn event gives it, kept on the mob when Paper's record says otherwise. Paper's entity
+     * load sets the record to DEFAULT when an entity reads data, and a 1.21.11 spawn egg always carries entity data (its
+     * type), so a spawn-egg mob was recorded as DEFAULT before the egg's spawn could say SPAWNER_EGG and paid in full,
+     * against xp-integrity's by-origin SPAWNER_EGG: 0. A natural spawn agrees with its record: nothing is written.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSpawn(org.bukkit.event.entity.CreatureSpawnEvent e) {
+        var reason = e.getSpawnReason();
+        LivingEntity mob = e.getEntity();
+        if (reason != null && reason != mob.getEntitySpawnReason()) {
+            mob.getPersistentDataContainer().set(originKey, PersistentDataType.STRING, reason.name());
+        }
+    }
 
     /** A player named this mob with a name tag: it is never taken for a registry mob by its name. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

@@ -156,6 +156,7 @@ public final class ForgeListener implements Listener {
     private void paySmelt(Player p, Material item, int count) {
         GatheringCatalog c = service.catalog();
         double each = c.smeltXp(item);
+        if (count > 0 && each > 0 && creative(p)) service.withheld(p, c.smeltingSkill(), Manager.XpIntegrity.whyNot(p));
         if (count <= 0 || creative(p)) return;
         String metal = GatheringCatalog.smeltedMetal(item.name());
         if (metal != null && c.needsSmelted().contains(metal)) addCredit(p, metal, count);

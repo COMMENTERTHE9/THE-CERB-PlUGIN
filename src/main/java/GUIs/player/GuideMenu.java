@@ -37,8 +37,8 @@ public final class GuideMenu extends PlayerMenu {
                         + " blocks adds a level.",
                 "Skills improve by doing. Each skill's page says exactly what trains it."));
         v.set(21, topic(Material.EXPERIENCE_BOTTLE, "Skills",
-                skills + " skills in three groups: combat, magic and utility. Each goes from level 0 to "
-                        + SkillProgression.MAX_LEVEL + ".",
+                skills + " skills in three groups: combat, magic and utility. Each goes from level " + SkillProgression.MIN_LEVEL
+                        + " to " + SkillProgression.MAX_LEVEL + ".",
                 "Every level adds attribute points, so you grow stronger as you train.",
                 "Some skills cannot be trained yet; their pages say so."));
         v.set(23, topic(Material.BLAZE_POWDER, "Attributes",

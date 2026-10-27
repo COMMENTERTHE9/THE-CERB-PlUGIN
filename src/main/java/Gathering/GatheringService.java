@@ -115,6 +115,11 @@ public final class GatheringService {
         return GatherRules.bonusChance(attributes.get(player).fortune(yield), c.fortunePerPoint(), c.fortuneMax());
     }
 
+    /** An action that trains {@code skill} paid nothing on purpose ({@code why}): the XP display says so. */
+    public void withheld(Player p, String skill, String why) {
+        skills.xpWithheld(p, skill, why);
+    }
+
     /** Pay an evaluation's XP (fractions carry over). Player's thread. */
     public void payXp(Player p, Evaluation ev) {
         if (!ev.decision().xp()) return;

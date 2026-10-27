@@ -37,10 +37,14 @@ public final class XpDisplay implements Listener, TabExecutor, SkillManager.XpLi
     static final long MERGE_MS = 4_000;
     /** How long the line stays after the last gain. */
     static final long SHOW_MS = 2_500;
+    /** Why an action paid nothing (creative mode, a spawn-egg mob): shown this long, at most this often per skill and reason. */
+    static final long WITHHELD_SHOW_MS = 4_000, WITHHELD_EVERY_MS = 5 * 60_000;
 
     private static final class State {
         volatile XpLine.Mode mode;
         final XpLine line = new XpLine(MERGE_MS);
+        /** When each withheld-XP notice ("skill|why") was last shown. */
+        final Map<String, Long> withheld = new ConcurrentHashMap<>();
     }
 
     private final Plugin plugin;
@@ -68,6 +72,30 @@ public final class XpDisplay implements Listener, TabExecutor, SkillManager.XpLi
         s.line.add(SkillNames.display(skill), amount, after.level(), after.xp(), SkillManager.xpForLevel(after.level()), max, System.nanoTime());
         hud.xp(p, s.line.render(mode), SHOW_MS);
         updates.increment();
+    }
+
+    @Override
+    public void withheld(Player p, String skill, String why) {
+        if (Bukkit.isOwnedByCurrentRegion(p)) explain(p, skill, why);
+        else p.getScheduler().run(plugin, t -> explain(p, skill, why), null);
+    }
+
+    /** The withheld-XP notice in the XP line's place, once per skill and reason every few minutes; nothing when the display is off. */
+    private void explain(Player p, String skill, String why) {
+        if (!p.isOnline()) return;
+        State s = state(p);
+        if (s.mode == XpLine.Mode.OFF) return;
+        long now = System.currentTimeMillis();
+        Long last = s.withheld.get(skill + '|' + why);
+        if (last != null && now - last < WITHHELD_EVERY_MS) return;
+        s.withheld.put(skill + '|' + why, now);
+        hud.xp(p, withheldLine(SkillNames.display(skill), why), WITHHELD_SHOW_MS);
+        updates.increment();
+    }
+
+    /** "No Fishing XP in creative mode" (section-sign colours). */
+    static String withheldLine(String skill, String why) {
+        return "§7No §f" + skill + "§7 XP " + why;
     }
 
     private State state(Player p) {

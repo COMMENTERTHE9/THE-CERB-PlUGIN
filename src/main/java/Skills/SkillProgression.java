@@ -7,7 +7,7 @@ package Skills;
  * server. {@link SkillManager} delegates to it for every XP award, so all award paths share
  * one cap and one overflow policy.
  *
- * <p>Invariants guaranteed by {@link #award}: level stays in {@code [0, MAX_LEVEL]}, XP stays in
+ * <p>Invariants guaranteed by {@link #award}: level stays in {@code [MIN_LEVEL, MAX_LEVEL]}, XP stays in
  * {@code [0, Integer.MAX_VALUE]}, and garbage input (NaN, infinity, negative gains) never wraps
  * or corrupts stored values.
  */
@@ -15,6 +15,11 @@ public final class SkillProgression {
 
     /** Highest level any skill can reach. */
     public static final int MAX_LEVEL = 100;
+    /**
+     * The level every skill starts at, a new character's and an untrained one's. Versions before 2026-10-27 wrote new
+     * characters' skills at level 0; {@link #clampLevel} reads those as level 1, with their XP (both need 115 to go on).
+     */
+    public static final int MIN_LEVEL = 1;
 
     private SkillProgression() {}
 
@@ -24,7 +29,7 @@ public final class SkillProgression {
     /**
      * Apply an XP award to a skill.
      *
-     * @param level  current level (values outside {@code [0, MAX_LEVEL]} are clamped)
+     * @param level  current level (values outside {@code [MIN_LEVEL, MAX_LEVEL]} are clamped)
      * @param xp     current in-level XP (negative values, e.g. from old overflow, become 0)
      * @param gained XP to add; NaN, infinite, and negative values add nothing
      */
@@ -62,9 +67,9 @@ public final class SkillProgression {
         return (hp * 0.5 + dmg * 0.5) * mult;
     }
 
-    /** Clamp a stored level into the valid range. */
+    /** Clamp a stored level into the valid range (an old level 0 is level 1). */
     public static int clampLevel(int level) {
-        return Math.max(0, Math.min(MAX_LEVEL, level));
+        return Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, level));
     }
 
     /** Clamp stored in-level XP: negative values (from the old int overflow) become 0. */
