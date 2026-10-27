@@ -280,12 +280,34 @@ TPS was 19.93–20.00 in every run.
 - **The new code barely shows in the profile:** `onItemDamage` 0–1 samples per 60 s run, the origin lookups (`PlacedBlocks.marks`, `pack`) 0–1, while 9 bots mined, chopped or fought non-stop. Tree scans are 6–7 samples a run against 5–6 before, and the felling steps the same (7–12 on both builds).
 - **`wood` first looked slower after the change** (0.05 against 0.02–0.03). The extra samples were in the skill saves, the XP display's HUD line and the level-up path, none of which this change touches. The cause was the test, not the build: `load.js` didn't set the bots' Woodcutting level, so the two sessions ran at different levels, with different numbers of level-ups and XP lines. With every run starting at Woodcutting 1 (`load.js` now does this) and the builds alternated on fresh restarts, the change reads the same or lower (0.038–0.051 against 0.033–0.078). **Method note:** a load that pays XP must set the skill level it starts from.
 
+## Fishing (2026-10-27)
+
+**What it adds to frequent events:**
+- **A cast** reads three secondary stats and the Fortune chance from the cached attribute snapshot and keeps one small record (one per player).
+- **A bite** reads the bobber's block (biome, sky light) and rolls a species from a short list.
+- **A catch** pays its XP (the XP display's HUD line and a coalesced skill save, as every gain does) and writes the player's journal to their data when it changed (a few hundred characters). Fortune's extra fish go into the caught stack.
+- **A called creature** runs one check a second on its own region thread.
+
+Nothing else runs per tick, and nothing touches the database per catch.
+
+**Method:** as above (9 bots, 80 s load, a warm-up, two 60 s JFR runs from 10 s after "LOAD START"), mobs cleared and spawning off, each set right after a restart, the builds alternated (before, after, before, after). The new `fishing` load: each bot fishes its own 7×7 pond with a Lure III rod at Fishing 25, in survival, as an AFK farm would. **Before:** the build before Fishing (8192b67, with the old Sea Monster). **After:** the build committed with this section. TPS 20.0 in every run (1.9–2.6 MSPT for the region).
+
+| Load | Before, ms per tick (two runs each set) | After | Catches in 80 s (9 bots) |
+|---|---|---|---|
+| `fishing`, first sets | 0.016 / 0.011 | 0.017 / 0.015 | before 58 / 56, after 55 / 71 |
+| `fishing`, second sets | 0.033 / 0.018 | 0.018 / 0.015 | before 45 / 53, after 45 / 60 |
+
+- **Fishing costs what the old build did.** Every run is within the spread between two runs of one build (0.011–0.033 before). The after build pays XP, rolls species and writes journals on every catch, and its bots catch a little more (lure speed and Quick Bite).
+- **Fishing's own code** (`Gathering.Fishing`, `FishingRules`) is 3–4 of about 1,250 region-thread samples per 60 s run: the cast, the bite's roll, the catch, `moment`. The HUD redraw, which every load shares, is still the largest Cerberus frame. Database saves stay on async threads.
+- **Method note:** in this load four of the nine bots miss some casts ("Fishing cancelled") on both builds. It comes from the lanes' layout in `load.js`, not from either build, so compare a set's per-tick time and its catches together.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.
 - **Grown trees and wear resistance:** met; the new handlers don't show in the profile.
+- **Fishing:** met. Fishing costs what the old build did per tick, and its handlers are a few samples a minute with nine players fishing non-stop. Creatures are bounded (one per player, 32 on the server) and run one check a second each. For Farming: add a `farming` load, measure on alternating builds, and keep crop handlers as light as the catch.
 - **Woodcutting:** met. Cutting wood costs what it did; Felling costs about what cutting the same logs by hand would. It runs 8 logs a tick, does nothing per tick when idle, and writes nothing to the database per block. For Farming or Fishing: add a load for the loop (`load.js`), measure before and after on freshly restarted servers, and look at the XP display's HUD line, which is now the largest per-gain cost.
 - **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).
 - **Step 6 (more classes):** measure `combat` and `abilities` before and after each batch. New verbs must stay off the tick where they can (summons, auras and barriers are bounded entity tasks), and class logic must stay at or under 0.05 ms per press. Watch the save document as loadouts grow; it is already built off the tick.

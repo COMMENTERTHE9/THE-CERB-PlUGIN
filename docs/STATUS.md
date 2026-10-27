@@ -853,7 +853,7 @@ The way into the Mage was decided on 2026-10-27: Spell Weaving 5 (`docs/DECISION
 
 **Checks** (`tools/playtest/fishing.js` on the sandbox): basic 6/6, waters 8/8, force 4/4, call 11/11, refund 6/6, limits 3/3, afk 3/3, inventory 3/3, creative 3/3; the final build's full run, persistence, a clean stop and a crash with a creature out, and the control build: in progress. **Unit tests:** 278 (254 before this milestone), among them `FishingRulesTest` (14) and `FishingJournalTest` (6).
 
-**Performance:** before measured (`docs/PERFORMANCE.md`); after: in progress.
+**Performance** (`docs/PERFORMANCE.md`; 9 bots fishing non-stop, the builds alternated on fresh restarts, TPS 20.0): 0.017 / 0.015 and 0.018 / 0.015 ms per tick against 0.016 / 0.011 and 0.033 / 0.018 before, the same within the spread of one build. Fishing's own code is 3–4 of about 1,250 region-thread samples a minute; database saves stay off the region threads.
 
 ## Roadmap
 
