@@ -546,24 +546,11 @@ public class SkillManager {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = new ConcurrentHashMap<>();
         Map<String, Integer> xp = new ConcurrentHashMap<>();
-        int repaired = 0, started = 0;
-        for (Map.Entry<String, Integer> e : skillLevels.entrySet()) {
-            int raw = e.getValue() == null ? SkillProgression.MIN_LEVEL : e.getValue();
-            int fixed = SkillProgression.clampLevel(raw);
-            if (raw == 0) started++; // written by an older version at level 0: level 1 now, its XP kept
-            else if (fixed != raw) repaired++;
-            levels.put(e.getKey(), fixed);
-        }
-        for (Map.Entry<String, Integer> e : skillXP.entrySet()) {
-            int raw = e.getValue() == null ? 0 : e.getValue();
-            int fixed = SkillProgression.sanitizeStoredXp(levels.getOrDefault(e.getKey(), 1), raw);
-            if (fixed != raw) repaired++;
-            xp.put(e.getKey(), fixed);
-        }
+        SkillProgression.Loaded read = SkillProgression.readStored(skillLevels, skillXP, levels, xp);
         // Out-of-range values can only come from the old kill-XP overflow (huge or negative XP)
         // or the missing level cap (> 100). Repair them on load; the next save rewrites them.
-        if (repaired > 0) {
-            plugin.getLogger().warning("[SkillManager] Repaired " + repaired
+        if (read.repaired() > 0) {
+            plugin.getLogger().warning("[SkillManager] Repaired " + read.repaired()
                     + " out-of-range skill value(s) for " + player.getName()
                     + " (XP outside its level's range, or level above " + SkillProgression.MAX_LEVEL + ").");
         }
@@ -572,8 +559,8 @@ public class SkillManager {
         levelListener.loaded(uid);
         // Every skill starts at level 1; older versions wrote a new character's skills at level 0 (the menu said
         // "level 0, 0 / 115"). Written back now, so the database says what the game shows.
-        if (started > 0) {
-            plugin.getLogger().info("[SkillManager] " + player.getName() + ": " + started
+        if (read.started() > 0) {
+            plugin.getLogger().info("[SkillManager] " + player.getName() + ": " + read.started()
                     + " skill(s) stored at level 0 start at level 1 now (their XP kept).");
             saveSkills(player);
         }

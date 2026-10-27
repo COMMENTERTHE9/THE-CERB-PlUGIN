@@ -21,11 +21,38 @@ class XpWithheldTest {
     void eachZeroShareOriginHasItsReason() {
         assertEquals("from mobs out of spawn eggs", XpIntegrity.originWhy("SPAWNER_EGG"));
         assertEquals("from mobs out of spawn eggs", XpIntegrity.originWhy("DISPENSE_EGG"));
-        assertEquals("from animals you bred", XpIntegrity.originWhy("BREEDING"));
-        assertEquals("from chickens out of thrown eggs", XpIntegrity.originWhy("EGG"));
+        assertEquals("from bred mobs", XpIntegrity.originWhy("BREEDING"), "villagers breed too");
+        assertEquals("from mobs hatched from eggs", XpIntegrity.originWhy("EGG"), "thrown eggs, turtle and sniffer eggs, frogspawn");
         assertEquals("from mobs you built", XpIntegrity.originWhy("BUILD_IRONGOLEM"));
         // A server can give any spawn reason a share of 0 (attributes.yml xp-integrity.by-origin): it is named as it is.
         assertEquals("from mobs spawned this way (nether portal)", XpIntegrity.originWhy("NETHER_PORTAL"));
         assertEquals("from this mob", XpIntegrity.originWhy(null));
+    }
+
+    @Test
+    void aSpawnEggsReasonIsKeptWherePapersRecordFellBack() {
+        // A 1.21.11 spawn egg carries entity data: Paper's load records DEFAULT (an animal's NATURAL) before the spawn.
+        assertEquals("SPAWNER_EGG", XpIntegrity.originToKeep("SPAWNER_EGG", "DEFAULT", null));
+        assertEquals("SPAWNER_EGG", XpIntegrity.originToKeep("SPAWNER_EGG", "NATURAL", null), "a spawn-egg cow");
+        assertEquals("DISPENSE_EGG", XpIntegrity.originToKeep("DISPENSE_EGG", "DEFAULT", null));
+        assertEquals("SPAWNER_EGG", XpIntegrity.originToKeep("SPAWNER_EGG", null, null));
+    }
+
+    @Test
+    void aSpawnThatAgreesWithItsRecordWritesNothing() {
+        assertNull(XpIntegrity.originToKeep("NATURAL", "NATURAL", null));
+        assertNull(XpIntegrity.originToKeep("BREEDING", "BREEDING", null));
+        assertNull(XpIntegrity.originToKeep("SPAWNER", "SPAWNER", null));
+        assertNull(XpIntegrity.originToKeep("COMMAND", "COMMAND", null));
+        assertNull(XpIntegrity.originToKeep(null, "DEFAULT", null));
+    }
+
+    @Test
+    void aCopyKeepsWhereTheOriginalCameFrom() {
+        // A mob stacker's copy of a spawner's zombie is added as CUSTOM; Paper restored SPAWNER from its data.
+        assertNull(XpIntegrity.originToKeep("CUSTOM", "SPAWNER", null), "a quarter, not full pay");
+        // A copy of a spawn-egg zombie carries our record; so does a spawn-egg parrot coming off a shoulder.
+        assertNull(XpIntegrity.originToKeep("CUSTOM", "DEFAULT", "SPAWNER_EGG"));
+        assertNull(XpIntegrity.originToKeep("SHOULDER_ENTITY", "DEFAULT", "SPAWNER_EGG"));
     }
 }

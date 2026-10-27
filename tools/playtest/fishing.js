@@ -358,7 +358,8 @@ async function call() {
     note(`no drops from that one: calling another (${tries})`);
     await stand();
     await cmd(`/cerb fish lure ${NAME} river_lurker 1`, 900);
-    if (!(await sneakCast()).answered) break;
+    await hold(ROD); // the fight left the sword in hand
+    if (!(await sneakCast()).answered) { note('the call was not answered'); break; }
     await fight(90, true);
     await sleep(800);
     loot = fight.fell ? itemsNear(fight.fell, 6) : [];

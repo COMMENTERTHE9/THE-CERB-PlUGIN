@@ -257,7 +257,7 @@ public final class SkillDefinitions {
         // ── Combat ──
         d.add(new SkillDef("Blade Mastery", "The art of the sword: footwork, edge and timing.",
                 List.of(), Material.DIAMOND_SWORD, C, List.of(
-                SkillEffect.pvp("Extra sword damage", CombatSkillProcessor::bladeMasteryBonus, PCT))));
+                SkillEffect.pvp("Extra sword damage", (c, l) -> CombatSkillProcessor.bladeMasteryBonus(c, CombatSkillProcessor.pvpLevel(l)), PCT))));
         d.add(new SkillDef("Martial Expertise", "Fighting with bare hands.",
                 List.of(), Material.IRON_SWORD, C, List.of(
                 SkillEffect.planned("Knockback resistance"),
@@ -265,7 +265,7 @@ public final class SkillDefinitions {
         d.add(new SkillDef("Weapon Mastery", "Handling axes, maces, tridents and spears.",
                 List.of(), Material.NETHERITE_AXE, C, List.of(
                 SkillEffect.live("Lifesteal: heals part of the damage you deal", CombatSkillProcessor::weaponMasteryLifesteal, PCT),
-                SkillEffect.pvp("Extra damage", CombatSkillProcessor::weaponMasteryBonus, PCT))));
+                SkillEffect.pvp("Extra damage", (c, l) -> CombatSkillProcessor.weaponMasteryBonus(c, CombatSkillProcessor.pvpLevel(l)), PCT))));
         d.add(new SkillDef("Ranged Precision", "Fighting at range with bows and crossbows.",
                 List.of(), Material.BOW, C, List.of(
                 SkillEffect.planned("Better arrow accuracy"))));
@@ -286,8 +286,8 @@ public final class SkillDefinitions {
                         + " XP per hit, " + xp(CombatSkillProcessor.CRIT_STRIKE_CRIT_XP) + " for a critical hit.",
                         "Each mob pays at most what its kill pays."),
                 Material.GOLDEN_SWORD, C, List.of(
-                SkillEffect.pvp("Critical hit chance", CombatSkillProcessor::critChance, PCT),
-                SkillEffect.pvp("Critical hit damage", CombatSkillProcessor::critMultiplier, Unit.MULTIPLIER))));
+                SkillEffect.pvp("Critical hit chance", (c, l) -> CombatSkillProcessor.critChance(c, CombatSkillProcessor.pvpLevel(l)), PCT),
+                SkillEffect.pvp("Critical hit damage", (c, l) -> CombatSkillProcessor.critMultiplier(c, CombatSkillProcessor.pvpLevel(l)), Unit.MULTIPLIER))));
 
         // ── Magic ──
         d.add(new SkillDef("Intelligence", "Understanding of magic itself.",

@@ -72,6 +72,33 @@ public final class SkillProgression {
         return Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, level));
     }
 
+    /** What reading a player's stored rows found: rows at an older version's level 0, and rows with values out of range. */
+    public record Loaded(int started, int repaired) {}
+
+    /**
+     * Stored skill rows as read for play, into {@code levels} and {@code xp}: each level clamped (an older version's level
+     * 0 is level 1 with its XP kept, as both need 115 to go on) and each XP kept inside its level (the old kill-XP
+     * overflow, levels above the cap). Pure but for the two output maps.
+     */
+    public static Loaded readStored(java.util.Map<String, Integer> storedLevels, java.util.Map<String, Integer> storedXp,
+                                    java.util.Map<String, Integer> levels, java.util.Map<String, Integer> xp) {
+        int started = 0, repaired = 0;
+        for (java.util.Map.Entry<String, Integer> e : storedLevels.entrySet()) {
+            int raw = e.getValue() == null ? MIN_LEVEL : e.getValue();
+            int fixed = clampLevel(raw);
+            if (raw == 0) started++;
+            else if (fixed != raw) repaired++;
+            levels.put(e.getKey(), fixed);
+        }
+        for (java.util.Map.Entry<String, Integer> e : storedXp.entrySet()) {
+            int raw = e.getValue() == null ? 0 : e.getValue();
+            int fixed = sanitizeStoredXp(levels.getOrDefault(e.getKey(), MIN_LEVEL), raw);
+            if (fixed != raw) repaired++;
+            xp.put(e.getKey(), fixed);
+        }
+        return new Loaded(started, repaired);
+    }
+
     /** Clamp stored in-level XP: negative values (from the old int overflow) become 0. */
     public static int clampXp(int xp) {
         return Math.max(0, xp);

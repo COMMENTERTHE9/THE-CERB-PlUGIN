@@ -194,7 +194,6 @@ public final class ForgeListener implements Listener {
     public void onCraft(CraftItemEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
         pending.remove(p.getUniqueId()); // any other craft disarms an earlier click's payment, in creative too
-        if (creative(p)) return;
         Recipe recipe = e.getRecipe();
         // Gear recipes only: the repair recipe (two worn tools into one) and other special recipes pay nothing.
         if (!(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) return;
@@ -205,6 +204,7 @@ public final class ForgeListener implements Listener {
         GatheringCatalog c = service.catalog();
         double each = c.forgeXp(m);
         if (each <= 0 || GatheringCatalog.gear(m.name()) == null) return;
+        if (creative(p)) { service.withheld(p, c.forgingSkill(), Manager.XpIntegrity.whyNot(p)); return; } // a plain item, and the HUD says why
         if (!covered(p, c, m)) { // made from metal the player didn't smelt: a plain item, no XP
             hint(p, m);
             trace(p, () -> "forging " + m + ": not enough smelted " + GatheringCatalog.metalOf(m.name()));
@@ -263,7 +263,6 @@ public final class ForgeListener implements Listener {
     public void onSmith(SmithItemEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
         pending.remove(p.getUniqueId()); // as in onCraft: disarm first, in creative too
-        if (creative(p)) return;
         trace(p, () -> "smithing click (" + e.getClick() + "): recipe " + (e.getInventory().getRecipe() == null ? "none"
                 : e.getInventory().getRecipe().getClass().getSimpleName()) + ", result " + (e.getCurrentItem() == null ? "none" : e.getCurrentItem().getType()));
         if (!(e.getInventory().getRecipe() instanceof SmithingTransformRecipe)) return; // trims pay nothing
@@ -271,6 +270,7 @@ public final class ForgeListener implements Listener {
         if (result == null || !result.getType().name().startsWith("NETHERITE_") || GatheringCatalog.gear(result.getType().name()) == null) return;
         GatheringCatalog c = service.catalog();
         if (c.netheriteUpgradeXp() <= 0) return;
+        if (creative(p)) { service.withheld(p, c.forgingSkill(), Manager.XpIntegrity.whyNot(p)); return; }
         Material m = result.getType();
         // A shift-click is paid by its empty take (onCrafted), never by what turns up in the inventory: a shift-click
         // that fails for want of room makes nothing, and an item swapped in from the cursor is not one made.

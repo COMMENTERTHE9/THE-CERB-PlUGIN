@@ -85,12 +85,17 @@ public final class XpDisplay implements Listener, TabExecutor, SkillManager.XpLi
         if (!p.isOnline()) return;
         State s = state(p);
         if (s.mode == XpLine.Mode.OFF) return;
-        long now = System.currentTimeMillis();
-        Long last = s.withheld.get(skill + '|' + why);
-        if (last != null && now - last < WITHHELD_EVERY_MS) return;
-        s.withheld.put(skill + '|' + why, now);
+        if (!due(s.withheld, skill + '|' + why, System.currentTimeMillis(), WITHHELD_EVERY_MS)) return;
         hud.xp(p, withheldLine(SkillNames.display(skill), why), WITHHELD_SHOW_MS);
         updates.increment();
+    }
+
+    /** True, and noted in {@code shown}, when notice {@code key} wasn't shown in the last {@code everyMs}. */
+    static boolean due(Map<String, Long> shown, String key, long now, long everyMs) {
+        Long last = shown.get(key);
+        if (last != null && now - last < everyMs) return false;
+        shown.put(key, now);
+        return true;
     }
 
     /** "No Fishing XP in creative mode" (section-sign colours). */

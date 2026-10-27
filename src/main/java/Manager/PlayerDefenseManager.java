@@ -71,7 +71,9 @@ public class PlayerDefenseManager {
         double armorSum = calculateArmorFromGear(player);
         double skillBonus = combatConfig != null ? heavyArmorBonus(combatConfig, heavyArmor) : 0.0;
         double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
-        pushPvpBaseline(player, Math.min(cap, armorSum + skillBonus), survival, heavyArmor);
+        // PvP plays as before: an untrained skill (level 1 now, 0 before) adds nothing there (CombatSkillProcessor.pvpLevel).
+        double pvpSkillBonus = combatConfig != null ? heavyArmorBonus(combatConfig, CombatSkillProcessor.pvpLevel(heavyArmor)) : 0.0;
+        pushPvpBaseline(player, Math.min(cap, armorSum + pvpSkillBonus), CombatSkillProcessor.pvpLevel(survival), CombatSkillProcessor.pvpLevel(heavyArmor));
         double fortArmor = 0.0;
         if (fort != null) {
             fortArmor = fort.armorBonus();                       // Fortitude adds on top of gear + Heavy Armor Training

@@ -55,4 +55,14 @@ class XpLineTest {
         assertEquals("§7No §fFishing§7 XP in creative mode", XpDisplay.withheldLine("Fishing", "in creative mode"));
         assertEquals("§7No §fRanged Precision§7 XP from mobs out of spawn eggs", XpDisplay.withheldLine("Ranged Precision", "from mobs out of spawn eggs"));
     }
+
+    @Test
+    void aWithheldNoticeShowsOncePerSkillAndReasonEveryFewMinutes() {
+        java.util.Map<String, Long> shown = new java.util.HashMap<>();
+        long every = XpDisplay.WITHHELD_EVERY_MS;
+        assertTrue(XpDisplay.due(shown, "Fishing|creative", 1_000, every), "the first time");
+        assertFalse(XpDisplay.due(shown, "Fishing|creative", 1_000 + every - 1, every), "not again inside the window");
+        assertTrue(XpDisplay.due(shown, "Ranged Precision|creative", 2_000, every), "another skill has its own");
+        assertTrue(XpDisplay.due(shown, "Fishing|creative", 1_000 + every, every), "again once the window has passed");
+    }
 }

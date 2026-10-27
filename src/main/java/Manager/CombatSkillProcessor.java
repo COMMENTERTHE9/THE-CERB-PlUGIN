@@ -134,7 +134,7 @@ public class CombatSkillProcessor {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return 0;
 
-        int level = skillManager.getSkillLevel(attacker, "Blade Mastery");
+        int level = pvpLevel(skillManager.getSkillLevel(attacker, "Blade Mastery"));
         if (level <= 0) return 0;
 
         // Only applies when holding a sword
@@ -145,6 +145,15 @@ public class CombatSkillProcessor {
     }
 
     // ── The skill formulas, shared with the Player Menu skill pages ──────
+
+    /**
+     * The level these pre-Attributes-2.0 formulas read: 0 for an untrained skill. They were written when an untrained
+     * skill was stored at level 0; every skill now starts at level 1 ({@link SkillProgression#MIN_LEVEL}), and PvP
+     * plays as before until the PvP pass (docs/ROADMAP.md → PvP), so level 1 still counts as untrained here.
+     */
+    public static int pvpLevel(int level) {
+        return level > SkillProgression.MIN_LEVEL ? level : 0;
+    }
 
     /** Blade Mastery: extra sword damage against players (0.12 = +12%, added to the base). */
     public static double bladeMasteryBonus(CombatConfig cfg, int level) {
@@ -175,7 +184,7 @@ public class CombatSkillProcessor {
     private double getWeaponMasteryDamageBonus(CombatContext ctx) {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return 0;
-        int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
+        int level = pvpLevel(skillManager.getSkillLevel(attacker, "Weapon Mastery"));
         if (level <= 0) return 0;
         // The scaling params include the base (e.g., 1.15), so subtract 1.0 for the bonus portion
         return weaponMasteryBonus(config, level);
@@ -185,7 +194,7 @@ public class CombatSkillProcessor {
     private void applyCriticalStrike(CombatContext ctx) {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return;
-        int level = skillManager.getSkillLevel(attacker, "Critical Strike");
+        int level = pvpLevel(skillManager.getSkillLevel(attacker, "Critical Strike"));
         if (level <= 0) return;
 
         double chance = critChance(config, level);
@@ -223,21 +232,21 @@ public class CombatSkillProcessor {
     private double getLifestealPercent(CombatContext ctx) {
         Player attacker = ctx.getAttacker();
         if (attacker == null) return 0;
-        int level = skillManager.getSkillLevel(attacker, "Weapon Mastery");
+        int level = pvpLevel(skillManager.getSkillLevel(attacker, "Weapon Mastery"));
         if (level <= 0) return 0;
         return weaponMasteryLifesteal(config, level);
     }
 
     /** Martial Expertise: knockback resistance bonus, scaled. */
     private double getMartialExpertiseKBResist(Player player) {
-        int level = skillManager.getSkillLevel(player, "Martial Expertise");
+        int level = pvpLevel(skillManager.getSkillLevel(player, "Martial Expertise"));
         if (level <= 0) return 0;
         return ScalingFormula.compute(level, config.meKbResistScaling);
     }
 
     /** Martial Expertise: disarm check against target, scaled chance. */
     private void applyDisarmCheck(CombatContext ctx, Player attacker, Player target) {
-        int level = skillManager.getSkillLevel(attacker, "Martial Expertise");
+        int level = pvpLevel(skillManager.getSkillLevel(attacker, "Martial Expertise"));
         if (level <= 0) return;
 
         double chance = ScalingFormula.compute(level, config.meDisarmScaling);

@@ -128,4 +128,38 @@ class SkillProgressionTest {
         SkillProgression.Result next = SkillProgression.award(1, SkillProgression.sanitizeStoredXp(1, 500_000_002), 40);
         assertEquals(2, next.level());
     }
+
+    @Test
+    void readingStoredRowsLiftsAnOldLevelZeroAndKeepsItsXp() {
+        java.util.Map<String, Integer> storedLevels = new java.util.HashMap<>(), storedXp = new java.util.HashMap<>();
+        storedLevels.put("Fishing", 0);   storedXp.put("Fishing", 40);   // the owner's untrained Fishing, 40 XP in
+        storedLevels.put("Mining", 5);    storedXp.put("Mining", 10);    // a trained skill: untouched
+        storedLevels.put("Survival", 0);  storedXp.put("Survival", 0);
+        java.util.Map<String, Integer> levels = new java.util.HashMap<>(), xp = new java.util.HashMap<>();
+        SkillProgression.Loaded read = SkillProgression.readStored(storedLevels, storedXp, levels, xp);
+        assertEquals(new SkillProgression.Loaded(2, 0), read, "two rows lifted (written back once), nothing repaired");
+        assertEquals(1, levels.get("Fishing"));
+        assertEquals(40, xp.get("Fishing"), "not a point of XP lost");
+        assertEquals(5, levels.get("Mining"));
+        assertEquals(10, xp.get("Mining"));
+        assertEquals(1, levels.get("Survival"));
+    }
+
+    @Test
+    void readingStoredRowsStillRepairsOutOfRangeValues() {
+        java.util.Map<String, Integer> storedLevels = new java.util.HashMap<>(), storedXp = new java.util.HashMap<>();
+        storedLevels.put("Blade Mastery", 150); storedXp.put("Blade Mastery", 9_999);   // above the cap
+        storedLevels.put("Survival", -3);       storedXp.put("Survival", -2_000_000);   // the old overflow
+        storedLevels.put("Fishing", 0);         storedXp.put("Fishing", 500);           // corrupt: more than level 1 holds
+        java.util.Map<String, Integer> levels = new java.util.HashMap<>(), xp = new java.util.HashMap<>();
+        SkillProgression.Loaded read = SkillProgression.readStored(storedLevels, storedXp, levels, xp);
+        assertEquals(1, read.started(), "only a level of exactly 0 counts as an old start");
+        assertEquals(5, read.repaired(), "per value: level 150 and level -3, and three XP values (9,999 at the cap, the overflow, 500 at level 1)");
+        assertEquals(SkillProgression.MAX_LEVEL, levels.get("Blade Mastery"));
+        assertEquals(0, xp.get("Blade Mastery"));
+        assertEquals(1, levels.get("Survival"));
+        assertEquals(0, xp.get("Survival"));
+        assertEquals(1, levels.get("Fishing"));
+        assertEquals(SkillManager.xpForLevel(1) - 1, xp.get("Fishing"), "at most one level's worth, as for the old overflow");
+    }
 }

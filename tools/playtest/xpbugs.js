@@ -11,8 +11,11 @@
 //              arrows, with and without a switch; a crossbow's firework rockets, with and without a switch; no Blade or
 //              Weapon Mastery from any of them. Spawn-egg mobs pay nothing (xp-integrity by-origin, positive control:
 //              the summoned zombies above); a naturally spawned zombie pays in full
-//   creative - creative mode pays no skill XP (XP integrity, unchanged): a catch, a bow kill and a log cut pay nothing
-//              and the HUD says why; the same steps back in survival pay
+//   creative - creative mode pays no skill XP (XP integrity, unchanged): a catch, a bow kill, a log cut and new chunks
+//              (Pathfinding) pay nothing and the HUD says why; the same steps back in survival pay
+//   convert  - a spawner's zombie drowned into a drowned is still a spawner's mob: its kill pays a quarter (about 45 s)
+//   pvp      - an untrained attacker (every skill at level 1) hits a player as before: no Blade Mastery or Weapon Mastery
+//              bonus in the combat trace (brings in CerbTarget: op it first)
 const fs = require('fs');
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
@@ -203,13 +206,15 @@ function nearestZombie() {
 async function aim(z, dy = 1.4) { await bot.lookAt(z.position.offset(0, dy, 0), true); }
 const alive = z => z && bot.entities[z.id] && !dead.has(z.id);
 
-/** The nearest zombie held still and harmless, moved {@code dist} blocks north of the spot, unburnable. */
-async function hold_(o, dist) {
-  await cmd('/effect give @e[type=zombie,limit=1,sort=nearest] slowness infinite 255 true', 400);
-  await cmd('/effect give @e[type=zombie,limit=1,sort=nearest] weakness infinite 255 true', 400);
-  await cmd(`/tp @e[type=zombie,limit=1,sort=nearest] ${o.X + 0.5} ${o.Y} ${o.Z - dist + 0.5}`, 600);
-  await cmd('/effect give @e[type=zombie,limit=1,sort=nearest] fire_resistance infinite 0 true', 500);
+/** The nearest mob of {@code type} held still and harmless, moved {@code dist} blocks north of the spot, unburnable. */
+async function hold_(o, dist, type = 'zombie') {
+  await cmd(`/effect give @e[type=${type},limit=1,sort=nearest] slowness infinite 255 true`, 400);
+  await cmd(`/effect give @e[type=${type},limit=1,sort=nearest] weakness infinite 255 true`, 400);
+  await cmd(`/tp @e[type=${type},limit=1,sort=nearest] ${o.X + 0.5} ${o.Y} ${o.Z - dist + 0.5}`, 600);
+  await cmd(`/effect give @e[type=${type},limit=1,sort=nearest] fire_resistance infinite 0 true`, 500);
 }
+const nearest = type => Object.values(bot.entities).filter(e => e.name === type && !dead.has(e.id))
+  .sort((a, b) => a.position.distanceTo(bot.entity.position) - b.position.distanceTo(bot.entity.position))[0];
 
 /** Shoot {@code z} with {@code weapon} until it dies; {@code switchTo}: the slot taken right after each shot is fired. */
 async function shootDead(z, weapon, switchTo = null, max = 30) {
@@ -375,6 +380,18 @@ async function bow() {
   check('The HUD says why the spawn-egg sword kill paid nothing', eggHud.some(m => /No Blade Mastery XP from mobs out of spawn eggs/.test(m)),
     eggHud.filter(m => /No |egg/i.test(m)).join(' | ').slice(0, 200) || 'nothing about it on the HUD');
 
+  // A spawn-egg animal: Paper's record for an animal falls back to NATURAL, not DEFAULT.
+  await cmd('/kill @e[type=cow]', 600);
+  await cmd('/give @s cow_spawn_egg 2', 600);
+  select('cow_spawn_egg'); await sleep(300);
+  const cowGround = bot.blockAt(new Vec3(o.X, o.Y - 1, o.Z - 2));
+  try { await bot.lookAt(cowGround.position.offset(0.5, 1, 0.5), true); await bot.activateBlock(cowGround, new Vec3(0, 1, 0)); } catch (e) { note('egg: ' + e.message); }
+  await sleep(500);
+  await hold_(o, 2, 'cow');
+  const cow = await scenario('spawn-egg cow, sword', nearest('cow'), z => swordDead(z));
+  check('A spawn-egg cow pays nothing either (Paper records an animal as NATURAL)', cow && cow.dead && cow.bm === 0 && /origin SPAWNER_EGG x0/.test(cow.debug),
+    cow && `BM +${cow.bm}; ${cow.debug}`);
+
   // A natural mob's origin: natural spawning produced no mobs at all on the superflat sandbox (none in 60 s, creative or
   // survival), so the admin spawn tool makes a zombie whose spawn event says NATURAL, as a natural spawn's does.
   await cmd('/kill @e[type=zombie]', 600);
@@ -414,8 +431,27 @@ async function creative() {
   check('Creative: a log cut pays no Woodcutting XP', gain(wcBefore, wcAfter) === 0, `${show(wcBefore)} -> ${show(wcAfter)}`);
   note('HUD after the creative log cut: ' + hudSince(t0).slice(0, 4).join(' | ').slice(0, 200));
 
+  // New chunks in creative: no Pathfinding XP (it used to pay), and the chunks still pay later in survival.
+  const nav = async label => {
+    const far = 20000 + Math.floor(Math.random() * 50000);
+    await cmd(`/tp @s ${far + 0.5} -60 ${o.Z + 0.5} 0 0`, 2500);
+    const n0 = await skill('Navigation'), t = Date.now();
+    bot.setControlState('forward', true); bot.setControlState('sprint', true);
+    await sleep(6000);
+    bot.setControlState('forward', false); bot.setControlState('sprint', false);
+    await sleep(800);
+    const n1 = await skill('Navigation');
+    note(`${label}: Pathfinding ${show(n0)} -> ${show(n1)}; HUD ${hudSince(t).filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160)}`);
+    return { gain: gain(n0, n1), hud: hudSince(t) };
+  };
+  const navC = await nav('creative, new chunks');
+  check('Creative: walking into new chunks pays no Pathfinding XP, and the HUD says why', navC.gain === 0 && navC.hud.some(m => /No Pathfinding XP in creative mode/.test(m)),
+    `+${navC.gain}; ` + (navC.hud.filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160) || 'nothing on the HUD'));
+
   // Positive control: the same in survival.
   await cmd('/gamemode survival', 800);
+  const navS = await nav('survival, new chunks');
+  check('Control, survival: new chunks pay Pathfinding XP', navS.gain > 0, `+${navS.gain}`);
   await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 0 30`, 900);
   await bot.lookAt(new Vec3(o.X + 0.5, o.Y - 1, o.Z + 4.5), true);
   const s = await fishSome(2);
@@ -425,7 +461,56 @@ async function creative() {
   check('Control, survival: the same bow kill pays Ranged Precision', ks && ks.dead && ks.rp > 0, ks ? `+${ks.rp}` : '');
 }
 
-const PHASES = { levels, repro, rejoin, bow, creative };
+/** A spawner's zombie that drowns becomes a spawner's drowned (XpIntegrity.onTransform): its kill pays a quarter. */
+async function convert() {
+  const o = await arena(700, 300);
+  await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 180 0`, 800);
+  await kit();
+  // A 1x1 pit three deep full of water with a glass lid, four blocks north-east: a zombie in it drowns (it needs its AI).
+  const px = o.X + 4, pz = o.Z - 4;
+  await cmd(`/fill ${px} ${o.Y - 3} ${pz} ${px} ${o.Y - 1} ${pz} water`, 600);
+  await cmd(`/setblock ${px} ${o.Y} ${pz} glass`, 500);
+  await cmd('/kill @e[type=zombie]', 500); await cmd('/kill @e[type=drowned]', 500);
+  await cmd('/cerb spawn zombie origin=SPAWNER', 1200);
+  await cmd(`/tp @e[type=zombie,limit=1,sort=nearest] ${px + 0.5} ${o.Y - 3} ${pz + 0.5}`, 800);
+  note('waiting for the zombie to drown into a drowned (about 45 s)');
+  let d = null;
+  for (let i = 0; i < 100 && !d; i++) { await sleep(1000); d = nearest('drowned'); }
+  if (!d) { check('The spawner zombie drowned into a drowned', false, 'no drowned after 100 s'); return; }
+  await cmd(`/setblock ${px} ${o.Y} ${pz} air`, 400);
+  await hold_(o, 9, 'drowned');
+  await sleep(800);
+  const s = await scenario('the drowned of a spawner zombie, bow', nearest('drowned'), z => shootDead(z, 'bow'));
+  check('A spawner zombie that drowned is still a spawner mob: a quarter of the kill XP (origin SPAWNER x0.25)', s && s.dead && /origin SPAWNER x0\.25/.test(s.debug) && s.rp > 0,
+    s && `RP +${s.rp}; ${s.debug}`);
+}
+
+/** PvP as before (docs/ROADMAP.md → PvP): an untrained attacker's hit on a player carries no old per-skill bonus. */
+async function pvp() {
+  const o = await arena(800, 300);
+  const t = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  t.on('kicked', r => console.log('CerbTarget kicked', r));
+  await new Promise(r => t.once('spawn', r)); await sleep(2500);
+  t.chat('/gamemode survival'); await sleep(400);
+  t.chat(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z - 1.5} 0 0`); await sleep(1200);
+  await cmd('/gamemode survival', 400);
+  await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 180 0`, 800);
+  await cmd('/clear @s', 400); await cmd('/give @s iron_sword', 500); select('sword'); await sleep(300);
+  const bm = await skill('Blade_Mastery'), wm = await skill('Weapon_Mastery');
+  note(`attacker: Blade Mastery ${show(bm)}, Weapon Mastery ${show(wm)}`);
+  const at = chat.length;
+  for (let i = 0; i < 3; i++) {
+    const e = Object.values(bot.entities).find(x => x.type === 'player' && x.username === 'CerbTarget');
+    if (e) { await bot.lookAt(e.position.offset(0, 1.2, 0), true); bot.attack(e); }
+    await sleep(1000);
+  }
+  const mods = sawAll(/BaseModifiers\(x[\d.]+\)/, at).map(m => m.match(/BaseModifiers\(x([\d.]+)\)/)[1]);
+  check('An untrained attacker (level 1) hits a player as before: no Blade or Weapon Mastery bonus (BaseModifiers x1.00)',
+    bm.level === 1 && wm.level === 1 && mods.length > 0 && mods.every(m => m === '1.00'), `${mods.length} hits: x${mods.join(', x')}`);
+  t.quit(); await sleep(500);
+}
+
+const PHASES = { levels, repro, rejoin, bow, creative, convert, pvp };
 /** A quiet sandbox: no natural spawning (superflat slimes killed the bot mid-test), nothing hostile around, daytime. */
 async function quiet() {
   await cmd('/gamerule spawn_mobs false', 400);

@@ -107,8 +107,8 @@ public final class XpIntegrity implements Listener {
         if (reason == null) return "from this mob";
         return switch (reason) {
             case "SPAWNER_EGG", "DISPENSE_EGG" -> "from mobs out of spawn eggs";
-            case "BREEDING" -> "from animals you bred";
-            case "EGG" -> "from chickens out of thrown eggs";
+            case "BREEDING" -> "from bred mobs";
+            case "EGG" -> "from mobs hatched from eggs"; // thrown eggs' chickens, turtle and sniffer eggs, frogspawn
             case "BUILD_IRONGOLEM", "BUILD_SNOWMAN", "BUILD_WITHER", "BUILD_COPPERGOLEM" -> "from mobs you built";
             default -> "from mobs spawned this way (" + reason.toLowerCase(java.util.Locale.ROOT).replace('_', ' ') + ")";
         };
@@ -243,17 +243,45 @@ public final class XpIntegrity implements Listener {
     // ── Events ──────────────────────────────────────────────────
 
     /**
-     * A mob's spawn reason as its spawn event gives it, kept on the mob when Paper's record says otherwise. Paper's entity
-     * load sets the record to DEFAULT when an entity reads data, and a 1.21.11 spawn egg always carries entity data (its
-     * type), so a spawn-egg mob was recorded as DEFAULT before the egg's spawn could say SPAWNER_EGG and paid in full,
-     * against xp-integrity's by-origin SPAWNER_EGG: 0. A natural spawn agrees with its record: nothing is written.
+     * A mob's spawn reason as its spawn event gives it, kept on the mob when Paper's record lost it ({@link #originToKeep}).
+     * Paper's entity load sets the record to DEFAULT (an animal's to NATURAL) when an entity reads data that doesn't name
+     * one, and a 1.21.11 spawn egg always carries entity data (its type), so a spawn-egg mob was recorded as DEFAULT before
+     * the egg's spawn could say SPAWNER_EGG and paid in full, against xp-integrity's by-origin SPAWNER_EGG: 0. A natural
+     * spawn agrees with its record, and a copy (a mob stacker's, a parrot off a shoulder) keeps what it carries: nothing
+     * is written.
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSpawn(org.bukkit.event.entity.CreatureSpawnEvent e) {
-        var reason = e.getSpawnReason();
         LivingEntity mob = e.getEntity();
-        if (reason != null && reason != mob.getEntitySpawnReason()) {
-            mob.getPersistentDataContainer().set(originKey, PersistentDataType.STRING, reason.name());
+        var record = mob.getEntitySpawnReason();
+        String keep = originToKeep(e.getSpawnReason() == null ? null : e.getSpawnReason().name(), record == null ? null : record.name(),
+                mob.getPersistentDataContainer().get(originKey, PersistentDataType.STRING));
+        if (keep != null) mob.getPersistentDataContainer().set(originKey, PersistentDataType.STRING, keep);
+    }
+
+    /**
+     * The spawn reason to keep on a mob at its spawn event, or null to write nothing (pure): the event's reason, only when
+     * the mob carries none of ours yet and Paper's record is one its load falls back to (DEFAULT, or NATURAL for an animal)
+     * or missing. A record Paper restored or set itself (a spawner's mob, a bred animal) stands.
+     */
+    static String originToKeep(String event, String record, String stored) {
+        if (event == null || stored != null || event.equals(record)) return null;
+        return record == null || record.equals("DEFAULT") || record.equals("NATURAL") ? event : null;
+    }
+
+    /**
+     * A mob that turns into another (a zombie that drowns, a skeleton that freezes, a slime that splits, a villager struck
+     * by lightning) passes on where it came from: a spawner's zombie makes a spawner's drowned. Before the new mob's spawn.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTransform(org.bukkit.event.entity.EntityTransformEvent e) {
+        if (!(e.getEntity() instanceof LivingEntity old)) return;
+        String from = origin(old);
+        if (from == null) return;
+        for (org.bukkit.entity.Entity made : e.getTransformedEntities()) {
+            if (made instanceof LivingEntity && !made.getPersistentDataContainer().has(originKey, PersistentDataType.STRING)) {
+                made.getPersistentDataContainer().set(originKey, PersistentDataType.STRING, from);
+            }
         }
     }
 

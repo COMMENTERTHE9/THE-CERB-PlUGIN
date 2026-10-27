@@ -68,6 +68,11 @@ public class ChunkDiscoveryManager {
         }
 
         ChunkKey key = new ChunkKey(chunk.getWorld().getName(), chunk.getX(), chunk.getZ());
+        // Creative and spectator earn nothing (XpIntegrity): the chunk stays undiscovered, so it still pays in survival.
+        if (!XpIntegrity.earns(player)) {
+            if (!playerSet.contains(key)) skills.xpWithheld(player, "Navigation", XpIntegrity.whyNot(player));
+            return false;
+        }
         if (!playerSet.add(key)) {
             // Already visited
             return false;
