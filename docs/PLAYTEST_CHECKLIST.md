@@ -263,14 +263,14 @@ What you saw (Fishing level 0, XP 0 / 115, nothing on the HUD; bow kills with no
 
 | # | Do | Expected |
 |---|---|---|
-| 1 | Join, then Player Menu → Skills → Utility. | **No skill shows level 0 any more.** Every skill that was at level 0 is level 1 now, with its XP kept (a "Fishing 0, 40 / 115" becomes "Fishing 1, 40 / 115"). The server log shows one line for you: "…N skill(s) stored at level 0 start at level 1 now (their XP kept)". Your Stats are slightly higher (a level in every skill); a brand-new character starts at health 102, Essence 1,035. |
+| 1 | Join, then Player Menu → Skills → Utility. | **No skill shows level 0 any more.** Every skill that was at level 0 is level 1 now, with its XP kept (a "Fishing 0, 40 / 115" becomes "Fishing 1, 40 / 115"). The server log shows one line for you: "…N skill(s) stored at level 0 start at level 1 now (their XP kept)". Your Stats are slightly higher (a level in every skill); a brand-new character starts at health 102, Essence 1,035. PvP hits are exactly as before. |
 | 2 | In **survival**, fish your superflat pond for a few minutes (`/xpdisplay compact`). | Every catch pays and the HUD shows it ("+10 Fishing"); about a third of fish and junk bites are Pond Bream from the first cast (at level 0 none could bite). The Fishing tile's XP moves with each catch. |
 | 3 | Leave and rejoin, then restart the server and rejoin. | Fishing keeps the exact level and XP it had. |
 | 4 | In survival, kill a zombie with a bow (`/summon zombie`, or a natural one). Then shoot one and switch to a sword before the arrow lands. | Ranged Precision XP both times, no Blade Mastery. Same with a crossbow's arrows. |
 | 5 | Load a crossbow with a firework rocket (rocket in your off hand, then charge), shoot a zombie and switch to a sword before it hits. | **Ranged Precision**, no Blade Mastery (it trained Blade Mastery before this fix). |
 | 6 | Kill a zombie from a **spawn egg**, with a bow and with a sword. | **No XP**, and the HUD says "No Ranged Precision XP from mobs out of spawn eggs" (or Blade Mastery). That's the rule in `attributes.yml` (`xp-integrity.by-origin.SPAWNER_EGG: 0`), which the server never applied before: spawn-egg mobs paid in full. **For testing kill XP, use `/summon`, `/cerb spawn`, or natural mobs, not spawn eggs.** |
 | 7 | Do steps 2 and 4 in **creative**. | No XP, and the HUD says why, once per skill every 5 minutes: "No Fishing XP in creative mode · survival and adventure train skills". The same in survival pays. |
-| 8 | Chop a log and mine an ore in creative with the right tool. | No XP, and the HUD says why (Woodcutting, Mining), as in step 7. |
+| 8 | Chop a log and mine an ore in creative with the right tool, then fly into land you haven't visited. | No XP, and the HUD says why (Woodcutting, Mining, Pathfinding), as in step 7. Pathfinding used to pay in creative and spectator; the chunks you fly through still pay once you walk them in survival. |
 
 ## 15. Afterwards
 
