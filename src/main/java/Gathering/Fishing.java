@@ -263,7 +263,13 @@ public final class Fishing implements Listener {
         if (c == null) return;
         bites.increment();
         if (c.call != null && !c.calledOut && !c.callFailed) {
-            String why = summon(hook, r, c);
+            String why;
+            try {
+                why = summon(hook, r, c);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "A sea creature's call failed", ex);
+                why = "§7Nothing answered the call.";
+            }
             if (why == null) return;
             // Unanswered (a fight already out, the server's limit, a spawn refused): this quick bite brings nothing, the cast
             // fishes on at its usual pace, and nothing is spent.
@@ -530,17 +536,24 @@ public final class Fishing implements Listener {
             out.decrementAndGet();
             return "§cThe waters are crowded: too many creatures are out on the server. Try again soon.";
         }
-        boolean surfaced = false;
+        Fight f;
         try {
-            surfaced = surface(p, hook, r, c, j, cr, cls);
-            return surfaced ? null : "§7Nothing answered the call.";
-        } finally {
-            if (!surfaced) out.decrementAndGet();
+            f = surface(p, hook, r, c, j, cr, cls);
+        } catch (RuntimeException ex) {
+            out.decrementAndGet(); // registering the fight is surface's last step: nothing was registered
+            throw ex;
         }
+        if (f == null) { out.decrementAndGet(); return "§7Nothing answered the call."; }
+        // The fight is registered: from here its place is given back by end(f), whatever happens below.
+        announce(p, hook, f, cr);
+        return null;
     }
 
-    /** The creature spawns at the bobber and the lure is spent; false when the spawn didn't happen (nothing spent). */
-    private boolean surface(Player p, FishHook hook, FishingRules r, Cast c, FishingJournal j, FishingRules.Creature cr, Class<? extends Entity> cls) {
+    /**
+     * The creature spawns at the bobber, the lure is spent and the fight is registered (its last step); null when the spawn
+     * didn't happen (nothing spent).
+     */
+    private Fight surface(Player p, FishHook hook, FishingRules r, Cast c, FishingJournal j, FishingRules.Creature cr, Class<? extends Entity> cls) {
         Location at = hook.getLocation();
         int worldLevel = worldLevel(at);
         Manager.CombatConfig cc = plugin.getCombatConfig();
@@ -585,13 +598,20 @@ public final class Fishing implements Listener {
             }
         });
         long now = System.currentTimeMillis();
-        if (!mob.isValid() || !j.spend(cr.id(), mob.getUniqueId(), now)) { mob.remove(); return false; } // e.g. another plugin refused the spawn
+        if (!mob.isValid() || !j.spend(cr.id(), mob.getUniqueId(), now)) { mob.remove(); return null; } // e.g. another plugin refused the spawn
         save(p, j);
         c.calledOut = true;
         Fight f = new Fight(owner, mob.getUniqueId(), cr.id(), elite, level, now);
         f.mob = mob;
         fights.put(mob.getUniqueId(), f);
         fightOf.put(owner, mob.getUniqueId());
+        return f;
+    }
+
+    /** A registered fight begins: the creature targets its owner, its leash check runs, and the moment is shown. */
+    private void announce(Player p, FishHook hook, Fight f, FishingRules.Creature cr) {
+        LivingEntity mob = f.mob;
+        Location at = hook.getLocation();
         if (mob instanceof Mob m) m.setTarget(p);
         f.task = mob.getScheduler().runAtFixedRate(plugin, t -> tick(mob, f), () -> { }, 20L, 20L);
         callsMade.increment();
@@ -600,11 +620,11 @@ public final class Fishing implements Listener {
         w.playSound(at, Sound.ENTITY_GENERIC_SPLASH, 1.2f, 0.6f);
         w.playSound(at, Sound.ENTITY_ELDER_GUARDIAN_AMBIENT_LAND, 0.6f, 1.4f);
         String color = cr.rarity().color;
-        p.sendTitle(color + (elite ? "Elite " : "") + cr.name(), "§7Level " + level + " · it surfaces!", 5, 40, 10);
-        p.sendMessage(color + "✦ " + (elite ? "Elite " : "") + cr.name() + " §7(level " + level + ") answers your call. Defeat it for its rewards; "
+        String name = (f.elite ? "Elite " : "") + cr.name();
+        p.sendTitle(color + name, "§7Level " + f.level + " · it surfaces!", 5, 40, 10);
+        p.sendMessage(color + "✦ " + name + " §7(level " + f.level + ") answers your call. Defeat it for its rewards; "
                 + "if it gets away, its lure comes back.");
         hook.remove(); // no fish on this line: the bite was the creature
-        return true;
     }
 
     /** The world's own mob level where a creature surfaces (distance from spawn, as any mob there). */
@@ -849,13 +869,13 @@ public final class Fishing implements Listener {
 
     /** Counters for /cerb fish stats. */
     public List<String> stats() {
-        List<String> out = new ArrayList<>();
-        out.add("casts " + castCount.sum() + ", bites " + bites.sum() + ", catches " + catches.sum() + " (species " + speciesCaught.sum()
+        List<String> lines = new ArrayList<>();
+        lines.add("casts " + castCount.sum() + ", bites " + bites.sum() + ", catches " + catches.sum() + " (species " + speciesCaught.sum()
                 + ", treasure " + treasureCaught.sum() + ", extra fish " + extras.sum() + ", discoveries " + discoveries.sum() + ")");
-        out.add("lures earned " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", lures given back " + refunds.sum()
+        lines.add("lures earned " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", lures given back " + refunds.sum()
                 + ", calls refused " + refused.sum());
-        out.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size());
-        return out;
+        lines.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size());
+        return lines;
     }
 
     /** The creature fight {@code owner} is in, as "creature id" (for the admin and the harness), or null. */
