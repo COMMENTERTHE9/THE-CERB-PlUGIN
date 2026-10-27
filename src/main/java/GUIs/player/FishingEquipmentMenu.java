@@ -205,6 +205,8 @@ public final class FishingEquipmentMenu extends PlayerMenu {
         for (String id : active) l.raw(ChatColor.WHITE + "  " + t.part(id).name());
         if (active.isEmpty()) l.raw(ChatColor.DARK_GRAY + "  nothing yet");
         if (sp != null) l.gap().raw(ChatColor.LIGHT_PURPLE + "Specialist: " + sp.name());
+        String note = tk.surveyorNote(p);
+        if (note != null) l.raw(note);
         if (t.hasAutoReel(active)) l.raw(ChatColor.AQUA + "Auto-hook reel" + (tk.gear(p).autoReel() ? "" : ChatColor.GRAY + " (switched off)"));
         l.gap();
         for (String w : PlayerTheme.wrap("Parts come from sea creatures' drops, treasure and heartwood: open a category to fit one.", SkillView.WIDTH)) l.text(w);

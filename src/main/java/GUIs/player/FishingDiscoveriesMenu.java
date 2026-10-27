@@ -20,10 +20,10 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Fishing → "Since your last visit" → View new discoveries (docs/design/FISHING_EQUIPMENT.md §4): the summary's counters
- * and the last notable catches (discoveries and personal bests with their real weights), newest first. Viewing changes
- * nothing; "Mark as read" takes off exactly what this screen showed, so catches that came in while it was open stay
- * unread.
+ * Fishing → "Since your last visit" → View new discoveries (docs/design/FISHING_EQUIPMENT.md §4, §11): the summary's
+ * counters and the last notable catches (discoveries and personal bests with their real weights), newest first. Viewing
+ * changes nothing; "Mark as read" takes off exactly what this screen showed, so catches that came in while it was open
+ * stay unread. A notable catch can be kept as a trophy once, from a fish of its species you carry.
  */
 public final class FishingDiscoveriesMenu extends PlayerMenu {
 
@@ -61,7 +61,13 @@ public final class FishingDiscoveriesMenu extends PlayerMenu {
         List<FishingJournal.Notable> list = new ArrayList<>(j.notable());
         java.util.Collections.reverse(list); // newest first
         long now = System.currentTimeMillis();
-        for (int i = 0; i < list.size() && i < SLOTS.length; i++) v.set(SLOTS[i], notableTile(list.get(i), now));
+        for (int i = 0; i < list.size() && i < SLOTS.length; i++) {
+            FishingJournal.Notable n = list.get(i);
+            int carried = n.trophy() ? 0 : f.carried(p, n.species());
+            ItemStack tile = notableTile(n, now, carried);
+            if (n.trophy() || carried <= 0) { v.set(SLOTS[i], tile); continue; }
+            v.button(SLOTS[i], tile, c -> askTrophy(c.player(), n));
+        }
         if (list.isEmpty()) {
             v.set(22, Ui.item(Material.GLASS_BOTTLE, ChatColor.GRAY + "No notable catches yet", Ui.lore()
                     .text("New species and personal bests").text("show here with their weights.").build()));
@@ -95,7 +101,27 @@ public final class FishingDiscoveriesMenu extends PlayerMenu {
         if (s.encounters() > 0) l.raw(ChatColor.LIGHT_PURPLE + "" + s.encounters() + ChatColor.GRAY + (s.encounters() == 1 ? " encounter banked" : " encounters banked"));
     }
 
-    private static ItemStack notableTile(FishingJournal.Notable n, long now) {
+    /** Keep as trophy: asks first (it uses one fish), then {@link Fishing#keepTrophy} checks everything again. */
+    private void askTrophy(Player p, FishingJournal.Notable n) {
+        FishingRules.Species s = GatheringCatalog.current().fishing().speciesById(n.species());
+        GatheringCatalog.ItemDef def = s == null ? null : GatheringCatalog.current().item(s.item());
+        String name = def == null ? n.species() : def.name();
+        String weight = String.format(Locale.ROOT, n.kg() < 10 ? "%.2f kg" : "%.1f kg", n.kg());
+        menus.open(p, new GUIs.menu.ConfirmMenu(menus, null, "Keep " + name + " as a trophy?", List.of(
+                "Uses 1 " + name + " from your inventory.",
+                "You get a trophy: " + name + " · " + weight + ",",
+                "with who caught it, when and where.",
+                "Each notable catch makes one trophy."), pl -> {
+            Fishing ff = plugin.getFishing();
+            if (ff == null) return;
+            Gathering.Tackle.Result r = ff.keepTrophy(pl, n.species(), n.at());
+            if (r.ok()) Ui.ok(pl, r.message());
+            else Ui.fail(pl, r.message());
+            menus.refresh(pl);
+        }));
+    }
+
+    private static ItemStack notableTile(FishingJournal.Notable n, long now, int carried) {
         FishingRules r = GatheringCatalog.current().fishing();
         FishingRules.Species s = r.speciesById(n.species());
         GatheringCatalog.ItemDef def = s == null ? null : GatheringCatalog.current().item(s.item());
@@ -110,6 +136,8 @@ public final class FishingDiscoveriesMenu extends PlayerMenu {
             l.stat("Water", w == null ? s.water() : w.name());
         }
         if (n.trophy()) l.raw(ChatColor.GOLD + "✦ Kept as a trophy");
+        else if (carried > 0) l.hint("Click: keep it as a trophy (uses 1 of the " + carried + " you carry)");
+        else l.raw(ChatColor.DARK_GRAY + "Carry one to keep it as a trophy");
         ItemStack it = Ui.item(def == null ? Material.COD : def.material(), color + name + (n.unread() ? ChatColor.YELLOW + " · NEW" : ""), l.build());
         return Ui.glow(it, n.unread());
     }

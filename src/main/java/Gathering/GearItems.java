@@ -99,6 +99,25 @@ public final class GearItems {
     }
 
     /**
+     * A trophy made from one fish ({@code fish}, a copy: its material and look): named "Goldfin Trout · 3.21 kg" from the
+     * notable catch's real weight, with who caught it, the date and the water in its lore, and {@code mark} (its species
+     * and catch time) under {@code key} in its data instead of the species' item id, so it never stacks with another
+     * trophy or counts as a fish of that species (docs/design/FISHING_EQUIPMENT.md §11).
+     */
+    public static ItemStack trophy(ItemStack fish, String name, double kg, String by, long at, String water, String mark, NamespacedKey key) {
+        ItemStack out = fish.clone();
+        out.setAmount(1);
+        String date = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(at), java.time.ZoneId.systemDefault()).toString();
+        out.editMeta(m -> {
+            m.getPersistentDataContainer().remove(ITEM);
+            m.getPersistentDataContainer().set(key, PersistentDataType.STRING, mark);
+            m.displayName(text("§6" + name + " §7· §f" + String.format(Locale.ROOT, kg < 10 ? "%.2f kg" : "%.1f kg", kg)));
+            m.lore(List.of(text("§6✦ Trophy"), text("§7Caught by §f" + by), text("§7" + date + " · " + water)));
+        });
+        return out;
+    }
+
+    /**
      * Mark {@code it} as forged at {@code q}: the id in its data, and two lore lines saying which
      * attribute it raises (the amounts are on the Stats page, so the lore never goes out of date
      * when resources.yml changes). Lines from an earlier quality are replaced, other lore kept.

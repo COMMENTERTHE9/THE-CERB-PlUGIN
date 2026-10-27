@@ -253,6 +253,8 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(ChatColor.GRAY + "Tracked: " + (j.tracked() == null ? "none" : j.tracked()) + " · personal bests set: " + j.bestsSet()
                             + " · unread summary: " + su.catches() + " catches, " + su.xp() + " XP, " + su.species() + " species, " + su.bests()
                             + " bests, " + su.encounters() + " encounters · notable: " + j.notable().size() + " (" + j.unreadNotable() + " unread)");
+                    sender.sendMessage(ChatColor.GRAY + "Milestones granted: " + (j.grantedRewards().isEmpty() ? "none" : j.grantedRewards())
+                            + " · trophies kept: " + j.notable().stream().filter(FishingJournal.Notable::trophy).count());
                 }, null);
             }
             case "stats" -> { for (String l : f.stats()) sender.sendMessage(ChatColor.GRAY + l); }
@@ -272,10 +274,17 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                 + " · biome " + m.biome() + (m.night() ? " · night" : " · day") + (m.thunder() ? " · thunder" : m.rain() ? " · rain" : ""));
         List<FishingRules.Species> can = r.eligible(m, level);
         double keep = can.isEmpty() ? 1.0 : r.vanillaShare(level);
-        double total = can.stream().mapToDouble(FishingRules.Species::weight).sum();
-        p.sendMessage(ChatColor.GRAY + "At your Fishing " + level + ": a fish or junk bite stays vanilla " + pct(keep) + ", else:");
-        for (FishingRules.Species s : can) {
-            p.sendMessage(ChatColor.GRAY + "  " + s.rarity().color + s.id().replace('_', ' ') + ChatColor.GRAY + " " + pct((1 - keep) * s.weight() / total));
+        // The same shares a bite rolls with, with your specialist's factor (Surveyor's Float; bait is held per cast).
+        Gathering.Tackle tk = plugin.getTackle();
+        java.util.function.ToDoubleFunction<FishingRules.Species> factor = tk == null ? x -> 1.0 : tk.infoFactor(p);
+        java.util.Map<FishingRules.Species, Double> shares = r.shares(m, level, factor);
+        boolean favoured = shares.keySet().stream().anyMatch(x -> factor.applyAsDouble(x) > 1.0);
+        p.sendMessage(ChatColor.GRAY + "At your Fishing " + level + ": a fish or junk bite stays vanilla " + pct(keep) + ", else"
+                + (favoured ? " (with your Surveyor's Float: species you haven't caught ×" + trim(factor, shares) + ")" : "") + ":");
+        for (java.util.Map.Entry<FishingRules.Species, Double> e : shares.entrySet()) {
+            FishingRules.Species s = e.getKey();
+            p.sendMessage(ChatColor.GRAY + "  " + s.rarity().color + s.id().replace('_', ' ') + ChatColor.GRAY + " " + pct(e.getValue())
+                    + (factor.applyAsDouble(s) > 1.0 ? ChatColor.LIGHT_PURPLE + " ×" + String.format(Locale.ROOT, "%.2f", factor.applyAsDouble(s)) : ""));
         }
         Manager.SecondaryEffects sec = plugin.getSecondaryEffects();
         double creature = sec == null ? 0 : sec.active(p.getUniqueId(), Attributes.Stat.SEA_CREATURE_CHANCE);
@@ -388,6 +397,13 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                 default -> { }
             }
         }, null);
+    }
+
+    /** The largest factor among {@code shares}' species, for the header line. */
+    private static String trim(java.util.function.ToDoubleFunction<FishingRules.Species> f, java.util.Map<FishingRules.Species, Double> shares) {
+        double max = 1.0;
+        for (FishingRules.Species s : shares.keySet()) max = Math.max(max, f.applyAsDouble(s));
+        return String.format(Locale.ROOT, "%.2f", max);
     }
 
     private static String pct(double v) {

@@ -200,4 +200,126 @@ class TackleRulesTest {
         assertEquals(8, t.reelDelayTicks(), "a bad delay falls back");
         assertEquals(1.5, t.part("d").value(), 1e-9, "a bad factor falls back");
     }
+
+    // ── increment C: collection milestones and the specialists (docs/design/FISHING_EQUIPMENT.md §7, §10) ──
+
+    @Test
+    void milestonesCountWhatTheySay() throws Exception {
+        GatheringCatalog c = shipped();
+        FishingRules r = c.fishing();
+        TackleRules t = c.tackle();
+        TackleRules.Reward waters = t.rewards().get("waters_3"), eight = t.rewards().get("species_8"),
+                bests = t.rewards().get("bests_10"), master = t.rewards().get("master_angler");
+        assertNotNull(waters); assertNotNull(eight); assertNotNull(bests); assertNotNull(master);
+        assertEquals(List.of("recipe:wayfarers_bait"), waters.unlocks());
+        assertEquals(List.of("part:surveyors_float"), eight.unlocks());
+        assertEquals(List.of("part:specimen_hook"), bests.unlocks());
+        assertEquals(List.of("title:master_angler"), master.unlocks());
+
+        Set<String> caught = Set.of("silver_dace", "river_perch", "pond_bream", "sea_bass", "sunken_coins", "not_a_fish");
+        assertEquals(new TackleRules.Progress(3, 3), TackleRules.progress(waters, r, caught, 0), "rivers, lakes, oceans; treasure and unknown ids count nothing");
+        assertTrue(TackleRules.progress(waters, r, caught, 0).done());
+        assertEquals(new TackleRules.Progress(4, 8), TackleRules.progress(eight, r, caught, 0));
+        assertFalse(TackleRules.progress(eight, r, caught, 0).done());
+        assertEquals(new TackleRules.Progress(4, r.allSpecies().size()), TackleRules.progress(master, r, caught, 0), "every species: as many as the file lists");
+        assertEquals(new TackleRules.Progress(10, 10), TackleRules.progress(bests, r, Set.of(), 10));
+        assertTrue(TackleRules.progress(master, r, r.allSpecies().keySet(), 0).done());
+        assertFalse(new TackleRules.Progress(0, 0).done(), "a milestone needing nothing is never met (no species on the server)");
+        assertEquals("2 of 3 waters", TackleRules.progressText(waters, new TackleRules.Progress(2, 3)));
+        assertEquals("8 of 8 species", TackleRules.progressText(eight, new TackleRules.Progress(11, 8)), "never more than it needs");
+        assertEquals("every species", TackleRules.asks(master));
+        assertEquals(Set.of("master_angler"), t.titles(Set.of("master_angler", "waters_3")));
+        assertEquals(Set.of(), t.titles(Set.of("waters_3")));
+        assertEquals("master_angler", t.rewardForTitle("master_angler").id());
+    }
+
+    @Test
+    void surveyorsFloatFavoursWhatYouHaventCaughtWithinEveryGate() throws Exception {
+        GatheringCatalog c = shipped();
+        FishingRules r = c.fishing();
+        TackleRules t = c.tackle();
+        double factor = t.part("surveyors_float").value();
+        assertEquals(1.5, factor, 1e-9, "the shipped factor");
+        FishingRules.Moment night = new FishingRules.Moment("river", "river", true, true, false);
+        int level = 100;
+        List<FishingRules.Species> can = r.eligible(night, level);
+        assertTrue(can.size() >= 5, "a river at night in the rain at Fishing 100: " + can);
+        Set<String> caught = Set.of(can.get(0).id(), can.get(2).id()); // a common and an uncommon caught; the rest, rare and legendary among them, not
+        Map<FishingRules.Species, Double> plain = r.shares(night, level, s -> 1.0);
+        Map<FishingRules.Species, Double> fav = r.shares(night, level, s -> t.weightFactor(s, caught.contains(s.id()), factor, 1.0));
+        assertEquals(plain.keySet(), fav.keySet(), "the same species can bite: no gate is passed");
+        double plainTotal = plain.values().stream().mapToDouble(Double::doubleValue).sum(), favTotal = fav.values().stream().mapToDouble(Double::doubleValue).sum();
+        assertEquals(1 - r.vanillaShare(level), plainTotal, 1e-9);
+        assertEquals(plainTotal, favTotal, 1e-9, "no more species bites, only a different pick among them");
+        double ratio = -1;
+        for (FishingRules.Species s : can) {
+            double a = plain.get(s), b = fav.get(s);
+            if (caught.contains(s.id())) assertTrue(b < a, s.id() + " (caught) comes less often: " + a + " -> " + b);
+            else {
+                assertTrue(b > a && b <= factor * a + 1e-12, s.id() + " (not caught) comes more often, at most x" + factor + ": " + a + " -> " + b);
+                if (ratio < 0) ratio = b / a;
+                assertEquals(ratio, b / a, 1e-9, "every species not caught is favoured alike: their rarity order stays");
+            }
+        }
+        FishingRules.Species legendary = r.speciesById("riverking_sturgeon");
+        assertTrue(fav.get(legendary) < 0.05, "a legendary stays rare: " + fav.get(legendary));
+        // Nothing left to discover: the same odds as without it.
+        Set<String> all = new LinkedHashSet<>();
+        for (FishingRules.Species s : can) all.add(s.id());
+        Map<FishingRules.Species, Double> done = r.shares(night, level, s -> t.weightFactor(s, all.contains(s.id()), factor, 1.0));
+        for (FishingRules.Species s : can) assertEquals(plain.get(s), done.get(s), 1e-12);
+        // With Wayfarer's Bait the discovery factors multiply, stopping at the cap.
+        assertEquals(t.maxWeightFactor(), t.weightFactor(can.get(1), false, factor * t.baitById("wayfarers_bait").factor(), 1.0), 1e-9);
+    }
+
+    @Test
+    void theRollPicksAsTheSharesSay() throws Exception {
+        GatheringCatalog c = shipped();
+        FishingRules r = c.fishing();
+        TackleRules t = c.tackle();
+        FishingRules.Moment night = new FishingRules.Moment("river", "river", true, true, false);
+        Set<String> caught = Set.of("silver_dace");
+        java.util.function.ToDoubleFunction<FishingRules.Species> f = s -> t.weightFactor(s, caught.contains(s.id()), 1.5, 1.0);
+        Map<FishingRules.Species, Double> shares = r.shares(night, 100, f);
+        Map<String, Integer> seen = new java.util.HashMap<>();
+        int n = 400, none = 0;
+        for (int i = 0; i < n; i++) for (int k = 0; k < n; k++) {
+            FishingRules.Species s = r.rollSpecies(night, 100, (i + 0.5) / n, (k + 0.5) / n, f);
+            if (s == null) none++;
+            else seen.merge(s.id(), 1, Integer::sum);
+        }
+        double total = (double) n * n;
+        assertEquals(r.vanillaShare(100), none / total, 0.005, "the vanilla share");
+        for (Map.Entry<FishingRules.Species, Double> e : shares.entrySet()) {
+            assertEquals(e.getValue(), seen.getOrDefault(e.getKey().id(), 0) / total, 0.005, e.getKey().id());
+        }
+    }
+
+    @Test
+    void theSpecimenHookFlattensTheWeightCurveWithinTheRange() throws Exception {
+        GatheringCatalog c = shipped();
+        FishingRules.Species s = c.fishing().speciesById("bluefin_tuna"); // 60-550 kg: rounding to 0.01 kg is negligible
+        double exp = TackleRules.specimenExponent(c.tackle().part("specimen_hook").value());
+        assertEquals(2.0, exp, 1e-9);
+        int n = 200_000;
+        double[] plain = stats(s, 2.5, n), hook = stats(s, exp, n);
+        assertEquals(1 / 3.5, plain[0], 0.002, "plain: the average catch is 28.6% of the range");
+        assertEquals(1 / 3.0, hook[0], 0.002, "the hook: 33.3%");
+        assertEquals(1 - Math.pow(0.9, 1 / 2.5), plain[1], 0.002, "plain: the top tenth of the range in 4.1% of catches");
+        assertEquals(1 - Math.pow(0.9, 1 / 2.0), hook[1], 0.002, "the hook: 5.1%");
+        assertEquals(0, plain[2] + hook[2], "never outside the species' range");
+    }
+
+    /** Over evenly spread rolls: the mean place in the range, the share in its top tenth, and how many fell outside. */
+    private static double[] stats(FishingRules.Species s, double exponent, int n) {
+        double sum = 0, top = 0, out = 0, span = s.maxKg() - s.minKg();
+        for (int i = 0; i < n; i++) {
+            double kg = FishingRules.kg(s, (i + 0.5) / n, exponent);
+            if (kg < s.minKg() || kg > s.maxKg()) out++;
+            double at = (kg - s.minKg()) / span;
+            sum += at;
+            if (at > 0.9) top++;
+        }
+        return new double[]{sum / n, top / n, out};
+    }
 }

@@ -18,11 +18,33 @@ import java.util.function.BiFunction;
  */
 public final class CollectionIndex {
 
-    /** How far a player is: {@code have} of {@code total}; {@code available} false when its system is off on this server. */
-    public record Progress(long have, long total, boolean available) {
+    /**
+     * How far a player is: {@code have} of {@code total}; {@code available} false when its system is off on this server;
+     * {@code badge} a title it earned there ("Master Angler"), or null.
+     */
+    public record Progress(long have, long total, boolean available, String badge) {
         public static final Progress OFF = new Progress(0, 0, false);
 
+        public Progress(long have, long total, boolean available) { this(have, total, available, null); }
+
         public boolean complete() { return available && total > 0 && have >= total; }
+    }
+
+    /** A tile beside the collections (a skill's milestones), drawn for the viewer; null when it has nothing to show. */
+    public record Extra(String id, int order, BiFunction<CerberusPlugin, Player, org.bukkit.inventory.ItemStack> tile) {}
+
+    private final List<Extra> extras = new ArrayList<>();
+
+    /** Add or replace (same id) an extra tile. */
+    public synchronized void registerExtra(Extra e) {
+        extras.removeIf(x -> x.id().equals(e.id()));
+        extras.add(e);
+    }
+
+    public synchronized List<Extra> extras() {
+        List<Extra> copy = new ArrayList<>(extras);
+        copy.sort(Comparator.comparingInt(Extra::order));
+        return copy;
     }
 
     /**

@@ -44,8 +44,10 @@ public final class GatheringSections {
                     FishingRules r = rules(pl);
                     if (r == null) return CollectionIndex.Progress.OFF;
                     FishingJournal j = pl.getFishing().journal(p);
-                    return new CollectionIndex.Progress(r.allSpecies().keySet().stream().filter(j::caught).count(), r.allSpecies().size(), true);
+                    return new CollectionIndex.Progress(r.allSpecies().keySet().stream().filter(j::caught).count(), r.allSpecies().size(), true,
+                            masterAngler(pl, r, j) ? "Master Angler" : null);
                 }, (pl, p) -> new FishingJournalMenu(pl)));
+        collections.registerExtra(new CollectionIndex.Extra("fishing.milestones", 10, GatheringSections::milestonesTile));
         collections.register(new CollectionIndex.Entry("fishing_treasure", "Fishing treasure", Material.CHEST, 20, "Fishing",
                 List.of("What open water gives up from", "Treasure Sense on."),
                 (pl, p) -> {
@@ -75,6 +77,53 @@ public final class GatheringSections {
                 }, (pl, p) -> new WoodsMenu(pl)));
     }
 
+    /**
+     * The Master Angler emblem: the milestone that grants it, once (docs/design/FISHING_EQUIPMENT.md §10); on a server
+     * without that milestone, every species in the journal.
+     */
+    public static boolean masterAngler(CerberusPlugin plugin, FishingRules r, FishingJournal j) {
+        Gathering.Tackle tk = plugin.getTackle();
+        Gathering.TackleRules t = GatheringCatalog.current().tackle();
+        if (tk != null && t.enabled() && t.rewardForTitle("master_angler") != null) return tk.hasTitle(j, "master_angler");
+        return !r.allSpecies().isEmpty() && r.allSpecies().keySet().stream().allMatch(j::caught);
+    }
+
+    /** The first milestone not reached yet and how far it is ("Surveyor · 5 of 8 species"), or null. */
+    static String nextMilestone(FishingRules r, FishingJournal j) {
+        Gathering.TackleRules t = GatheringCatalog.current().tackle();
+        if (!t.enabled()) return null;
+        for (Gathering.TackleRules.Reward w : t.rewards().values()) {
+            if (j.granted(w.id())) continue;
+            return w.name() + " · " + Gathering.TackleRules.progressText(w, Gathering.TackleRules.progress(w, r, j.species().keySet(), j.bestsSet()));
+        }
+        return null;
+    }
+
+    /** Collections → Fishing milestones: each milestone, how far it is and what it opens (docs/design/FISHING_EQUIPMENT.md §10). */
+    static ItemStack milestonesTile(CerberusPlugin plugin, Player p) {
+        FishingRules r = rules(plugin);
+        Gathering.Tackle tk = plugin.getTackle();
+        Gathering.TackleRules t = GatheringCatalog.current().tackle();
+        if (r == null || tk == null || !t.enabled() || t.rewards().isEmpty()) return null;
+        FishingJournal j = plugin.getFishing().journal(p);
+        Ui.Lore l = Ui.lore();
+        int done = 0;
+        for (Gathering.TackleRules.Reward w : t.rewards().values()) {
+            boolean got = j.granted(w.id());
+            if (got) done++;
+            Gathering.TackleRules.Progress pr = Gathering.TackleRules.progress(w, r, j.species().keySet(), j.bestsSet());
+            l.raw((got ? ChatColor.GREEN + "✔ " : ChatColor.GRAY + "◇ ") + ChatColor.WHITE + w.name() + ChatColor.GRAY + ": "
+                    + (got ? Gathering.TackleRules.asks(w) : Gathering.TackleRules.progressText(w, pr)));
+            List<String> opens = new java.util.ArrayList<>();
+            for (String u : w.unlocks()) { String x = tk.unlockText(u, t); if (x != null) opens.add(x); }
+            if (!opens.isEmpty()) l.raw(ChatColor.DARK_GRAY + "   → " + String.join(", ", opens));
+        }
+        l.gap().text("Recorded as you fish: each is").text("granted once, nothing to hand in.");
+        boolean all = done == t.rewards().size();
+        return Ui.glow(Ui.item(Material.NAUTILUS_SHELL, (all ? ChatColor.GOLD : PlayerTheme.PRIMARY) + "Fishing milestones: " + done + " of "
+                + t.rewards().size(), l.build()), all);
+    }
+
     private static FishingRules rules(CerberusPlugin plugin) {
         GatheringCatalog c = GatheringCatalog.current();
         FishingRules r = c == null ? null : c.fishing();
@@ -95,6 +144,8 @@ public final class GatheringSections {
                 .stat("Parts counting", active.size() + " of " + g.owned().size() + " owned");
         Gathering.TackleRules.Part sp = t.specialist(active);
         if (sp != null) l.raw(ChatColor.LIGHT_PURPLE + "Specialist: " + sp.name());
+        String note = tk.surveyorNote(p);
+        if (note != null) l.raw(note);
         int baits = 0;
         for (int i = 0; i < Gathering.FishingGear.SLOTS; i++) if (!g.slot(i).empty()) baits += g.slot(i).count();
         l.stat("Bait in the bag", String.valueOf(baits));
@@ -111,9 +162,13 @@ public final class GatheringSections {
         Ui.Lore l = Ui.lore().raw(PlayerTheme.bar(found, Math.max(1, r.allSpecies().size()), 20, ChatColor.AQUA));
         FishingRules.Species t = r.speciesById(j.tracked());
         if (t != null) l.raw(ChatColor.LIGHT_PURPLE + "★ Tracking: " + t.rarity().color + FishingJournalMenu.name(t.item()));
+        boolean master = masterAngler(plugin, r, j);
+        if (master) l.raw(ChatColor.GOLD + "✦ Master Angler");
+        String next = nextMilestone(r, j);
+        if (next != null) l.raw(ChatColor.GRAY + "Next milestone: " + ChatColor.WHITE + next);
         l.text("Species by water: what each needs,").text("your best weights, what can bite here.");
         l.hint("Click to open the journal");
-        return Ui.item(Material.TROPICAL_FISH, ChatColor.GOLD + "Journal: " + found + " of " + r.allSpecies().size() + " species", l.build());
+        return Ui.glow(Ui.item(Material.TROPICAL_FISH, ChatColor.GOLD + "Journal: " + found + " of " + r.allSpecies().size() + " species", l.build()), master);
     }
 
     static ItemStack encountersTile(CerberusPlugin plugin, Player p) {

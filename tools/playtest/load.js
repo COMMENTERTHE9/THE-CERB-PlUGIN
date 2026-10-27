@@ -30,6 +30,10 @@
 //   fishing - each bot fishes in survival from the edge of its own pond (7x7, 3 deep, open to the sky), as an AFK farm or a
 //            macro does with a Lure III rod: cast, wait for the bite, reel, again, nothing else in between. Fishing is set to 25 at the
 //            start (species, treasure and lure rolls all run). The Fishing baseline (2026-10-27).
+//   autofish - like fishing, but each bot is at Fishing 50 with the Auto-hook Reel in its setup
+//            (docs/design/FISHING_EQUIPMENT.md §9): it only casts, and casts again when the reel has caught (its bobber
+//            gone) or after 45 s without a bite. One delayed task per bite is the reel's whole cost; compare with
+//            fishing (the same ponds, a bot reeling by hand) on the build before and after (2026-10-27).
 //   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
 //            again from real XP: many level-ups at once across the server (the progression feedback's workload).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
@@ -202,6 +206,43 @@ async function fishing(b, deadline, controller) {
   controller.chat(`/cerb skill ${n} Fishing level 1`);
 }
 
+async function autofish(b, deadline, controller) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Fishing level 50`); await sleep(400);
+  controller.chat(`/cerb fish part ${n} auto_reel`); await sleep(400);
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  b.chat('/give @s fishing_rod[enchantments={lure:3}]'); await sleep(800);
+  b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(500);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'fishing_rod' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  pond(controller, home.x, home.y, home.z); await sleep(1200);
+  const vec3 = require('vec3');
+  await b.lookAt(new vec3(home.x + 0.5, home.y - 1, home.z + 5.5), true);
+  const bobberType = b.registry.entitiesByName.fishing_bobber.id;
+  while (Date.now() < deadline) {
+    let id = null, gone = false;
+    const onSpawn = p => { if (p.type === bobberType && id === null) id = p.entityId; };
+    const onDestroy = p => { if (id !== null && p.entityIds.includes(id)) gone = true; };
+    b._client.on('spawn_entity', onSpawn);
+    b._client.on('entity_destroy', onDestroy);
+    b.activateItem(); await sleep(150); b.deactivateItem(); // cast; the reel does the rest
+    const t0 = Date.now();
+    while (!gone && Date.now() - t0 < 45000 && Date.now() < deadline) await sleep(100);
+    b._client.removeListener('spawn_entity', onSpawn);
+    b._client.removeListener('entity_destroy', onDestroy);
+    if (gone) bump(n, 'reeled');
+    else { bump(n, 'missed'); b.activateItem(); await sleep(150); b.deactivateItem(); }
+    await sleep(400);
+    if (b.inventory.emptySlotCount() < 4) { b.chat('/clear @s'); b.chat('/give @s fishing_rod[enchantments={lure:3}]'); await sleep(600);
+      const s2 = b.inventory.slots.findIndex((it, i) => it && it.name === 'fishing_rod' && i >= 36 && i <= 44); if (s2 >= 0) b.setQuickBarSlot(s2 - 36); }
+  }
+  controller.chat(`/cerb fish part ${n} auto_reel remove`);
+  controller.chat(`/cerb skill ${n} Fishing level 1`);
+}
+
 async function levels(b, deadline, controller) {
   const n = b.username;
   controller.chat(`/cerb skill ${n} Mining level 1`); await sleep(400);
@@ -365,7 +406,7 @@ async function menuidle(b, deadline) {
       const b = await join(name);
       bots.push(b);
       // gather, levels, wood, felling: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
-      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing'].includes(MODE);
+      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish'].includes(MODE);
       const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
@@ -381,13 +422,14 @@ async function menuidle(b, deadline) {
         : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
         : m === 'wood' ? wood(b, deadline, controller) : m === 'felling' ? wood(b, deadline, controller, true)
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)
+        : m === 'autofish' ? autofish(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);
   for (const [name, c] of Object.entries(counts)) console.log(`  ${name}: ${JSON.stringify(c)}`);
-  controller.chat('/kill @e[type=zombie,distance=..60]'); if (MODE === 'fishing') controller.chat('/kill @e[type=guardian,distance=..80]'); await sleep(600);
+  controller.chat('/kill @e[type=zombie,distance=..60]'); if (MODE === 'fishing' || MODE === 'autofish') controller.chat('/kill @e[type=guardian,distance=..80]'); await sleep(600);
   for (const b of bots) { controller.chat('/deop ' + b.username); b.chat('/gamemode creative'); }
   await sleep(800);
   for (const b of bots) b.quit();

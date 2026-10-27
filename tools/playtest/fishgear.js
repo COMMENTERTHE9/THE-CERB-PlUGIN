@@ -22,15 +22,26 @@
 //              /testnocatch), a logout; a preset switch mid-cast; situational bait waiting in the bag; "Bait depleted"
 //              once; opt-in restocking; a held bait with nowhere to go comes back as an item
 //   reel     - the Auto-hook Reel (crafted, fitted at Fishing 50): reels real bites through the normal path (XP, the rod's
-//              wear), never recasts, one catch per bite when you reel too, off when switched off, with a menu open,
-//              switching items, a breaking rod, death, logout, and never a Sneak-cast call
+//              wear), never recasts, one catch per bite when you reel too, off when switched off, a refused catch (the
+//              cast goes on), a full inventory, with a menu open, switching items, a breaking rod, death, logout, and
+//              never a Sneak-cast call
+//   rewards  - the collection milestones: shown in Collections and on the Fishing page; species in 3 waters open the
+//              Wayfarer's Bait recipe, 8 species Surveyor's Float (into Discoveries), personal bests the Specimen Hook
+//              (the sandbox counts 2 for the check); each once, never again on a rejoin; one already met is granted at
+//              the next join with one message; Master Angler's emblem on the page, the journal and Collections (the
+//              last three need CERB_SERVER_DIR: they lower thresholds in the sandbox resources.yml and put them back)
+//   specialists - Surveyor's Float in /cerb fish info (the shares the bite rolls with): the same species and share of
+//              species bites, the caught one less often, the others at most x1.5; "normal odds" on the tile and once at
+//              the first bite where nothing new can bite; the Specimen Hook replacing it, weights in range
+//   trophy   - Keep as trophy: asks first, one fish becomes the catch's trophy (name and weight, who, date, water), once
+//              per notable catch, trophies never stack, a stale confirmation changes nothing
 //   oldstate - (run on the build BEFORE Fishing equipment, with the bot name you will use for legacy) a character with an
 //              old journal, an encounter and rods upgraded the old way
 //   legacy   - after updating: that character's journal and old rods (they keep working), the setup and an old rod
 //              counting an upgrade once, converting (preview, a full inventory and a changed rod refused, name,
 //              enchantments and damage kept, an owned part's item back once); without oldstate's rods it makes them
 //              with /cerb fish legacyrod
-//   all      - pages, track, summary, terms, equip, bait, reel
+//   all      - pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const phaseArg = process.argv[2] || 'all';
@@ -937,6 +948,30 @@ async function reel() {
   check('Switched off: the bite is left to you', (await autoN()) === a2, '');
   await reelIn();
   await openEquipment(); await click(39); await closeAny();
+  // A catch another plugin refuses: the reel's attempt catches nothing, the cast goes on, and the next bite is reeled.
+  await cmd(`/testnocatch ${NAME}`, 400);
+  const r0 = await autoN(), c0 = (await summaryDump()).catches;
+  await stand(); await castOnly();
+  let r1 = r0;
+  for (let i = 0; i < 45 && r1 === r0; i++) { await sleep(1000); r1 = await autoN(); }
+  await sleep(1500);
+  check('A refused catch: the reel tried, nothing was caught', r1 === r0 + 1 && (await summaryDump()).catches === c0, `reels ${r0} -> ${r1}`);
+  await cmd('/testnocatch off', 400);
+  let r2 = r1;
+  for (let i = 0; i < 60 && r2 === r1; i++) { await sleep(1000); r2 = await autoN(); }
+  await sleep(1500);
+  check('...the cast went on: its next bite is reeled and caught', r2 === r1 + 1 && (await summaryDump()).catches === c0 + 1, `reels ${r1} -> ${r2}`);
+  // A full inventory: the catch falls at the player's feet as usual, and still counts and pays.
+  for (let i = 0; i < 36; i++) bot.chat('/give @s dirt 64');
+  await sleep(2500);
+  const f0 = await summaryDump(), x0 = totalXp(await skill('Fishing')), r3 = await autoN();
+  await stand(); await castOnly();
+  let r4 = r3;
+  for (let i = 0; i < 45 && r4 === r3; i++) { await sleep(1000); r4 = await autoN(); }
+  await sleep(1500);
+  const f1 = await summaryDump(), x1 = totalXp(await skill('Fishing'));
+  check('A full inventory: reeled, counted and paid', r4 === r3 + 1 && f1.catches === f0.catches + 1 && x1 > x0, `catches ${f0.catches} -> ${f1.catches}, xp +${x1 - x0}`);
+  await cmd('/clear @s dirt', 500); await cmd('/kill @e[type=item,distance=..16]', 500);
   // A menu open meanwhile: the reel still works and the menu stays.
   const a3 = await autoN();
   await stand(); await castOnly();
@@ -992,8 +1027,232 @@ async function reel() {
   check('...its encounter came back when the fight ended with the logout', e1 === e0, `river_lurker ${e0} before the call, ${e1} after`);
 }
 
-const PHASES = { pages, track, summary, terms, equip, bait, reel, oldstate, legacy };
-const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel'];
+// ── increment C: milestones, specialists, trophies ───────────────
+/** The admin journal dump's milestone line: the granted ids. */
+async function milestones() {
+  const at = await cmd(`/cerb fish journal ${NAME}`, 1300);
+  const l = saw(/^Milestones granted: /, at) || '';
+  const m = l.match(/Milestones granted: \[([^\]]*)\]/);
+  return { granted: m ? m[1].split(',').map(x => x.trim()).filter(Boolean) : [], trophies: Number((l.match(/trophies kept: (\d+)/) || [])[1] || 0), line: l };
+}
+/** A forced species, cast from the pond's edge looking at the water (a crafting table or a menu may have turned the bot). */
+async function forceCatch(id) { await stand(); await cmd(`/cerb fish force ${NAME} species ${id}`, 300); return catchOne(); }
+/** Edit the sandbox's resources.yml (CERB_SERVER_DIR), reload, and give back a function that puts it back. */
+async function editConfig(edit) {
+  const dir = process.env.CERB_SERVER_DIR;
+  if (!dir) return null;
+  const fs = require('fs'), file = require('path').join(dir, 'plugins/CerberusPlugin/resources.yml');
+  const orig = fs.readFileSync(file, 'utf8');
+  const next = edit(orig);
+  if (next === orig) { note('config edit matched nothing'); return null; }
+  fs.writeFileSync(file, next);
+  await cmd('/cerb reload', 2500);
+  return async () => { fs.writeFileSync(file, orig); await cmd('/cerb reload', 2500); };
+}
+
+async function rewards() {
+  await arena(480, 'river');
+  await survival(30);
+  // Where they are shown before any is reached.
+  await openMenu(); await click(32); await waitTitle(SCREEN('Collections'));
+  check('Collections: the Fishing milestones tile, nothing reached', /^Fishing milestones: 0 of 4$/.test(slotName(40)) && /Wayfarer: 0 of 3 waters/.test(flat(40))
+    && /Wayfarer's Bait recipe/.test(flat(40)) && /Surveyor: \d+ of 8 species/.test(flat(40)) && /Record Keeper: \d+ of 10 personal bests/.test(flat(40)), slotName(40) + ' / ' + flat(40));
+  await closeAny();
+  await openSkill('Fishing');
+  const jt = await waitSlot(/^Journal: /, 27, 35);
+  check('The Fishing page names the next milestone', /Next milestone: Wayfarer · 0 of 3 waters/.test(flat(jt)), flat(jt));
+  await closeAny();
+  // Species in three waters: the Wayfarer's Bait recipe, once.
+  let at = chat.length;
+  for (const id of ['silver_dace', 'pond_bream']) await forceCatch(id);
+  check('Two waters: nothing yet', !saw(/Fishing milestone/, at), sawAll(/milestone/i, at).join(' / '));
+  await forceCatch('sea_bass');
+  await sleep(800);
+  check('A third water: "Wayfarer" with what it opens', sawAll(/Fishing milestone: Wayfarer \(species found in 3 waters\)\. Unlocked: the Wayfarer's Bait recipe/, at).length === 1,
+    sawAll(/milestone/i, at).join(' / '));
+  let ms = await milestones();
+  check('...granted and remembered', ms.granted.includes('waters_3'), ms.line);
+  await cmd('/give @s dried_kelp 1', 400); await cmd('/give @s sweet_berries 1', 400);
+  const made = await craftAt([it => it.name === 'dried_kelp', it => it.name === 'sweet_berries']);
+  check('...and Wayfarer\'s Bait now crafts', /Wayfarer's Bait/.test(made) && carry("Wayfarer's Bait") === 4, made || 'no result');
+  at = chat.length;
+  await forceCatch('mud_loach');
+  check('A fourth water grants nothing again', !saw(/Fishing milestone: Wayfarer/, at), sawAll(/milestone/i, at).join(' / '));
+  // Eight species: Surveyor's Float, into Discoveries.
+  at = chat.length;
+  for (const id of ['river_perch', 'reef_wrasse', 'ice_cod', 'blind_cavefish']) await forceCatch(id); // species 5-8
+  await sleep(800);
+  check('Eight species: "Surveyor" and Surveyor\'s Float', sawAll(/Fishing milestone: Surveyor \(8 species\)\. Unlocked: Surveyor's Float \(Equipment → Lure\)/, at).length === 1,
+    sawAll(/milestone/i, at).join(' / '));
+  let g = await gear();
+  check('...owned once and put in Discoveries', g.owned.includes('surveyors_float') && g.presets[0].parts.includes('surveyors_float'), g.raw);
+  // Rejoining grants nothing again.
+  bot.quit(); await sleep(3500);
+  const rejoin = chat.length;
+  await connect(); await sleep(5000);
+  check('Rejoining shows no milestone again', !chat.slice(rejoin).some(m => /Fishing milestone/.test(m)), chat.slice(rejoin).filter(m => /milestone/i.test(m)).join(' / '));
+  await survival(30, false); await hold(ROD); await stand();
+  ms = await milestones();
+  check('...and the journal keeps them', ms.granted.includes('waters_3') && ms.granted.includes('species_8'), ms.line);
+  // Personal bests: the sandbox counts 2 for this check (CERB_SERVER_DIR; put back after).
+  const restoreBests = await editConfig(t => t.replace(/(bests_10:\s+\{ name: "Record Keeper", bests: )10/, '$12'));
+  if (restoreBests) {
+    at = chat.length;
+    let tries = 0;
+    while (!saw(/Fishing milestone: Record Keeper/, at) && tries++ < 24) await forceCatch(tries % 2 ? 'silver_dace' : 'pond_bream');
+    await sleep(800);
+    check('Personal bests: "Record Keeper" and the Specimen Hook', sawAll(/Fishing milestone: Record Keeper \(2 personal bests\)\. Unlocked: Specimen Hook \(Equipment → Lure\)/, at).length === 1,
+      `${tries} catches; ` + sawAll(/milestone/i, at).join(' / '));
+    g = await gear();
+    check('...owned, in no preset (you choose)', g.owned.includes('specimen_hook') && !g.presets.some(p => p.parts.includes('specimen_hook')), g.raw);
+    await restoreBests();
+  } else note('CERB_SERVER_DIR not set: skipping the personal-bests milestone (it lowers the sandbox threshold for the check)');
+  // A milestone met before: granted at the next join, once. The sandbox asks 5 species for Master Angler meanwhile.
+  const restoreMaster = await editConfig(t => t.replace(/(master_angler:\s+\{ name: "Master Angler", species: )all/, '$15'));
+  if (restoreMaster) {
+    ms = await milestones();
+    check('Already met after a reload: nothing granted until the next join', !ms.granted.includes('master_angler'), ms.line);
+    bot.quit(); await sleep(3500);
+    const before = chat.length;
+    await connect(); await sleep(5000);
+    const shown = chat.slice(before).filter(m => /Fishing milestone: Master Angler/.test(m));
+    check('At the next join: "Master Angler", one message', shown.length === 1, chat.slice(before).filter(m => /milestone/i.test(m)).join(' / '));
+    await restoreMaster();
+    ms = await milestones();
+    check('...kept when the file asks every species again (granted once)', ms.granted.includes('master_angler'), ms.line);
+    await survival(30, false);
+    await openSkill('Fishing');
+    const j2 = await waitSlot(/^Journal: /, 27, 35);
+    check('The emblem on the Fishing page', /✦ Master Angler/.test(flat(j2)), flat(j2));
+    await click(j2); await waitTitle(SCREEN('Fishing Journal'));
+    check('...on the journal', /✦ Master Angler/.test(flat(4)), flat(4));
+    await closeAny();
+    await openMenu(); await click(32); await waitTitle(SCREEN('Collections'));
+    check('...and on Collections', /✦ Master Angler/.test(flat(20)) && /^Fishing milestones: \d of 4$/.test(slotName(40)), flat(20));
+    await closeAny();
+  } else note('CERB_SERVER_DIR not set: skipping the join grant and the emblem (they lower the sandbox threshold for the check)');
+}
+
+async function specialists() {
+  await arena(540, 'river');
+  await survival(100);
+  await cmd(`/cerb fish part ${NAME} surveyors_float`, 500);
+  await cmd(`/cerb fish part ${NAME} specimen_hook`, 500);
+  await openEquipment(); await click(11); await closeAny(); // Discoveries, with the Float
+  await forceCatch('silver_dace');
+  // /cerb fish info reads the same shares the bite rolls with.
+  const parse = text => {
+    const out = {};
+    for (const m of text.matchAll(/\| {2}([a-z ]+) ([\d.]+)%( ×[\d.]+)?/g)) out[m[1].trim()] = { pct: Number(m[2]), fav: !!m[3] };
+    return out;
+  };
+  const withF = await fishInfo();
+  await openEquipment(); await click(13); await closeAny(); // Treasure: no specialist
+  const without = await fishInfo();
+  await openEquipment(); await click(11); await closeAny();
+  const a = parse(withF.text), b = parse(without.text);
+  const names = Object.keys(b);
+  const sum = o => Object.values(o).reduce((s, x) => s + x.pct, 0);
+  check('The Float is named in /cerb fish info', /with your Surveyor's Float: species you haven't caught ×1\.50/.test(withF.text), withF.text.slice(0, 200));
+  check('The same species can bite, the same share of bites are species', names.length > 2 && JSON.stringify(Object.keys(a).sort()) === JSON.stringify(names.sort()) && Math.abs(sum(a) - sum(b)) < 0.3,
+    `${names.length} species; ${sum(a).toFixed(1)}% vs ${sum(b).toFixed(1)}%`);
+  check('Silver Dace (caught) comes less often, the others more, at most x1.5', a['silver dace'] && a['silver dace'].pct < b['silver dace'].pct
+    && names.filter(n => n !== 'silver dace').every(n => a[n].fav && a[n].pct > b[n].pct && a[n].pct <= b[n].pct * 1.5 + 0.1),
+    names.map(n => `${n} ${b[n].pct}→${a[n] && a[n].pct}`).join(', '));
+  // Where nothing new can bite: the tile says so, and the first bite there says it once. (Lure opens at 25: by day a
+  // river then has Silver Dace, River Perch and Goldfin Trout.)
+  await setLevel('Fishing', 25);
+  await forceCatch('river_perch'); await forceCatch('goldfin_trout');
+  await stand();
+  await openSkill('Fishing');
+  const eq = await waitSlot(/^Equipment: /, 27, 35);
+  check('Everything here caught: the Equipment tile says the odds are normal', /Nothing new can bite in Rivers now: normal odds/.test(flat(eq)), flat(eq));
+  await closeAny();
+  // A catch's own HUD line can hold the bar at that moment: the hint then waits for a later bite there.
+  let t = Date.now(), said = false, bites = 0;
+  for (; bites < 4 && !said; bites++) {
+    t = Date.now();
+    await forceCatch('silver_dace'); await sleep(1500);
+    said = hudSince(t).some(m => /Surveyor's Float: everything that bites in Rivers now is in your journal · normal odds/.test(m));
+  }
+  check('...and a bite there says so', said, `after ${bites} bite(s); ` + hudSince(t).join(' / '));
+  t = Date.now();
+  await forceCatch('silver_dace'); await sleep(1500);
+  check('...once', !hudSince(t).some(m => /Surveyor's Float/.test(m)), hudSince(t).join(' / '));
+  // The Specimen Hook in place of the Float: catches as usual, every weight in its range.
+  await setLevel('Fishing', 100);
+  await openCategory('Lure'); await click(findSlot(/^Specimen Hook/, 19, 34)); await closeAny();
+  const g = await gear();
+  check('The Specimen Hook replaces the Float in Discoveries', g.presets[0].parts.includes('specimen_hook') && !g.presets[0].parts.includes('surveyors_float'), g.raw);
+  let ok = 0;
+  for (let i = 0; i < 4; i++) if (await forceCatch('goldfin_trout')) ok++;
+  const jl = chat.slice(await cmd(`/cerb fish journal ${NAME}`, 1300)).join(' ');
+  const best = Number((jl.match(/Goldfin Trout · \w+ · best ([\d.]+) kg/) || [])[1]);
+  check('With the hook: catches as usual, weights in the species\' range (0.5-4.5 kg)', ok >= 3 && best >= 0.5 && best <= 4.5, `${ok} catches, best ${best} kg`);
+}
+
+async function trophy() {
+  await arena(600, 'river');
+  await survival(30);
+  const fresh = (await uncaught()).map(idOf).find(id => /goldfin|brook|perch/.test(id)) || 'river_perch';
+  const name = fresh.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  await forceCatch(fresh);
+  await sleep(600);
+  const fish0 = bot.inventory.items().filter(it => nameOf(it) === name).reduce((n, it) => n + it.count, 0);
+  const openDiscoveries = async () => { await openSkill('Fishing'); await waitSlot(/Since your last visit/, 40, 40); await click(40); return waitTitle(SCREEN('New discoveries')); };
+  await openDiscoveries();
+  const tileAt = findSlot(new RegExp('^' + name), 19, 32);
+  check('The new catch offers to keep it as a trophy', tileAt >= 0 && /Click: keep it as a trophy \(uses 1 of the \d+ you carry\)/.test(flat(tileAt)), flat(tileAt));
+  const kg = (flat(tileAt).match(/Weight: ([\d.]+ kg)/) || [])[1];
+  await click(tileAt);
+  check('It asks first', await waitTitle(/^Confirm: Keep /), title());
+  let at = chat.length;
+  await click(11, 1300);
+  check('Kept: "Kept as a trophy" with the catch\'s weight', !!saw(new RegExp('Kept as a trophy: ' + name + ' · ' + kg.replace('.', '\\.')), at), sawAll(/trophy/i, at).join(' / '));
+  await closeAny();
+  const trophyItem = bot.inventory.items().find(it => /Trophy/.test(loreText(it)));
+  check('The trophy: the catch\'s name and weight, who caught it, the date and the water', trophyItem && nameOf(trophyItem) === `${name} · ${kg}` && new RegExp(`Caught by ${NAME}`).test(loreText(trophyItem))
+    && /\d{4}-\d{2}-\d{2} · Rivers/.test(loreText(trophyItem)), trophyItem ? nameOf(trophyItem) + ' | ' + loreText(trophyItem) : 'none');
+  check('...made from the fish: one fewer', bot.inventory.items().filter(it => nameOf(it) === name).reduce((n, it) => n + it.count, 0) === fish0 - 1, `${fish0}`);
+  await openDiscoveries();
+  const again = findSlot(new RegExp('^' + name), 19, 32);
+  check('That catch is a trophy now: no second one', /✦ Kept as a trophy/.test(flat(again)) && !/Click: keep/.test(flat(again)), flat(again));
+  await click(again, 900);
+  check('...clicking it does nothing', SCREEN('New discoveries').test(title()), title());
+  await closeAny();
+  // A second trophy (another notable catch: a personal best) never stacks with the first.
+  const NOTABLE = [19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32];
+  for (let i = 0; i < 12; i++) {
+    await forceCatch(fresh);
+    await openDiscoveries();
+    const offer = NOTABLE.find(k => /Click: keep it as a trophy/.test(flat(k)));
+    if (offer !== undefined) { await click(offer); await waitTitle(/^Confirm: Keep /); await click(11, 1300); await closeAny(); break; }
+    await closeAny();
+  }
+  const trophies = bot.inventory.items().filter(it => /Trophy/.test(loreText(it)));
+  check('Two trophies stay two items', trophies.length === 2 && trophies.every(t => t.count === 1), trophies.map(t => nameOf(t) + ' x' + t.count).join(', '));
+  // A stale confirmation (the fish left while it asked) changes nothing: a second species' discovery to keep.
+  const other = (await uncaught()).map(idOf).find(id => /perch|goldfin|brook|dace/.test(id) && id !== fresh) || 'silver_dace';
+  const otherName = other.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  await forceCatch(other); await sleep(600);
+  await openDiscoveries();
+  const offer = NOTABLE.find(k => new RegExp('^' + otherName).test(slotName(k)) && /Click: keep it as a trophy/.test(flat(k)));
+  if (offer !== undefined) {
+    await click(offer); await waitTitle(/^Confirm: Keep /);
+    const fishIt = bot.inventory.items().find(it => nameOf(it) === otherName);
+    await cmd(`/clear @s ${fishIt ? fishIt.name : 'cod'} 64`, 600); // the fish leave while it asks
+    const ms0 = await milestones();
+    at = chat.length;
+    await click(11, 1300);
+    const ms1 = await milestones();
+    check('A stale confirmation: refused, nothing changed', !!saw(new RegExp('Carry one ' + otherName), at) && ms1.trophies === ms0.trophies,
+      sawAll(/trophy|Carry/i, at).join(' / '));
+  } else check('A second species\' discovery offers a trophy', false, NOTABLE.map(slotName).filter(Boolean).join(' | '));
+  await closeAny();
+}
+
+const PHASES = { pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, oldstate, legacy };
+const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel', 'rewards', 'specialists', 'trophy'];
 
 connect().then(async () => {
   await sleep(3500);

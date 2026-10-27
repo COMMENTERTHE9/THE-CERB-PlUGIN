@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Fishing's rules (docs/design/FISHING.md), read from resources.yml {@code fishing:}. Pure: which water a bobber floats in,
@@ -301,6 +302,28 @@ public final class FishingRules {
             if (at < 0) return can.get(i);
         }
         return can.get(can.size() - 1);
+    }
+
+    /**
+     * Each eligible species' chance per bite, as {@link #rollSpecies(Moment, int, double, double, ToDoubleFunction)} picks
+     * it with the same {@code factor}: the species' share of all bites ({@code 1 - vanillaShare}) split by weight × factor.
+     * The rest is the vanilla catch. Empty when nothing can bite. Pure (/cerb fish info and the tests read it).
+     */
+    public Map<Species, Double> shares(Moment m, int level, java.util.function.ToDoubleFunction<Species> factor) {
+        List<Species> can = eligible(m, level);
+        Map<Species, Double> out = new LinkedHashMap<>();
+        if (can.isEmpty()) return out;
+        double total = 0;
+        double[] w = new double[can.size()];
+        for (int i = 0; i < can.size(); i++) {
+            double f = factor.applyAsDouble(can.get(i));
+            w[i] = can.get(i).weight() * (Double.isFinite(f) && f > 0 ? f : 1.0);
+            total += w[i];
+        }
+        if (!(total > 0)) return out;
+        double species = 1 - vanillaShare(level);
+        for (int i = 0; i < can.size(); i++) out.put(can.get(i), species * w[i] / total);
+        return out;
     }
 
     /** A catch's weight: most are near the small end, a few near the top. Two decimals. */

@@ -310,19 +310,21 @@ public final class Fishing implements Listener {
         else if (factor < 1.0) hook.setWaitTime(min, max);
         castOf.put(id, hook.getUniqueId());
         casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen, min, max, gear));
-        if (call == null) trackingHint(p, hook, level);
+        if (call == null) castHints(p, hook, level, gear);
     }
 
     /**
-     * The tracked species' brief cast feedback (docs/design/FISHING_EQUIPMENT.md §3): once the bobber settles in water (a
-     * check every half second, at most six, on the bobber's own scheduler), one HUD line saying whether it can bite there
-     * or what is missing. Shown only when the verdict changed (or after 10 minutes), only on an idle bar, never in PvP
-     * combat; off with the journal's switch. Informational: nothing here touches a roll.
+     * Brief cast feedback once the bobber settles in water (a check every half second, at most six, on the bobber's own
+     * scheduler): the tracked species' line, whether it can bite there or what is missing (docs/design/FISHING_EQUIPMENT.md
+     * §3; shown only when the verdict changed or after 10 minutes, off with the journal's switch), and otherwise Surveyor's
+     * Float's "normal odds" where nothing new can bite (§7). Only on an idle bar, never in PvP combat. Informational:
+     * nothing here touches a roll.
      */
-    private void trackingHint(Player p, FishHook hook, int level) {
+    private void castHints(Player p, FishHook hook, int level, Tackle.CastGear gear) {
         FishingJournal j = journal(p);
-        String tracked = j.tracked();
-        if (tracked == null || j.flag(QUIET_TRACKING)) return;
+        String tracked = j.flag(QUIET_TRACKING) ? null : j.tracked();
+        boolean surveyor = gear.specialist() != null && gear.specialist().special() == TackleRules.Special.DISCOVERY;
+        if (tracked == null && !surveyor) return;
         UUID id = p.getUniqueId();
         int[] tries = {0};
         hook.getScheduler().runAtFixedRate(plugin, t -> {
@@ -330,15 +332,35 @@ public final class Fishing implements Listener {
             if (hook.getState() != FishHook.HookState.BOBBING) return;
             t.cancel();
             FishingRules r = rules();
-            FishingRules.Species s = r.speciesById(tracked);
-            if (s == null) return;
             FishingRules.Moment m = moment(r, hook.getLocation());
-            List<FishingRules.Check> checks = r.checks(s, m, level);
-            String verdict = verdict(checks);
             Player owner = Bukkit.getPlayer(id);
             if (owner == null) return;
-            owner.getScheduler().run(plugin, t2 -> showHint(owner, tracked, verdict, trackingLine(r, s, checks)), null);
+            FishingRules.Species s = tracked == null ? null : r.speciesById(tracked);
+            if (s != null) {
+                List<FishingRules.Check> checks = r.checks(s, m, level);
+                String verdict = verdict(checks), line = trackingLine(r, s, checks);
+                // The tracked species first; the Float's note when the tracking hint had nothing new to say.
+                owner.getScheduler().run(plugin, t2 -> { if (!showHint(owner, tracked, verdict, line) && surveyor) surveyorNote(owner, r, m, level, gear); }, null);
+            } else owner.getScheduler().run(plugin, t2 -> surveyorNote(owner, r, m, level, gear), null);
         }, null, 10L, 10L);
+    }
+
+    /**
+     * Surveyor's Float where its cast's player has caught every species that can bite there: normal odds, said once per
+     * water and session, when the bobber settles (docs/design/FISHING_EQUIPMENT.md §7). It counts as said only when
+     * shown: a busy HUD bar leaves it for a later cast. Player's thread.
+     */
+    private void surveyorNote(Player p, FishingRules r, FishingRules.Moment m, int level, Tackle.CastGear gear) {
+        if (!p.isOnline() || m.water() == null) return;
+        for (FishingRules.Species x : r.eligible(m, level)) if (!gear.caught().contains(x.id())) return;
+        Set<String> told = surveyed.computeIfAbsent(p.getUniqueId(), k -> ConcurrentHashMap.newKeySet());
+        if (told.contains(m.water())) return;
+        Manager.PvpTag pvp = plugin.getPvpTag();
+        if (pvp != null && pvp.isTagged(p.getUniqueId())) return;
+        FishingRules.Water w = r.water(m.water());
+        Manager.PlayerHUDManager hud = plugin.getPlayerHUDManager();
+        if (hud != null && hud.flashIfIdle(p, "§dSurveyor's Float: §7everything that bites in " + (w == null ? m.water() : w.name())
+                + " now is in your journal · normal odds", 3500)) told.add(m.water());
     }
 
     /** A short key for what the checks say (what changed decides whether the hint shows again). */
@@ -364,18 +386,20 @@ public final class Fishing implements Listener {
         return "§7★ " + name + " §7" + need + (missing.size() > 1 ? " §7and " + (missing.size() - 1) + " more" : "");
     }
 
-    private void showHint(Player p, String species, String verdict, String line) {
-        if (!p.isOnline()) return;
+    /** The tracked species' hint, once per verdict; true when it was shown now. */
+    private boolean showHint(Player p, String species, String verdict, String line) {
+        if (!p.isOnline()) return false;
         Manager.PvpTag pvp = plugin.getPvpTag();
-        if (pvp != null && pvp.isTagged(p.getUniqueId())) return;
+        if (pvp != null && pvp.isTagged(p.getUniqueId())) return false;
         String key = species + "|" + verdict;
         long now = System.currentTimeMillis();
         Long at = lastHintAt.get(p.getUniqueId());
-        if (key.equals(lastHint.get(p.getUniqueId())) && at != null && now - at < HINT_AGAIN_MS) return;
+        if (key.equals(lastHint.get(p.getUniqueId())) && at != null && now - at < HINT_AGAIN_MS) return false;
         Manager.PlayerHUDManager hud = plugin.getPlayerHUDManager();
-        if (hud == null || !hud.flashIfIdle(p, line, 3000)) return; // a busy bar: the next cast tries again
+        if (hud == null || !hud.flashIfIdle(p, line, 3000)) return false; // a busy bar: the next cast tries again
         lastHint.put(p.getUniqueId(), key);
         lastHintAt.put(p.getUniqueId(), now);
+        return true;
     }
 
     /** The journal flag that turns the tracked species' cast feedback off. */
@@ -432,27 +456,11 @@ public final class Fishing implements Listener {
         c.biteSeq++;
         c.biteLive = true;
         if (s != null && s.rarity().ordinal() >= FishingRules.Rarity.RARE.ordinal()) signal(at, s.rarity());
-        if (g.specialist() != null && g.specialist().special() == TackleRules.Special.DISCOVERY) surveyorHint(c, r, m);
         if (g.autoReel() && c.call == null) autoReel(hook, c, c.biteSeq);
     }
 
     /** The waters a player was told Surveyor's Float has nothing left to favour in (this session; once each). */
     private final Map<UUID, Set<String>> surveyed = new ConcurrentHashMap<>();
-
-    /** Surveyor's Float where every species that can bite is caught already: normal odds, said once per water. */
-    private void surveyorHint(Cast c, FishingRules r, FishingRules.Moment m) {
-        if (m.water() == null) return;
-        for (FishingRules.Species x : r.eligible(m, c.level)) if (!c.gear.caught().contains(x.id())) return;
-        if (!surveyed.computeIfAbsent(c.player, k -> ConcurrentHashMap.newKeySet()).add(m.water())) return;
-        Player p = Bukkit.getPlayer(c.player);
-        if (p == null) return;
-        p.getScheduler().run(plugin, t -> {
-            FishingRules.Water w = rules().water(m.water());
-            Manager.PlayerHUDManager hud = plugin.getPlayerHUDManager();
-            if (hud != null) hud.flashIfIdle(p, "§dSurveyor's Float: §7everything that bites in " + (w == null ? m.water() : w.name())
-                    + " now is in your journal · normal odds", 3500);
-        }, null);
-    }
 
     /**
      * The auto-hook reel (docs/design/FISHING_EQUIPMENT.md §9): {@code delay-ticks} after a bite, on the player's thread, it
@@ -626,6 +634,7 @@ public final class Fishing implements Listener {
         catches.increment();
         long now = System.currentTimeMillis();
         String line = null;
+        boolean milestone = false; // a new species or a personal best: the collection milestones may have moved
         switch (o.kind()) {
             case SPECIES -> {
                 speciesCaught.increment();
@@ -633,6 +642,7 @@ public final class Fishing implements Listener {
                 String name = itemName(s.item());
                 FishingJournal.Record rec = j.record(s.id(), o.kg());
                 line = s.rarity().color + "◆ " + name + " §7" + kg(o.kg());
+                milestone = rec == FishingJournal.Record.DISCOVERY || rec == FishingJournal.Record.PERSONAL_BEST;
                 if (rec == FishingJournal.Record.DISCOVERY) {
                     double bonus = r.xp().discovery(s.rarity());
                     xp += bonus;
@@ -674,7 +684,68 @@ public final class Fishing implements Listener {
         if (tk != null) {
             if (c != null) tk.onCatch(p, hook.getUniqueId(), c.gear, c.moment != null ? c.moment : moment(r, hook.getLocation()), o.level());
             else tk.castEnded(p, hook.getUniqueId());
+            if (milestone) tk.checkRewards(p);
         }
+    }
+
+    // ── trophies (docs/design/FISHING_EQUIPMENT.md §11) ──────────
+
+    /** A trophy's own mark (species and catch time): every trophy differs, so trophies never stack or count as a species. */
+    public static final NamespacedKey TROPHY = new NamespacedKey("cerberus", "trophy");
+
+    /** True for one fish of {@code speciesItem} that isn't a trophy (custom item id; trophies carry none). */
+    private static boolean plainFish(ItemStack it, String speciesItem) {
+        return it != null && speciesItem.equals(GearItems.itemId(it));
+    }
+
+    /** How many fish of the notable catch's species {@code p} carries (the Keep as trophy button). Player's thread. */
+    public int carried(Player p, String speciesId) {
+        FishingRules.Species s = rules().speciesById(speciesId);
+        if (s == null) return 0;
+        int n = 0;
+        for (ItemStack it : p.getInventory().getStorageContents()) if (plainFish(it, s.item())) n += it.getAmount();
+        return n;
+    }
+
+    /**
+     * Keep a notable catch as a trophy: one fish of its species leaves the inventory and comes back as that catch's
+     * trophy (its real weight, who caught it, when and where), once per notable catch. Refused, with nothing changed,
+     * when the catch is gone from the list or already a trophy, no such fish is carried, or the trophy wouldn't fit.
+     * Player's thread: the journal and the inventory change in the same step.
+     */
+    public Tackle.Result keepTrophy(Player p, String speciesId, long at) {
+        FishingRules r = rules();
+        FishingJournal j = journal(p);
+        FishingJournal.Notable n = null;
+        for (FishingJournal.Notable x : j.notable()) if (x.species().equals(speciesId) && x.at() == at) n = x;
+        if (n == null) return Tackle.Result.no("That catch is no longer among your notable catches.");
+        if (n.trophy()) return Tackle.Result.no("That catch is a trophy already.");
+        FishingRules.Species s = r.speciesById(speciesId);
+        GatheringCatalog.ItemDef def = s == null ? null : service.catalog().item(s.item());
+        if (def == null) return Tackle.Result.no("That species isn't on this server any more.");
+        org.bukkit.inventory.PlayerInventory inv = p.getInventory();
+        ItemStack[] contents = inv.getStorageContents();
+        int from = -1;
+        for (int i = 0; i < contents.length; i++) if (plainFish(contents[i], s.item())) { from = i; break; }
+        if (from < 0) return Tackle.Result.no("Carry one " + def.name() + " to keep this catch as a trophy.");
+        boolean freesSlot = contents[from].getAmount() == 1;
+        boolean room = freesSlot;
+        for (ItemStack it : contents) if (it == null || it.getType().isAir()) { room = true; break; }
+        if (!room) return Tackle.Result.no("Make room for the trophy first: nothing was changed.");
+        if (!j.markTrophy(speciesId, at)) return Tackle.Result.no("That catch is a trophy already.");
+        FishingRules.Water w = r.water(s.water());
+        ItemStack trophy = GearItems.trophy(contents[from], def.name(), n.kg(), p.getName(), at, w == null ? s.water() : w.name(),
+                speciesId + ":" + at, TROPHY);
+        ItemStack fish = contents[from];
+        if (fish.getAmount() == 1) inv.setItem(from, trophy);
+        else {
+            fish.setAmount(fish.getAmount() - 1);
+            inv.setItem(from, fish);
+            inv.addItem(trophy); // a free slot was checked above
+        }
+        save(p, j);
+        plugin.getLogger().info("[Fishing] " + p.getName() + " kept a trophy: " + speciesId + " " + kg(n.kg()));
+        return Tackle.Result.yes("Kept as a trophy: " + def.name() + " · " + kg(n.kg()) + ".");
     }
 
     /** The encounter rolls after a catch: Something Stirs' first one, the sea-creature chance, the apex. True when one was banked. */

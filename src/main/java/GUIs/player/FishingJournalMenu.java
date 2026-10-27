@@ -174,8 +174,10 @@ public final class FishingJournalMenu extends PlayerMenu {
         l.gap();
         for (String w : PlayerTheme.wrap("Each water has its own species; time, weather and your level decide what can bite. "
                 + "Track a species to see what it still needs.", SkillView.WIDTH)) l.text(w);
-        boolean master = !r.allSpecies().isEmpty() && species >= r.allSpecies().size();
+        boolean master = GatheringSections.masterAngler(plugin, r, j);
         if (master) l.gap().raw(ChatColor.GOLD + "✦ Master Angler: every species found");
+        String next = GatheringSections.nextMilestone(r, j);
+        if (next != null) l.gap().raw(ChatColor.GRAY + "Next milestone: " + ChatColor.WHITE + next);
         return Ui.glow(Ui.item(Material.TROPICAL_FISH, ChatColor.AQUA + "" + ChatColor.BOLD + "Fishing Journal", l.build()), master);
     }
 

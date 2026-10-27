@@ -16,7 +16,9 @@ import java.util.List;
  */
 public final class CollectionsMenu extends PlayerMenu {
 
-    private static final int[] SLOTS = {20, 22, 24, 30, 32, 38, 40, 42};
+    private static final int[] SLOTS = {20, 22, 24, 30, 32, 38, 42};
+    /** Milestones and other extra tiles (CollectionIndex.Extra). */
+    private static final int[] EXTRA_SLOTS = {40, 39, 41};
 
     public CollectionsMenu(CerberusPlugin plugin) {
         super(plugin);
@@ -43,12 +45,20 @@ public final class CollectionsMenu extends PlayerMenu {
                     .raw(PlayerTheme.bar(pr.have(), Math.max(1, pr.total()), 20, pr.complete() ? ChatColor.GOLD : ChatColor.GREEN));
             l.raw(ChatColor.DARK_GRAY + Skills.SkillNames.display(e.skill()));
             if (pr.complete()) l.raw(ChatColor.GOLD + "✦ Complete");
+            if (pr.badge() != null) l.raw(ChatColor.GOLD + "✦ " + pr.badge());
             l.hint("Click to open");
             v.button(SLOTS[shown++], Ui.glow(Ui.item(e.icon(), (pr.complete() ? ChatColor.GOLD : PlayerTheme.PRIMARY) + e.name(), l.build()), pr.complete()),
                     c -> {
                         CollectionIndex.Entry now = plugin.getPlayerMenuGUI().collections().byId(e.id());
                         if (now != null && CollectionIndex.safe(now, plugin, c.player()).available()) menus.open(c.player(), now.opener().apply(plugin, c.player()));
                     });
+        }
+        int extra = 0;
+        for (CollectionIndex.Extra x : plugin.getPlayerMenuGUI().collections().extras()) {
+            if (extra >= EXTRA_SLOTS.length) break;
+            org.bukkit.inventory.ItemStack tile;
+            try { tile = x.tile().apply(plugin, p); } catch (RuntimeException ex) { tile = null; }
+            if (tile != null) v.set(EXTRA_SLOTS[extra++], tile);
         }
         if (shown == 0) {
             v.set(22, Ui.item(Material.GRAY_DYE, ChatColor.GRAY + "No collections yet", Ui.lore()

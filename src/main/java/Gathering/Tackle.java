@@ -818,6 +818,128 @@ public final class Tackle implements AttributeSource, Listener {
         if (r != null && r.unlockedBy() != null) e.setCancelled(true);
     }
 
+    // ── collection milestones (docs/design/FISHING_EQUIPMENT.md §10) ──
+
+    private final LongAdder rewardsGranted = new LongAdder();
+
+    /**
+     * Every milestone {@code p} meets now and hasn't been granted: granted once (remembered in the journal), its unlocks
+     * applied (a part owned and put where it suits, a recipe in the recipe book, a title shown) and celebrated. A lost
+     * record would grant the same unlocks again, which are sets, not stacks. Player's thread; cheap (a few counts).
+     */
+    public List<TackleRules.Reward> checkRewards(Player p) {
+        Fishing f = plugin.getFishing();
+        TackleRules t = rules();
+        if (f == null || !t.enabled() || t.rewards().isEmpty() || !writable(p)) return List.of();
+        FishingJournal j = f.journal(p);
+        FishingRules fr = catalog.get().fishing();
+        List<TackleRules.Reward> now = new ArrayList<>();
+        boolean setup = false, recipes = false;
+        for (TackleRules.Reward r : t.rewards().values()) {
+            if (j.granted(r.id()) || !TackleRules.progress(r, fr, j.species().keySet(), j.bestsSet()).done()) continue;
+            if (!j.grant(r.id())) continue;
+            now.add(r);
+            for (String u : r.unlocks()) {
+                if (u.startsWith("part:")) {
+                    String id = u.substring(5);
+                    FishingGear g = gear(p);
+                    if (g.own(id)) for (int i : t.defaultPresets(id, catalog.get().upgrades())) g.install(i, id);
+                    setup = true;
+                } else if (u.startsWith("recipe:")) recipes = true;
+            }
+        }
+        if (now.isEmpty()) return now;
+        f.saveJournal(p);
+        if (setup) save(p, true);
+        if (recipes) discoverRecipes(p);
+        rewardsGranted.add(now.size());
+        Skills.Celebrations cel = plugin.getCelebrations();
+        for (TackleRules.Reward r : now) {
+            Skills.Celebration c = celebration(r, t);
+            if (cel != null) cel.celebrate(p, c);
+            else for (String line : c.chat()) p.sendMessage(line);
+        }
+        plugin.getLogger().info("[Fishing] " + p.getName() + " reached " + now.stream().map(TackleRules.Reward::id).toList());
+        return now;
+    }
+
+    /** A milestone shown: what it asked and what it opened (a title is a major moment). */
+    Skills.Celebration celebration(TackleRules.Reward r, TackleRules t) {
+        List<String> opened = new ArrayList<>();
+        boolean title = false;
+        for (String u : r.unlocks()) {
+            String what = unlockText(u, t);
+            if (what != null) opened.add(what);
+            if (u.startsWith("title:")) title = true;
+        }
+        String unlocked = String.join("§7, §f", opened);
+        String hud = "§6✦ " + r.name() + " §7· " + TackleRules.asks(r) + (opened.isEmpty() ? "" : " · §f" + unlocked);
+        List<String> chat = List.of("§6✦ Fishing milestone: " + r.name() + "§7 (" + TackleRules.asks(r) + ")."
+                + (opened.isEmpty() ? "" : " Unlocked: §f" + unlocked + "§7."));
+        return new Skills.Celebration(Skills.Celebration.Kind.COLLECTION, title ? Skills.Celebration.Tier.MAJOR : Skills.Celebration.Tier.ORDINARY,
+                hud, "§6✦ " + r.name(), title ? "§6" + r.name() : null, title ? "§7" + TackleRules.asks(r) + " · your journal shows it" : null, chat, -1);
+    }
+
+    /** One unlock, plainly: "Surveyor's Float (Equipment → Lure)", "the Wayfarer's Bait recipe", "the Master Angler emblem". */
+    public String unlockText(String unlock, TackleRules t) {
+        if (unlock.startsWith("part:")) {
+            TackleRules.Part part = t.part(unlock.substring(5));
+            if (part == null) return null;
+            TackleRules.Category c = t.category(part.category());
+            return part.name() + " (Equipment → " + (c == null ? part.category() : c.name()) + ")";
+        }
+        if (unlock.startsWith("recipe:")) {
+            TackleRules.Recipe r = t.recipes().get(unlock.substring(7));
+            GatheringCatalog.ItemDef def = r == null ? null : catalog.get().item(r.result());
+            return def == null ? null : "the " + def.name() + " recipe (crafting table)";
+        }
+        if (unlock.startsWith("title:")) {
+            TackleRules.Reward r = t.rewardForTitle(unlock.substring(6));
+            return "the " + (r == null ? unlock.substring(6) : r.name()) + " emblem";
+        }
+        return null;
+    }
+
+    /** True when {@code j}'s granted milestones show title {@code id} (the Master Angler emblem). */
+    public boolean hasTitle(FishingJournal j, String id) {
+        return rules().titles(j.grantedRewards()).contains(id);
+    }
+
+    // ── specialists (docs/design/FISHING_EQUIPMENT.md §7) ─────────
+
+    /**
+     * The Surveyor's Float's note for where {@code p} fishes (their bobber, or the water they look at): null when it isn't
+     * in use or the place isn't known, else whether anything they haven't caught can bite there now.
+     */
+    public String surveyorNote(Player p) {
+        TackleRules.Part sp = rules().specialist(active(p));
+        Fishing f = plugin.getFishing();
+        if (sp == null || sp.special() != TackleRules.Special.DISCOVERY || f == null) return null;
+        Fishing.Place place = f.place(p);
+        if (place.source() == Fishing.PlaceSource.UNKNOWN || place.moment().water() == null) return null;
+        FishingRules fr = catalog.get().fishing();
+        FishingJournal j = f.journal(p);
+        int level = level(p);
+        long fresh = fr.eligible(place.moment(), level).stream().filter(s -> !j.caught(s.id())).count();
+        FishingRules.Water w = fr.water(place.moment().water());
+        String where = w == null ? place.moment().water() : w.name();
+        return fresh == 0 ? "§7Nothing new can bite in " + where + " now: normal odds"
+                : "§d" + fresh + " species you haven't caught can bite in " + where + " now";
+    }
+
+    /**
+     * The species factor {@code p}'s active specialist gives each species (Surveyor's Float on the species they haven't
+     * caught; bait is held per cast and left out), for /cerb fish info. Player's thread.
+     */
+    public java.util.function.ToDoubleFunction<FishingRules.Species> infoFactor(Player p) {
+        TackleRules t = rules();
+        TackleRules.Part sp = t.specialist(active(p));
+        Fishing f = plugin.getFishing();
+        if (sp == null || sp.special() != TackleRules.Special.DISCOVERY || f == null) return s -> 1.0;
+        Set<String> caught = Set.copyOf(f.journal(p).species().keySet());
+        return s -> t.weightFactor(s, caught.contains(s.id()), sp.value(), 1.0);
+    }
+
     // ── players come and go ──────────────────────────────────────
 
     /** A bait still held at join was on a cast that ended with the server (a restart or a crash): it goes back. */
@@ -830,6 +952,8 @@ public final class Tackle implements AttributeSource, Listener {
             save(p, false);
         }
         discoverRecipes(p);
+        // A milestone met before this version (or while it was off) is granted now, once, when the player can see it.
+        p.getScheduler().runDelayed(plugin, task -> { if (p.isOnline()) checkRewards(p); }, null, 40L);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -848,7 +972,8 @@ public final class Tackle implements AttributeSource, Listener {
 
     public List<String> stats() {
         return List.of("bait held " + holds.sum() + ", used " + used.sum() + ", put back " + putBack.sum() + ", restocked " + restocked.sum()
-                + " · parts fitted " + fits.sum() + " · rods converted " + conversions.sum() + " · equipment loaded " + gear.size());
+                + " · parts fitted " + fits.sum() + " · rods converted " + conversions.sum() + " · milestones granted " + rewardsGranted.sum()
+                + " · equipment loaded " + gear.size());
     }
 
     /** A player's equipment as text (admin dump). Player's thread. */

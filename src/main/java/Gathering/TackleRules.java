@@ -193,6 +193,72 @@ public final class TackleRules {
         };
     }
 
+    // ── collection milestones (docs/design/FISHING_EQUIPMENT.md §10) ──
+
+    /** Where a milestone stands: what it counts now and the number it needs. */
+    public record Progress(int have, int need) {
+        public boolean done() { return need > 0 && have >= need; }
+    }
+
+    /**
+     * Where {@code r} stands for a player who has caught {@code caught} (species and treasure ids, as the journal keeps
+     * them) and set {@code bests} personal bests: the waters whose species they found, the species they found ("all" is
+     * however many the rules list now), or the bests. Ids the rules don't know count for nothing. Pure.
+     */
+    public static Progress progress(Reward r, FishingRules f, Set<String> caught, long bests) {
+        return switch (r.counts()) {
+            case WATERS -> {
+                Set<String> waters = new java.util.HashSet<>();
+                for (String id : caught) {
+                    FishingRules.Species s = f.speciesById(id);
+                    if (s != null) waters.add(s.water());
+                }
+                yield new Progress(waters.size(), r.amount());
+            }
+            case SPECIES -> {
+                int n = 0;
+                for (String id : caught) if (f.speciesById(id) != null) n++;
+                yield new Progress(n, r.amount() == 0 ? f.allSpecies().size() : r.amount());
+            }
+            case BESTS -> new Progress((int) Math.min(Integer.MAX_VALUE, Math.max(0, bests)), r.amount());
+        };
+    }
+
+    /** What a milestone asks, plainly: "species found in 3 waters", "8 species", "every species", "10 personal bests". */
+    public static String asks(Reward r) {
+        return switch (r.counts()) {
+            case WATERS -> "species found in " + r.amount() + " waters";
+            case SPECIES -> r.amount() == 0 ? "every species" : r.amount() + " species";
+            case BESTS -> r.amount() + " personal bests";
+        };
+    }
+
+    /** Progress said plainly: "2 of 3 waters", "5 of 8 species", "20 of 31 species", "3 of 10 personal bests". */
+    public static String progressText(Reward r, Progress p) {
+        int have = Math.min(p.have(), p.need());
+        return switch (r.counts()) {
+            case WATERS -> have + " of " + p.need() + " waters";
+            case SPECIES -> have + " of " + p.need() + " species";
+            case BESTS -> have + " of " + p.need() + " personal bests";
+        };
+    }
+
+    /** The titles the granted rewards in {@code granted} unlock ("title:master_angler" → master_angler). */
+    public Set<String> titles(Set<String> granted) {
+        Set<String> out = new LinkedHashSet<>();
+        for (Reward r : rewards.values()) {
+            if (!granted.contains(r.id())) continue;
+            for (String u : r.unlocks()) if (u.startsWith("title:")) out.add(u.substring(6));
+        }
+        return out;
+    }
+
+    /** The reward that unlocks title {@code id}, or null. */
+    public Reward rewardForTitle(String id) {
+        for (Reward r : rewards.values()) if (r.unlocks().contains("title:" + id)) return r;
+        return null;
+    }
+
     // ── weights (Surveyor's Float, discovery and night bait) ──────
 
     /**
