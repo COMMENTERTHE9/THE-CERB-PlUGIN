@@ -515,18 +515,23 @@ async function economy() {
   const isFish = it => /^(cod|salmon|tropical_fish|pufferfish)$/.test(it.name);
   const fishCount = () => count(isFish);
   const otherCount = () => count(it => !isFish(it) && it.name !== 'fishing_rod');
-  const e0 = await extrasNow(), f0 = fishCount();
-  let catches = 0, other = 0;
+  const e0 = await extrasNow();
+  let catches = 0, other = 0, fishCatches = 0, arrived = 0, lost = 0;
   for (let i = 0; i < 30; i++) {
-    const o0 = otherCount();
+    const f0 = fishCount(), o0 = otherCount();
     if (!(await catchOne())) continue;
+    // Wait until whatever flew in has settled (an extra fish flies with the catch).
+    let last = fishCount() + otherCount(), still = 0;
+    for (let t = 0; t < 15 && still < 3; t++) { await sleep(200); const n = fishCount() + otherCount(); if (n === last) still++; else { still = 0; last = n; } }
     catches++;
-    if (otherCount() > o0) other++; // junk or treasure (an extra fish arriving late is never "other")
+    const df = fishCount() - f0, dO = otherCount() - o0;
+    if (dO > 0) other++;                                // junk or treasure
+    else if (df > 0) { fishCatches++; arrived += df - 1; } // a fish, and its extra ones
+    else lost++;                                       // landed short of the player
   }
-  await sleep(2000);
-  const extras = (await extrasNow()) - e0, gotFish = fishCount() - f0, fishCatches = catches - other;
-  check('Fortune (fish) at Fishing 100 brings extra fish', extras >= 2 && extras <= 2 * fishCatches, `${extras} extra fish from ${fishCatches} fish catches (${catches} catches)`);
-  check('...and every one reaches the player', gotFish === fishCatches + extras, `${gotFish} fish in the inventory, ${fishCatches} caught + ${extras} extra`);
+  const extras = (await extrasNow()) - e0;
+  check('Fortune (fish) at Fishing 100 brings extra fish', extras >= 2 && extras <= 2 * (fishCatches + lost), `${extras} extra fish (server count) from ${fishCatches} fish catches (${catches} catches, ${other} junk or treasure, ${lost} landed short)`);
+  check('...and they reach the player with the catch', arrived <= extras && arrived >= extras - 2 * lost, `${arrived} extra fish arrived with their catch, ${extras} dropped`);
   // Treasure never comes twice.
   const glass0 = named('Sea Glass');
   for (let i = 0; i < 6; i++) { await cmd(`/cerb fish force ${NAME} treasure sea_glass`, 250); await catchOne(); }

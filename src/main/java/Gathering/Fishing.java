@@ -411,6 +411,8 @@ public final class Fishing implements Listener {
                 one.setAmount(1);
                 Item more = item.getWorld().dropItem(item.getLocation(), one);
                 more.setVelocity(item.getVelocity());
+                more.setPickupDelay(0); // as the catch itself: dropItem's half-second delay let it fly past the player
+                if (item.getOwner() != null) more.setOwner(item.getOwner());
                 extras.increment();
             }
             if (extra > 0) {
