@@ -84,7 +84,7 @@ async function nav() {
   check('Essence tile shows pool and regeneration', /Essence/.test(slotName(15)) && /Regeneration: [\d.,]+ \/ s/.test(slotLore(15)), slotLore(15));
   const expect = { 19: ['Skills', 'Available'], 21: ['Stats & Attributes', 'Available'], 23: ['Ascension', 'Available'],
     25: ['Equipment', 'Available'], 28: ['Bestiary', 'Available'], 30: ['World & Exploration', 'Available'],
-    32: ['Collections', 'In development'], 34: ['Recipes', 'In development'], 38: ['Quests', 'In development'],
+    32: ['Collections', 'Available'], 34: ['Recipes', 'In development'], 38: ['Quests', 'In development'],
     40: ['Classes & Abilities', 'Available'], 42: ['Guide', 'Available'] };
   const wrong = Object.entries(expect).filter(([s, [n, st]]) => slotName(+s) !== n || !slotLore(+s).includes(st)).map(([s]) => s + ':' + slotName(+s));
   check('Every hub destination is there with an honest state', wrong.length === 0, wrong.join(', '));
@@ -92,8 +92,8 @@ async function nav() {
 
   check('Available tiles still say what inside them is not built', /Breakthroughs are not built yet/.test(flat(23)) && /Kill tracking is not built yet/.test(flat(28)), flat(23) + ' || ' + flat(28));
   let at = chat.length;
-  await click(32);
-  check('An in-development tile explains itself and stays on the hub', !!saw(/Collections is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
+  await click(34);
+  check('An in-development tile explains itself and stays on the hub', !!saw(/Recipes is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
 
   await click(19);
   check('Skills opens', await waitTitle(SCREEN('Skills')), title());
@@ -112,17 +112,17 @@ async function nav() {
   check('Skill page opens', await waitTitle(SCREEN('Blade Mastery')), title());
   check('Skill header: category and level', /Combat Skills/.test(slotLore(4)) && /Level \d+ \/ 100/.test(slotLore(4)), slotLore(4));
   check('Progress strip is labelled', /Level \d+ → \d+: \d+%|Max level/.test(slotName(10)) && slotName(10) === slotName(16), slotName(10));
-  check('How to train: kills with swords, XP per mob level', /Kill mobs while holding: any sword\./.test(flat(20)) && /Lv1 \d+ · Lv25 \d+ · Lv50 \d+ · Lv100 \d+/.test(flat(20)), flat(20));
-  check('Attributes & speed: per level, now, and what it does', /Each level gives: \+1 Power \(swords\) \+0\.3% sword attack speed/.test(flat(22))
-      && /Sword damage \(mobs\): x\d\.\d\d → x\d\.\d\d/.test(flat(22)) && /Sword attack speed: [+-][\d.]+% → [+-][\d.]+%/.test(flat(22))
-      && /Attack speed: ● Active/.test(flat(22)) && /pause during PvP/.test(flat(22)), flat(22));
-  check('Indented lines keep their indent', (slot(22).customLore || []).map(plain).some(l => /^  \+1 Power/.test(l)), slotLore(22));
-  check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(24)), flat(24));
-  check('Next levels: milestones with XP', /At level \d+ +\([\d,]+ XP away\)/.test(slotLore(31)), slotLore(31));
+  check('How to train: kills with swords, XP per mob level', /Kill mobs while holding: any sword\./.test(flat(19)) && /Lv1 \d+ · Lv25 \d+ · Lv50 \d+ · Lv100 \d+/.test(flat(19)), flat(19));
+  check('Attributes & speed: per level, now, and what it does', /Each level gives: \+1 Power \(swords\) \+0\.3% sword attack speed/.test(flat(21))
+      && /Sword damage \(mobs\): x\d\.\d\d → x\d\.\d\d/.test(flat(21)) && /Sword attack speed: [+-][\d.]+% → [+-][\d.]+%/.test(flat(21))
+      && /Attack speed: ● Active/.test(flat(21)) && /pause during PvP/.test(flat(21)), flat(21));
+  check('Indented lines keep their indent', (slot(21).customLore || []).map(plain).some(l => /^  \+1 Power/.test(l)), slotLore(21));
+  check('Effects carry their status', /Extra sword damage ◐ Against players only Now: [\d.]+%/.test(flat(23)), flat(23));
+  check('Next levels: milestones with XP', /At level \d+ +\([\d,]+ XP away\)/.test(slotLore(25)), slotLore(25));
   check('Browse arrows name the neighbours', /Martial Expertise ▶/.test(slotName(43)) && /◀ Critical Strike/.test(slotName(37)), slotName(37) + ' / ' + slotName(43));
   await click(43);
   check('Next arrow browses in place', await waitTitle(SCREEN('Martial Expertise')), title());
-  check('Bare-hand training reads naturally', /Kill mobs while holding: an empty hand\./.test(flat(20)), flat(20));
+  check('Bare-hand training reads naturally', /Kill mobs while holding: an empty hand\./.test(flat(19)), flat(19));
   await click(45);
   check('Back after browsing returns to the category', await waitTitle(SCREEN('Combat Skills')), title());
 
@@ -135,16 +135,16 @@ async function nav() {
   check('Field Medicine (formerly First Aid) is honest: no training yet', fm >= 0 && /Formerly First Aid/.test(slotLore(fm)) && /No way to train it yet/.test(slotLore(fm)), fm >= 0 ? slotLore(fm) : 'missing');
   await click(pf);
   await waitTitle(SCREEN('Pathfinding'));
-  check('Pathfinding page: chunk XP, and movement speed from the attribute engine', /Enter a chunk you have never visited: 5 XP/.test(flat(20))
-      && /\+0\.1% movement speed/.test(flat(22)) && /Movement speed: \+[\d.]+% → \+[\d.]+%/.test(flat(22)) && /Formerly Navigation/.test(flat(4)), flat(20) + ' || ' + flat(22));
+  check('Pathfinding page: chunk XP, and movement speed from the attribute engine', /Enter a chunk you have never visited: 5 XP/.test(flat(19))
+      && /\+0\.1% movement speed/.test(flat(21)) && /Movement speed: \+[\d.]+% → \+[\d.]+%/.test(flat(21)) && /Formerly Navigation/.test(flat(4)), flat(19) + ' || ' + flat(21));
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(fm); await waitTitle(SCREEN('Field Medicine'));
-  check('Untrainable skill page says so', /Nothing in the game trains this skill yet/.test(flat(20)) && /In development/.test(flat(20)), flat(20));
+  check('Untrainable skill page says so', /Nothing in the game trains this skill yet/.test(flat(19)) && /In development/.test(flat(19)), flat(19));
   await click(45); await waitTitle(SCREEN('Utility Skills'));
   await click(sv); await waitTitle(SCREEN('Survival'));
-  check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*Flames, burning afterwards, campfires, magma blocks and fire spells; lava only partly/.test(flat(24)), flat(24));
-  check('Survival page: live resistances with values; projectiles train it', /Fire resistance ● Live Now: [\d.]+%/.test(flat(24)) && /Take hits from mobs/.test(flat(20)) && /arrows and other projectiles included/.test(flat(20)) && /idle for a minute/.test(flat(20)), flat(20));
-  if (isOp()) check('Survival 4 shows 4.0% fire resistance, 5.0% next', /Fire resistance ● Live Now: 4\.0% next level 5\.0%/.test(flat(24)), flat(24));
+  check('Survival page: fire resistance says which fire counts', /Fire resistance ● Live Now: [\d.]+%.*Flames, burning afterwards, campfires, magma blocks and fire spells; lava only partly/.test(flat(23)), flat(23));
+  check('Survival page: live resistances with values; projectiles train it', /Fire resistance ● Live Now: [\d.]+%/.test(flat(23)) && /Take hits from mobs/.test(flat(19)) && /arrows and other projectiles included/.test(flat(19)) && /idle for a minute/.test(flat(19)), flat(19));
+  if (isOp()) check('Survival 4 shows 4.0% fire resistance, 5.0% next', /Fire resistance ● Live Now: 4\.0% next level 5\.0%/.test(flat(23)), flat(23));
 
   await click(49);
   check('Home returns to the hub', await waitTitle(SCREEN('Player Menu')), title());
@@ -751,7 +751,7 @@ async function smithingPages() {
       && /\+0\.3% wear resistance per level/.test(flat(sm)), sm >= 0 ? flat(sm) : 'missing');
   await click(sm);
   check('Smithing page opens', await waitTitle(SCREEN('Smithing')), title());
-  const t = flat(22);
+  const t = flat(21);
   check('Attributes & speed: each level gives +0.25 Fortitude and +0.3% wear resistance (no "gives no attribute")',
     /Each level gives: \+0\.25 Fortitude \+0\.3% wear resistance/.test(t) && !/gives no attribute/.test(t), t);
   check('...from this skill now (level 50): +12.5 Fortitude, +15% wear resistance (before diminishing returns)',
@@ -761,8 +761,8 @@ async function smithingPages() {
       && /Wear resistance: \+12\.2% → \+12\.4%/.test(t), t);
   check('...both live, and the PvP pause said', /Fortitude: ● Active/.test(t) && /Wear resistance: ● Active/.test(t) && /pause during PvP/.test(t), t);
   check('Next levels: wear resistance at each milestone, and the forged-quality odds stay',
-    /At level 51 .*Wear resistance: \+12\.4%/.test(flat(31)) && /At level 100 .*\+25 Fortitude .*Wear resistance: \+20\.1%/.test(flat(31))
-      && /Superior or better forged gear/.test(flat(31)), flat(31));
+    /At level 51 .*Wear resistance: \+12\.4%/.test(flat(25)) && /At level 100 .*\+25 Fortitude .*Wear resistance: \+20\.1%/.test(flat(25))
+      && /Superior or better forged gear/.test(flat(25)), flat(25));
   await click(49, 600); // Home
   await waitTitle(SCREEN('Player Menu'));
   await click(21);

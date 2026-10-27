@@ -25,13 +25,19 @@ import java.util.UUID;
 /**
  * Player Menu → Skills → category → one skill: what it is, how to train it, the attribute points
  * it gives and what they do, its own effects with their status, and what the next levels bring.
- * Arrows browse the category sideways (Back still returns to the category).
+ * Below them, the skill's section tiles (docs/design/FISHING_EQUIPMENT.md §2: Fishing's Equipment,
+ * Journal and Encounters, Woodcutting's Woods), each opening its own screen, and for Fishing the
+ * "since your last visit" summary. Arrows browse the category sideways (Back still returns to the
+ * category).
  */
 public final class SkillDetailMenu extends PlayerMenu {
 
     private static final int STRIP_FIRST = 10, STRIP_LENGTH = 7;
 
     private final String skill;
+    /** What the summary tile showed at the last draw: a right-click marks exactly this read (never what came in since). */
+    private Gathering.FishingJournal.Summary shownSummary;
+    private java.util.Set<Long> shownUnreadAt;
 
     public SkillDetailMenu(CerberusPlugin plugin, String skill) {
         super(plugin);
@@ -96,25 +102,24 @@ public final class SkillDetailMenu extends PlayerMenu {
             if (celebrate) v.runLater(5, () -> memory().markLooked(id, skill)); // used up only if the flash really played
         }
 
-        // ── Row 2: train / attributes / effects ────────────────
+        // ── Row 2: train / attributes / effects / next levels ──
         Ui.Lore train = Ui.lore();
         SkillView.trainingLines(train, plugin, id, d, pr.level());
         boolean trainable = SkillView.trainable(plugin, d);
-        v.set(20, Ui.item(trainable ? Material.BOOK : Material.GRAY_DYE,
+        v.set(19, Ui.item(trainable ? Material.BOOK : Material.GRAY_DYE,
                 (trainable ? ChatColor.GOLD : ChatColor.GRAY) + "How to train", train.build()));
 
-        v.set(22, attributeTile(svc, rules, id, d, pr));
+        v.set(21, attributeTile(svc, rules, id, d, pr));
 
         Ui.Lore eff = Ui.lore();
         SkillView.effectLines(eff, plugin, d, pr.level(), realm, pr.max());
-        v.set(24, Ui.item(d.effects().stream().anyMatch(e -> e.status() != SkillDefinitions.EffectStatus.NOT_ACTIVE)
+        v.set(23, Ui.item(d.effects().stream().anyMatch(e -> e.status() != SkillDefinitions.EffectStatus.NOT_ACTIVE)
                 ? Material.BLAZE_POWDER : Material.GUNPOWDER, ChatColor.GOLD + "What it does", eff.build()));
 
-        // ── Row 3: what the next levels bring (and, for a skill with woods, the woods found) ──
-        v.set(31, upcomingTile(svc, rules, id, d, pr, realm));
-        ItemStack woods = woodsTile(p, d);
-        if (woods != null) v.set(33, woods);
-        fishingTiles(p, d, v);
+        v.set(25, upcomingTile(svc, rules, id, d, pr, realm));
+
+        // ── Row 3: the skill's sections (only skills with real functionality have any) ──
+        sections(v, p, d);
 
         // ── Row 4: browse the category in place ────────────────
         List<SkillDef> siblings = SkillDefinitions.byCategory(d.category());
@@ -166,82 +171,54 @@ public final class SkillDetailMenu extends PlayerMenu {
     }
 
     /**
-     * The woods a skill cuts (resources.yml) and which ones the player has discovered (docs/design/WOODCUTTING.md §9):
-     * found ones in green, the rest with the level and axe they ask for. Null for a skill without woods. Read from the
-     * player's own data, kept in memory while they are online: no database.
+     * The skill's section tiles, centred in row 3, each opening its screen on top of this page (Back returns here), and
+     * its summary tile between the arrows (Fishing's "since your last visit"). Tiles read the player's own data in
+     * memory: no database.
      */
-    private ItemStack woodsTile(Player p, SkillDef d) {
-        Gathering.Woodcutting wc = plugin.getWoodcutting();
-        Gathering.GatheringCatalog c = Gathering.GatheringCatalog.current();
-        if (wc == null || c == null) return null;
-        List<Gathering.GatheringCatalog.ResourceDef> woods = c.woods().stream().filter(r -> r.skill().equals(d.name())).toList();
-        if (woods.isEmpty()) return null;
-        java.util.Set<String> found = wc.discovered(p);
-        long have = woods.stream().filter(r -> found.contains(r.id())).count();
-        Ui.Lore l = Ui.lore();
-        for (Gathering.GatheringCatalog.ResourceDef r : woods) {
-            String axe = r.tier() <= 0 ? "any axe" : Gathering.GatheringCatalog.tierName(r.tier()) + " axe";
-            l.raw(found.contains(r.id()) ? ChatColor.GREEN + "✔ " + ChatColor.WHITE + r.displayName()
-                    : ChatColor.DARK_GRAY + "✘ " + ChatColor.GRAY + r.displayName() + ChatColor.DARK_GRAY + " · level " + r.level() + " · " + axe);
+    private void sections(MenuView v, Player p, SkillDef d) {
+        SkillSections reg = plugin.getPlayerMenuGUI().skillSections();
+        java.util.List<SkillSections.Section> live = new java.util.ArrayList<>();
+        java.util.List<ItemStack> tiles = new java.util.ArrayList<>();
+        for (SkillSections.Section s : reg.forSkill(d.name())) {
+            ItemStack tile;
+            try { tile = s.tile().apply(plugin, p); } catch (RuntimeException e) { tile = null; }
+            if (tile == null) continue;
+            live.add(s);
+            tiles.add(tile);
         }
-        l.gap();
-        for (String w : PlayerTheme.wrap("The first log of each wood you cut from a tree pays a discovery bonus, once.", SkillView.WIDTH)) l.text(w);
-        return Ui.item(Material.OAK_SAPLING, ChatColor.GOLD + "Woods: " + have + " of " + woods.size() + " discovered", l.build());
+        int[] slots = SkillSections.slots(live.size());
+        for (int i = 0; i < slots.length; i++) {
+            SkillSections.Section s = live.get(i);
+            if (s.opener() == null) { v.set(slots[i], tiles.get(i)); continue; }
+            v.button(slots[i], tiles.get(i), c -> {
+                SkillSections.Section now = plugin.getPlayerMenuGUI().skillSections().forSkill(d.name()).stream()
+                        .filter(x -> x.id().equals(s.id())).findFirst().orElse(null);
+                if (now != null && now.opener() != null) menus.open(c.player(), now.opener().apply(plugin, c.player()));
+            });
+        }
+        SkillSections.Summary sum = reg.summary(d.name());
+        shownSummary = null;
+        shownUnreadAt = null;
+        if (sum != null) {
+            ItemStack tile;
+            try { tile = sum.tile().apply(plugin, p); } catch (RuntimeException e) { tile = null; }
+            if (tile != null) {
+                Gathering.Fishing f = plugin.getFishing();
+                if (f != null && d.name().equals(Gathering.GatheringCatalog.current().fishing().skill())) {
+                    Gathering.FishingJournal j = f.journal(p);
+                    shownSummary = j.summary();
+                    shownUnreadAt = new java.util.HashSet<>();
+                    for (Gathering.FishingJournal.Notable n : j.notable()) if (n.unread()) shownUnreadAt.add(n.at());
+                }
+                v.button(40, tile, c -> sum.click().clicked(plugin, c.player(), c.isRight(), this));
+            }
+        }
     }
 
-    /**
-     * Fishing's page (docs/design/FISHING.md): the journal by water (species found, the rest with the level and moment they
-     * ask for), and the banked lures, where a click chooses which one a Sneak-cast calls (kept for the session, no database).
-     */
-    private void fishingTiles(Player p, SkillDef d, MenuView v) {
-        Gathering.Fishing f = plugin.getFishing();
-        Gathering.FishingRules r = Gathering.GatheringCatalog.current().fishing();
-        if (f == null || !r.enabled() || !d.name().equals(r.skill())) return;
-        Gathering.FishingJournal j = f.journal(p);
-        Ui.Lore l = Ui.lore();
-        long found = 0;
-        for (Gathering.FishingRules.Water w : r.waters()) {
-            List<Gathering.FishingRules.Species> sp = r.species(w.id());
-            if (sp.isEmpty()) continue;
-            long have = sp.stream().filter(s -> j.caught(s.id())).count();
-            found += have;
-            l.raw((have == sp.size() ? ChatColor.GREEN + "✔ " : ChatColor.GRAY + "• ") + ChatColor.WHITE + w.name() + ChatColor.GRAY + ": " + have + " of " + sp.size());
-        }
-        l.gap();
-        for (String w : PlayerTheme.wrap("Each water has its own species; time and weather change what bites. A first catch is a discovery, a heavier one a personal best. /fishing journal lists them.", SkillView.WIDTH)) l.text(w);
-        v.set(33, Ui.item(Material.TROPICAL_FISH, ChatColor.GOLD + "Journal: " + found + " of " + r.allSpecies().size() + " species", l.build()));
+    /** What the summary tile showed when this page was last drawn (a right-click marks exactly this read). */
+    Gathering.FishingJournal.Summary shownSummary() { return shownSummary; }
 
-        Ui.Lore lu = Ui.lore();
-        String sel = f.selected(p);
-        if (j.totalLures() == 0) {
-            for (String w : PlayerTheme.wrap("None banked yet. From Fishing " + r.techniques().creatures() + ", a catch can bring a sea creature's lure: "
-                    + "Sneak and cast into water to call it, and fight it when you are ready.", SkillView.WIDTH)) lu.text(w);
-        } else {
-            for (java.util.Map.Entry<String, Integer> e : j.lures().entrySet()) {
-                Gathering.FishingRules.Creature c = r.creature(e.getKey());
-                if (c == null) continue;
-                lu.raw((e.getKey().equals(sel) ? ChatColor.AQUA + "▶ " : ChatColor.GRAY + "  ") + c.rarity().color + c.name() + ChatColor.GRAY + " ×" + e.getValue());
-            }
-            lu.gap();
-            for (String w : PlayerTheme.wrap("Sneak and cast into water to call " + (sel != null ? "the chosen one" : "one") + ". If it gets away, its lure comes back.", SkillView.WIDTH)) lu.text(w);
-            lu.hint("Click to choose which one");
-        }
-        lu.raw(ChatColor.DARK_GRAY + "Defeated: " + j.creaturesDefeated().size() + " of " + r.creatures().size() + " creatures");
-        ItemStack lures = Ui.item(Material.PRISMARINE_SHARD, ChatColor.AQUA + "Lures: " + j.totalLures(), lu.build());
-        if (j.totalLures() == 0) { v.set(29, lures); return; }
-        v.button(29, lures, c -> {
-            // Only creatures this server still has; the last lure may have gone while the page was open.
-            Gathering.FishingRules now = Gathering.GatheringCatalog.current().fishing();
-            List<String> have = new java.util.ArrayList<>(f.journal(c.player()).lures().keySet());
-            have.removeIf(id -> now.creature(id) == null);
-            if (!have.isEmpty()) {
-                String chosen = f.selected(c.player());
-                int at = chosen == null ? -1 : have.indexOf(chosen);
-                f.select(c.player(), have.get((at + 1) % have.size()));
-            }
-            menus.replace(c.player(), new SkillDetailMenu(plugin, d.name()));
-        });
-    }
+    java.util.Set<Long> shownUnreadAt() { return shownUnreadAt; }
 
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {
         List<AttributeRules.SkillWeight> weights = SkillView.weights(rules, d.name());

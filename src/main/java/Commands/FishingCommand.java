@@ -21,14 +21,15 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * {@code /fishing}: a player's journal (species by water, personal bests), their banked lures and which one a Sneak-cast
- * calls (docs/design/FISHING.md). {@code /cerb fish ...}: admin tools (the caller already holds {@code cerb.admin}, checked
- * by /cerb on every use): the water and odds where you look, lures and a forced next catch for tests, a player's journal,
- * counters. Changes to another player's journal run on that player's thread.
+ * {@code /fishing}: a player's journal (species by water, personal bests), their banked encounters and which one a
+ * Sneak-cast calls (docs/design/FISHING.md), the species they track (docs/design/FISHING_EQUIPMENT.md). Players see
+ * "encounters"; the old {@code lures} subcommand still works. {@code /cerb fish ...}: admin tools (the caller already
+ * holds {@code cerb.admin}, checked by /cerb on every use): the water and odds where you look, encounters and a forced
+ * next catch for tests, a player's journal, counters. Changes to another player's journal run on that player's thread.
  */
 public final class FishingCommand implements CommandExecutor, TabCompleter {
 
-    static final List<String> SUBS = List.of("journal", "lures", "call");
+    static final List<String> SUBS = List.of("journal", "encounters", "call", "track");
     static final List<String> ADMIN = List.of("info", "lure", "force", "journal", "stats");
 
     private final CerberusPlugin plugin;
@@ -49,7 +50,8 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         String sub = args.length > 0 ? args[0].toLowerCase(Locale.ROOT) : "";
         switch (sub) {
             case "journal" -> journal(p, f.journal(p), r, args.length > 1 ? args[1] : null, p);
-            case "lures" -> lures(p, f, r);
+            case "encounters", "lures" -> lures(p, f, r);
+            case "track" -> track(p, f, r, args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : null);
             case "call" -> call(p, f, r, args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : null);
             default -> summary(p, f, r);
         }
@@ -68,8 +70,49 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             long have = sp.stream().filter(s -> j.caught(s.id())).count();
             p.sendMessage(ChatColor.GRAY + "  " + w.name() + ": " + (have == sp.size() ? ChatColor.GREEN : ChatColor.WHITE) + have + " of " + sp.size());
         }
+        FishingRules.Species t = r.speciesById(j.tracked());
+        if (t != null) p.sendMessage(ChatColor.LIGHT_PURPLE + "★ Tracking: " + t.rarity().color + itemName(t.item())
+                + ChatColor.DARK_GRAY + " (Player Menu → Skills → Fishing → Journal)");
         lures(p, f, r);
-        p.sendMessage(ChatColor.DARK_GRAY + "/fishing journal [water] · /fishing call <creature>");
+        p.sendMessage(ChatColor.DARK_GRAY + "/fishing journal [water] · /fishing track <species|off> · /fishing call <creature>");
+    }
+
+    private static String itemName(String item) {
+        GatheringCatalog.ItemDef d = GatheringCatalog.current().item(item);
+        return d == null ? item : d.name();
+    }
+
+    /** {@code /fishing track <species|off>}: the species the journal checks and the cast hint follows (never the odds). */
+    private void track(Player p, Fishing f, FishingRules r, String what) {
+        FishingJournal j = f.journal(p);
+        if (what == null) {
+            FishingRules.Species t = r.speciesById(j.tracked());
+            p.sendMessage(t == null ? ChatColor.YELLOW + "Use: /fishing track <species>  (or off)"
+                    : ChatColor.LIGHT_PURPLE + "★ Tracking " + t.rarity().color + itemName(t.item()) + ChatColor.GRAY + ". /fishing track off stops.");
+            return;
+        }
+        if (what.equalsIgnoreCase("off") || what.equalsIgnoreCase("none")) {
+            j.track(null);
+            f.saveJournal(p);
+            p.sendMessage(ChatColor.GRAY + "No species tracked.");
+            return;
+        }
+        FishingRules.Species s = findSpecies(r, what);
+        if (s == null) { p.sendMessage(ChatColor.RED + "No species called " + what + "."); return; }
+        j.track(s.id());
+        f.saveJournal(p);
+        p.sendMessage(ChatColor.LIGHT_PURPLE + "★ Tracking " + s.rarity().color + itemName(s.item()) + ChatColor.GRAY
+                + ": the journal checks what it needs where you fish. Tracking never changes the odds.");
+    }
+
+    static FishingRules.Species findSpecies(FishingRules r, String what) {
+        String k = what.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+        FishingRules.Species s = r.speciesById(k);
+        if (s != null) return s;
+        for (FishingRules.Species x : r.allSpecies().values()) {
+            if (itemName(x.item()).toLowerCase(Locale.ROOT).replace(' ', '_').equals(k)) return x;
+        }
+        return null;
     }
 
     static void journal(CommandSender to, FishingJournal j, FishingRules r, String water, Player whose) {
@@ -100,7 +143,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         FishingJournal j = f.journal(p);
         if (j.totalLures() == 0) {
             int from = r.techniques().creatures();
-            p.sendMessage(ChatColor.GRAY + "Lures: none banked yet" + ChatColor.DARK_GRAY + " (from Fishing " + from + ", a catch can bring one)");
+            p.sendMessage(ChatColor.GRAY + "Encounters: none banked yet" + ChatColor.DARK_GRAY + " (from Fishing " + from + ", a catch can bank one)");
         } else {
             String sel = f.selected(p);
             List<String> parts = new ArrayList<>();
@@ -109,7 +152,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                 String name = c == null ? e.getKey() : c.name();
                 parts.add((e.getKey().equals(sel) ? ChatColor.AQUA + "▶ " : ChatColor.WHITE + "") + name + ChatColor.GRAY + " ×" + e.getValue());
             }
-            p.sendMessage(ChatColor.GRAY + "Lures: " + String.join(ChatColor.DARK_GRAY + ", ", parts));
+            p.sendMessage(ChatColor.GRAY + "Encounters: " + String.join(ChatColor.DARK_GRAY + ", ", parts));
             p.sendMessage(ChatColor.DARK_GRAY + "Sneak and cast into water to call " + (sel != null ? "the chosen one" : "one") + "; /fishing call <creature> chooses.");
         }
         String fight = f.fightOf(p.getUniqueId());
@@ -118,10 +161,10 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
 
     private void call(Player p, Fishing f, FishingRules r, String what) {
         FishingJournal j = f.journal(p);
-        if (what == null) { p.sendMessage(ChatColor.YELLOW + "Use: /fishing call <creature>  (one you have a lure for)"); return; }
+        if (what == null) { p.sendMessage(ChatColor.YELLOW + "Use: /fishing call <creature>  (one you have an encounter banked for)"); return; }
         FishingRules.Creature c = find(r, what);
         if (c == null) { p.sendMessage(ChatColor.RED + "No creature called " + what + "."); return; }
-        if (j.lures(c.id()) <= 0) { p.sendMessage(ChatColor.RED + "You have no lure for the " + c.name() + "."); return; }
+        if (j.lures(c.id()) <= 0) { p.sendMessage(ChatColor.RED + "You have no encounter banked for the " + c.name() + "."); return; }
         f.select(p, c.id());
         p.sendMessage(ChatColor.AQUA + "▶ " + c.name() + ChatColor.GRAY + " (" + j.lures(c.id()) + "): Sneak and cast into water to call it.");
     }
@@ -141,6 +184,11 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             return filter(new ArrayList<>(plugin.getFishing().journal(p).lures().keySet()), args[1]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("journal")) return filter(rules().waters().stream().map(FishingRules.Water::id).toList(), args[1]);
+        if (args.length == 2 && args[0].equalsIgnoreCase("track")) {
+            List<String> ids = new ArrayList<>(rules().allSpecies().keySet());
+            ids.add("off");
+            return filter(ids, args[1]);
+        }
         return List.of();
     }
 
@@ -166,12 +214,16 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                 t.getScheduler().run(plugin, task -> {
                     FishingJournal j = f.journal(t);
                     journal(sender, j, r, null, t);
-                    sender.sendMessage(ChatColor.GRAY + "Lures: " + (j.lures().isEmpty() ? "none" : j.lures()) + ChatColor.GRAY + " · defeated: "
+                    sender.sendMessage(ChatColor.GRAY + "Encounters: " + (j.lures().isEmpty() ? "none" : j.lures()) + ChatColor.GRAY + " · defeated: "
                             + j.creaturesDefeated() + " · fight: " + (j.active() == null ? "none" : j.active().creature() + " " + j.active().entity()));
+                    FishingJournal.Summary su = j.summary();
+                    sender.sendMessage(ChatColor.GRAY + "Tracked: " + (j.tracked() == null ? "none" : j.tracked()) + " · personal bests set: " + j.bestsSet()
+                            + " · unread summary: " + su.catches() + " catches, " + su.xp() + " XP, " + su.species() + " species, " + su.bests()
+                            + " bests, " + su.encounters() + " encounters · notable: " + j.notable().size() + " (" + j.unreadNotable() + " unread)");
                 }, null);
             }
             case "stats" -> { for (String l : f.stats()) sender.sendMessage(ChatColor.GRAY + l); }
-            default -> sender.sendMessage(ChatColor.YELLOW + "Use: /cerb fish <info|lure <player> <creature> [n]|force <player> <species <id>|treasure [id]|lure [creature]|apex [creature]>|journal <player>|stats>");
+            default -> sender.sendMessage(ChatColor.YELLOW + "Use: /cerb fish <info|lure <player> <creature> [n] (an encounter)|force <player> <species <id>|treasure [id]|lure [creature]|apex [creature]>|journal <player>|stats>");
         }
     }
 
@@ -194,7 +246,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         double creature = sec == null ? 0 : sec.active(p.getUniqueId(), Attributes.Stat.SEA_CREATURE_CHANCE);
         double treasure = sec == null ? 0 : sec.active(p.getUniqueId(), Attributes.Stat.TREASURE_CHANCE);
         List<FishingRules.Creature> cs = m.water() == null ? List.of() : r.creaturesOf(m.water(), level);
-        p.sendMessage(ChatColor.GRAY + "Lure chance per catch " + pct(creature) + ": "
+        p.sendMessage(ChatColor.GRAY + "Encounter chance per catch " + pct(creature) + ": "
                 + (cs.isEmpty() ? "no creature here at your level" : String.join(", ", cs.stream().map(FishingRules.Creature::name).toList()))
                 + (m.water() != null && r.apexOf(m.water(), level) != null ? "; apex " + r.apexOf(m.water(), level).name() : ""));
         p.sendMessage(ChatColor.GRAY + "Treasure per catch in open water " + (r.treasureSense(level) ? pct(treasure) : "none (Treasure Sense at " + r.techniques().treasureSense() + ")")
@@ -207,7 +259,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         int n = 1;
         try { if (args.length > 4) n = Math.max(1, Math.min(100, Integer.parseInt(args[4]))); } catch (NumberFormatException ignored) { /* 1 */ }
         if (t == null || c == null) {
-            sender.sendMessage(ChatColor.RED + "Use: /cerb fish lure <online player> <creature> [1-100]. Creatures: " + String.join(", ", r.creatures().keySet()));
+            sender.sendMessage(ChatColor.RED + "Use: /cerb fish lure <online player> <creature> [1-100] (banks encounters). Creatures: " + String.join(", ", r.creatures().keySet()));
             return;
         }
         int count = n;
@@ -216,8 +268,8 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             int added = 0;
             for (int i = 0; i < count; i++) if (j.addLure(c.id(), 0)) added++;
             t.getPersistentDataContainer().set(Fishing.JOURNAL, org.bukkit.persistence.PersistentDataType.STRING, j.encode());
-            sender.sendMessage(ChatColor.GREEN + t.getName() + ": +" + added + " " + c.name() + " lure(s), now " + j.lures(c.id()) + ".");
-            plugin.getLogger().info("[Fishing] " + sender.getName() + " gave " + t.getName() + " " + added + " " + c.id() + " lure(s)");
+            sender.sendMessage(ChatColor.GREEN + t.getName() + ": +" + added + " " + c.name() + " encounter(s), now " + j.lures(c.id()) + ".");
+            plugin.getLogger().info("[Fishing] " + sender.getName() + " gave " + t.getName() + " " + added + " " + c.id() + " encounter(s)");
         }, null);
     }
 

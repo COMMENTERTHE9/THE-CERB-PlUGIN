@@ -9,6 +9,9 @@
 //   mixed  - the bots split across the three
 //   idle   - the bots just stand there (per-player background cost: HUD, regen, saves)
 //   menuidle - each bot opens the Player Menu once and leaves it open (an open menu must cost nothing extra)
+//   fishmenu - each bot browses to the Fishing skill page as fast as a hurried player: hub -> Skills -> Utility -> Fishing,
+//            redraws it twice (Refresh), then back -> back -> close. The same clicks on every build since Fishing
+//            (2026-10-27), so the Fishing page's cost compares before and after (docs/design/FISHING_EQUIPMENT.md).
 //   abilities - like combat, but each bot is a Warrior/Duelist (Step 5 classes; the controller sets its skills and
 //            ranks) and presses its quick keys on a rhythm while fighting (docs/design/ABILITY_CONTROLS.md):
 //            right-click (Execute), F (Cleave), Q (Flurry), Sneak + right-click (Feint), with plain hits in between.
@@ -322,6 +325,19 @@ async function menu(b, deadline) {
   }
 }
 
+async function fishmenu(b, deadline) {
+  b.chat('/gamemode creative'); await sleep(400);
+  const step = async slot => { if (!b.currentWindow) return false; await b.clickWindow(slot, 0, 0); bump(b.username, 'clicks'); await sleep(300); return true; };
+  while (Date.now() < deadline) {
+    b.chat('/menu'); await sleep(600);
+    if (!b.currentWindow) { await sleep(500); continue; }
+    bump(b.username, 'opens');
+    for (const s of [19, 24, 13, 52, 52, 45, 45]) if (!(await step(s))) break;
+    if (b.currentWindow) { await b.clickWindow(53, 0, 0); bump(b.username, 'clicks'); }
+    await sleep(300);
+  }
+}
+
 async function menuidle(b, deadline) {
   b.chat('/gamemode creative'); await sleep(400);
   b.chat('/menu'); await sleep(1500);
@@ -365,7 +381,8 @@ async function menuidle(b, deadline) {
         : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
         : m === 'wood' ? wood(b, deadline, controller) : m === 'felling' ? wood(b, deadline, controller, true)
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)
-        : m === 'menu' ? menu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline) : sleep(Math.max(0, deadline - Date.now()));
+        : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
+        : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);

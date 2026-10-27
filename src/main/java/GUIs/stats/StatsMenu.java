@@ -187,14 +187,15 @@ public final class StatsMenu extends PlayerMenu {
         l.raw(ChatColor.AQUA + "Treasure chance: " + ChatColor.WHITE + Fmt.pct(s.secondary(Attributes.Stat.TREASURE_CHANCE))
                 + ChatColor.GRAY + "  per catch in open water");
         l.raw(ChatColor.AQUA + "Sea-creature chance: " + ChatColor.WHITE + Fmt.pct(s.secondary(Attributes.Stat.SEA_CREATURE_CHANCE))
-                + ChatColor.GRAY + "  a lure per catch");
+                + ChatColor.GRAY + "  an encounter banked per catch");
         l.gap().text("Speeds: raised by Agility (Essence for")
                 .text("spells) and by the skill behind each")
                 .text("action: Blade Mastery, Weapon Mastery,")
                 .text("Ranged Precision, " + Skills.SkillNames.display("Navigation") + ", Spell")
                 .text("Weaving, Mining, Woodcutting.")
-                .text("Wear resistance: by Smithing. Lure,")
-                .text("treasure and sea creatures: by Fishing.");
+                .text("Wear resistance: by Smithing. Lure")
+                .text("speed, treasure and sea creatures:")
+                .text("by Fishing and its equipment.");
         l.gap();
         if (paused) l.raw(ChatColor.YELLOW + "⏸ Paused: you are in PvP combat");
         else {

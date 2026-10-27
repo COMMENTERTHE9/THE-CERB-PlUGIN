@@ -391,6 +391,21 @@ public class SkillManager {
         return r.levelsGained() > 0;
     }
 
+    /**
+     * The same award as {@link #addXpAndCheckLevelUp}, returning the XP the skill really gained: 0 when the player's skills
+     * aren't loaded or the skill is at the level cap (what a summary of awarded XP counts).
+     */
+    public long addXpCounted(String skillName, double xpGained, Player player) {
+        UUID uid = player.getUniqueId();
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return 0;
+        int levelBefore = levels.getOrDefault(skillName, 1), xpBefore = xp.getOrDefault(skillName, 0);
+        SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
+        saveSkills(player);
+        return SkillProgression.gainedXp(levelBefore, xpBefore, r);
+    }
+
     /** An admin's XP grant or correction: the same award, without the level-up presentation. */
     public boolean addXpQuietly(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();

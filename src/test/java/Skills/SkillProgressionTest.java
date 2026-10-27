@@ -162,4 +162,19 @@ class SkillProgressionTest {
         assertEquals(1, levels.get("Fishing"));
         assertEquals(SkillManager.xpForLevel(1) - 1, xp.get("Fishing"), "at most one level's worth, as for the old overflow");
     }
+
+    @Test
+    void theXpAnAwardReallyAddedCountsNothingAtTheCap() {
+        SkillProgression.Result r = SkillProgression.award(10, 5, 40);
+        assertEquals(40, SkillProgression.gainedXp(10, 5, r));
+        int need = SkillManager.xpForLevel(10);
+        SkillProgression.Result up = SkillProgression.award(10, 0, need + 7);
+        assertEquals(need + 7, SkillProgression.gainedXp(10, 0, up), "across a level-up, all of it");
+        SkillProgression.Result capped = SkillProgression.award(SkillProgression.MAX_LEVEL, 0, 500);
+        assertEquals(0, SkillProgression.gainedXp(SkillProgression.MAX_LEVEL, 0, capped), "at the cap nothing is awarded");
+        int last = SkillManager.xpForLevel(SkillProgression.MAX_LEVEL - 1);
+        SkillProgression.Result toCap = SkillProgression.award(SkillProgression.MAX_LEVEL - 1, last - 10, 1_000);
+        assertEquals(10, SkillProgression.gainedXp(SkillProgression.MAX_LEVEL - 1, last - 10, toCap), "only what reaching the cap took");
+        assertEquals(0, SkillProgression.gainedXp(5, 3, null));
+    }
 }

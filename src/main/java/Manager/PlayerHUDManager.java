@@ -137,6 +137,19 @@ public class PlayerHUDManager {
     }
 
     /**
+     * A {@link #flash} only when nothing else is on the bar (no message, no notice): for low-priority hints such as a
+     * tracked species' "can bite here", which must never cover an ability's result or a level-up. True when shown.
+     * Player's thread.
+     */
+    public boolean flashIfIdle(Player player, String legacyText, long ms) {
+        Sent s = sent.get(player.getUniqueId());
+        long now = System.nanoTime();
+        if (s != null && ((s.flash != null && s.flashUntil - now > 0) || (s.notice != null && s.noticeUntil - now > 0))) return false;
+        flash(player, legacyText, ms);
+        return true;
+    }
+
+    /**
      * Show a level-up or rank-up notice in the middle of the HUD bar for {@code ms} (Skills.Celebrations): below
      * {@link #flash} messages, which it waits for, and above the XP line, which waits for it. Player's thread.
      */

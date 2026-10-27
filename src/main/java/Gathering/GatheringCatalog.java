@@ -331,7 +331,7 @@ public final class GatheringCatalog {
                     + " (common) to " + number(x.of(FishingRules.Rarity.LEGENDARY)) + " (legendary) XP.");
             lines.add("Each water has its own species (" + fishing.waters().size() + " waters, " + fishing.allSpecies().size()
                     + " species); time and weather change what bites. The first of each species is a discovery.");
-            lines.add("From level " + fishing.techniques().creatures() + " a catch can bank a sea creature's lure: Sneak and cast to call it and fight it.");
+            lines.add("From level " + fishing.techniques().creatures() + " a catch can bank a sea-creature encounter: Sneak and cast to call it and fight it.");
         }
         return out;
     }

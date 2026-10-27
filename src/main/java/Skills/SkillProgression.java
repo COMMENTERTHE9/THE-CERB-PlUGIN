@@ -52,6 +52,22 @@ public final class SkillProgression {
         return new Result(lvl, (int) Math.min(total, Integer.MAX_VALUE), lvl - startLevel);
     }
 
+    /** A skill's whole XP from the start: every level below {@code level} plus {@code xp} into it. */
+    public static long totalXp(int level, int xp) {
+        long t = 0;
+        for (int l = MIN_LEVEL, top = clampLevel(level); l < top; l++) t += SkillManager.xpForLevel(l);
+        return t + Math.max(0, xp);
+    }
+
+    /**
+     * The XP an award really added: the skill's total after minus before, so the level cap (and an award that never
+     * happened) counts as nothing. Never negative.
+     */
+    public static long gainedXp(int levelBefore, int xpBefore, Result after) {
+        if (after == null) return 0;
+        return Math.max(0, totalXp(after.level(), after.xp()) - totalXp(levelBefore, xpBefore));
+    }
+
     /**
      * XP for killing a mob: half its max HP plus half the damage of the killing blow, times the
      * mob's XP multiplier (design plan, "XP sources and the dynamic-XP formula").

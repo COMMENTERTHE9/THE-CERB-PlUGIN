@@ -50,12 +50,22 @@ public final class FishingRules {
         public static final When ALWAYS = new When(Time.ANY, Weather.ANY, Set.of());
 
         public boolean matches(Moment m) {
-            if (time == Time.DAY && m.night()) return false;
-            if (time == Time.NIGHT && !m.night()) return false;
-            if (weather == Weather.CLEAR && m.rain()) return false;
-            if (weather == Weather.RAIN && !m.rain()) return false;
-            if (weather == Weather.THUNDER && !m.thunder()) return false;
-            return biomes.isEmpty() || biomes.contains(m.biome());
+            return timeOk(m.night()) && weatherOk(m.rain(), m.thunder()) && biomeOk(m.biome());
+        }
+
+        // The three conditions one by one: matches() is exactly all of them, and the journal's checks (checks) use the same.
+        public boolean timeOk(boolean night) {
+            return !(time == Time.DAY && night) && !(time == Time.NIGHT && !night);
+        }
+
+        public boolean weatherOk(boolean rain, boolean thunder) {
+            if (weather == Weather.CLEAR && rain) return false;
+            if (weather == Weather.RAIN && !rain) return false;
+            return !(weather == Weather.THUNDER && !thunder);
+        }
+
+        public boolean biomeOk(String biome) {
+            return biomes.isEmpty() || biomes.contains(biome);
         }
 
         /** "at night, in rain" style words for menus; empty when always. */
@@ -195,8 +205,70 @@ public final class FishingRules {
     public List<Species> eligible(Moment m, int level) {
         List<Species> out = new ArrayList<>();
         if (m == null) return out;
-        for (Species s : species(m.water())) if (s.level() <= level && s.when().matches(m)) out.add(s);
+        for (Species s : species(m.water())) if (canBite(s, m, level)) out.add(s);
         return out;
+    }
+
+    /** True when {@code s} can bite at this moment and level: what {@link #eligible} and every check below agree on. */
+    public static boolean canBite(Species s, Moment m, int level) {
+        return m != null && s.water().equals(m.water()) && s.level() <= level && s.when().matches(m);
+    }
+
+    /** One requirement a species has, as the journal shows it (docs/design/FISHING_EQUIPMENT.md §3). */
+    public enum Need { LEVEL, WATER, TIME, WEATHER, BIOME }
+
+    /** Met, missing, or not known yet (no bobber in the water and no water in sight). */
+    public enum CheckState { MET, MISSING, UNKNOWN }
+
+    /** A requirement and where it stands: {@code need} says what it asks, {@code have} what there is now (may be empty). */
+    public record Check(Need kind, CheckState state, String need, String have) {}
+
+    /**
+     * {@code s}'s requirements one by one, at {@code m} for a player at {@code level}. {@code m} null or with no water: the
+     * place isn't known, so the water and biome checks are UNKNOWN; time and weather are known anywhere in a world, so
+     * {@code m} still carries them. Uses exactly the conditions {@link #canBite} uses: every check MET is canBite.
+     */
+    public List<Check> checks(Species s, Moment m, int level) {
+        List<Check> out = new ArrayList<>(5);
+        out.add(new Check(Need.LEVEL, s.level() <= level ? CheckState.MET : CheckState.MISSING, "Fishing " + s.level(), "you: " + level));
+        Water w = water(s.water());
+        String wName = w == null ? s.water() : w.name();
+        boolean placeKnown = m != null && m.water() != null;
+        if (!placeKnown) out.add(new Check(Need.WATER, CheckState.UNKNOWN, wName, ""));
+        else {
+            Water here = water(m.water());
+            out.add(new Check(Need.WATER, s.water().equals(m.water()) ? CheckState.MET : CheckState.MISSING, wName,
+                    here == null ? m.water() : here.name()));
+        }
+        When when = s.when();
+        if (when.time() != Time.ANY) {
+            String need = when.time() == Time.NIGHT ? "Night only" : "Day only";
+            out.add(m == null ? new Check(Need.TIME, CheckState.UNKNOWN, need, "")
+                    : new Check(Need.TIME, when.timeOk(m.night()) ? CheckState.MET : CheckState.MISSING, need, m.night() ? "it is night" : "it is day"));
+        }
+        if (when.weather() != Weather.ANY) {
+            String need = switch (when.weather()) {
+                case RAIN -> "Rain";
+                case THUNDER -> "A thunderstorm";
+                case CLEAR -> "Clear weather";
+                default -> "";
+            };
+            out.add(m == null ? new Check(Need.WEATHER, CheckState.UNKNOWN, need, "")
+                    : new Check(Need.WEATHER, when.weatherOk(m.rain(), m.thunder()) ? CheckState.MET : CheckState.MISSING, need,
+                    m.thunder() ? "a thunderstorm" : m.rain() ? "rain" : "clear"));
+        }
+        if (!when.biomes().isEmpty()) {
+            String need = "In " + String.join(" or ", when.biomes().stream().map(b -> b.replace('_', ' ')).toList());
+            out.add(!placeKnown || m.biome() == null ? new Check(Need.BIOME, CheckState.UNKNOWN, need, "")
+                    : new Check(Need.BIOME, when.biomeOk(m.biome()) ? CheckState.MET : CheckState.MISSING, need, m.biome().replace('_', ' ')));
+        }
+        return out;
+    }
+
+    /** True when every check is MET (the same answer as {@link #canBite} for a known place). */
+    public static boolean allMet(List<Check> checks) {
+        for (Check c : checks) if (c.state() != CheckState.MET) return false;
+        return true;
     }
 
     /**

@@ -68,11 +68,11 @@ async function skill(name, who = NAME) {
 }
 const fishXp = async () => totalXp(await skill('Fishing'));
 async function setLevel(name, level, who = NAME) { await cmd(`/cerb skill ${who} ${name} level ${level}`, 500); }
-/** The admin view of a journal: lures, defeated creatures, the fight in progress, species lines. */
+/** The admin view of a journal: banked encounters (lures), defeated creatures, the fight in progress, species lines. */
 async function journal(who = NAME) {
   const at = await cmd(`/cerb fish journal ${who}`, 1200);
   const lines = chat.slice(at);
-  const l = (lines.find(m => /^Lures: /.test(m)) || '');
+  const l = (lines.find(m => /^(Lures|Encounters): /.test(m)) || ''); // "Encounters" since docs/design/FISHING_EQUIPMENT.md
   const lures = {};
   for (const m of l.matchAll(/(\w+)=(\d+)/g)) lures[m[1]] = Number(m[2]);
   const defeated = ((l.match(/defeated: \[([^\]]*)\]/) || [])[1] || '').split(',').map(s => s.trim()).filter(Boolean);

@@ -41,6 +41,8 @@ public class PlayerMenuGUI {
     private final CerberusPlugin plugin;
     private final NamespacedKey headKey;
     private final PlayerMenuSections sections = new PlayerMenuSections();
+    private final GUIs.player.SkillSections skillSections = new GUIs.player.SkillSections();
+    private final GUIs.player.CollectionIndex collections = new GUIs.player.CollectionIndex();
     private final GUIs.player.PlayerMenuMemory memory = new GUIs.player.PlayerMenuMemory();
 
     public PlayerMenuGUI(CerberusPlugin plugin) {
@@ -54,6 +56,12 @@ public class PlayerMenuGUI {
 
     /** What each player last saw in the menu (this session, in memory). */
     public GUIs.player.PlayerMenuMemory memory() { return memory; }
+
+    /** The section tiles under each skill's page (docs/design/FISHING_EQUIPMENT.md §2). */
+    public GUIs.player.SkillSections skillSections() { return skillSections; }
+
+    /** Every collection the Collections index lists. */
+    public GUIs.player.CollectionIndex collections() { return collections; }
 
     // ── Opening ─────────────────────────────────────────────────
 
@@ -149,9 +157,10 @@ public class PlayerMenuGUI {
         sections.register(new Section("world", 30, Material.FILLED_MAP, "World & Exploration",
                 List.of("How dangerous the land is here", "and how much you have explored."),
                 PlayerMenuGUI::worldLive, p -> Availability.available("Regions and landmarks are not built yet."), WorldMenu::new));
+        // 2026-10-27: the Collections index (docs/design/FISHING_EQUIPMENT.md §2), each collection shared with its skill page.
         sections.register(new Section("collections", 32, Material.CHEST, "Collections",
-                List.of("Items and materials you gather."),
-                null, p -> Availability.inDevelopment("Not designed yet."), null));
+                List.of("Fish, treasure, sea creatures and", "woods you have found."),
+                PlayerMenuGUI::collectionsLive, p -> Availability.available(), GUIs.player.CollectionsMenu::new));
         sections.register(new Section("recipes", 34, Material.CRAFTING_TABLE, "Recipes",
                 List.of("Cerberus crafting recipes."),
                 null, p -> Availability.inDevelopment("Custom recipes are not built yet."), null));
@@ -165,6 +174,19 @@ public class PlayerMenuGUI {
         sections.register(new Section("guide", 42, Material.BOOK, "Guide",
                 List.of("How Cerberus works, in short", "topics."),
                 null, p -> Availability.available(), GuideMenu::new));
+        GUIs.player.GatheringSections.register(skillSections, collections);
+    }
+
+    private static List<String> collectionsLive(CerberusPlugin plugin, Player p) {
+        if (!plugin.getSkillManager().hasLoadedSkills(p.getUniqueId())) return List.of();
+        long have = 0, total = 0;
+        for (GUIs.player.CollectionIndex.Entry e : plugin.getPlayerMenuGUI().collections().all()) {
+            GUIs.player.CollectionIndex.Progress pr = GUIs.player.CollectionIndex.safe(e, plugin, p);
+            if (!pr.available()) continue;
+            have += Math.min(pr.have(), pr.total());
+            total += pr.total();
+        }
+        return total == 0 ? List.of() : List.of(ChatColor.GRAY + "Collected: " + ChatColor.WHITE + have + ChatColor.DARK_GRAY + " / " + total);
     }
 
     private static List<String> worldLive(CerberusPlugin plugin, Player p) {

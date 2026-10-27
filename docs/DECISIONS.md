@@ -46,6 +46,34 @@ Cerberus is a deep, challenging and rewarding RPG. It does not copy Hypixel SkyB
   - **pacing that applies equally to active and passive play:** for example a mob's XP budget.
 - "The player wasn't pressing keys" is never a reason.
 
+## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27)
+
+**Approved, building** on the development branch in three increments (design and every number: `docs/design/FISHING_EQUIPMENT.md`). The goal is useful goals, meaningful equipment choices and fewer chores, not more menus.
+
+- **The loop:** find a missing species → track it → understand its requirements → choose a setup → fish → discover or beat a record → unlock another option. Treasure and sea-creature encounters are alternative goals in the same skill: no new professions or XP bars. Manual, AFK and macro fishing keep their full normal rewards.
+- **Words:** *Lure* = reusable equipment; *Bait* = optional consumable; *Encounters* = banked sea-creature summons (the banked-lure tile becomes "Encounters: N"; saves and commands stay compatible).
+- **A, navigation and guidance:**
+  - skill-page section tiles (Fishing: Equipment, Journal, Encounters; Woodcutting: Woods; others only with real functionality);
+  - an active Collections index sharing each collection's data and screen with its skill page;
+  - the graphical journal with All / Undiscovered / Available here (the real eligibility rules);
+  - one tracked species with each requirement checked (bobber location, or a labelled preview);
+  - a bounded "Since your last visit" summary with real awarded XP, cleared only when acknowledged.
+- **B, equipment and convenience:**
+  - **Setup categories:** Rod 1, Line 10, Lure 25, Reel 50, each an assembly so the 11 old upgrades keep stacking;
+  - **any normal rod uses the setup**, through the one attribute engine;
+  - **effective previews** after caps and diminishing returns;
+  - **three renameable presets** (Discoveries, Treasure, Sea Creatures), switching for the next cast, a snapshot per cast;
+  - **old upgraded rods keep working**, convert voluntarily, nothing counted or returned twice, unknown parts kept;
+  - **a Bait Bag** of 1 to 3 slots: one bait active, situational bait never wasted, one per completed catch, opt-in restocking from the inventory, "Bait depleted. Normal fishing continues.";
+  - **the Auto-hook Reel at Fishing 50:** reels a real bite through the game's own catch, never recasts, never spends an encounter, on/off.
+- **C, fishing goals:**
+  - **Surveyor's Float** (undiscovered eligible species favoured, gates and rarity order kept) and **Specimen Hook** (heavier within each species' range), one specialist at a time;
+  - a small collection-reward table, granted once;
+  - a Master Angler emblem for full completion;
+  - optional "Keep as trophy" for a recorded catch.
+- **Not authorized here:** Farming, Cooking, cultivation, Fluency, PvP or class expansion.
+- **Routine implementation choices and small tuning values are the developer's to make** and are documented in the design file, not asked again.
+
 ## Decisions of 2026-10-27 (the 23 open decisions, all settled)
 
 | # | Decision | The owner's answer | State |

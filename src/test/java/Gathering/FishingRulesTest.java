@@ -258,4 +258,61 @@ class FishingRulesTest {
             assertNull(ids.put(id, id), "one journal key per catch: " + id);
         }
     }
+
+    // ── docs/design/FISHING_EQUIPMENT.md §3: the journal's checks are the bite's conditions ──
+
+    @Test
+    void theJournalsChecksAgreeWithWhatCanBiteEverywhere() throws Exception {
+        FishingRules r = shipped().fishing();
+        java.util.Set<String> biomes = new java.util.LinkedHashSet<>();
+        for (FishingRules.Water w : r.waters()) biomes.addAll(w.biomes());
+        biomes.add("plains");
+        for (FishingRules.Species s : r.allSpecies().values()) biomes.addAll(s.when().biomes());
+        int compared = 0;
+        for (FishingRules.Water w : r.waters()) for (String biome : biomes) for (boolean night : new boolean[] {false, true})
+            for (int weather = 0; weather < 3; weather++) for (int level : new int[] {1, 5, 10, 20, 25, 45, 50, 75, 85, 100}) {
+                FishingRules.Moment m = new FishingRules.Moment(w.id(), biome, night, weather > 0, weather > 1);
+                java.util.Set<String> eligible = new java.util.HashSet<>();
+                for (FishingRules.Species s : r.eligible(m, level)) eligible.add(s.id());
+                for (FishingRules.Species s : r.allSpecies().values()) {
+                    boolean all = FishingRules.allMet(r.checks(s, m, level));
+                    assertEquals(FishingRules.canBite(s, m, level), all, s.id() + " at " + m + " level " + level);
+                    assertEquals(eligible.contains(s.id()), all, s.id() + " at " + m + " level " + level);
+                    compared++;
+                }
+            }
+        assertTrue(compared > 10_000, "compared " + compared);
+    }
+
+    @Test
+    void anUnknownPlaceLeavesWaterAndBiomeUnknownButKnowsTheTime() throws Exception {
+        FishingRules r = shipped().fishing();
+        FishingRules.Species angler = r.speciesById("abyssal_angler"); // night, deep ocean, level 85
+        List<FishingRules.Check> c = r.checks(angler, new FishingRules.Moment(null, null, false, false, false), 90);
+        java.util.Map<FishingRules.Need, FishingRules.CheckState> by = new java.util.EnumMap<>(FishingRules.Need.class);
+        for (FishingRules.Check x : c) by.put(x.kind(), x.state());
+        assertEquals(FishingRules.CheckState.MET, by.get(FishingRules.Need.LEVEL));
+        assertEquals(FishingRules.CheckState.UNKNOWN, by.get(FishingRules.Need.WATER));
+        assertEquals(FishingRules.CheckState.MISSING, by.get(FishingRules.Need.TIME), "it is day: known anywhere in the world");
+        assertEquals(FishingRules.CheckState.UNKNOWN, by.get(FishingRules.Need.BIOME));
+        assertFalse(FishingRules.allMet(c));
+        // each requirement on its own line, the missing ones named
+        List<FishingRules.Check> wrong = r.checks(angler, at("river", "river", false, false), 30);
+        assertEquals(List.of(FishingRules.CheckState.MISSING, FishingRules.CheckState.MISSING, FishingRules.CheckState.MISSING, FishingRules.CheckState.MISSING),
+                wrong.stream().map(FishingRules.Check::state).toList(), "level, water, night and the deep ocean are all missing");
+        assertEquals("Fishing 85", wrong.get(0).need());
+        assertEquals("Night only", wrong.get(2).need());
+    }
+
+    @Test
+    void trackingTheVerdictChangesOnlyWithWhatIsMissing() throws Exception {
+        FishingRules r = shipped().fishing();
+        FishingRules.Species trout = r.speciesById("brook_char"); // river, night, 15
+        String day = Fishing.verdict(r.checks(trout, at("river", "river", false, false), 30));
+        String night = Fishing.verdict(r.checks(trout, at("river", "river", true, false), 30));
+        String nightAgain = Fishing.verdict(r.checks(trout, at("river", "frozen_river", true, true), 30));
+        assertEquals("ok", night);
+        assertEquals(night, nightAgain, "rain or another river biome changes nothing for this species");
+        assertNotEquals(day, night);
+    }
 }

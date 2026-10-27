@@ -57,8 +57,10 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Fishing (docs/design/FISHING.md): what a cast, a bite and a catch do, the species of each water, discoveries and
- * personal bests, banked lures, and the sea creatures their owners call and fight. Rules are {@link FishingRules}
- * (resources.yml); each player's record is a {@link FishingJournal} saved on the player.
+ * personal bests, banked encounters ("lures" in the code and the save: players see "encounters" since
+ * docs/design/FISHING_EQUIPMENT.md), and the sea creatures their owners call and fight. Rules are {@link FishingRules}
+ * (resources.yml); each player's record is a {@link FishingJournal} saved on the player, which also keeps the species
+ * they track and the "since your last visit" summary.
  *
  * <p>Threads (Folia): a cast and a catch run on the player's region thread; a bite on the bobber's (almost always the same
  * region: the bobber is within 32 blocks); a creature's death, removal and leash checks on the creature's. A lure is spent
@@ -142,6 +144,10 @@ public final class Fishing implements Listener {
     private final Map<UUID, FishingJournal> journals = new ConcurrentHashMap<>();
     private final Map<UUID, String> selected = new ConcurrentHashMap<>();
     private final Map<UUID, Force> forced = new ConcurrentHashMap<>();
+    /** The last tracking hint each player saw (species + verdict) and when: shown again only when it changes or 10 minutes pass. */
+    private final Map<UUID, String> lastHint = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastHintAt = new ConcurrentHashMap<>();
+    private static final long HINT_AGAIN_MS = 10 * 60_000L;
 
     private final LongAdder castCount = new LongAdder(), bites = new LongAdder(), catches = new LongAdder(), speciesCaught = new LongAdder(),
             treasureCaught = new LongAdder(), luresEarned = new LongAdder(), callsMade = new LongAdder(), won = new LongAdder(),
@@ -165,6 +171,38 @@ public final class Fishing implements Listener {
 
     private static void save(Player p, FishingJournal j) {
         p.getPersistentDataContainer().set(JOURNAL, PersistentDataType.STRING, j.encode());
+    }
+
+    /** Write {@code p}'s journal back onto the player after a menu changed it (tracking, the summary read). Player's thread. */
+    public void saveJournal(Player p) {
+        save(p, journal(p));
+    }
+
+    /** Where "here" is for the journal: the bobber, the water the player looked at, or not known (docs/design/FISHING_EQUIPMENT.md §3). */
+    public enum PlaceSource { BOBBER, LOOKING, UNKNOWN }
+
+    /** The moment "here" (time and weather are known anywhere in the world; the water only from a bobber or a look). */
+    public record Place(FishingRules.Moment moment, PlaceSource source) {}
+
+    /**
+     * Where {@code p} fishes now: their bobber in the water when a cast is out, else the water they look at within 30 blocks
+     * (a preview), else unknown with the world's time and weather. Never their standing position. Player's thread.
+     */
+    public Place place(Player p) {
+        FishingRules r = rules();
+        FishHook hook = p.getFishHook();
+        if (hook != null && hook.isValid() && Bukkit.isOwnedByCurrentRegion(hook) && hook.getState() == FishHook.HookState.BOBBING) {
+            FishingRules.Moment m = moment(r, hook.getLocation());
+            if (m.water() != null) return new Place(m, PlaceSource.BOBBER);
+        }
+        Block b = p.getTargetBlockExact(30, org.bukkit.FluidCollisionMode.ALWAYS);
+        if (b != null && b.getType() == Material.WATER && Bukkit.isOwnedByCurrentRegion(b.getLocation())) {
+            FishingRules.Moment m = moment(r, b.getLocation().add(0.5, 0.9, 0.5));
+            if (m.water() != null) return new Place(m, PlaceSource.LOOKING);
+        }
+        World w = p.getWorld();
+        long t = w.getTime() % 24000;
+        return new Place(new FishingRules.Moment(null, null, t >= 13000 && t < 23000, w.hasStorm(), w.isThundering()), PlaceSource.UNKNOWN);
     }
 
     /** The lure {@code p} chose to call next ({@code /fishing call}, the Fishing page), if they still have one and it is configured. */
@@ -238,8 +276,8 @@ public final class Fishing implements Listener {
             } else if (want != null) {
                 call = want;
                 chosen = selected(p) != null;
-                hint(p, chosen ? "§b✦ Calling: " + r.creature(call).name() + " §7(" + j.lures(call) + " lure" + (j.lures(call) == 1 ? "" : "s") + ") · wait for the bite"
-                        : "§b✦ Calling a creature of these waters §7(" + j.totalLures() + " lure" + (j.totalLures() == 1 ? "" : "s") + ") · wait for the bite", 2500);
+                hint(p, chosen ? "§b✦ Calling: " + r.creature(call).name() + " §7(" + j.lures(call) + " encounter" + (j.lures(call) == 1 ? "" : "s") + ") · wait for the bite"
+                        : "§b✦ Calling a creature of these waters §7(" + j.totalLures() + " encounter" + (j.totalLures() == 1 ? "" : "s") + ") · wait for the bite", 2500);
             }
         }
         if (call != null) hook.setWaitTime(30, 60); // the call answers in two to three seconds
@@ -247,7 +285,76 @@ public final class Fishing implements Listener {
         UUID old = castOf.put(id, hook.getUniqueId());
         if (old != null && !old.equals(hook.getUniqueId())) { casts.remove(old); outcomes.remove(old); } // a bobber gone without an event
         casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen, min, max));
+        if (call == null) trackingHint(p, hook, level);
     }
+
+    /**
+     * The tracked species' brief cast feedback (docs/design/FISHING_EQUIPMENT.md §3): once the bobber settles in water (a
+     * check every half second, at most six, on the bobber's own scheduler), one HUD line saying whether it can bite there
+     * or what is missing. Shown only when the verdict changed (or after 10 minutes), only on an idle bar, never in PvP
+     * combat; off with the journal's switch. Informational: nothing here touches a roll.
+     */
+    private void trackingHint(Player p, FishHook hook, int level) {
+        FishingJournal j = journal(p);
+        String tracked = j.tracked();
+        if (tracked == null || j.flag(QUIET_TRACKING)) return;
+        UUID id = p.getUniqueId();
+        int[] tries = {0};
+        hook.getScheduler().runAtFixedRate(plugin, t -> {
+            if (!hook.isValid() || ++tries[0] > 6) { t.cancel(); return; }
+            if (hook.getState() != FishHook.HookState.BOBBING) return;
+            t.cancel();
+            FishingRules r = rules();
+            FishingRules.Species s = r.speciesById(tracked);
+            if (s == null) return;
+            FishingRules.Moment m = moment(r, hook.getLocation());
+            List<FishingRules.Check> checks = r.checks(s, m, level);
+            String verdict = verdict(checks);
+            Player owner = Bukkit.getPlayer(id);
+            if (owner == null) return;
+            owner.getScheduler().run(plugin, t2 -> showHint(owner, tracked, verdict, trackingLine(r, s, checks)), null);
+        }, null, 10L, 10L);
+    }
+
+    /** A short key for what the checks say (what changed decides whether the hint shows again). */
+    static String verdict(List<FishingRules.Check> checks) {
+        StringBuilder sb = new StringBuilder();
+        for (FishingRules.Check c : checks) if (c.state() != FishingRules.CheckState.MET) sb.append(c.kind()).append(':').append(c.have()).append(';');
+        return sb.length() == 0 ? "ok" : sb.toString();
+    }
+
+    /** "★ Goldfin Trout can bite here", "★ Goldfin Trout needs Rivers (you're at Lakes and ponds)", "★ Brook Char bites only at night". */
+    static String trackingLine(FishingRules r, FishingRules.Species s, List<FishingRules.Check> checks) {
+        GatheringCatalog.ItemDef d = GatheringCatalog.current() == null ? null : GatheringCatalog.current().item(s.item());
+        String name = s.rarity().color + (d == null ? s.id() : d.name());
+        List<FishingRules.Check> missing = checks.stream().filter(c -> c.state() == FishingRules.CheckState.MISSING).toList();
+        if (missing.isEmpty()) return "§a★ " + name + " §acan bite here";
+        FishingRules.Check first = missing.get(0);
+        String need = switch (first.kind()) {
+            case WATER -> "needs §f" + first.need() + " §7(you're at " + first.have() + ")";
+            case LEVEL -> "needs §f" + first.need() + " §7(" + first.have() + ")";
+            case TIME -> "bites only §f" + (first.need().startsWith("Night") ? "at night" : "by day");
+            default -> "needs §f" + first.need().toLowerCase(Locale.ROOT);
+        };
+        return "§7★ " + name + " §7" + need + (missing.size() > 1 ? " §7and " + (missing.size() - 1) + " more" : "");
+    }
+
+    private void showHint(Player p, String species, String verdict, String line) {
+        if (!p.isOnline()) return;
+        Manager.PvpTag pvp = plugin.getPvpTag();
+        if (pvp != null && pvp.isTagged(p.getUniqueId())) return;
+        String key = species + "|" + verdict;
+        long now = System.currentTimeMillis();
+        Long at = lastHintAt.get(p.getUniqueId());
+        if (key.equals(lastHint.get(p.getUniqueId())) && at != null && now - at < HINT_AGAIN_MS) return;
+        Manager.PlayerHUDManager hud = plugin.getPlayerHUDManager();
+        if (hud == null || !hud.flashIfIdle(p, line, 3000)) return; // a busy bar: the next cast tries again
+        lastHint.put(p.getUniqueId(), key);
+        lastHintAt.put(p.getUniqueId(), now);
+    }
+
+    /** The journal flag that turns the tracked species' cast feedback off. */
+    public static final String QUIET_TRACKING = "quiet_tracking";
 
     /** Why a call can't be answered now (one creature per player, the server's limit), or null. */
     private String callBlocked(UUID player, FishingJournal j, FishingRules r) {
@@ -390,9 +497,13 @@ public final class Fishing implements Listener {
         switch (e.getState()) {
             case CAUGHT_FISH -> {
                 Outcome o = outcomes.remove(hook);
+                Cast was = casts.get(hook);
+                // Cancelled by another plugin: no catch, the bobber stays in the water and the cast goes on. (A bite that
+                // became a creature cancels its own catch, and that cast is over.)
+                if (e.isCancelled() && (was == null || !was.calledOut)) return;
                 Cast c = casts.remove(hook);
                 castOf.remove(who, hook);
-                if (o != null && !e.isCancelled() && e.getCaught() instanceof Item item) pay(e.getPlayer(), o, item, c);
+                if (o != null && e.getCaught() instanceof Item item) pay(e.getPlayer(), o, item, c);
                 else if (o == null && !e.isCancelled() && e.getCaught() instanceof Item && !XpIntegrity.earns(e.getPlayer()) && rules().enabled()) {
                     skills.xpWithheld(e.getPlayer(), rules().skill(), XpIntegrity.whyNot(e.getPlayer())); // a vanilla catch in creative
                 }
@@ -408,9 +519,9 @@ public final class Fishing implements Listener {
     private void pay(Player p, Outcome o, Item item, Cast c) {
         FishingRules r = rules();
         FishingJournal j = journal(p);
-        boolean changed = false;
         double xp = o.xp();
         catches.increment();
+        long now = System.currentTimeMillis();
         String line = null;
         switch (o.kind()) {
             case SPECIES -> {
@@ -418,15 +529,16 @@ public final class Fishing implements Listener {
                 FishingRules.Species s = o.species();
                 String name = itemName(s.item());
                 FishingJournal.Record rec = j.record(s.id(), o.kg());
-                changed |= rec != FishingJournal.Record.NONE;
                 line = s.rarity().color + "◆ " + name + " §7" + kg(o.kg());
                 if (rec == FishingJournal.Record.DISCOVERY) {
                     double bonus = r.xp().discovery(s.rarity());
                     xp += bonus;
                     discoveries.increment();
+                    j.countDiscovery(s.id(), o.kg(), now);
                     discovered(p, name, s.rarity(), bonus, j, r, "species");
-                } else if (rec == FishingJournal.Record.PERSONAL_BEST && s.rarity().ordinal() >= FishingRules.Rarity.UNCOMMON.ordinal()) {
-                    line += " §6★ personal best";
+                } else if (rec == FishingJournal.Record.PERSONAL_BEST) {
+                    j.countPersonalBest(s.id(), o.kg(), now);
+                    if (s.rarity().ordinal() >= FishingRules.Rarity.UNCOMMON.ordinal()) line += " §6★ personal best";
                 }
             }
             case TREASURE -> {
@@ -435,7 +547,6 @@ public final class Fishing implements Listener {
                 String name = itemName(t.item());
                 line = t.rarity().color + "✦ Treasure: " + name;
                 if (j.record(t.id(), 0) == FishingJournal.Record.DISCOVERY) {
-                    changed = true;
                     double bonus = r.xp().discovery(t.rarity());
                     xp += bonus;
                     discoveries.increment();
@@ -450,12 +561,13 @@ public final class Fishing implements Listener {
             line = (line == null ? "§f◆ Fish" : line) + " §a+" + o.extra();
         }
         if (line != null) hint(p, line, 1800);
-        if (xp > 0) skills.addXpAndCheckLevelUp(r.skill(), xp, p);
-        changed |= lures(p, o, j, r, c);
-        if (changed) save(p, j);
+        long got = xp > 0 ? skills.addXpCounted(r.skill(), xp, p) : 0;
+        j.countCatch(got); // the summary: every catch that really happened, and the XP it really awarded
+        lures(p, o, j, r, c);
+        save(p, j);
     }
 
-    /** The lure rolls after a catch: Something Stirs' first lure, the sea-creature chance, the apex. True when one was banked. */
+    /** The encounter rolls after a catch: Something Stirs' first one, the sea-creature chance, the apex. True when one was banked. */
     private boolean lures(Player p, Outcome o, FishingJournal j, FishingRules r, Cast c) {
         if (o.water() == null) return false;
         int level = o.level();
@@ -477,6 +589,7 @@ public final class Fishing implements Listener {
         }
         if (got == null || !j.addLure(got.id(), 0)) return false;
         if (first) j.setFlag("stirs");
+        j.countEncounter();
         luresEarned.increment();
         int have = j.lures(got.id());
         String rarity = got.rarity().color;
@@ -484,11 +597,11 @@ public final class Fishing implements Listener {
             celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.MAJOR,
                     rarity + "✦ " + (got.apex() ? "An apex took your bait: " : "Something stirs: ") + got.name(), rarity + "✦ " + got.name(),
                     rarity + (got.apex() ? "Apex: " : "") + got.name(), "§7took your bait and slipped away · Sneak and cast to call it",
-                    List.of(rarity + "✦ " + got.name() + " §7took your bait and slipped away. Its lure is yours (" + have + "): "
+                    List.of(rarity + "✦ " + got.name() + " §7took your bait and slipped away. Encounter banked (" + have + "): "
                             + "§fSneak and cast§7 into water to call it and fight it."), -1));
         } else {
-            hint(p, rarity + "✦ " + got.name() + " §7took your bait · lure kept (" + have + ") · §fSneak + cast§7 to call it", 3500);
-            p.sendMessage(rarity + "✦ " + got.name() + " §7took your bait and slipped away. Lure kept (" + have + "). Sneak and cast to call it.");
+            hint(p, rarity + "✦ " + got.name() + " §7took your bait · encounter banked (" + have + ") · §fSneak + cast§7 to call it", 3500);
+            p.sendMessage(rarity + "✦ " + got.name() + " §7took your bait and slipped away. Encounter banked (" + have + "). Sneak and cast to call it.");
             p.playSound(p.getLocation(), Sound.ENTITY_DOLPHIN_SPLASH, 0.8f, 0.7f);
         }
         return true;
@@ -527,7 +640,7 @@ public final class Fishing implements Listener {
         if (p == null || !Bukkit.isOwnedByCurrentRegion(p) || !Bukkit.isOwnedByCurrentRegion(hook.getLocation())) return "§7Nothing answered the call.";
         FishingJournal j = journal(p);
         FishingRules.Creature cr = r.creature(c.chosen ? c.call : r.lureFor(j.lures().keySet(), moment(r, hook.getLocation()).water(), c.call));
-        if (cr == null || j.lures(cr.id()) <= 0) return "§7Nothing answered the call: no lure for it.";
+        if (cr == null || j.lures(cr.id()) <= 0) return "§7Nothing answered the call: no encounter banked for it.";
         String blocked = callBlocked(p.getUniqueId(), j, r);
         if (blocked != null) return blocked;
         EntityType type;
@@ -626,7 +739,7 @@ public final class Fishing implements Listener {
         String name = (f.elite ? "Elite " : "") + cr.name();
         p.sendTitle(color + name, "§7Level " + f.level + " · it surfaces!", 5, 40, 10);
         p.sendMessage(color + "✦ " + name + " §7(level " + f.level + ") answers your call. Defeat it for its rewards; "
-                + "if it gets away, its lure comes back.");
+                + "if it gets away, its encounter comes back.");
         hook.remove(); // no fish on this line: the bite was the creature
     }
 
@@ -690,8 +803,8 @@ public final class Fishing implements Listener {
         refunds.increment();
         FishingRules.Creature cr = rules().creature(a.creature());
         String name = cr == null ? a.creature() : cr.name();
-        hint(p, "§7The " + name + " slipped back into the water · its lure is yours again", 3000);
-        p.sendMessage("§7The " + name + " slipped back into the water (" + why + "). Its lure is yours again.");
+        hint(p, "§7The " + name + " slipped back into the water · its encounter is yours again", 3000);
+        p.sendMessage("§7The " + name + " slipped back into the water (" + why + "). Its encounter is yours again.");
     }
 
     // ── fights: who may hit whom ─────────────────────────────────
@@ -785,7 +898,10 @@ public final class Fishing implements Listener {
         double xp = cfg == null ? 0 : Attributes.KillXp.compute(f.level, cr.xpMultiplier(), fishing, cfg) * cr.fishingShare()
                 * (f.elite ? r.techniques().eliteXp() : 1.0);
         double disc = first ? (cr.discoveryXp() > 0 ? cr.discoveryXp() : r.xp().discovery(cr.rarity())) : 0;
-        if (xp + disc > 0) skills.addXpAndCheckLevelUp(r.skill(), xp + disc, p);
+        if (xp + disc > 0) {
+            j.countXp(skills.addXpCounted(r.skill(), xp + disc, p));
+            save(p, j);
+        }
         String color = cr.rarity().color;
         if (first) {
             celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.MAJOR,
@@ -822,6 +938,8 @@ public final class Fishing implements Listener {
         journals.remove(id);
         selected.remove(id);
         forced.remove(id);
+        lastHint.remove(id);
+        lastHintAt.remove(id);
     }
 
     /** Dying ends the fight: the creature returns to the water and its lure to you (try again when ready). */
@@ -875,7 +993,7 @@ public final class Fishing implements Listener {
         List<String> lines = new ArrayList<>();
         lines.add("casts " + castCount.sum() + ", bites " + bites.sum() + ", catches " + catches.sum() + " (species " + speciesCaught.sum()
                 + ", treasure " + treasureCaught.sum() + ", extra fish " + extras.sum() + ", discoveries " + discoveries.sum() + ")");
-        lines.add("lures earned " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", lures given back " + refunds.sum()
+        lines.add("encounters banked " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", encounters given back " + refunds.sum()
                 + ", calls refused " + refused.sum());
         lines.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size());
         return lines;
