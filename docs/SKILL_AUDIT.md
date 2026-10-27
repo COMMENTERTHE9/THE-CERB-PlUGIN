@@ -12,7 +12,7 @@
 > - Critical Strike and the defensive skills pay each mob's hits at most its kill XP;
 > - defensive XP stops after a minute without input.
 >
-> The way into the Mage is still the owner's decision (`docs/STATUS.md` → Decisions, item 14).
+> The way into the Mage: decided on 2026-10-27, Spell Weaving 5 opens it (`docs/DECISIONS.md`, decision 4).
 >
 > **Update, 2026-10-26:** what every skill should grow (primary attributes, profession stats, milestones) is designed in `docs/design/SKILL_PROGRESSION.md`, under the owner's permanent rule that every skill improves at least one meaningful attribute or secondary stat.
 >

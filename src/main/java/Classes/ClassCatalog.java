@@ -69,6 +69,17 @@ public final class ClassCatalog {
         this.controls = controls;
     }
 
+    /** A class entry an update changed: an edited classes.yml that still has the old default gets the new one. */
+    record Superseded(Map<String, Integer> was, Map<String, Integer> now, String why) {}
+
+    /**
+     * Entries changed by an update. A classes.yml with edits of its own is not refreshed (ShippedConfig), so
+     * an entry still equal to the old default is read as the new one; any other value is the owner's and stays.
+     */
+    static final Map<String, Superseded> SUPERSEDED_ENTRIES = Map.of(
+            "mage", new Superseded(Map.of("Intelligence", 5), Map.of("Spell Weaving", 5),
+                    "owner decision 4, 2026-10-27: Spell Weaving opens the Mage"));
+
     public static ClassCatalog empty() { return new ClassCatalog(Map.of(), Map.of(), Map.of(), List.of(), List.of(), Map.of(), Map.of(), Controls.Settings.DEFAULTS); }
 
     /** A class's colour (0xRRGGBB), or -1 when classes.yml gives it none. */
@@ -151,9 +162,16 @@ public final class ClassCatalog {
                 }
                 List<String> own = new ArrayList<>();
                 for (AbilityDef a : abilities.values()) if (a.classId().equals(id)) own.add(a.id());
+                Map<String, Integer> entry = levels(c.getConfigurationSection("entry"));
+                Map<String, Integer> entryAny = levels(c.getConfigurationSection("entry-any"));
+                Superseded old = SUPERSEDED_ENTRIES.get(id);
+                if (old != null && entryAny.isEmpty() && entry.equals(old.was())) {
+                    entry = old.now();
+                    notes.add("class " + id + ": its entry " + old.was() + " is an earlier version's default, so this version's "
+                            + old.now() + " is used (" + old.why() + "); to keep the old one, write it as entry-any");
+                }
                 classes.put(id, new ClassDef(id, c.getString("name", id), c.getString("role", ""),
-                        c.getString("signature", ""), levels(c.getConfigurationSection("entry")),
-                        levels(c.getConfigurationSection("entry-any")), List.copyOf(own)));
+                        c.getString("signature", ""), entry, entryAny, List.copyOf(own)));
             }
         }
         // An ability must belong to a class that exists.

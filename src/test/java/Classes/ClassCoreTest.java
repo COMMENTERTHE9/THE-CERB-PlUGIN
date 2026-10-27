@@ -48,6 +48,31 @@ class ClassCoreTest {
         return ClassCatalog.from(c, a);
     }
 
+    /** Owner decision 4 (2026-10-27): Spell Weaving 5 opens the Mage; an edited file's old default follows the update. */
+    @Test
+    void spellWeavingOpensTheMage() throws Exception {
+        ClassDef mage = shipped().classDef("mage");
+        assertEquals(Map.of("Spell Weaving", 5), mage.entry());
+        assertTrue(mage.canLearn(s -> s.equals("Spell Weaving") ? 5 : 0), "Spell Weaving 5 opens it");
+        assertFalse(mage.canLearn(s -> s.equals("Spell Weaving") ? 4 : 0), "Spell Weaving 4 does not");
+        assertFalse(mage.canLearn(s -> s.equals("Intelligence") ? 50 : 0), "Intelligence alone no longer does");
+
+        // A classes.yml edited elsewhere still says Intelligence 5, the earlier default: read as this version's entry.
+        String older = edit(SHIPPED_CLASSES, "entry: \\{ Spell Weaving: 5 \\}", "entry: { Intelligence: 5 }");
+        ClassCatalog upgraded = of(older, SHIPPED_ABILITIES);
+        assertEquals(Map.of("Spell Weaving", 5), upgraded.classDef("mage").entry());
+        assertTrue(upgraded.notes().stream().anyMatch(n -> n.startsWith("class mage: its entry")), "the log says why");
+
+        // The owner's own values stay: another level, or the old one written as entry-any.
+        String own = edit(SHIPPED_CLASSES, "entry: \\{ Spell Weaving: 5 \\}", "entry: { Intelligence: 8 }");
+        assertEquals(Map.of("Intelligence", 8), of(own, SHIPPED_ABILITIES).classDef("mage").entry());
+        String kept = edit(SHIPPED_CLASSES, "entry: \\{ Spell Weaving: 5 \\}", "entry-any: { Intelligence: 5 }");
+        ClassDef keptMage = of(kept, SHIPPED_ABILITIES).classDef("mage");
+        assertEquals(Map.of(), keptMage.entry());
+        assertTrue(keptMage.canLearn(s -> s.equals("Intelligence") ? 5 : 0));
+        assertFalse(keptMage.canLearn(s -> s.equals("Spell Weaving") ? 5 : 0));
+    }
+
     private static final String ONE_CLASS = "classes:\n  warrior:\n    name: Warrior\ngroups:\n  movement: 2s\n";
 
     @Test

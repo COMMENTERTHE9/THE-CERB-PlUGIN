@@ -183,17 +183,22 @@ public class VirtualHealthListener implements Listener {
 
                 double modifiedDmg = ctx.attack().getModifiedDamage();
 
-                // Resolve mob context once — used for both damage scaling and armor penetration
+                // Resolve mob context once — used for both damage scaling and armor penetration. Evoker fangs are
+                // their evoker's ranged attack (owner decision 10).
                 MobContext mobCtx = null;
-                if (damager instanceof LivingEntity livingDamager && !(damager instanceof Player)) {
+                LivingEntity fangsOwner = damager instanceof org.bukkit.entity.EvokerFangs fangs
+                        && fangs.getOwner() != null && !(fangs.getOwner() instanceof Player) ? fangs.getOwner() : null;
+                if ((damager instanceof LivingEntity && !(damager instanceof Player)) || fangsOwner != null) {
                     MobRegistry mobRegistry = plugin.getMobRegistry();
                     if (mobRegistry != null) {
-                        mobCtx = mobRegistry.resolve(livingDamager);
+                        mobCtx = mobRegistry.resolve(fangsOwner != null ? fangsOwner : (LivingEntity) damager);
                     }
                 }
 
                 // Mob damage scaling — tier + level based multiplier
-                if (mobCtx != null) {
+                if (mobCtx != null && fangsOwner != null) {
+                    modifiedDmg = scaleRanged(ctx, player, mobCtx, fangsOwner, modifiedDmg);
+                } else if (mobCtx != null) {
                     CombatConfig cc = plugin.getCombatConfig();
                     if (cc != null && cc.mobDamageScaling.isEnabled()) {
                         int mobLevel = resolveMobLevel(damager instanceof LivingEntity le ? le : null);
@@ -298,6 +303,23 @@ public class VirtualHealthListener implements Listener {
      * @param mob the attacking mob, or null
      * @return the mob's level (>= 1)
      */
+    /**
+     * A mob's ranged hit (a shot, a thrown potion, evoker fangs) scaled like its melee hits, tier × level, within
+     * the ranged caps (combat.yml mob-damage-scaling.ranged); traced as MobScaling. Player thread.
+     */
+    private double scaleRanged(CombatContext ctx, Player target, MobContext mobCtx, LivingEntity mob, double dmg) {
+        CombatConfig cc = plugin.getCombatConfig();
+        if (cc == null || !(dmg > 0)) return dmg;
+        int level = resolveMobLevel(mob);
+        double mult = cc.mobDamageScaling.calculateRanged(mobCtx.tier(), level);
+        if (mult == 1.0) return dmg;
+        double scaled = cc.mobDamageScaling.capRangedHit(dmg, dmg * mult, virtualHealthManager.getPlayerMaxVirtualHealth(target));
+        ctx.attack().setModifiedDamage(scaled);
+        ctx.appendTrace("MobScaling", dmg, scaled, mobCtx.tier().name() + " Lv" + level + " ranged x" + String.format("%.2f", mult)
+                + (scaled < dmg * mult ? String.format(" (hit capped: %.1f, vanilla %.1f)", dmg * mult, dmg) : ""));
+        return scaled;
+    }
+
     private int resolveMobLevel(@javax.annotation.Nullable LivingEntity mob) {
         if (mob == null) return 1;
         MobRegistry registry = plugin.getMobRegistry();
@@ -408,7 +430,8 @@ public class VirtualHealthListener implements Listener {
 
             double modifiedDmg = ctx.attack().getModifiedDamage();
 
-            // Resolve armor reduction with shooter's mob tier penetration
+            // Resolve armor reduction with shooter's mob tier penetration; a mob's shot scales with its tier and
+            // level like its melee hits (owner decision 10), within the ranged caps. A player's own llama is PvP.
             double armorReduction = virtualHealthManager.getArmorReduction(player);
             if (shooter instanceof LivingEntity livingShooter && !(shooter instanceof Player)) {
                 MobRegistry mobRegistry = plugin.getMobRegistry();
@@ -416,6 +439,7 @@ public class VirtualHealthListener implements Listener {
                     MobContext mobCtx = mobRegistry.resolve(livingShooter);
                     double penetration = mobCtx.tier().armorPenetration;
                     armorReduction *= (1.0 - penetration);
+                    if (Manager.PvpTag.playerBehind(livingShooter) == null) modifiedDmg = scaleRanged(ctx, player, mobCtx, livingShooter, modifiedDmg);
                 }
             }
 
@@ -443,6 +467,7 @@ public class VirtualHealthListener implements Listener {
             }
 
             Bukkit.getPluginManager().callEvent(new CerbDamageResultEvent(ctx));
+            sendCombatDebugTrace(ctx); // shots taken show their steps too (/cerb combatdebug), as melee hits do
 
             if (resolution.lethal()) {
                 event.setDamage(virtualHealthManager.getGuaranteedVanillaDeathDamage(player));

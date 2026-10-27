@@ -1,8 +1,10 @@
 // Classes and abilities (Step 5 prototype: Warrior, Mage, Duelist) in-game checks.
 // LOCAL SANDBOX servers only; the bot must be op. Use a NEW bot name for `learn` (classes, once learned,
 // stay learned).  Usage: node classes.js <phase> [name]
-//   learn    - skills open classes (Warrior: Blade or Weapon Mastery 5; Mage: Intelligence 5; Duelist: Blade
-//              Mastery 10 + Critical Strike 5); /class shows ranks, or what is still missing
+//   learn    - skills open classes (Warrior: Blade or Weapon Mastery 5; Mage: Spell Weaving 5, owner decision 4 of
+//              2026-10-27; Duelist: Blade Mastery 10 + Critical Strike 5); /class shows ranks, or what is still missing
+//   magefocus - a normal player's way into the Mage (use a NEW bot name): in survival, with no admin item, a kill with
+//              a stick (a focus) trains Spell Weaving to 5, and that opens the Mage
 //   (keys    - superseded by the controls of 2026-10-25: `node abilities.js controls` and `combos` test every key)
 // Casting below presses each active slot with the quick keys (docs/design/ABILITY_CONTROLS.md): right-click, F, Q,
 // Sneak + right-click, Sneak + F for actives 1-5. Each check still names its slot by the Step 5 key it used to have.
@@ -174,7 +176,7 @@ const rawOf = t => { const m = t.match(/Power\([^,]+, Power [\d.]+ -> x([\d.]+)\
 
 async function learn() {
   await cmd('/gamemode creative', 500);
-  for (const s of ['Blade_Mastery', 'Weapon_Mastery', 'Intelligence', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 500);
+  for (const s of ['Blade_Mastery', 'Weapon_Mastery', 'Intelligence', 'Spell_Weaving', 'Critical_Strike']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 500);
   let i = await info();
   check('A new player has learned no class yet, and /class says what each needs',
     i.ranks.Warrior === null && i.ranks.Mage === null && i.ranks.Duelist === null && i.lines.some(l => /Duelist: not learned - needs Blade Mastery 10 \(you: 1\)/.test(l)),
@@ -182,7 +184,9 @@ async function learn() {
   let at = await cmd(`/cerb skill ${NAME} Blade_Mastery level 5`, 1200);
   check('Blade Mastery 5 opens Warrior (one of its two entry skills)', !!saw(/✦ New class: Warrior/, at), chat.slice(at).join(' / '));
   at = await cmd(`/cerb skill ${NAME} Intelligence level 5`, 1200);
-  check('Intelligence 5 opens Mage', !!saw(/✦ New class: Mage/, at));
+  check('Intelligence 5 no longer opens Mage (its entry is Spell Weaving 5)', !saw(/New class: Mage/, at), chat.slice(at).join(' / '));
+  at = await cmd(`/cerb skill ${NAME} Spell_Weaving level 5`, 1200);
+  check('Spell Weaving 5 opens Mage', !!saw(/✦ New class: Mage/, at), chat.slice(at).join(' / '));
   at = await cmd(`/cerb skill ${NAME} Blade_Mastery level 10`, 1200);
   check('Duelist needs both skills: Blade Mastery 10 alone is not enough', !saw(/New class: Duelist/, at));
   at = await cmd(`/cerb skill ${NAME} Critical_Strike level 5`, 1200);
@@ -192,6 +196,39 @@ async function learn() {
   at = await cmd(`/cerb skill ${NAME} Blade_Mastery level 1`, 1000);
   i = await info();
   check('Learning is never taken back: lowering the skill keeps Warrior and Duelist', i.ranks.Warrior && i.ranks.Duelist, JSON.stringify(i.ranks));
+}
+
+const xpForLevel = l => Math.round(75 * Math.pow(Math.max(1, l), 1.85) + 40 * Math.max(1, l));
+
+/** Owner decision 4: a normal player opens the Mage by fighting with a focus, no admin item involved. */
+async function magefocus() {
+  await arena();
+  await cmd('/gamemode survival', 500);
+  await cmd('/effect give @s resistance 120 4 true', 400);
+  await cmd('/clear @s', 400);
+  await cmd(`/cerb skill ${NAME} Intelligence level 1`, 500);
+  await cmd(`/cerb skill ${NAME} Spell_Weaving level 4`, 500);
+  let i = await info();
+  check('Before: the Mage is not learned, and /class says it needs Spell Weaving 5',
+    i.ranks.Mage === null && i.lines.some(l => /Mage: not learned - needs Spell Weaving 5 \(you: 4\)/.test(l)),
+    i.lines.filter(l => /Mage/.test(l)).join(' / '));
+  await cmd(`/cerb skill ${NAME} Spell_Weaving xp ${xpForLevel(4) - 3}`, 600); // quietly 3 XP short of level 5
+  const slot = await hold('stick');
+  check('A plain stick in hand (a focus: skills.yml)', slot >= 0 && inHand() === 'stick', inHand());
+  const at = chat.length;
+  let opened = false;
+  for (let k = 0; k < 6 && !opened; k++) {
+    await zombie(0, 2, 1);
+    const z = front();
+    for (let h = 0; h < 40 && z && bot.entities[z.id]; h++) { await bot.lookAt(z.position.offset(0, 1.4, 0), true); bot.attack(z); await sleep(650); }
+    await sleep(800);
+    opened = !!saw(/✦ New class: Mage/, at);
+  }
+  check('Killing with the stick raised Spell Weaving to 5', !!saw(/Spell Weaving.*5|level 5/, at) || opened, chat.slice(at).filter(m => /Spell|level/i.test(m)).join(' / '));
+  check('...and that opened the Mage', opened, chat.slice(at).join(' / ').slice(0, 300));
+  i = await info();
+  check('/class: the Mage is learned at rank 1', i.ranks.Mage && i.ranks.Mage.rank === 1, JSON.stringify(i.ranks));
+  await cmd('/gamemode creative', 300);
 }
 
 async function keys() {
@@ -691,6 +728,7 @@ connect().then(async () => {
   await sleep(3500);
   try {
     if (phase === 'learn') await learn();
+    else if (phase === 'magefocus') await magefocus();
     else if (phase === 'keys') await keys();
     else if (phase === 'trees') await trees();
     else if (phase === 'mixed') await mixed();

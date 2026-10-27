@@ -154,7 +154,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
    Also review a normal player's way into the Mage; a material design choice goes to the owner with options and a recommendation.
 
-   **Done 2026-10-26** (`docs/STATUS.md` → "Done: XP integrity"; `tools/playtest/xp.js` 35/35, every reproduction failing on a control build). The Mage route is the owner's decision 14 in `docs/STATUS.md`, with options and a recommendation.
+   **Done 2026-10-26** (`docs/STATUS.md` → "Done: XP integrity"; `tools/playtest/xp.js` 35/35, every reproduction failing on a control build). The Mage route: Spell Weaving 5, decided 2026-10-27 (`docs/DECISIONS.md`, decision 4) and built.
 3. **Level-up and rank-up feedback:**
    - a brief sound and a small particle effect;
    - which skill rose, its new level and its real stat gain;

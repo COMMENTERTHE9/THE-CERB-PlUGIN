@@ -24,7 +24,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
   - level-up and rank-up feedback;
   - a deep Woodcutting loop.
 - **Done first:** the **ghost mob labels** you found (section "Done: ghost mob labels" below).
-- **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage needs your decision (Decisions, item 14).
+- **Done:** the skill-to-attribute design for all 35 skills (`docs/design/SKILL_PROGRESSION.md`) and the **live XP exploits**, each reproduced on a control build and closed with a positive control (section "Done: XP integrity" below). The way into the Mage: Spell Weaving 5 (decided and built 2026-10-27).
 - **Done:** the **level-up and rank-up presentation** (section "Done: level-up and rank-up presentation" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §10).
 - **Done:** **Woodcutting**, the second complete gathering loop: eleven woods, Felling and the Canopy as milestone techniques, heartwood upgrades, discoveries, and protection for builds, claims and Folia regions (section "Done: Woodcutting" below; your checklist is `docs/PLAYTEST_CHECKLIST.md` §11).
 - **Your Woodcutting playtest (2026-10-26):** trees grown from saplings now pay Woodcutting XP (80%, with bone meal 50%; placed logs nothing), and Smithing grows Fortitude and a new wear resistance (section "Done: grown trees and Smithing's growth" below; checklist §12). **Next:** your playtest, then Farming or Fishing, one complete loop.
@@ -633,7 +633,7 @@ Admin test tool: `/cerb spawn <mob> [level] [noai] [origin=<spawn reason>]`, for
   Harnesses that measured kill or class XP in creative mode now do it in survival, since creative pays nothing.
 - **Unit tests:** 206, including `XpRulesTest`, `XpBudgetLedgerTest` and `KillCreditTest` (new). One of them caught a real migration bug before it shipped: an older `attributes.yml` without the new section would have read an empty origin list (no farm rule at all) instead of the jar's.
 
-The way into the Mage is still yours to decide (Decisions, item 14, with options).
+The way into the Mage was decided on 2026-10-27: Spell Weaving 5 (`docs/DECISIONS.md`, decision 4).
 
 ## Done: level-up and rank-up presentation (2026-10-26)
 

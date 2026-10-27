@@ -37,7 +37,9 @@ classes:
     color: "#8E44AD"
     role: General offensive magic
     signature: Essence (spells cost it, Essence makes them stronger)
-    entry: { Intelligence: 5 }
+    # Spell Weaving trains from kills with a focus in hand (a stick, blaze rod, breeze rod or end rod:
+    # skills.yml), so any player can open the Mage; its spells then train Intelligence.
+    entry: { Spell Weaving: 5 }
   duelist:
     name: Duelist
     icon: GOLDEN_SWORD

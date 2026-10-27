@@ -54,7 +54,7 @@ damage-timing:
   respawn-invincibility-ms: 3000
 
 # ── Mob Damage Scaling ──────────────────────────────────────
-# Multiplier applied to melee mob-to-player damage based on mob tier and level.
+# Multiplier applied to mob-to-player damage based on mob tier and level (melee; ranged below, with its own caps).
 # Formula: tierBase * (1 + levelScale * log1p(level / levelPivot)), capped at max.
 mob-damage-scaling:
   enabled: true
@@ -72,6 +72,15 @@ mob-damage-scaling:
     MYTHIC: 3.0
     GODLY: 3.75
     PRIMORDIAL: 4.5
+  # Ranged attacks (owner decision 10, 2026-10-27): mob arrows, tridents, fireballs, wither skulls, shulker
+  # bullets, thrown potions and evoker fangs scale with the same tier x level multiplier as melee, within
+  # two caps that keep high-level ranged mobs dangerous but fair. An older combat.yml without this section
+  # uses these values.
+  ranged:
+    enabled: true
+    max-damage-multiplier: 6.0   # lower than melee's 10: ranged mobs hit from out of reach, often in groups
+    max-hit-share: 0.35          # one ranged hit takes at most 35% of the target's max health (0 = no limit);
+                                 # a hit is never made weaker than its vanilla damage
 
 # ── Mob Health Scaling (controlled-hyperscaling realm curve) ───
 # Mobs get a DOUBLE virtual-HP pool (MobVirtualHealthManager), so HP can reach

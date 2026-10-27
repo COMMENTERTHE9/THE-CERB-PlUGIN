@@ -106,7 +106,8 @@
         <!-- DTR (terrain engine, lib/) and Volor (old skills plugin, libs/) were removed as
              dependencies: no Cerberus code imports them, they are not in any Maven repository
              (so fresh clones could not build), and shading them bundled unrelated classes and a
-             competing plugin.yml into Cerberus.jar. They remain separate projects. -->
+             competing plugin.yml into Cerberus.jar. They remain separate projects; their jars were
+             deleted from this repo on 2026-10-27 (owner decision 23, docs/DECISIONS.md). -->
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
