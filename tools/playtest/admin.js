@@ -89,7 +89,8 @@ async function main() {
   check('Confirm applies the lower level', (await waitTitle(/Blade Mastery/)) && lvl() === base + 9, 'level ' + lvl());
   at = chat.length;
   await click(41, 1000); // +100,000 XP
-  check('XP grant goes through the award path (level-ups)', lvl() > base + 9 && saw(/reached level/, at), 'level ' + lvl());
+  // Since the level-up presentation (2026-10-26) an admin's grant levels up quietly: no celebration (SkillManager.addXpQuietly).
+  check('XP grant raises the level through the award path, quietly (no level-up celebration for an admin grant)', lvl() > base + 9 && !saw(/reached level/, at), 'level ' + lvl());
   await click(28, 900); if (/Confirm/.test(title())) await click(11, 900); // back to level 1
 
   // Combat Lab: spawn a level-50 zombie punching bag
