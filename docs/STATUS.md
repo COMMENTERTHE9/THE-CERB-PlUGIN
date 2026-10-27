@@ -850,8 +850,38 @@ The way into the Mage was decided on 2026-10-27: Spell Weaving 5 (`docs/DECISION
 5. **A chosen lure for a creature the server no longer has** (after a `resources.yml` edit) made every Sneak-cast fail with an error; the Fishing page's lure button could also divide by zero if the last lure went while the page was open. Both now skip creatures that aren't configured.
 6. **Small leaks:** a creature unloaded mid-fight left its health pool and kill-credit entry in memory (other mobs come back after an unload, these never do). Mobs that are never saved now free both at unload.
 7. **Smaller gaps:** the server's limit could be overshot by a call or two across region threads (a place is now reserved before the spawn); an owner who switched to creative mid-fight was paid Fishing XP for the win (now the win counts and pays nothing); a Rime Shard (quartz) could be used as an armor-trim material at a smithing table (custom items are now refused there too).
+8. **The reviewer re-read the fixes:** all seven right and complete. It found one more small gap: an error after a fight was registered could give its place under the server's limit back twice. Registering the fight is now the call's last step that can fail.
 
-**Checks** (`tools/playtest/fishing.js` on the sandbox): basic 6/6, waters 8/8, force 4/4, call 11/11, refund 6/6, limits 3/3, afk 3/3, inventory 3/3, creative 3/3; the final build's full run, persistence, a clean stop and a crash with a creature out, and the control build: in progress. **Unit tests:** 278 (254 before this milestone), among them `FishingRulesTest` (14) and `FishingJournalTest` (6).
+**Checks** (on the final build unless noted; `tools/playtest/fishing.js` and the regression slices, on the sandbox):
+- **Fishing, 49 checks:**
+  - basic 6/6: a new character's first catches pay junk 2, fish 10, species 12 and treasure 30; the first Pond Bream is a discovery, "+50, 1 of 31 species"; the HUD shows the weight; `/fishing` shows the journal by water;
+  - waters 8/8: each biome's water, a covered pool below sea level, river species in a river;
+  - force 4/4;
+  - call 11/11: one lure spent when the creature surfaces; one creature out; twice a normal mob's health; a second call refused with nothing spent; another player's hits do nothing; the owner's kill pays Fishing XP; the drops are the owner's alone, as another player standing on them shows;
+  - refund 6/6: logging out, going too far for 30 s and dying each give the lure back once;
+  - inventory 3/3;
+  - economy 8/8: at Fishing 100, 8 extra fish from 24 fish catches, every one reaching the player with its catch; six forced treasures give exactly six; a Pond Bream cooks; a creature drop can't be placed; a rod upgrade applies once per rod, and with it in hand bites come 29.8% sooner instead of 27.4%;
+  - creative 3/3.
+- **The server's limit and automation:** one creature with a second player's call refused and nothing spent, 3/3; three minutes of automated fishing (18 catches, the last minute paying like the first, no idle message), 3/3.
+- **Persistence:**
+  - the journal and lures across a restart, 2/2 (the build before the review's last fix);
+  - a clean stop with a creature out gives its lure back once, 2/2;
+  - a crash: the server killed after the player's data was written with the fight open (`/testsave` from the sandbox-only test plugin: Folia has no save-all). The next join gives the lure back once and says "the server restarted", 4/4.
+- **Control,** the build before Fishing: catches pay no Fishing XP, and 2 guardians spawned in 12 catches. Both checks fail there, as they must.
+- **An update with both config files edited** (the old build's files with one number changed in each): Fishing works (basic, force and economy, 18/18), the log says where each new entry came from, and both files are untouched on disk.
+- **Regression on the final build:**
+  - smoke 14/14;
+  - `menu.js` nav 63/63, names 4/4, smithing 11/11;
+  - `admin.js` main 40/40 (one check updated: since the level-up presentation an admin's XP grant levels up quietly), attributes 14/14;
+  - `progression.js` killxp 5/5, stats 14/14, survive 4/4, speed 13/13, pvp 12/12, projectile 7/7;
+  - `xp.js` 35/35;
+  - `ranged.js` levels 15/15, fangs 1/1, cap 3/3;
+  - `classes.js` combat 10/10, exploits 22/22;
+  - `gathering.js` all 78/78, custom 9/9;
+  - `woodcutting.js` all 39/39, heartwood/custom/machines 19/19;
+  - `levelup.js` 19/19;
+  - `labels.js` 11/11.
+- **Unit tests:** 279 (254 before this milestone), among them `FishingRulesTest` (14), `FishingJournalTest` (6) and the deleted-Fishing delivery case.
 
 **Performance** (`docs/PERFORMANCE.md`; 9 bots fishing non-stop, the builds alternated on fresh restarts, TPS 20.0): 0.017 / 0.015 and 0.018 / 0.015 ms per tick against 0.016 / 0.011 and 0.033 / 0.018 before, the same within the spread of one build. Fishing's own code is 3–4 of about 1,250 region-thread samples a minute; database saves stay off the region threads.
 
