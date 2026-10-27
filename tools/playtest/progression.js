@@ -719,6 +719,9 @@ async function pvp() {
   const pveFire = await hitTrace('minecraft:in_fire', 100);
   // This bot (the attacker, same build: 300 health) is hurt first, so its lifesteal from the PvP hit shows.
   const hp = async who => { const a = await cmd(`/cerb healthstate ${who}`, 900); const m = saw(/Custom HP: ([\d.]+)\/([\d.]+)/, a); return m ? Number(m.match(/Custom HP: ([\d.]+)/)[1]) : NaN; };
+  // PvP lifesteal needs Weapon Mastery gained: the old PvP formulas count level 1 as untrained (since 2026-10-27, as level 0
+  // was before), and other phases leave it at 1.
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 10`, 600);
   await cmd(`/damage ${NAME} 60 minecraft:generic`, 1200);
   const hp0 = await hp(NAME);
   const pvpHit = await hitTrace('minecraft:player_attack', 20, T, NAME);
@@ -786,6 +789,7 @@ async function pvp() {
 
   await debugOn(false);
   for (const who of [T, NAME]) for (const sk of SK) await cmd(`/cerb skill ${who} ${sk} level 1`, 450);
+  await cmd(`/cerb skill ${NAME} Weapon_Mastery level 1`, 400);
   await cmd(`/cerb heal ${T}`, 400); await cmd(`/cerb heal ${NAME}`, 400);
   other.quit();
   await cmd('/gamemode creative', 400);
