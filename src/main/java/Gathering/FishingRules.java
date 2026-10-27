@@ -276,23 +276,46 @@ public final class FishingRules {
      * uniform random numbers in [0, 1): the first decides vanilla or not, the second picks by weight.
      */
     public Species rollSpecies(Moment m, int level, double keep, double pick) {
+        return rollSpecies(m, level, keep, pick, s -> 1.0);
+    }
+
+    /**
+     * The same roll with each eligible species' weight multiplied by {@code factor} (Surveyor's Float, discovery and night
+     * bait; docs/design/FISHING_EQUIPMENT.md §7). Only the pick among eligible species changes: the vanilla share and every
+     * gate are the plain roll's, and a factor is a multiplier, so the rarity order among species it favours stays.
+     */
+    public Species rollSpecies(Moment m, int level, double keep, double pick, java.util.function.ToDoubleFunction<Species> factor) {
         List<Species> can = eligible(m, level);
         if (can.isEmpty() || keep < vanillaShare(level)) return null;
         double total = 0;
-        for (Species s : can) total += s.weight();
+        double[] w = new double[can.size()];
+        for (int i = 0; i < can.size(); i++) {
+            double f = factor.applyAsDouble(can.get(i));
+            w[i] = can.get(i).weight() * (Double.isFinite(f) && f > 0 ? f : 1.0);
+            total += w[i];
+        }
         if (!(total > 0)) return null;
         double at = pick * total;
-        for (Species s : can) {
-            at -= s.weight();
-            if (at < 0) return s;
+        for (int i = 0; i < can.size(); i++) {
+            at -= w[i];
+            if (at < 0) return can.get(i);
         }
         return can.get(can.size() - 1);
     }
 
     /** A catch's weight: most are near the small end, a few near the top. Two decimals. */
     public static double kg(Species s, double u) {
-        double w = s.minKg() + (s.maxKg() - s.minKg()) * Math.pow(Math.max(0, Math.min(1, u)), 2.5);
-        return Math.round(w * 100) / 100.0;
+        return kg(s, u, 2.5);
+    }
+
+    /**
+     * A catch's weight with the curve {@code u^exponent} (2.5 by default; the Specimen Hook flattens it to favour heavier
+     * fish). Always within the species' own range. Two decimals.
+     */
+    public static double kg(Species s, double u, double exponent) {
+        double e = Double.isFinite(exponent) && exponent > 0 ? exponent : 2.5;
+        double w = s.minKg() + (s.maxKg() - s.minKg()) * Math.pow(Math.max(0, Math.min(1, u)), e);
+        return Math.max(s.minKg(), Math.min(s.maxKg(), Math.round(w * 100) / 100.0));
     }
 
     // ── treasure ─────────────────────────────────────────────────

@@ -29,8 +29,8 @@ import java.util.Map;
  */
 public final class FishingCommand implements CommandExecutor, TabCompleter {
 
-    static final List<String> SUBS = List.of("journal", "encounters", "call", "track");
-    static final List<String> ADMIN = List.of("info", "lure", "force", "journal", "stats");
+    static final List<String> SUBS = List.of("journal", "encounters", "call", "track", "gear", "setup", "reel", "restock");
+    static final List<String> ADMIN = List.of("info", "lure", "force", "journal", "stats", "part", "bait", "legacyrod", "gear", "summary");
 
     private final CerberusPlugin plugin;
 
@@ -52,6 +52,9 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             case "journal" -> journal(p, f.journal(p), r, args.length > 1 ? args[1] : null, p);
             case "encounters", "lures" -> lures(p, f, r);
             case "track" -> track(p, f, r, args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : null);
+            case "gear" -> plugin.getMenuManager().openRoot(p, new GUIs.player.FishingEquipmentMenu(plugin));
+            case "setup" -> setup(p, args);
+            case "reel", "restock" -> toggle(p, sub, args.length > 1 ? args[1] : "");
             case "call" -> call(p, f, r, args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : null);
             default -> summary(p, f, r);
         }
@@ -103,6 +106,34 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         f.saveJournal(p);
         p.sendMessage(ChatColor.LIGHT_PURPLE + "★ Tracking " + s.rarity().color + itemName(s.item()) + ChatColor.GRAY
                 + ": the journal checks what it needs where you fish. Tracking never changes the odds.");
+    }
+
+    /** {@code /fishing setup <1-3>} uses a preset from the next cast; {@code /fishing setup rename <1-3> <name>} renames one. */
+    private void setup(Player p, String[] args) {
+        Gathering.Tackle tk = plugin.getTackle();
+        if (tk == null || !GatheringCatalog.current().tackle().enabled()) { p.sendMessage(ChatColor.GRAY + "Fishing equipment is off on this server."); return; }
+        boolean rename = args.length > 1 && args[1].equalsIgnoreCase("rename");
+        int at = rename ? 2 : 1;
+        int n;
+        try { n = Integer.parseInt(args.length > at ? args[at] : "") - 1; } catch (NumberFormatException e) { n = -1; }
+        if (n < 0 || n >= Gathering.FishingGear.PRESETS) {
+            p.sendMessage(ChatColor.YELLOW + "Use: /fishing setup <1-3>  or  /fishing setup rename <1-3> <name>");
+            return;
+        }
+        Gathering.Tackle.Result res = rename
+                ? tk.rename(p, n, args.length > 3 ? String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)) : "")
+                : tk.activate(p, n);
+        p.sendMessage((res.ok() ? ChatColor.GREEN : ChatColor.RED) + res.message());
+    }
+
+    /** {@code /fishing reel on|off}, {@code /fishing restock on|off}. */
+    private void toggle(Player p, String what, String value) {
+        Gathering.Tackle tk = plugin.getTackle();
+        if (tk == null || !GatheringCatalog.current().tackle().enabled()) { p.sendMessage(ChatColor.GRAY + "Fishing equipment is off on this server."); return; }
+        boolean on = value.equalsIgnoreCase("on");
+        if (!on && !value.equalsIgnoreCase("off")) { p.sendMessage(ChatColor.YELLOW + "Use: /fishing " + what + " on|off"); return; }
+        Gathering.Tackle.Result res = what.equals("reel") ? tk.autoReel(p, on) : tk.restock(p, on);
+        p.sendMessage((res.ok() ? ChatColor.GREEN : ChatColor.RED) + res.message());
     }
 
     static FishingRules.Species findSpecies(FishingRules r, String what) {
@@ -184,6 +215,8 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             return filter(new ArrayList<>(plugin.getFishing().journal(p).lures().keySet()), args[1]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("journal")) return filter(rules().waters().stream().map(FishingRules.Water::id).toList(), args[1]);
+        if (args.length == 2 && (args[0].equalsIgnoreCase("reel") || args[0].equalsIgnoreCase("restock"))) return filter(List.of("on", "off"), args[1]);
+        if (args.length == 2 && args[0].equalsIgnoreCase("setup")) return filter(List.of("1", "2", "3", "rename"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("track")) {
             List<String> ids = new ArrayList<>(rules().allSpecies().keySet());
             ids.add("off");
@@ -223,7 +256,9 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
                 }, null);
             }
             case "stats" -> { for (String l : f.stats()) sender.sendMessage(ChatColor.GRAY + l); }
-            default -> sender.sendMessage(ChatColor.YELLOW + "Use: /cerb fish <info|lure <player> <creature> [n] (an encounter)|force <player> <species <id>|treasure [id]|lure [creature]|apex [creature]>|journal <player>|stats>");
+            case "part", "bait", "legacyrod", "gear", "summary" -> gearAdmin(sender, sub, args);
+            default -> sender.sendMessage(ChatColor.YELLOW + "Use: /cerb fish <info|lure <player> <creature> [n] (an encounter)|force <player> <species <id>|treasure [id]|lure [creature]|apex [creature]>|journal <player>|stats"
+                    + "|part <player> <id> [remove]|bait <player> <id> [n]|legacyrod <player> <upgrade,...>|gear <player>|summary <player>>");
         }
     }
 
@@ -290,6 +325,69 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         }
         f.force(t.getUniqueId(), new Fishing.Force(kind, id));
         sender.sendMessage(ChatColor.GREEN + t.getName() + "'s next catch: " + kind + (id == null ? "" : " " + id) + ".");
+    }
+
+    /**
+     * Admin tools for Fishing equipment (docs/design/FISHING_EQUIPMENT.md; the caller holds cerb.admin): give or take a part,
+     * put bait into a bag, make an old-style upgraded rod (to test converting), show a player's equipment or summary. Each
+     * runs on that player's thread and is logged.
+     */
+    private void gearAdmin(CommandSender sender, String sub, String[] args) {
+        Gathering.Tackle tk = plugin.getTackle();
+        Player t = args.length > 2 ? Bukkit.getPlayerExact(args[2]) : null;
+        if (tk == null || t == null) { sender.sendMessage(ChatColor.RED + "Use: /cerb fish " + sub + " <online player> ..."); return; }
+        String a3 = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : null;
+        String a4 = args.length > 4 ? args[4].toLowerCase(Locale.ROOT) : null;
+        t.getScheduler().run(plugin, task -> {
+            switch (sub) {
+                case "part" -> {
+                    if (a3 == null || GatheringCatalog.current().tackle().part(a3) == null && !"remove".equals(a4)) {
+                        sender.sendMessage(ChatColor.RED + "Parts: " + String.join(", ", GatheringCatalog.current().tackle().parts().keySet()));
+                        return;
+                    }
+                    boolean done = "remove".equals(a4) ? tk.adminDisown(t, a3) : tk.grantPart(t, a3);
+                    sender.sendMessage((done ? ChatColor.GREEN : ChatColor.GRAY) + t.getName() + ": " + a3 + ("remove".equals(a4) ? " taken away" : " given")
+                            + (done ? "." : " (nothing changed)."));
+                    plugin.getLogger().info("[Fishing] " + sender.getName() + (("remove".equals(a4)) ? " took " : " gave ") + t.getName() + " part " + a3);
+                }
+                case "bait" -> {
+                    int n = 16;
+                    try { if (a4 != null) n = Math.max(1, Math.min(1024, Integer.parseInt(a4))); } catch (NumberFormatException ignored) { /* 16 */ }
+                    int in = a3 == null ? 0 : tk.adminBait(t, a3, n);
+                    sender.sendMessage((in > 0 ? ChatColor.GREEN : ChatColor.RED) + t.getName() + ": +" + in + " " + a3 + " in the Bait Bag"
+                            + (in > 0 ? "." : ". Bait: " + String.join(", ", GatheringCatalog.current().tackle().bait().keySet())));
+                    if (in > 0) plugin.getLogger().info("[Fishing] " + sender.getName() + " gave " + t.getName() + " " + in + " " + a3);
+                }
+                case "legacyrod" -> {
+                    if (a3 == null) { sender.sendMessage(ChatColor.RED + "Use: /cerb fish legacyrod <player> <upgrade,upgrade,...>"); return; }
+                    // The rod in their main hand gets the upgrades the old way (its name, enchantments and damage stay, as
+                    // the old crafting recipe kept them); without one, a new rod.
+                    org.bukkit.inventory.PlayerInventory inv = t.getInventory();
+                    boolean inHand = inv.getItemInMainHand().getType() == org.bukkit.Material.FISHING_ROD;
+                    org.bukkit.inventory.ItemStack rod = inHand ? inv.getItemInMainHand().clone() : new org.bukkit.inventory.ItemStack(org.bukkit.Material.FISHING_ROD);
+                    List<String> made = new ArrayList<>();
+                    for (String id : a3.split(",")) {
+                        GatheringCatalog.UpgradeDef u = GatheringCatalog.current().upgrade(id.trim());
+                        if (u == null || !u.on().contains("rod")) continue;
+                        org.bukkit.inventory.ItemStack next = Gathering.GearItems.withUpgrade(rod, u);
+                        if (next != null) { rod = next; made.add(u.id()); }
+                    }
+                    if (made.isEmpty()) { sender.sendMessage(ChatColor.RED + "No rod upgrade (new to this rod) among " + a3); return; }
+                    if (inHand) inv.setItemInMainHand(rod);
+                    else for (org.bukkit.inventory.ItemStack left : inv.addItem(rod).values()) t.getWorld().dropItem(t.getLocation(), left);
+                    sender.sendMessage(ChatColor.GREEN + t.getName() + ": " + (inHand ? "the rod in hand" : "a new rod") + " upgraded the old way with " + made + ".");
+                    plugin.getLogger().info("[Fishing] " + sender.getName() + " upgraded " + t.getName() + "'s rod the old way with " + made);
+                }
+                case "gear" -> { for (String l : tk.describe(t)) sender.sendMessage(ChatColor.GRAY + l); }
+                case "summary" -> {
+                    FishingJournal j = plugin.getFishing().journal(t);
+                    FishingJournal.Summary su = j.summary();
+                    sender.sendMessage(ChatColor.GRAY + t.getName() + ": " + su.catches() + " catches, " + su.xp() + " XP, " + su.species() + " species, "
+                            + su.bests() + " bests, " + su.encounters() + " encounters; notable " + j.notable());
+                }
+                default -> { }
+            }
+        }, null);
     }
 
     private static String pct(double v) {

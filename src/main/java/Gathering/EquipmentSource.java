@@ -32,7 +32,8 @@ import java.util.function.Supplier;
  * engine"): the quality of the item in hand and of each armor piece worn becomes Power, Fortune
  * and Fortitude contributions, so it goes through the engine's caps and the PvP rule like any
  * other source. A tool's Fortune counts on what it gathers (an axe's on wood, a pickaxe's on ore).
- * Upgrades on the item in hand (heartwood: docs/design/WOODCUTTING.md §8) add their speed stat. It
+ * Upgrades on the item in hand (heartwood: docs/design/WOODCUTTING.md §8) add their speed stat; a rod's upgrades
+ * are counted by {@link Tackle} with the player's fishing setup, each once (docs/design/FISHING_EQUIPMENT.md §6). It
  * never adds item modifiers (those would enter a hit before Power, outside the caps).
  *
  * <p>What is worn is read on the player's thread when their equipment changes, reduced to a
@@ -107,7 +108,7 @@ public final class EquipmentSource implements AttributeSource, Listener {
                 if (amount > 0 && Double.isFinite(amount)) out.add(Contribution.fortune(SOURCE_PREFIX + "hand", h.label(), amount, h.yield()));
             }
         }
-        if (h != null) for (String id : h.upgrades()) {
+        if (h != null && !"rod".equals(h.kind())) for (String id : h.upgrades()) { // a rod's: Tackle counts them, once with the setup
             GatheringCatalog.UpgradeDef u = upgrades.get(id);
             if (u == null || u.stat() == null || !(u.amount() > 0) || !u.on().contains(h.kind())) continue;
             out.add(Contribution.stat(SOURCE_PREFIX + "hand", h.label() + " · " + u.name(), u.stat(), u.amount(), null));

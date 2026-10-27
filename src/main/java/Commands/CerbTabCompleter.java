@@ -154,6 +154,15 @@ public class CerbTabCompleter implements TabCompleter {
         }
         if (args.length == 4 && sub.equals("lure")) return filter(List.copyOf(r.creatures().keySet()), args[3]);
         if (args.length == 4 && sub.equals("force")) return filter(List.of("species", "treasure", "lure", "apex", "clear"), args[3]);
+        Gathering.TackleRules t = Gathering.GatheringCatalog.current().tackle();
+        if (args.length == 4 && sub.equals("part")) return filter(List.copyOf(t.parts().keySet()), args[3]);
+        if (args.length == 5 && sub.equals("part")) return filter(List.of("remove"), args[4]);
+        if (args.length == 4 && sub.equals("bait")) return filter(List.copyOf(t.bait().keySet()), args[3]);
+        if (args.length == 5 && sub.equals("bait")) return filter(List.of("1", "16", "64"), args[4]);
+        if (args.length == 4 && sub.equals("legacyrod")) {
+            return filter(Gathering.GatheringCatalog.current().upgrades().values().stream()
+                    .filter(u -> u.on().contains("rod")).map(Gathering.GatheringCatalog.UpgradeDef::id).toList(), args[3]);
+        }
         if (args.length == 5 && sub.equals("force")) {
             return switch (args[3].toLowerCase(java.util.Locale.ROOT)) {
                 case "species" -> filter(List.copyOf(r.allSpecies().keySet()), args[4]);

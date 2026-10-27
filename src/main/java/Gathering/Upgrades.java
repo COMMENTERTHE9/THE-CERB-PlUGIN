@@ -9,9 +9,11 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.CrafterCraftEvent;
+import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceBurnEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
+import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.inventory.CraftingInventory;
@@ -32,8 +34,11 @@ import java.util.function.Supplier;
  * Upgrades made in a crafting grid (docs/design/WOODCUTTING.md §8): a tool or weapon and one custom item (heartwood) make
  * the same tool with the upgrade, keeping its enchantments, damage, quality and name. The result is worked out for the
  * grid in front of the player and checked again when it is taken; a crafter block never makes one. It also keeps every
- * Cerberus item out of vanilla's own recipes, crafters, furnaces and the ground (heartwood looks like stripped wood, but
- * it is never planks, charcoal, fuel or a block).
+ * Cerberus item out of vanilla's own recipes, crafters, furnaces, anvils, brewing stands and the ground (heartwood looks
+ * like stripped wood, but it is never planks, charcoal, fuel or a block).
+ *
+ * <p>Rods are not upgraded here while Fishing equipment is on: their upgrades are parts of the player's setup, fitted in
+ * Fishing → Equipment (docs/design/FISHING_EQUIPMENT.md §5), and rods upgraded before keep theirs.
  */
 public final class Upgrades implements Listener {
 
@@ -59,7 +64,9 @@ public final class Upgrades implements Listener {
         for (GatheringCatalog.ItemDef d : c.items().values()) mats.add(d.material());
         customMaterials = mats;
         StringBuilder sig = new StringBuilder();
+        boolean tackle = c.tackle().enabled();
         for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
+            if (tackle && u.on().contains("rod")) continue; // fitted in Fishing → Equipment (docs/design/FISHING_EQUIPMENT.md §5)
             GatheringCatalog.ItemDef item = c.item(u.item());
             sig.append(u.id()).append(u.on()).append(item == null ? "-" : item.material().name()).append(';');
         }
@@ -67,6 +74,7 @@ public final class Upgrades implements Listener {
         for (NamespacedKey k : keys) Bukkit.removeRecipe(k);
         keys.clear();
         for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
+            if (tackle && u.on().contains("rod")) continue;
             GatheringCatalog.ItemDef item = c.item(u.item());
             List<Material> on = materials(u.on());
             if (item == null || on.isEmpty()) continue;
@@ -136,6 +144,7 @@ public final class Upgrades implements Listener {
         }
         if (tool == null || item == null) return null;
         String kind = GearItems.kind(tool.getType());
+        if ("rod".equals(kind) && c.tackle().enabled()) return null; // rod parts are fitted in Fishing → Equipment
         for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
             if (u.item().equals(item) && u.on().contains(kind)) return GearItems.withUpgrade(tool, u);
         }
@@ -188,6 +197,23 @@ public final class Upgrades implements Listener {
     public void onSmithing(PrepareSmithingEvent e) {
         org.bukkit.inventory.SmithingInventory inv = e.getInventory();
         if (guarded(inv.getInputTemplate()) || guarded(inv.getInputEquipment()) || guarded(inv.getInputMineral())) e.setResult(null);
+    }
+
+    /**
+     * ...nor an anvil's material or half of a combination (a Lurker Scale is a turtle scute: it would mend a turtle
+     * helmet). Renaming one on its own is fine: nothing reads an item's name.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onAnvil(PrepareAnvilEvent e) {
+        org.bukkit.inventory.AnvilInventory inv = e.getInventory();
+        ItemStack first = inv.getFirstItem(), second = inv.getSecondItem();
+        if (guarded(second) || (guarded(first) && second != null && !second.getType().isAir())) e.setResult(null);
+    }
+
+    /** ...nor a brewing ingredient (a turtle scute brews the Turtle Master): the stand brews nothing with it. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBrew(BrewEvent e) {
+        if (guarded(e.getContents().getIngredient())) e.setCancelled(true);
     }
 
     /** ...nor smelted (heartwood would make charcoal): it stays in the furnace. */

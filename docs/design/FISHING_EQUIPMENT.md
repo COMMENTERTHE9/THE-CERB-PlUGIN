@@ -86,13 +86,13 @@ Your **setup** is on your character. Any normal fishing rod you fish with uses i
 - **Each category is an assembly:** it holds every owned part of its kind, so the stacking rods had keeps working. Amounts are the old upgrades' (`resources.yml upgrades:`).
 - **Getting a part:** Equipment → category → the part → **Fit**. It uses one of the item that made the upgrade (a Lurker Scale makes the Scaled grip). A confirmation screen shows what it uses and what it changes. A part can be owned before its category unlocks; it waits, shown as locked.
 - **Crafting upgrades onto rods is retired.** The axe and bow upgrades (heartwood grip and limbs) are unchanged.
-- **One engine.** The setup's parts are contributions to the same attribute engine (`Gathering/TackleSource`), so they go through the caps, diminishing returns and the PvP pause like every other stat. There is no separate fishing-stat engine.
+- **One engine.** The setup's parts are contributions to the same attribute engine (`Gathering/Tackle` is the source), so they go through the caps, diminishing returns and the PvP pause like every other stat. There is no separate fishing-stat engine.
 - **Active part:** owned, configured on this server, its category unlocked at your Fishing level, and installed in the active preset. Anything else shows clearly and adds nothing.
 
 **Previews before installing.** Each part shows the effective change, worked out by the engine with and without it:
 
 ```
-Lure speed: 9.0% → 12.7%   (+6% raw; cap 30%)
+Lure speed: 9.0% → 12.7%   (+6.0% raw)
 Treasure chance: no change yet — Treasure Sense opens at Fishing 25
 Removes: Specimen Hook (one specialist at a time)
 ```
@@ -134,7 +134,7 @@ Removes: Specimen Hook (one specialist at a time)
 
 Two Lure parts; **one specialist at a time** per preset (installing one removes the other, and the preview says so). Legacy upgrades never become exclusive.
 
-| Specialist | Effect | Starting value (`resources.yml tackle.specialists`) |
+| Specialist | Effect | Starting value (`resources.yml tackle.parts`) |
 |---|---|---|
 | **Surveyor's Float** | Eligible species you haven't caught come more often: their weight ×1.5. Every gate stays (level, water, time, weather, biomes). Rarity order stays: each weight is multiplied, so an undiscovered legendary stays rare. The vanilla share is unchanged, so there are not more species bites, only a different pick among them. Where nothing undiscovered can bite, the odds are normal and the Equipment tile and a cast hint say so. | factor 1.5 |
 | **Specimen Hook** | Heavier fish within each species' own range. The weight roll's curve flattens from u^2.5 to u^2.0: the average catch goes from 28.6% to 33.3% of the range, and the top tenth of the range from 4.1% to 5.1% of catches. Species, rarity, XP and encounters are untouched; no fish is ever outside its range. | strength 0.25 (exponent 2.5/(1+0.25)) |
@@ -160,7 +160,9 @@ With Wayfarer's Bait (§8) the discovery factors multiply, at most ×2.0. Both s
 - **No free effects.** Taking bait out, switching presets or disconnecting during a cast can't keep an effect: the held bait belongs to that cast.
 - **Sneak-cast calls** never use bait.
 - **Restocking is opt-in** (off by default): when a slot runs out, the same bait is moved in from your inventory, up to 64. It never buys, never searches chests, never substitutes.
-- **When it runs out**, one line: *"Bait depleted. Normal fishing continues."* An empty bag never lowers the normal catch rate or XP.
+- **When it runs out**, one line: *"Bait depleted. Normal fishing continues."* (when a catch used the last bait the active preset takes). An empty bag never lowers the normal catch rate or XP.
+- **Bait items are inert outside fishing:** their materials have no right-click use of their own (no dyes that would dye sheep or signs), and like every Cerberus item they are never placed, burnt, smelted or used in vanilla recipes, anvils or brewing stands.
+- **The bag's buttons move items on a mouse click only** (a number key or a drop over a tile does nothing), and only through checks for room and counts.
 
 ## 9. The Auto-hook Reel (increment B)
 

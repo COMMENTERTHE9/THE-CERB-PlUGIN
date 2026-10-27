@@ -12,10 +12,29 @@
 //              among the notable catches, redraws never clear it, marking it read takes off what was shown; creative
 //              fishing adds nothing
 //   terms    - Encounters: a banked sea creature says "encounter", /fishing encounters (and the old /fishing lures) list them
-//   all      - pages, track, summary, terms
+//   equip    - Fishing → Equipment for a new character: presets, the four categories and their levels, fitting a part (asks
+//              first, uses one item, owned once, any rod), the effect previewed from the engine (raw change, when it
+//              applies), switching presets, renaming by chat (bad names refused, "cancel"), one specialist per preset, a
+//              part the server removed (needs CERB_SERVER_DIR: it edits the sandbox resources.yml and puts it back), menus
+//              never moving items on shift-clicks or number keys
+//   bait     - crafting bait (and a recipe that waits for its milestone), the Bait Bag, one bait held per cast and used
+//              only by a completed catch it applied to: put back on a reel-in, a refused catch (needs CerbTestProtect's
+//              /testnocatch), a logout; a preset switch mid-cast; situational bait waiting in the bag; "Bait depleted"
+//              once; opt-in restocking; a held bait with nowhere to go comes back as an item
+//   reel     - the Auto-hook Reel (crafted, fitted at Fishing 50): reels real bites through the normal path (XP, the rod's
+//              wear), never recasts, one catch per bite when you reel too, off when switched off, with a menu open,
+//              switching items, a breaking rod, death, logout, and never a Sneak-cast call
+//   oldstate - (run on the build BEFORE Fishing equipment, with the bot name you will use for legacy) a character with an
+//              old journal, an encounter and rods upgraded the old way
+//   legacy   - after updating: that character's journal and old rods (they keep working), the setup and an old rod
+//              counting an upgrade once, converting (preview, a full inventory and a changed rod refused, name,
+//              enchantments and damage kept, an owned part's item back once); without oldstate's rods it makes them
+//              with /cerb fish legacyrod
+//   all      - pages, track, summary, terms, equip, bait, reel
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const phaseArg = process.argv[2] || 'all';
+// A new name is a fresh character (op it first: the sandbox console's "op <name>"); oldstate and legacy share one name.
 const NAME = process.argv[3] || 'CerbGear';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chat = [];
@@ -60,6 +79,12 @@ const flat = i => { const it = slot(i); return it && it.customLore ? it.customLo
 const findSlot = (re, from = 0, to = 53) => { if (!bot.currentWindow) return -1; for (let i = from; i <= to; i++) if (re.test(slotName(i))) return i; return -1; };
 const SCREEN = name => new RegExp('^✦ ' + name + '$');
 async function waitTitle(re, ms = 4000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (bot.currentWindow && re.test(title())) return true; await sleep(100); } return false; }
+/** Wait until a tile matching {@code re} is drawn (a page with "since you last looked" reveals its tiles over a moment). */
+async function waitSlot(re, from = 0, to = 53, ms = 3000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { const i = findSlot(re, from, to); if (i >= 0) return i; await sleep(100); }
+  return -1;
+}
 async function click(i, wait = 750, button = 0, mode = 0) { await bot.clickWindow(i, button, mode); await sleep(wait); }
 async function closeAny() { if (bot.currentWindow) { bot.closeWindow(bot.currentWindow); await sleep(400); } }
 async function openMenu() { await closeAny(); await cmd('/menu', 1200); await sleep(300); return waitTitle(SCREEN('Player Menu')); }
@@ -67,7 +92,7 @@ async function openSkill(name) {
   if (!(await openMenu())) return false;
   await click(19); if (!(await waitTitle(SCREEN('Skills')))) return false;
   await click(24); if (!(await waitTitle(SCREEN('Utility Skills')))) return false;
-  const s = findSlot(new RegExp('^' + name + '\\b'));
+  const s = await waitSlot(new RegExp('^(▲ )?' + name + '\\b')); // "▲ Fishing" when it has news since you last looked
   if (s < 0) return false;
   await click(s);
   return waitTitle(SCREEN(name));
@@ -123,13 +148,13 @@ async function stand() {
   await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 20`, 800);
   try { await bot.lookAt(new Vec3(X + 0.5, Y - 1, Z + 5.5), true); } catch (e) { /* best effort */ }
 }
-async function survival(level) {
+async function survival(level, clear = true) {
   await cmd('/gamemode survival', 400);
   await cmd('/effect give @s resistance infinite 4 true', 300);
   await cmd('/effect give @s saturation infinite 1 true', 300);
-  await cmd('/clear @s', 400);
+  if (clear) await cmd('/clear @s', 400);
   if (level !== undefined) await setLevel('Fishing', level);
-  await hold(ROD);
+  if (clear) await hold(ROD);
 }
 async function catchOne(timeoutMs = 45000) {
   try {
@@ -293,7 +318,14 @@ async function track() {
   await cmd('/time set day', 400);
   t = Date.now();
   await castOnly(); await sleep(2500);
-  check('A change (day) shows what is missing', hudSince(t).some(m => /★ Brook Char bites only at night/.test(m)), hudSince(t).join(' / '));
+  let dayHint = hudSince(t).some(m => /★ Brook Char bites only at night/.test(m));
+  if (!dayHint) { // a busy bar (a catch's message as the last reel-in caught something) drops a hint: the next cast tries again
+    note('no hint on the first cast (' + hudSince(t).join(' / ') + '): casting again');
+    await reelIn(); await sleep(3500);
+    t = Date.now(); await castOnly(); await sleep(2500);
+    dayHint = hudSince(t).some(m => /★ Brook Char bites only at night/.test(m));
+  }
+  check('A change (day) shows what is missing', dayHint, hudSince(t).join(' / '));
   await reelIn();
   // Unknown place: no bobber, looking at the sky.
   try { await bot.look(0, Math.PI / 2, true); } catch (e) { /* best effort */ }
@@ -378,8 +410,590 @@ async function terms() {
   await closeAny();
 }
 
-const PHASES = { pages, track, summary, terms };
-const ALL = ['pages', 'track', 'summary', 'terms'];
+// ── equipment (increment B) ──────────────────────────────────────
+const nameOf = it => it ? plain(it.customName) : '';
+const loreText = it => it && it.customLore ? it.customLore.map(plain).join(' | ') : '';
+const carry = name => bot.inventory.items().filter(it => nameOf(it).includes(name)).reduce((n, it) => n + it.count, 0);
+const rodsHeld = () => bot.inventory.items().filter(it => it.name === 'fishing_rod');
+const enchOf = it => {
+  const c = it && (it.components || []).find(x => x.type === 'enchantments');
+  const list = (c && c.data && c.data.enchantments) || [];
+  return list.map(e => ((bot.registry.enchantments[e.id] || {}).name || e.id) + ' ' + e.level).sort().join(', ');
+};
+const damageOf = it => (it && typeof it.durabilityUsed === 'number') ? it.durabilityUsed : NaN;
+async function give(id, n = 1) { await cmd(`/cerb gather item ${id} ${n}`, 700); }
+/** The admin dump of the bot's equipment (/cerb fish gear). */
+async function gear() {
+  const at = await cmd(`/cerb fish gear ${NAME}`, 1000);
+  const lines = chat.slice(at);
+  const owned = ((lines.find(l => /^owned: /.test(l)) || '').match(/owned: \[([^\]]*)\]/) || [])[1];
+  const presets = lines.map(l => l.match(/^(▶ )?\s*(\d) (.*?): \[([^\]]*)\] bait slots (\d+)/)).filter(Boolean)
+    .map(m => ({ active: !!m[1], i: +m[2], name: m[3], parts: m[4].split(',').map(x => x.trim()).filter(Boolean), slots: m[5] }));
+  const bagLine = lines.find(l => /^bag: /.test(l)) || '';
+  const bag = [1, 2, 3].map(i => { const m = bagLine.match(new RegExp('\\b' + i + '=([a-z_]+) ×(\\d+)')); return m ? { bait: m[1], n: +m[2] } : null; });
+  const held = bagLine.match(/held: ([a-z_]+) \(slot (\d)\)/) || [];
+  return {
+    owned: owned ? owned.split(',').map(x => x.trim()).filter(Boolean) : [], presets, bag, held: held[1] || null,
+    reel: /reel on/.test(bagLine), restock: /restock on/.test(bagLine), raw: lines.join(' / '),
+  };
+}
+const baitIn = (g, slot = 1) => (g.bag[slot - 1] ? g.bag[slot - 1].n : 0);
+/** /cerb fish info at the pond: the lure speed ("bites N% sooner"), encounter chance and treasure chance as the engine gives them. */
+async function fishInfo() {
+  await stand();
+  const at = await cmd('/cerb fish info', 1100);
+  const t = chat.slice(at).join(' | ');
+  const num = re => { const m = t.match(re); return m ? Number(m[1]) : NaN; };
+  return { lure: num(/bites ([\d.]+)% sooner/), creature: num(/Encounter chance per catch ([\d.]+)%/), treasure: num(/Treasure per catch in open water ([\d.]+)%/), text: t };
+}
+async function openEquipment() {
+  if (!(await openSkill('Fishing'))) return false;
+  const eq = await waitSlot(/^Equipment: /, 27, 35);
+  if (eq < 0) return false;
+  await click(eq);
+  return waitTitle(SCREEN('Fishing Equipment'));
+}
+const CAT = { Rod: 19, Line: 21, Lure: 23, Reel: 25 };
+async function openCategory(name) { if (!(await openEquipment())) return false; await click(CAT[name]); return waitTitle(SCREEN('Equipment: ' + name)); }
+async function openBag() { if (!(await openEquipment())) return false; await click(29); return waitTitle(SCREEN('Bait Bag')); }
+/** Fit a part from its category screen (it asks first). */
+async function fit(category, partRe) {
+  if (!(await openCategory(category))) return 'no ' + category + ' screen: ' + title();
+  const s = findSlot(partRe, 19, 34);
+  if (s < 0) return 'no tile for ' + partRe;
+  await click(s);
+  if (!(await waitTitle(/^Confirm: Fit /))) return 'no confirmation: ' + title();
+  await click(11, 1300);
+  return 'ok';
+}
+/** Select a rod in the hotbar by a test on it (moves it there first when needed). */
+async function selectRod(test) {
+  const it = bot.inventory.items().find(test);
+  if (!it) return false;
+  if (it.slot >= 36 && it.slot <= 44) { bot.setQuickBarSlot(it.slot - 36); await sleep(400); return true; }
+  try { await bot.clickWindow(it.slot, 0, 2); } catch (e) { /* the server decides */ } // number key 1: into hotbar slot 1
+  await sleep(500);
+  bot.setQuickBarSlot(0); await sleep(400);
+  return true;
+}
+/**
+ * Craft at a table beside the pond: one of each ingredient into the grid, then take the result (a shift-click, or a plain
+ * click when {@code shift} is false: the old build's upgrade of an already upgraded rod only takes a plain click). Returns
+ * what the result slot showed.
+ */
+async function craftAt(preds, shift = true) {
+  const ct = new Vec3(X - 2, Y, Z - 2);
+  await cmd(`/setblock ${ct.x} ${ct.y} ${ct.z} crafting_table`, 600);
+  let result = '';
+  try {
+    const tbl = bot.blockAt(ct);
+    await bot.lookAt(tbl.position.offset(0.5, 0.5, 0.5), true);
+    const w = await bot.openBlock(tbl);
+    await sleep(500);
+    const findIn = pred => { for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && pred(w.slots[i])) return i; return -1; };
+    const cw = async (slot, button = 0, mode = 0) => { try { await bot.clickWindow(slot, button, mode); } catch (e) { /* the server decides */ } await sleep(250); };
+    let to = 1;
+    for (const pred of preds) {
+      const from = findIn(pred);
+      if (from < 0) { note('craft: an ingredient is missing'); continue; }
+      await cw(from); await cw(to, 1); await cw(from);
+      to++;
+    }
+    await sleep(700);
+    result = w.slots[0] ? `${w.slots[0].name} x${w.slots[0].count} ${nameOf(w.slots[0])} ${loreText(w.slots[0])}` : '';
+    if (w.slots[0]) await cw(0, 0, shift ? 1 : 0); // a plain click leaves it on the cursor: closing the table puts it away
+    for (let i = 1; i <= 9; i++) if (w.slots[i]) await cw(i, 0, 1);
+    bot.closeWindow(w);
+  } catch (e) { note('crafting: ' + e.message); }
+  await sleep(700);
+  return result;
+}
+
+/** Run on the build BEFORE Fishing equipment: a character with an old journal, an encounter and rods upgraded the old way. */
+async function oldstate() {
+  await arena(420, 'river');
+  await survival(40);
+  for (const id of ['silver_dace', 'river_perch', 'goldfin_trout']) { await cmd(`/cerb fish force ${NAME} species ${id}`, 300); await catchOne(); }
+  await cmd(`/cerb fish force ${NAME} lure river_lurker`, 300); await catchOne();
+  await cmd('/clear @s', 400);
+  await cmd('/give @s fishing_rod[custom_name={text:"Old Faithful",italic:false},enchantments={unbreaking:3,lure:2},damage=17]', 900);
+  await give('lurker_scale', 2); await give('bog_resin', 1);
+  const r1 = await craftAt([it => it.name === 'fishing_rod' && /Old Faithful/.test(nameOf(it)), it => /Lurker Scale/.test(nameOf(it))], false);
+  const r2 = await craftAt([it => it.name === 'fishing_rod' && /Scaled grip/.test(loreText(it)), it => /Bog Resin/.test(nameOf(it))], false);
+  await cmd('/give @s fishing_rod', 700);
+  const r3 = await craftAt([it => it.name === 'fishing_rod' && !loreText(it), it => /Lurker Scale/.test(nameOf(it))], false);
+  const rods = rodsHeld().map(it => `${nameOf(it) || 'rod'} [${loreText(it)}] {${enchOf(it)}} dmg ${damageOf(it)}`);
+  check('Old build: Old Faithful has a Scaled grip and a Resin line', rods.some(r => /Old Faithful/.test(r) && /Scaled grip/.test(r) && /Resin line/.test(r)), rods.join(' || ') + ' | ' + r1 + ' | ' + r2);
+  check('Old build: a second rod with a Scaled grip', rods.some(r => !/Old Faithful/.test(r) && /Scaled grip/.test(r)), r3);
+  const at = await cmd(`/cerb fish journal ${NAME}`, 1300);
+  check('Old build: species and an encounter in the journal', sawAll(/✔/, at).length >= 3 && !!saw(/river_lurker=\d/, at), chat.slice(at).join(' / ').slice(0, 300));
+}
+
+/** After updating: the old character's journal and rods, and converting a rod (docs/design/FISHING_EQUIPMENT.md §6). */
+async function legacy() {
+  await arena(420, 'river');
+  await survival(40, false);
+  const at = await cmd(`/cerb fish journal ${NAME}`, 1300);
+  check('The journal from before the update reads as it was (species, encounters)', sawAll(/✔/, at).length >= 3 && !!saw(/^Encounters: .*river_lurker=\d/, at), chat.slice(at).join(' / ').slice(0, 300));
+  if (!rodsHeld().some(it => /Scaled grip/.test(loreText(it)) && /Resin line/.test(loreText(it)))) {
+    note('no rod from the old build here: upgrading one the old way with /cerb fish legacyrod');
+    await cmd('/clear @s fishing_rod', 400);
+    await cmd('/give @s fishing_rod[custom_name={text:"Old Faithful",italic:false},enchantments={unbreaking:3,lure:2},damage=17]', 900);
+    await selectRod(it => /Old Faithful/.test(nameOf(it)));
+    await cmd(`/cerb fish legacyrod ${NAME} scaled_grip,resin_line`, 900);
+    await cmd('/give @s fishing_rod', 600);
+    await selectRod(it => it.name === 'fishing_rod' && !nameOf(it));
+    await cmd(`/cerb fish legacyrod ${NAME} scaled_grip`, 900);
+  }
+  const isOld = it => it.name === 'fishing_rod' && /Old Faithful/.test(nameOf(it));
+  const old0 = rodsHeld().find(isOld);
+  const before = { ench: enchOf(old0), dmg: damageOf(old0), lore: loreText(old0) };
+  note(`Old Faithful: ${before.lore} {${before.ench}} dmg ${before.dmg}`);
+  await cmd('/give @s fishing_rod', 600);
+  await selectRod(it => it.name === 'fishing_rod' && !loreText(it) && !nameOf(it));
+  const plainNow = await fishInfo();
+  await selectRod(isOld);
+  const withOld = await fishInfo();
+  check('An old upgraded rod keeps working: its upgrades count while it is in hand', withOld.lure > plainNow.lure && withOld.creature > plainNow.creature,
+    `plain rod: ${plainNow.lure}% sooner, ${plainNow.creature}% encounters; Old Faithful: ${withOld.lure}%, ${withOld.creature}%`);
+  // Owning the Scaled grip part too: the rod's grip and the setup's count once.
+  await give('lurker_scale', 1);
+  check('Fit a Scaled grip in Equipment', (await fit('Rod', /^Scaled grip/)) === 'ok' && (await gear()).owned.includes('scaled_grip'), (await gear()).raw);
+  await closeAny();
+  await selectRod(it => it.name === 'fishing_rod' && !loreText(it) && !nameOf(it));
+  const partOnly = await fishInfo();
+  await selectRod(isOld);
+  const both = await fishInfo();
+  check('The setup\'s Scaled grip and the rod\'s count once (no double counting)', both.lure === partOnly.lure && partOnly.lure > plainNow.lure,
+    `plain ${plainNow.lure}%, part ${partOnly.lure}%, part + old rod ${both.lure}%`);
+  // The preview.
+  await openEquipment();
+  check('Holding it, Equipment offers to convert it', /Upgraded rod in your hand/.test(slotName(33)), slotName(33));
+  await click(33);
+  check('The conversion preview', await waitTitle(SCREEN('Convert a rod')), title());
+  const preview = flat(22);
+  check('...says what happens to each upgrade', /Scaled grip: you already own it: 1 Lurker Scale comes back/.test(preview) && /Resin line: becomes your part/.test(preview), preview);
+  // A full inventory refuses, changing nothing.
+  await closeAny();
+  for (let i = 0; i < 40; i++) bot.chat('/give @s dirt 64');
+  await sleep(2500);
+  await selectRod(isOld);
+  await openEquipment(); await click(33); await waitTitle(SCREEN('Convert a rod'));
+  let at2 = chat.length;
+  await click(31); await waitTitle(/^Confirm: Convert/); await click(11, 1300);
+  check('A full inventory: refused, nothing converted', !!saw(/Make room for 1 item first: nothing was converted/, at2) && /Scaled grip/.test(loreText(rodsHeld().find(isOld))),
+    sawAll(/convert|room/i, at2).join(' / '));
+  await closeAny();
+  await cmd('/clear @s dirt', 600);
+  await cmd('/kill @e[type=item,distance=..12]', 600);
+  // A stale preview: the rod changes while the preview is open.
+  await selectRod(isOld);
+  await openEquipment(); await click(33); await waitTitle(SCREEN('Convert a rod'));
+  await cmd('/enchant @s minecraft:luck_of_the_sea 1', 800);
+  at2 = chat.length;
+  await click(31); await waitTitle(/^Confirm: Convert/); await click(11, 1300);
+  check('The rod changed since the preview: refused, nothing converted', !!saw(/changed since the preview: nothing was converted/, at2) && /Scaled grip/.test(loreText(rodsHeld().find(isOld))),
+    sawAll(/convert|changed/i, at2).join(' / '));
+  await closeAny();
+  // Converting (a double click on Yes converts once).
+  const scales0 = carry('Lurker Scale');
+  await selectRod(isOld);
+  const beforeConvert = await fishInfo();
+  const ench1 = [...before.ench.split(', ').filter(Boolean), 'luck_of_the_sea 1'].sort().join(', '); // the stale test added one
+  await openEquipment(); await click(33); await waitTitle(SCREEN('Convert a rod'));
+  at2 = chat.length;
+  await click(31); await waitTitle(/^Confirm: Convert/);
+  try { bot.clickWindow(11, 0, 0); bot.clickWindow(11, 0, 0); } catch (e) { /* the second may find another window */ }
+  await sleep(1500);
+  await closeAny();
+  const old1 = rodsHeld().find(isOld);
+  const g = await gear();
+  check('Converted: one message', sawAll(/Converted: 2 upgrades moved to your setup, 1 item back/, at2).length === 1, sawAll(/Convert/, at2).join(' / '));
+  check('...its upgrades left the rod', old1 && !/Scaled grip|Resin line/.test(loreText(old1)), old1 ? loreText(old1) : 'rod gone');
+  check('...name, enchantments and damage stay', old1 && /Old Faithful/.test(nameOf(old1)) && enchOf(old1) === ench1 && damageOf(old1) === before.dmg,
+    old1 ? `${nameOf(old1)} {${enchOf(old1)}} dmg ${damageOf(old1)} (was {${ench1}} dmg ${before.dmg})` : 'rod gone');
+  check('...the Resin line is yours, in every preset', g.owned.includes('resin_line') && g.presets.every(p => p.parts.includes('resin_line')), g.raw);
+  check('...the Lurker Scale for the grip you already had came back once', carry('Lurker Scale') === scales0 + 1, `${scales0} -> ${carry('Lurker Scale')}`);
+  await selectRod(isOld);
+  const afterConvert = await fishInfo();
+  check('...and the numbers are the same as before converting (nothing lost, nothing doubled)', afterConvert.lure === beforeConvert.lure && afterConvert.creature === beforeConvert.creature,
+    `before ${beforeConvert.lure}% / ${beforeConvert.creature}%, after ${afterConvert.lure}% / ${afterConvert.creature}%`);
+  await openEquipment();
+  check('A converted rod is a plain rod: nothing more to convert', /Old upgraded rods/.test(slotName(33)), slotName(33));
+  await closeAny();
+  // The second old rod: its grip is owned already, so its item comes back.
+  const isSecond = it => it.name === 'fishing_rod' && !nameOf(it) && /Scaled grip/.test(loreText(it));
+  if (await selectRod(isSecond)) {
+    await openEquipment(); await click(33); await waitTitle(SCREEN('Convert a rod'));
+    check('A second rod with the same upgrade: its item comes back', /Scaled grip: you already own it: 1 Lurker Scale comes back/.test(flat(22)), flat(22));
+    await click(31); await waitTitle(/^Confirm: Convert/); await click(11, 1300); await closeAny();
+    check('...converted, one more Lurker Scale, the setup unchanged', carry('Lurker Scale') === scales0 + 2 && !rodsHeld().some(isSecond), `${carry('Lurker Scale')}`);
+  } else note('no second old rod in this character');
+  // A converted rod fishes as before.
+  await selectRod(isOld);
+  check('The converted rod catches', await catchOne(), '');
+}
+
+async function equip() {
+  await arena(180, 'river');
+  await survival(1);
+  check('Fishing page opens', await openSkill('Fishing'), title());
+  const eq = await waitSlot(/^Equipment: /, 27, 35), jr = findSlot(/^Journal: /, 27, 35), en = findSlot(/^Encounters: /, 27, 35);
+  check('Fishing sections in order: Equipment, Journal, Encounters', eq >= 0 && eq < jr && jr < en, `${eq} ${jr} ${en}`);
+  check('A new character\'s Equipment tile', /^Equipment: Discoveries$/.test(slotName(eq)) && /Parts counting: 0 of 0 owned/.test(flat(eq)) && /Bait in the bag: 0/.test(flat(eq)), slotName(eq) + ' / ' + flat(eq));
+  await click(eq);
+  check('Equipment opens', await waitTitle(SCREEN('Fishing Equipment')), title());
+  check('Three presets: Discoveries in use, Treasure, Sea Creatures', /Discoveries/.test(slotName(11)) && /In use/.test(flat(11)) && /Treasure/.test(slotName(13)) && /Sea Creatures/.test(slotName(15)),
+    [11, 13, 15].map(slotName).join(' | '));
+  check('Categories: Rod open; Line 10, Lure 25, Reel 50', /✓ Open/.test(flat(19)) && /Opens at Fishing 10/.test(flat(21)) && /Opens at Fishing 25/.test(flat(23)) && /Opens at Fishing 50/.test(flat(25)),
+    [19, 21, 23, 25].map(i => slotName(i) + ': ' + flat(i).slice(0, 40)).join(' | '));
+  check('Bait Bag: one slot now, the second at Fishing 20, the third at 40', /Slot 2: opens at Fishing 20/.test(flat(29)) && /Slot 3: opens at Fishing 40/.test(flat(29)), flat(29));
+  check('The header says any rod uses it, with the stats from the engine', /Any normal fishing rod/.test(flat(4)) && /Lure speed: /.test(flat(4)), flat(4));
+  await closeAny();
+  // Fit a part.
+  const i0 = await fishInfo();
+  await give('lurker_scale', 1);
+  await openCategory('Rod');
+  const grip = findSlot(/^Scaled grip/, 19, 34);
+  check('Rod: the Scaled grip, not owned, made with 1 Lurker Scale (you carry 1), from River Lurkers', grip >= 0 && /Not owned yet/.test(flat(grip)) && /you carry 1/.test(flat(grip)) && /Dropped by .*River Lurker/.test(flat(grip)),
+    flat(grip));
+  check('...its effect, raw before caps', /Lure speed \+6(\.0)?% \(raw, before caps\)/.test(flat(grip)), flat(grip));
+  await closeAny();
+  let at = chat.length;
+  check('Fitting it asks first, then fits', (await fit('Rod', /^Scaled grip/)) === 'ok' && !!saw(/Fitted the Scaled grip \(1 Lurker Scale used\)/, at), sawAll(/Fitted|need/, at).join(' / '));
+  let g = await gear();
+  check('...owned once, in all three presets, the scale used', g.owned.join() === 'scaled_grip' && g.presets.length === 3 && g.presets.every(p => p.parts.includes('scaled_grip')) && carry('Lurker Scale') === 0, g.raw);
+  const i1 = await fishInfo();
+  check('Bites come sooner', i1.lure > i0.lure, `${i0.lure}% -> ${i1.lure}%`);
+  await hold('fishing_rod');
+  const i2 = await fishInfo();
+  check('Any normal rod uses it (a plain rod: the same)', i2.lure === i1.lure, `${i1.lure}% vs ${i2.lure}%`);
+  await hold(ROD);
+  // Owned once: a second scale doesn't fit it again; the tile now takes it in and out, with the effect previewed.
+  await give('lurker_scale', 1);
+  await openCategory('Rod');
+  const g2 = findSlot(/^Scaled grip/, 19, 34);
+  check('An owned part: in the preset, and what taking it out changes (engine values, raw change)', /✔ In Discoveries/.test(flat(g2)) && /Taking it out:/.test(flat(g2)) && /Lure speed: [\d.]+% → [\d.]+% \(-6(\.0)?% raw\)/.test(flat(g2)),
+    flat(g2));
+  check('...and when it applies', /always, with any rod/.test(flat(g2)), flat(g2));
+  await click(g2);
+  const i3 = await fishInfo();
+  check('Taking it out of the preset: back to the plain numbers, the scale kept', (await gear()).presets[0].parts.length === 0 && i3.lure === i0.lure && carry('Lurker Scale') === 1, `${i3.lure}%`);
+  await openCategory('Rod'); await click(findSlot(/^Scaled grip/, 19, 34)); await closeAny();
+  // Locked categories: a lure part waits for Fishing 25 (owned, in the preset, not counting).
+  await give('sea_glass', 1);
+  at = chat.length;
+  check('A Lure part can be fitted before Fishing 25', (await fit('Lure', /^Sea-glass float/)) === 'ok' && !!saw(/Fitted the Sea-glass float/, at), sawAll(/Fitted|need/, at).join(' / '));
+  g = await gear();
+  check('...a treasure part goes into Treasure and Sea Creatures, not Discoveries', !g.presets[0].parts.includes('sea_glass_float') && g.presets[1].parts.includes('sea_glass_float') && g.presets[2].parts.includes('sea_glass_float'), g.raw);
+  await openEquipment();
+  check('...and waits: Lure says it opens at 25', /Opens at Fishing 25/.test(flat(23)), flat(23));
+  await closeAny();
+  // Presets: switching is free, previewed, and counts from the next cast.
+  await setLevel('Fishing', 30);
+  const t0 = await fishInfo();
+  await openEquipment();
+  check('Treasure\'s tile previews switching to it', /Switching to it:/.test(flat(13)) && /Treasure chance: [\d.]+% → [\d.]+%/.test(flat(13)), flat(13));
+  at = chat.length;
+  await click(13);
+  check('Switching: free, from the next cast', !!saw(/Using Treasure from your next cast/, at) && /In use/.test(flat(13)), sawAll(/Using/, at).join(' / '));
+  await closeAny();
+  const t1 = await fishInfo();
+  check('Treasure counts its Sea-glass float', t1.treasure > t0.treasure, `${t0.treasure}% -> ${t1.treasure}%`);
+  // Rename by chat; bad names refused; "cancel" cancels.
+  await openEquipment();
+  await click(15, 900, 0, 1);
+  at = chat.length;
+  bot.chat('Deep Calls'); await sleep(1200);
+  check('Shift-click a preset, type a name: renamed', !!saw(/Preset 3 is now Deep Calls/, at) && (await gear()).presets[2].name === 'Deep Calls', sawAll(/Preset|name/, at).join(' / '));
+  await openEquipment(); await click(15, 900, 0, 1);
+  at = chat.length;
+  bot.chat('x'.repeat(24)); await sleep(1200);
+  check('A name over 20 characters is refused', !!saw(/A name is 1-20 letters/, at) && (await gear()).presets[2].name === 'Deep Calls', sawAll(/name/, at).join(' / '));
+  await openEquipment(); await click(15, 900, 0, 1);
+  at = chat.length;
+  bot.chat('cancel'); await sleep(1000);
+  check('"cancel" cancels', !!saw(/Rename cancelled/, at) && (await gear()).presets[2].name === 'Deep Calls', sawAll(/ancel/, at).join(' / '));
+  // A part a server removes from resources.yml: owned, shown unavailable, counting nothing; back when it returns.
+  const dir = process.env.CERB_SERVER_DIR;
+  if (dir) {
+    const fs = require('fs'), file = require('path').join(dir, 'plugins/CerberusPlugin/resources.yml');
+    const orig = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, orig.replace(/^\s+sea_glass_float:\s+\{ category: lure, upgrade: sea_glass_float \}\n/m, ''));
+    await cmd('/cerb reload', 2500);
+    const t2 = await fishInfo();
+    g = await gear();
+    await openEquipment();
+    check('A part the server no longer has: still owned, shown unavailable', g.owned.includes('sea_glass_float') && /Unavailable parts: 1/.test(slotName(40)) && /sea_glass_float \(unavailable\)/.test(flat(13)),
+      slotName(40) + ' / ' + flat(13));
+    check('...and it counts nothing', t2.treasure < t1.treasure, `${t1.treasure}% -> ${t2.treasure}%`);
+    await closeAny();
+    fs.writeFileSync(file, orig);
+    await cmd('/cerb reload', 2500);
+    const t3 = await fishInfo();
+    check('...back in the file: it counts again', t3.treasure === t1.treasure && (await gear()).presets[1].parts.includes('sea_glass_float'), `${t3.treasure}%`);
+  } else note('CERB_SERVER_DIR not set: skipping the removed-part check (it edits the sandbox resources.yml)');
+  // One specialist per preset (Surveyor's Float and the Specimen Hook come from collection milestones; the admin gives them here).
+  await cmd(`/cerb fish part ${NAME} surveyors_float`, 600);
+  await cmd(`/cerb fish part ${NAME} specimen_hook`, 600);
+  await openEquipment(); await click(11); await closeAny(); // Discoveries
+  g = await gear();
+  check('Surveyor\'s Float goes into Discoveries; the Specimen Hook into none', g.presets[0].parts.includes('surveyors_float') && !g.presets.some(p => p.parts.includes('specimen_hook')), g.raw);
+  await openCategory('Lure');
+  const hook = findSlot(/^Specimen Hook/, 19, 34);
+  check('Putting the Specimen Hook in says what it removes', /Removes: Surveyor's Float \(one specialist at a time\)/.test(flat(hook)), flat(hook));
+  await click(hook); await closeAny();
+  g = await gear();
+  check('...and it replaces the Float in Discoveries', g.presets[0].parts.includes('specimen_hook') && !g.presets[0].parts.includes('surveyors_float') && g.owned.includes('surveyors_float'), g.raw);
+  // Menus never hand out or take items: shift-clicks and number keys on equipment screens.
+  await give('lurker_scale', 1);
+  const scales = carry('Lurker Scale');
+  await openEquipment();
+  const inv0 = bot.inventory.items().map(it => it.name + it.count).sort().join();
+  const scaleSlot = (() => { const w = bot.currentWindow; for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && /Lurker Scale/.test(nameOf(w.slots[i]))) return i; return -1; })();
+  if (scaleSlot >= 0) await click(scaleSlot, 700, 0, 1);
+  await click(19, 700, 0, 2); // number key 1 on a category tile
+  await closeAny();
+  check('Shift-clicks and number keys move no item in or out', bot.inventory.items().map(it => it.name + it.count).sort().join() === inv0 && carry('Lurker Scale') === scales,
+    `${inv0} -> ${bot.inventory.items().map(it => it.name + it.count).sort().join()}`);
+  await openEquipment(); await click(11); await closeAny();
+}
+
+async function bait() {
+  await arena(240, 'river');
+  await survival(1);
+  // Crafting: three recipes open to everyone, one waits for its milestone.
+  await cmd('/give @s rotten_flesh 2', 400); await cmd('/give @s wheat_seeds 2', 400);
+  const made = await craftAt([it => it.name === 'rotten_flesh', it => it.name === 'wheat_seeds']);
+  check('Rotten flesh + wheat seeds: 4 Grub Bait', /x4 Grub Bait/.test(made) && carry('Grub Bait') === 4, made + ' -> ' + carry('Grub Bait'));
+  await cmd('/give @s dried_kelp 1', 400); await cmd('/give @s sweet_berries 1', 400);
+  const locked = await craftAt([it => it.name === 'dried_kelp', it => it.name === 'sweet_berries']);
+  check('Wayfarer\'s Bait waits for its milestone (no result)', locked === '' && carry("Wayfarer's Bait") === 0, locked || 'no result');
+  // The bag.
+  await openBag();
+  check('The Bait Bag: slot 1 empty, slots 2-3 locked until 20 and 40', /Slot 1: empty/.test(slotName(20)) && /Opens at Fishing 20/.test(flat(22)) && /Opens at Fishing 40/.test(flat(24)),
+    [20, 22, 24].map(slotName).join(' | '));
+  check('Its recipes are shown, Wayfarer\'s locked', /Recipe: Grub Bait/.test([38, 39, 40, 41, 42].map(slotName).join(' ')) && /Locked/.test([38, 39, 40, 41, 42].map(flat).join(' ')),
+    [38, 39, 40, 41, 42].map(slotName).join(' | '));
+  const put = findSlot(/^Put in: Grub Bait$/, 29, 33);
+  let at = chat.length;
+  await click(put);
+  check('Put in: 4 Grub Bait go into slot 1', !!saw(/Put 4 Grub Bait into slot 1/, at) && carry('Grub Bait') === 0 && /Slot 1: Grub Bait ×4/.test(slotName(20)), slotName(20));
+  await closeAny();
+  await cmd(`/cerb fish bait ${NAME} grub_bait 8`, 600);
+  let g = await gear();
+  check('Bag: 12 Grub Bait', baitIn(g) === 12, g.raw);
+  // A cast holds one; a reel-in without a catch puts it back.
+  await stand();
+  await castOnly();
+  g = await gear();
+  check('A cast holds one bait on the line', g.held === 'grub_bait' && baitIn(g) === 11, g.raw);
+  await reelIn(); await sleep(600);
+  g = await gear();
+  check('Reeling in without a catch puts it back', !g.held && baitIn(g) === 12, g.raw);
+  // A catch uses exactly one.
+  await cmd(`/cerb fish force ${NAME} species silver_dace`, 300);
+  check('A catch...', await catchOne(), '');
+  g = await gear();
+  check('...uses exactly one bait', !g.held && baitIn(g) === 11, g.raw);
+  // A refused catch (another plugin cancels it) uses none.
+  await cmd(`/testnocatch ${NAME}`, 400);
+  const s0 = await summaryDump();
+  await stand();
+  try { await Promise.race([bot.fish(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 40000))]); } catch (e) { note('refused catch: ' + e.message); }
+  await sleep(3000); // the bite passes
+  g = await gear();
+  const s1 = await summaryDump();
+  check('A refused catch: no catch counted, the bait still on the line', s1 && s0 && s1.catches === s0.catches && g.held === 'grub_bait' && baitIn(g) === 10, g.raw + ' ' + JSON.stringify(s1));
+  await cmd('/testnocatch off', 400);
+  await reelIn(); await sleep(600);
+  g = await gear();
+  check('...and when the cast ends, it goes back', !g.held && baitIn(g) === 11, g.raw);
+  // Logging out with bait on the line: it goes back.
+  await castOnly();
+  g = await gear();
+  check('(a cast holding bait)', g.held === 'grub_bait', g.raw);
+  bot.quit(); await sleep(3500); await connect(); await sleep(3000);
+  g = await gear();
+  check('Logging out mid-cast: the bait is back in the bag', !g.held && baitIn(g) === 11, g.raw);
+  await survival(1, false); await hold(ROD); await stand();
+  // Switching presets mid-cast: the cast keeps what it was cast with.
+  await openEquipment(); await click(13); await closeAny();           // Treasure
+  await openBag(); await click(20, 800, 1); await closeAny();          // Treasure skips slot 1
+  await openEquipment(); await click(11); await closeAny();           // back to Discoveries
+  await hold('fishing_rod');                                          // a plain rod: no bite before 5 s
+  await stand();
+  await cmd(`/cerb fish force ${NAME} species river_perch`, 300);
+  const fishing = Promise.race([bot.fish(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 45000))]).then(() => true, e => { note(e.message); return false; });
+  await sleep(1500);
+  g = await gear();
+  const heldAtCast = g.held;
+  await openEquipment(); await click(13); await closeAny();           // switch to Treasure with the line out
+  await fishing;
+  await sleep(1200);
+  g = await gear();
+  check('Switching presets mid-cast: the cast keeps its bait (used by its catch)', heldAtCast === 'grub_bait' && !g.held && baitIn(g) === 10, `held at cast ${heldAtCast}; ${g.raw}`);
+  await castOnly();
+  g = await gear();
+  check('...and the next cast uses Treasure (which skips slot 1): no bait', !g.held && baitIn(g) === 10, g.raw);
+  await reelIn();
+  await openEquipment(); await click(11); await closeAny();
+  // Situational bait waits in the bag: night bait by day, encounter bait before encounters open.
+  await openBag(); await click(20); await closeAny();                  // take the grub out
+  await cmd(`/cerb fish bait ${NAME} glowworm_bait 3`, 600);
+  await stand(); await castOnly();
+  g = await gear();
+  check('Night bait by day: not taken (it waits in the bag)', !g.held && g.bag[0] && g.bag[0].bait === 'glowworm_bait' && baitIn(g) === 3, g.raw);
+  await reelIn();
+  await openBag();
+  check('...and the bag says so', /Waits for the night/.test(flat(20)), flat(20));
+  await click(20); await closeAny();
+  await cmd(`/cerb fish bait ${NAME} chum 3`, 600);
+  await stand(); await castOnly();
+  g = await gear();
+  check('Encounter bait before encounters open: not taken', !g.held && baitIn(g) === 3, g.raw);
+  await reelIn();
+  await openBag(); await click(20); await closeAny();
+  // Depleted: said once; restocking (opt-in) refills from the inventory.
+  await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);
+  at = chat.length;
+  await cmd(`/cerb fish force ${NAME} species silver_dace`, 300); await catchOne();
+  await cmd(`/cerb fish force ${NAME} species silver_dace`, 300); await catchOne();
+  check('"Bait depleted. Normal fishing continues." once', sawAll(/Bait depleted\. Normal fishing continues\./, at).length === 1, sawAll(/Bait/, at).join(' / '));
+  g = await gear();
+  check('...and fishing goes on without bait', !g.held && baitIn(g) === 0, g.raw);
+  await cmd('/clear @s slime_ball', 500);                               // Grub Bait is a slime ball
+  await openEquipment(); await click(41); await closeAny();             // restock on
+  await give('grub_bait', 5);
+  await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);
+  await cmd(`/cerb fish force ${NAME} species silver_dace`, 300); await catchOne();
+  g = await gear();
+  check('Restocking: the empty slot refills with the same bait from the inventory', g.restock && baitIn(g) === 5 && carry('Grub Bait') === 0, `${g.raw}; carried ${carry('Grub Bait')}`);
+  await openEquipment(); await click(41); await closeAny();             // restock off
+  // A held bait with no room to go back: handed over as an item (never hidden in a locked slot).
+  await castOnly();
+  g = await gear();
+  const heldNow = g.held;
+  await openBag(); await click(20); await closeAny();                  // take out what's left in slot 1
+  await cmd(`/cerb fish bait ${NAME} chum 2`, 600);                     // slot 1 now holds chum
+  const grub0 = carry('Grub Bait');
+  await reelIn(); await sleep(800);
+  g = await gear();
+  check('No room in the open slots: the held bait comes back as an item', heldNow === 'grub_bait' && carry('Grub Bait') === grub0 + 1 && !g.bag[1] && !g.bag[2], `${g.raw}; grub ${grub0} -> ${carry('Grub Bait')}`);
+  // Bag screen: number keys and shift-clicks never move items into or out of the bag by themselves.
+  await openBag();
+  const bag0 = (await gear()).raw;
+  await click(20, 700, 0, 2);
+  const grubSlot = (() => { const w = bot.currentWindow; for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && /Grub Bait/.test(nameOf(w.slots[i]))) return i; return -1; })();
+  if (grubSlot >= 0) await click(grubSlot, 700, 0, 1);
+  await closeAny();
+  check('Number keys and shift-clicks on the bag screen move nothing', (await gear()).raw.replace(/held: [^·]*/, '') === bag0.replace(/held: [^·]*/, '') && carry('Grub Bait') === grub0 + 1,
+    (await gear()).raw);
+  await openBag(); await click(20); await closeAny();
+}
+
+async function reel() {
+  await arena(300, 'river');
+  await survival(50);
+  await cmd('/give @s iron_ingot 3', 400); await cmd('/give @s tripwire_hook 1', 400); await cmd('/give @s redstone 1', 400);
+  const made = await craftAt([it => it.name === 'iron_ingot', it => it.name === 'iron_ingot', it => it.name === 'iron_ingot', it => it.name === 'tripwire_hook', it => it.name === 'redstone']);
+  check('3 iron ingots, a tripwire hook and redstone: an Auto-hook Reel', /Auto-hook Reel/.test(made) && carry('Auto-hook Reel') === 1, made);
+  let at = chat.length;
+  check('Fit it (Reel, Fishing 50)', (await fit('Reel', /^Auto-hook Reel/)) === 'ok' && !!saw(/Fitted the Auto-hook Reel/, at), sawAll(/Fitted|need/, at).join(' / '));
+  let g = await gear();
+  check('...in all three presets, switched on', g.presets.every(p => p.parts.includes('auto_reel')) && g.reel, g.raw);
+  await openEquipment();
+  check('Equipment shows the switch and that it is in use', /Auto-hook reel: on/.test(slotName(39)) && /In use in Discoveries/.test(flat(39)), slotName(39) + ' / ' + flat(39));
+  await closeAny();
+  // A plain rod: its wear shows the reel used the normal path.
+  await cmd('/clear @s', 400);
+  await hold('fishing_rod');
+  const statsNum = async re => Number(((chat.slice(await cmd('/cerb fish stats', 900)).join(' ').match(re)) || [])[1]);
+  const autoN = () => statsNum(/auto-reeled (\d+)/);
+  const a0 = await autoN();
+  const s0 = await summaryDump();
+  const xp0 = totalXp(await skill('Fishing'));
+  const dmg0 = damageOf(bot.heldItem);
+  await stand(); await castOnly();
+  let a1 = a0;
+  for (let i = 0; i < 45 && a1 === a0; i++) { await sleep(1000); a1 = await autoN(); }
+  await sleep(1000);
+  const s1 = await summaryDump();
+  const xp1 = totalXp(await skill('Fishing'));
+  check('Left alone, a bite is reeled in for you', a1 === a0 + 1 && s1.catches === s0.catches + 1, `auto-reeled ${a0} -> ${a1}; catches ${s0.catches} -> ${s1.catches}`);
+  check('...through the normal path: Fishing XP, the rod\'s normal wear', xp1 > xp0 && damageOf(bot.heldItem) === dmg0 + 1, `xp +${xp1 - xp0}; damage ${dmg0} -> ${damageOf(bot.heldItem)}`);
+  check('...and it never recasts', /casts tracked 0/.test(chat.slice(await cmd('/cerb fish stats', 900)).join(' ')), '');
+  // Manual and automatic at once: one catch per bite.
+  const s2 = await summaryDump();
+  let caught = 0;
+  for (let i = 0; i < 4; i++) { await stand(); if (await catchOne()) caught++; }
+  await sleep(1500);
+  const s3 = await summaryDump();
+  check('Reeling yourself with the reel on: exactly one catch per bite', s3.catches - s2.catches === caught && caught >= 3, `${caught} reels, ${s3.catches - s2.catches} catches`);
+  // Switched off: nothing is reeled.
+  await openEquipment(); await click(39); await closeAny();
+  const a2 = await autoN();
+  await stand(); await castOnly(); await sleep(30000);
+  check('Switched off: the bite is left to you', (await autoN()) === a2, '');
+  await reelIn();
+  await openEquipment(); await click(39); await closeAny();
+  // A menu open meanwhile: the reel still works and the menu stays.
+  const a3 = await autoN();
+  await stand(); await castOnly();
+  await openMenu();
+  let a4 = a3;
+  for (let i = 0; i < 45 && a4 === a3; i++) { await sleep(1000); a4 = await autoN(); }
+  check('With a menu open: reeled, the menu still open', a4 === a3 + 1 && SCREEN('Player Menu').test(title()), `${a3} -> ${a4}; ${title()}`);
+  await closeAny();
+  // Switching to another item: the bobber goes, nothing is reeled later.
+  await cmd('/give @s stick 1', 400);
+  await stand(); await castOnly();
+  const sticky = bot.inventory.items().find(it => it.name === 'stick');
+  const a5 = await autoN();
+  if (sticky) { bot.setQuickBarSlot(sticky.slot - 36); }
+  await sleep(30000);
+  check('Switching items mid-cast: no catch later', (await autoN()) === a5, '');
+  await hold('fishing_rod');
+  // A rod about to break: the reel's catch wears it like any catch, and it breaks cleanly.
+  await hold('fishing_rod[damage=63]');
+  const a6 = await autoN();
+  await stand(); await castOnly();
+  let a7 = a6;
+  for (let i = 0; i < 45 && a7 === a6; i++) { await sleep(1000); a7 = await autoN(); }
+  await sleep(1000);
+  check('A rod with one use left: the reel\'s catch breaks it, nothing else happens', a7 === a6 + 1 && !bot.inventory.items().some(it => it.name === 'fishing_rod'), bot.inventory.items().map(i => i.name).join());
+  // Death and logout mid-cast: nothing reeled, no errors.
+  await hold('fishing_rod');
+  await stand(); await castOnly();
+  const a8 = await autoN();
+  await cmd('/effect clear @s', 300);
+  await cmd('/kill @s', 1500);
+  try { bot.respawn && bot.respawn(); } catch (e) { /* auto */ }
+  await sleep(12000);
+  check('Dying mid-cast: nothing is reeled', (await autoN()) === a8, '');
+  await survival(50); await hold('fishing_rod'); await stand();
+  await castOnly();
+  const a9 = await autoN();
+  bot.quit(); await sleep(15000); await connect(); await sleep(3000);
+  check('Logging out mid-cast: nothing is reeled', (await autoN()) === a9, '');
+  // Encounters are never spent by the reel: a Sneak-cast call is left alone.
+  await survival(50); await hold('fishing_rod'); await stand();
+  await cmd(`/cerb fish lure ${NAME} river_lurker 1`, 600);
+  const lurkers = async () => Number((chat.slice(await cmd(`/cerb fish journal ${NAME}`, 1300)).join(' ').match(/river_lurker=(\d+)/) || [])[1] || 0);
+  const e0 = await lurkers();
+  const a10 = await autoN();
+  bot.setControlState('sneak', true); await sleep(300);
+  await castOnly(); await sleep(6000);
+  bot.setControlState('sneak', false);
+  const st = chat.slice(await cmd('/cerb fish stats', 900)).join(' ');
+  check('A Sneak-cast call is not reeled automatically', (await autoN()) === a10 && /creatures out now 1/.test(st), st.slice(0, 200));
+  bot.quit(); await sleep(4000); await connect(); await sleep(3000); // the fight ends with a logout (the encounter comes back)
+  const e1 = await lurkers();
+  check('...its encounter came back when the fight ended with the logout', e1 === e0, `river_lurker ${e0} before the call, ${e1} after`);
+}
+
+const PHASES = { pages, track, summary, terms, equip, bait, reel, oldstate, legacy };
+const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel'];
 
 connect().then(async () => {
   await sleep(3500);

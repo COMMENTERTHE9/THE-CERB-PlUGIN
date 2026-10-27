@@ -6,18 +6,26 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A stand-in for a protection plugin, for the sandbox only (tools/playtest/woodcutting.js protect): it refuses every
  * block break inside one box, the way claim plugins refuse breaks in a claim. Never shipped with Cerberus.
  * {@code /testprotect <x1> <y1> <z1> <x2> <y2> <z2>} sets the box, {@code /testprotect off} clears it.
  * {@code /testsave <player>} writes a player's data to disk now (Folia has no save-all; fishing.js crash-set uses it).
+ * {@code /testnocatch <player>|off} refuses that player's catches (PlayerFishEvent CAUGHT_FISH, cancelled after Cerberus
+ * decides), the way a minigame or claim plugin may (fishgear.js bait: a refused catch uses no bait).
  */
 public final class Protect extends JavaPlugin implements Listener {
 
     private volatile int[] box;
     private volatile int refused;
+    private final Set<UUID> noCatch = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -26,6 +34,15 @@ public final class Protect extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("testnocatch")) {
+            if (args.length != 1) return false;
+            if (args[0].equalsIgnoreCase("off")) { noCatch.clear(); sender.sendMessage("testnocatch: off"); return true; }
+            org.bukkit.entity.Player p = getServer().getPlayerExact(args[0]);
+            if (p == null) return false;
+            noCatch.add(p.getUniqueId());
+            sender.sendMessage("testnocatch: refusing " + p.getName() + "'s catches");
+            return true;
+        }
         if (command.getName().equalsIgnoreCase("testsave")) {
             org.bukkit.entity.Player p = args.length == 1 ? getServer().getPlayerExact(args[0]) : null;
             if (p == null) return false;
@@ -59,5 +76,10 @@ public final class Protect extends JavaPlugin implements Listener {
             e.setCancelled(true);
             refused++;
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFish(PlayerFishEvent e) {
+        if (e.getState() == PlayerFishEvent.State.CAUGHT_FISH && noCatch.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
     }
 }

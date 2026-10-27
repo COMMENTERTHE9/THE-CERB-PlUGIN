@@ -173,10 +173,40 @@ public final class GearItems {
         out.editMeta(m -> {
             m.getPersistentDataContainer().set(UPGRADES, PersistentDataType.STRING, String.join(",", ids));
             List<Component> lore = m.lore() == null ? new ArrayList<>() : new ArrayList<>(m.lore());
-            lore.add(text("§6✦ " + u.name() + "§7: " + u.stat().displayName.toLowerCase(Locale.ROOT) + " while held"));
+            lore.add(upgradeLine(u));
             m.lore(lore);
         });
         return out;
+    }
+
+    /**
+     * A copy of {@code it} without the upgrades {@code ids} (docs/design/FISHING_EQUIPMENT.md §6, converting an old rod):
+     * their ids leave its data and their lore lines (as {@link #withUpgrade} wrote them) leave its lore. Enchantments,
+     * damage, name, quality, other lore and other data are kept.
+     */
+    public static ItemStack withoutUpgrades(ItemStack it, java.util.Collection<String> ids, GatheringCatalog c) {
+        ItemStack out = it.clone();
+        List<String> keep = new ArrayList<>(upgrades(it));
+        keep.removeAll(ids);
+        Set<String> lines = new HashSet<>();
+        for (String id : ids) {
+            GatheringCatalog.UpgradeDef u = c.upgrade(id);
+            if (u != null && u.stat() != null) lines.add(PLAIN.serialize(upgradeLine(u)));
+        }
+        out.editMeta(m -> {
+            if (keep.isEmpty()) m.getPersistentDataContainer().remove(UPGRADES);
+            else m.getPersistentDataContainer().set(UPGRADES, PersistentDataType.STRING, String.join(",", keep));
+            List<Component> lore = m.lore();
+            if (lore == null) return;
+            List<Component> kept = new ArrayList<>(lore);
+            kept.removeIf(line -> lines.contains(PLAIN.serialize(line)));
+            m.lore(kept.isEmpty() ? null : kept);
+        });
+        return out;
+    }
+
+    private static Component upgradeLine(GatheringCatalog.UpgradeDef u) {
+        return text("§6✦ " + u.name() + "§7: " + u.stat().displayName.toLowerCase(Locale.ROOT) + " while held");
     }
 
     /** What kind of item a material is, for upgrades: axe, pickaxe, shovel, hoe, sword, spear, bow, crossbow, trident, mace; or null. */

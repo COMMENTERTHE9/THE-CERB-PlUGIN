@@ -77,6 +77,8 @@ public final class Fishing implements Listener {
     private final CerberusPlugin plugin;
     private final GatheringService service;
     private final SkillManager skills;
+    /** Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup, bait and the reel; null until the plugin sets it. */
+    private volatile Tackle tackle;
 
     /** A cast in progress, by bobber: who cast it and their numbers then, a call, and what the current bite is. */
     private static final class Cast {
@@ -86,11 +88,18 @@ public final class Fishing implements Listener {
         final String call;     // a creature id when this cast calls one
         final boolean chosen;  // the player chose that creature; otherwise one of the bobber's water is preferred
         final int minWait, maxWait; // the wait a plain cast fishes with (lure speed, Quick Bite)
+        /** The equipment this cast fishes with, taken at the cast (docs/design/FISHING_EQUIPMENT.md §5): a later switch changes nothing here. */
+        final Tackle.CastGear gear;
         volatile String water;
+        volatile FishingRules.Moment moment; // at the last bite
         volatile FishingRules.Species pending;
         volatile boolean rolled, calledOut, callFailed;
+        /** The bite in progress (BITE until the catch or FAILED_ATTEMPT) and its number, for the auto-hook reel. */
+        volatile boolean biteLive;
+        volatile int biteSeq;
 
-        Cast(UUID player, int level, double treasure, double creature, double fortune, String call, boolean chosen, int minWait, int maxWait) {
+        Cast(UUID player, int level, double treasure, double creature, double fortune, String call, boolean chosen, int minWait, int maxWait,
+             Tackle.CastGear gear) {
             this.player = player;
             this.level = level;
             this.treasure = treasure;
@@ -100,6 +109,7 @@ public final class Fishing implements Listener {
             this.chosen = chosen;
             this.minWait = minWait;
             this.maxWait = maxWait;
+            this.gear = gear == null ? Tackle.CastGear.NONE : gear;
         }
     }
 
@@ -151,7 +161,8 @@ public final class Fishing implements Listener {
 
     private final LongAdder castCount = new LongAdder(), bites = new LongAdder(), catches = new LongAdder(), speciesCaught = new LongAdder(),
             treasureCaught = new LongAdder(), luresEarned = new LongAdder(), callsMade = new LongAdder(), won = new LongAdder(),
-            refunds = new LongAdder(), refused = new LongAdder(), discoveries = new LongAdder(), extras = new LongAdder();
+            refunds = new LongAdder(), refused = new LongAdder(), discoveries = new LongAdder(), extras = new LongAdder(),
+            autoReeled = new LongAdder();
 
     public Fishing(CerberusPlugin plugin, GatheringService service, SkillManager skills) {
         this.plugin = plugin;
@@ -160,6 +171,8 @@ public final class Fishing implements Listener {
     }
 
     private FishingRules rules() { return service.catalog().fishing(); }
+
+    public void setTackle(Tackle tackle) { this.tackle = tackle; }
 
     // ── the journal ───────────────────────────────────────────────
 
@@ -250,20 +263,20 @@ public final class Fishing implements Listener {
         FishHook hook = e.getHook();
         UUID id = p.getUniqueId();
         if (!XpIntegrity.earns(p) || !skills.hasLoadedSkills(id)) return; // creative: vanilla fishing, nothing of ours
+        // A bobber gone without an event (switched items, too far): that cast ended, and its bait goes back first.
+        UUID prev = castOf.get(id);
+        if (prev != null && !prev.equals(hook.getUniqueId())) {
+            casts.remove(prev);
+            outcomes.remove(prev);
+            castOf.remove(id, prev);
+            Tackle tk = tackle;
+            if (tk != null) tk.castEnded(p, prev);
+        }
         castCount.increment();
         int level = skills.getSkillLevel(p, r.skill());
         Manager.SecondaryEffects sec = plugin.getSecondaryEffects();
-        double lure = sec == null ? 0 : sec.active(id, Stat.LURE_SPEED);
         double treasure = sec == null ? 0 : sec.active(id, Stat.TREASURE_CHANCE);
-        double creature = sec == null ? 0 : sec.active(id, Stat.SEA_CREATURE_CHANCE);
         double fortune = service.bonusChance(id, Yield.FISH);
-        // The wait a plain cast fishes with: lure speed and Quick Bite, never below the floor.
-        double factor = r.waitFactor(lure, level);
-        int min = hook.getMinWaitTime(), max = hook.getMaxWaitTime();
-        if (factor < 1.0) {
-            min = Math.max(1, (int) Math.round(min * factor));
-            max = Math.max(min, (int) Math.round(max * factor));
-        }
         String call = null;
         boolean chosen = false;
         if (p.isSneaking()) {
@@ -280,11 +293,23 @@ public final class Fishing implements Listener {
                         : "§b✦ Calling a creature of these waters §7(" + j.totalLures() + " encounter" + (j.totalLures() == 1 ? "" : "s") + ") · wait for the bite", 2500);
             }
         }
+        // The equipment this cast fishes with: the active preset's specialist and reel, and one bait held on the line
+        // (a call uses none). A bait that adds a stat does so through the attribute engine, as part of everything else.
+        Tackle tk = tackle;
+        Tackle.CastGear gear = tk == null ? Tackle.CastGear.NONE : tk.onCast(p, hook.getUniqueId(), call != null, level, journal(p));
+        double lure = gear.lureSpeed() != null ? gear.lureSpeed() : sec == null ? 0 : sec.active(id, Stat.LURE_SPEED);
+        double creature = gear.creatureChance() != null ? gear.creatureChance() : sec == null ? 0 : sec.active(id, Stat.SEA_CREATURE_CHANCE);
+        // The wait a plain cast fishes with: lure speed and Quick Bite, never below the floor.
+        double factor = r.waitFactor(lure, level);
+        int min = hook.getMinWaitTime(), max = hook.getMaxWaitTime();
+        if (factor < 1.0) {
+            min = Math.max(1, (int) Math.round(min * factor));
+            max = Math.max(min, (int) Math.round(max * factor));
+        }
         if (call != null) hook.setWaitTime(30, 60); // the call answers in two to three seconds
         else if (factor < 1.0) hook.setWaitTime(min, max);
-        UUID old = castOf.put(id, hook.getUniqueId());
-        if (old != null && !old.equals(hook.getUniqueId())) { casts.remove(old); outcomes.remove(old); } // a bobber gone without an event
-        casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen, min, max));
+        castOf.put(id, hook.getUniqueId());
+        casts.put(hook.getUniqueId(), new Cast(id, level, treasure, creature, fortune, call, chosen, min, max, gear));
         if (call == null) trackingHint(p, hook, level);
     }
 
@@ -391,13 +416,71 @@ public final class Fishing implements Listener {
         Location at = hook.getLocation();
         FishingRules.Moment m = moment(r, at);
         c.water = m.water();
+        c.moment = m;
         Force f = forced.get(c.player);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        Tackle.CastGear g = c.gear;
+        TackleRules t = service.catalog().tackle();
+        // Surveyor's Float, discovery and night bait favour some eligible species (never past a gate, never a rarity's place
+        // among them, at most max-weight-factor); the plain roll otherwise.
         FishingRules.Species s = f != null && "species".equals(f.kind()) ? r.speciesById(f.id())
+                : g.weighs() ? r.rollSpecies(m, c.level, rnd.nextDouble(), rnd.nextDouble(),
+                        x -> t.weightFactor(x, g.caught().contains(x.id()), g.discovery(), g.night()))
                 : r.rollSpecies(m, c.level, rnd.nextDouble(), rnd.nextDouble());
         c.pending = s;
         c.rolled = true;
+        c.biteSeq++;
+        c.biteLive = true;
         if (s != null && s.rarity().ordinal() >= FishingRules.Rarity.RARE.ordinal()) signal(at, s.rarity());
+        if (g.specialist() != null && g.specialist().special() == TackleRules.Special.DISCOVERY) surveyorHint(c, r, m);
+        if (g.autoReel() && c.call == null) autoReel(hook, c, c.biteSeq);
+    }
+
+    /** The waters a player was told Surveyor's Float has nothing left to favour in (this session; once each). */
+    private final Map<UUID, Set<String>> surveyed = new ConcurrentHashMap<>();
+
+    /** Surveyor's Float where every species that can bite is caught already: normal odds, said once per water. */
+    private void surveyorHint(Cast c, FishingRules r, FishingRules.Moment m) {
+        if (m.water() == null) return;
+        for (FishingRules.Species x : r.eligible(m, c.level)) if (!c.gear.caught().contains(x.id())) return;
+        if (!surveyed.computeIfAbsent(c.player, k -> ConcurrentHashMap.newKeySet()).add(m.water())) return;
+        Player p = Bukkit.getPlayer(c.player);
+        if (p == null) return;
+        p.getScheduler().run(plugin, t -> {
+            FishingRules.Water w = rules().water(m.water());
+            Manager.PlayerHUDManager hud = plugin.getPlayerHUDManager();
+            if (hud != null) hud.flashIfIdle(p, "§dSurveyor's Float: §7everything that bites in " + (w == null ? m.water() : w.name())
+                    + " now is in your journal · normal odds", 3500);
+        }, null);
+    }
+
+    /**
+     * The auto-hook reel (docs/design/FISHING_EQUIPMENT.md §9): {@code delay-ticks} after a bite, on the player's thread, it
+     * reels in through the game's own retrieve when the same bobber still has that bite: the catch event, XP, discoveries,
+     * Fortune, bait and encounters all follow the normal path, and the rod takes its normal wear. It never recasts. A
+     * manual reel, an item switch, a broken rod, death, logout or a missed bite in between: it finds no bite and does nothing.
+     */
+    private void autoReel(FishHook hook, Cast c, int seq) {
+        Player p = Bukkit.getPlayer(c.player);
+        Tackle tk = tackle;
+        if (p == null || tk == null) return;
+        int delay = service.catalog().tackle().reelDelayTicks();
+        p.getScheduler().runDelayed(plugin, t -> {
+            if (!p.isOnline() || p.isDead() || !hook.isValid() || !Bukkit.isOwnedByCurrentRegion(hook)) return;
+            UUID hid = hook.getUniqueId();
+            if (!hid.equals(castOf.get(p.getUniqueId())) || casts.get(hid) != c || !c.biteLive || c.biteSeq != seq) return;
+            org.bukkit.inventory.PlayerInventory inv = p.getInventory();
+            org.bukkit.inventory.EquipmentSlot hand = inv.getItemInMainHand().getType() == Material.FISHING_ROD ? org.bukkit.inventory.EquipmentSlot.HAND
+                    : inv.getItemInOffHand().getType() == Material.FISHING_ROD ? org.bukkit.inventory.EquipmentSlot.OFF_HAND : null;
+            if (hand == null) return;
+            int wear = hook.retrieve(hand); // the same catch a click makes (PlayerFishEvent CAUGHT_FISH: decide, pay)
+            autoReeled.increment();
+            ItemStack rod = inv.getItem(hand);
+            if (wear > 0 && rod.getType() == Material.FISHING_ROD) inv.setItem(hand, rod.damage(wear, p)); // Unbreaking, wear resistance
+            p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, org.bukkit.SoundCategory.NEUTRAL, 1.0f,
+                    0.4f / (ThreadLocalRandom.current().nextFloat() * 0.4f + 0.8f));
+            p.swingHand(hand);
+        }, null, delay);
     }
 
     /** A rare bite shows itself before the reel: a glint and a chime at the bobber (never the vanilla bite particles). */
@@ -473,7 +556,7 @@ public final class Fishing implements Listener {
             GatheringCatalog.ItemDef def = s == null ? null : service.catalog().item(s.item());
             if (def == null) o = new Outcome(kind, null, null, 0, kind == Kind.FISH ? x.fish() : x.junk(), water, level, c, f, 0);
             else {
-                double kg = FishingRules.kg(s, rnd.nextDouble());
+                double kg = FishingRules.kg(s, rnd.nextDouble(), c != null ? c.gear.kgExponent() : 2.5);
                 item.setItemStack(GearItems.makeItem(def, 1));
                 o = new Outcome(Kind.SPECIES, s, null, kg, s.xp() >= 0 ? s.xp() : x.of(s.rarity()), water, level, c, f, 0);
             }
@@ -493,30 +576,50 @@ public final class Fishing implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onFished(PlayerFishEvent e) {
         UUID hook = e.getHook().getUniqueId();
-        UUID who = e.getPlayer().getUniqueId();
+        Player p = e.getPlayer();
+        UUID who = p.getUniqueId();
+        Tackle tk = tackle;
         switch (e.getState()) {
             case CAUGHT_FISH -> {
                 Outcome o = outcomes.remove(hook);
                 Cast was = casts.get(hook);
-                // Cancelled by another plugin: no catch, the bobber stays in the water and the cast goes on. (A bite that
-                // became a creature cancels its own catch, and that cast is over.)
+                // Cancelled by another plugin: no catch, the bobber stays in the water and the cast goes on (its bait too).
+                // (A bite that became a creature cancels its own catch, and that cast is over.)
                 if (e.isCancelled() && (was == null || !was.calledOut)) return;
                 Cast c = casts.remove(hook);
                 castOf.remove(who, hook);
-                if (o != null && e.getCaught() instanceof Item item) pay(e.getPlayer(), o, item, c);
-                else if (o == null && !e.isCancelled() && e.getCaught() instanceof Item && !XpIntegrity.earns(e.getPlayer()) && rules().enabled()) {
-                    skills.xpWithheld(e.getPlayer(), rules().skill(), XpIntegrity.whyNot(e.getPlayer())); // a vanilla catch in creative
+                if (c != null) c.biteLive = false;
+                if (o != null && e.getCaught() instanceof Item item) pay(p, o, item, c, e.getHook());
+                else {
+                    if (o == null && !e.isCancelled() && e.getCaught() instanceof Item && !XpIntegrity.earns(p) && rules().enabled()) {
+                        skills.xpWithheld(p, rules().skill(), XpIntegrity.whyNot(p)); // a vanilla catch in creative
+                    }
+                    if (tk != null) tk.castEnded(p, hook); // no catch of ours: a bait held on this line goes back
                 }
             }
-            case FISHING -> { if (e.isCancelled()) { casts.remove(hook); castOf.remove(who, hook); } }
-            // FAILED_ATTEMPT (a missed bite) keeps the cast: the bobber stays in the water and the next bite rolls again.
-            case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> { casts.remove(hook); outcomes.remove(hook); castOf.remove(who, hook); }
+            case FISHING -> {
+                if (e.isCancelled()) {
+                    casts.remove(hook);
+                    castOf.remove(who, hook);
+                    if (tk != null) tk.castEnded(p, hook); // cancelled after we took its bait: back it goes
+                }
+            }
+            // A missed bite keeps the cast (the bobber stays and the next bite rolls again); only the bite is over. A bite
+            // another plugin cancelled after ours never reached the bobber: nothing for the reel to take.
+            case FAILED_ATTEMPT -> { Cast c = casts.get(hook); if (c != null) c.biteLive = false; }
+            case BITE -> { if (e.isCancelled()) { Cast c = casts.get(hook); if (c != null) c.biteLive = false; } }
+            case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> {
+                casts.remove(hook);
+                outcomes.remove(hook);
+                castOf.remove(who, hook);
+                if (tk != null) tk.castEnded(p, hook); // nothing caught: its bait goes back
+            }
             default -> { }
         }
     }
 
-    /** A catch that really happened (player's thread): XP, the journal, Fortune's extra fish, and maybe a lure. */
-    private void pay(Player p, Outcome o, Item item, Cast c) {
+    /** A catch that really happened (player's thread): XP, the journal, Fortune's extra fish, maybe an encounter, the bait. */
+    private void pay(Player p, Outcome o, Item item, Cast c, FishHook hook) {
         FishingRules r = rules();
         FishingJournal j = journal(p);
         double xp = o.xp();
@@ -565,6 +668,13 @@ public final class Fishing implements Listener {
         j.countCatch(got); // the summary: every catch that really happened, and the XP it really awarded
         lures(p, o, j, r, c);
         save(p, j);
+        // The bait held on this line: used up when it applied to this catch, else back in the bag (one per catch, never
+        // per Fortune fish). A catch without its cast record puts it back.
+        Tackle tk = tackle;
+        if (tk != null) {
+            if (c != null) tk.onCatch(p, hook.getUniqueId(), c.gear, c.moment != null ? c.moment : moment(r, hook.getLocation()), o.level());
+            else tk.castEnded(p, hook.getUniqueId());
+        }
     }
 
     /** The encounter rolls after a catch: Something Stirs' first one, the sea-creature chance, the apex. True when one was banked. */
@@ -915,9 +1025,26 @@ public final class Fishing implements Listener {
         p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.6f, 1.2f);
     }
 
-    /** Removed without dying (its thread): despawned, unloaded or removed by anything but us. Its lure goes back. */
+    /**
+     * A bobber gone (its thread) with its cast still open: the player switched items, died, went too far, or its chunk
+     * unloaded. That cast is over: its bait goes back, on the player's thread. (A catch or a reel-in closed it first.)
+     */
+    private void hookGone(FishHook h) {
+        UUID id = h.getUniqueId();
+        Cast c = casts.remove(id);
+        if (c == null) return;
+        outcomes.remove(id);
+        castOf.remove(c.player, id);
+        c.biteLive = false;
+        Player p = Bukkit.getPlayer(c.player);
+        Tackle tk = tackle;
+        if (p != null && tk != null) p.getScheduler().run(plugin, t -> tk.castEnded(p, id), null);
+    }
+
+    /** Removed without dying (its thread): despawned, unloaded or removed by anything but us. Its encounter goes back. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRemove(EntityRemoveEvent e) {
+        if (e.getEntity() instanceof FishHook h) { if (!casts.isEmpty()) hookGone(h); return; }
         if (fights.isEmpty() || e.getCause() == EntityRemoveEvent.Cause.DEATH) return;
         Fight f = fights.get(e.getEntity().getUniqueId());
         if (f == null || !f.over.compareAndSet(false, true)) return;
@@ -940,6 +1067,7 @@ public final class Fishing implements Listener {
         forced.remove(id);
         lastHint.remove(id);
         lastHintAt.remove(id);
+        surveyed.remove(id);
     }
 
     /** Dying ends the fight: the creature returns to the water and its lure to you (try again when ready). */
@@ -995,7 +1123,10 @@ public final class Fishing implements Listener {
                 + ", treasure " + treasureCaught.sum() + ", extra fish " + extras.sum() + ", discoveries " + discoveries.sum() + ")");
         lines.add("encounters banked " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", encounters given back " + refunds.sum()
                 + ", calls refused " + refused.sum());
-        lines.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size());
+        lines.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size()
+                + ", auto-reeled " + autoReeled.sum());
+        Tackle tk = tackle;
+        if (tk != null) lines.addAll(tk.stats());
         return lines;
     }
 

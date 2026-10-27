@@ -62,9 +62,10 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(4, notes.size(), notes.toString());
+        assertEquals(5, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
         assertTrue(notes.get(3).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(3));
+        assertTrue(notes.get(4).startsWith("tackle: not in this file"), "so does its equipment: " + notes.get(4));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
         assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");
@@ -74,6 +75,8 @@ class GatheringTest {
         assertTrue(c.upgrades().keySet().containsAll(Set.of("heartwood_grip", "heartwood_limbs", "scaled_grip", "heartwood_handle", "leviathan_line")),
                 "the woods' and the rods' upgrades: " + c.upgrades().keySet());
         assertTrue(c.fishing().enabled() && c.fishing().allSpecies().size() == 31, "Fishing came whole, its species with it");
+        assertTrue(c.tackle().enabled() && c.tackle().part("auto_reel") != null && c.item("grub_bait") != null,
+                "the equipment and its bait came too: " + c.tackle().parts().keySet());
         assertTrue(c.wood().capacity(10) > 0, "Felling from the code's defaults (no woodcutting: section in the file)");
         assertEquals(List.of(), GatheringCatalog.addUpdates(server, shipped), "nothing twice");
 

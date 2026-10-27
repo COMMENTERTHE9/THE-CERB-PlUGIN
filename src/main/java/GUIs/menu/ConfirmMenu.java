@@ -42,6 +42,7 @@ public final class ConfirmMenu extends Menu {
         v.set(4, Ui.item(Material.PAPER, ChatColor.GOLD + question, lore.build()));
         v.button(11, Ui.item(Material.LIME_CONCRETE, ChatColor.GREEN + "" + ChatColor.BOLD + "Yes, do it",
                 Ui.lore().text("Apply this change").build()), c -> {
+            if (!c.isMouse()) return;     // a number key or a drop over "Yes" is never a yes
             menus.back(c.player());       // return to the screen that asked
             onConfirm.accept(c.player());  // then apply (it refreshes that screen itself)
         });

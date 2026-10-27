@@ -27,6 +27,8 @@ public final class GatheringSections {
 
     public static void register(SkillSections sections, CollectionIndex collections) {
         // ── Fishing ──
+        sections.register(new SkillSections.Section("fishing.equipment", "Fishing", 10, GatheringSections::equipmentTile,
+                (pl, p) -> new FishingEquipmentMenu(pl)));
         sections.register(new SkillSections.Section("fishing.journal", "Fishing", 20, GatheringSections::journalTile,
                 (pl, p) -> new FishingJournalMenu(pl)));
         sections.register(new SkillSections.Section("fishing.encounters", "Fishing", 30, GatheringSections::encountersTile,
@@ -80,6 +82,26 @@ public final class GatheringSections {
     }
 
     // ── tiles ─────────────────────────────────────────────────────
+
+    /** Fishing → Equipment: the active preset, what counts in it, the bait in use (docs/design/FISHING_EQUIPMENT.md §5). */
+    static ItemStack equipmentTile(CerberusPlugin plugin, Player p) {
+        Gathering.Tackle tk = plugin.getTackle();
+        Gathering.TackleRules t = GatheringCatalog.current().tackle();
+        if (rules(plugin) == null || tk == null || !t.enabled()) return null;
+        Gathering.FishingGear g = tk.gear(p);
+        Set<String> active = tk.active(p);
+        Ui.Lore l = Ui.lore()
+                .stat("Preset", g.activePreset().name())
+                .stat("Parts counting", active.size() + " of " + g.owned().size() + " owned");
+        Gathering.TackleRules.Part sp = t.specialist(active);
+        if (sp != null) l.raw(ChatColor.LIGHT_PURPLE + "Specialist: " + sp.name());
+        int baits = 0;
+        for (int i = 0; i < Gathering.FishingGear.SLOTS; i++) if (!g.slot(i).empty()) baits += g.slot(i).count();
+        l.stat("Bait in the bag", String.valueOf(baits));
+        l.text("Any rod you fish with uses it.");
+        l.hint("Click to open your equipment");
+        return Ui.item(Material.FISHING_ROD, ChatColor.GOLD + "Equipment: " + g.activePreset().name(), l.build());
+    }
 
     static ItemStack journalTile(CerberusPlugin plugin, Player p) {
         FishingRules r = rules(plugin);

@@ -305,12 +305,15 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Celebrations celebrations;
     private Gathering.Woodcutting woodcutting;
     private Gathering.Fishing fishing;
+    private Gathering.Tackle tackle;
     private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
 
     /** Woodcutting's techniques after a cut (docs/design/WOODCUTTING.md); null until gathering is up. */
     public Gathering.Woodcutting getWoodcutting() { return woodcutting; }
     public Gathering.Fishing getFishing() { return fishing; }
+    /** Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup, bait and the reel. */
+    public Gathering.Tackle getTackle() { return tackle; }
     public Celebrations getCelebrations() { return celebrations; }
 
     /** Gathering and forging (docs/design/GATHERING.md): resources.yml, Mining and Smithing XP, placed blocks. */
@@ -707,6 +710,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         fishing.registerCreatures(mobRegistry);
         virtualHealthListener.setDamageGuard(fishing::guard);
         pm.registerEvents(fishing, this);
+        // Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup on the character as one more attribute source.
+        tackle = new Gathering.Tackle(this, gatheringService::catalog, skillManager, attributeService, equipmentSource);
+        attributeService.addSource(tackle);
+        fishing.setTackle(tackle);
+        tackle.registerRecipes(gatheringService.catalog());
+        pm.registerEvents(tackle, this);
         upgrades = new Gathering.Upgrades(this, gatheringService::catalog);
         upgrades.register(gatheringService.catalog());
         pm.registerEvents(upgrades, this);
@@ -756,6 +765,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (next != null) {
                 gatheringService.setCatalog(next);
                 if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
+                if (tackle != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> tackle.registerRecipes(next));
                 if (fishing != null) fishing.registerCreatures(mobRegistry); // its sea creatures by id
                 if (attributeService != null) attributeService.markAllDirty(); // forged gear's numbers may have changed
                 if (attributeEffects != null) attributeEffects.refreshAll();

@@ -116,6 +116,7 @@ public final class GatheringCatalog {
     private final double weakToolFactor;
     private final Map<String, UpgradeDef> upgrades;
     private final FishingRules fishing;
+    private final TackleRules tackle;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
@@ -123,7 +124,7 @@ public final class GatheringCatalog {
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
-                             FishingRules fishing, List<String> problems) {
+                             FishingRules fishing, TackleRules tackle, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -144,6 +145,7 @@ public final class GatheringCatalog {
         this.weakToolFactor = weakToolFactor;
         this.upgrades = upgrades;
         this.fishing = fishing;
+        this.tackle = tackle;
         this.problems = List.copyOf(problems);
     }
 
@@ -198,6 +200,8 @@ public final class GatheringCatalog {
     public UpgradeDef upgrade(String id) { return id == null ? null : upgrades.get(id); }
     /** Fishing's rules (docs/design/FISHING.md); {@link FishingRules#NONE} without a fishing section. */
     public FishingRules fishing() { return fishing; }
+    /** Fishing equipment's rules (docs/design/FISHING_EQUIPMENT.md); {@link TackleRules#NONE} without a tackle section. */
+    public TackleRules tackle() { return tackle; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -366,6 +370,9 @@ public final class GatheringCatalog {
             "sunken_coins", "sea_glass", "drowned_locket", "pearl_of_the_depths",
             "lurker_scale", "bog_resin", "tide_pearl", "rime_shard", "anglers_lantern", "reef_eye", "monarchs_seal", "leviathan_scale");
 
+    /** The items Fishing equipment added (bait and the reel). */
+    static final List<String> TACKLE_ITEMS = List.of("grub_bait", "chum", "glowworm_bait", "wayfarers_bait", "auto_hook_reel");
+
     /**
      * Entries updates added to the shipped resources.yml, by section. A server whose resources.yml has edits of its own
      * keeps its file (ShippedConfig), so each of these that the file doesn't mention at all is taken from the plugin's
@@ -389,6 +396,10 @@ public final class GatheringCatalog {
         ups.addAll(List.of("scaled_grip", "rime_hook", "heartwood_handle", "pearl_float", "sea_glass_float", "lantern_bob",
                 "resin_line", "reef_eye_lens", "pearl_inlay", "monarchs_blessing", "leviathan_line"));
         m.put("upgrades", List.copyOf(ups));
+        // 2026-10-27, Fishing equipment: bait and the auto-hook reel (docs/design/FISHING_EQUIPMENT.md)
+        List<String> tackleItems = new ArrayList<>(m.get("items"));
+        tackleItems.addAll(TACKLE_ITEMS);
+        m.put("items", List.copyOf(tackleItems));
         return Collections.unmodifiableMap(m);
     }
 
@@ -427,6 +438,11 @@ public final class GatheringCatalog {
         if (!server.contains("fishing") && shipped.get("fishing") instanceof ConfigurationSection f) {
             server.createSection("fishing", values(f));
             notes.add("fishing: not in this file (an update added it), so the plugin's own section is used; write \"fishing: off\" to turn fishing's rules off");
+        }
+        // Fishing equipment (2026-10-27, docs/design/FISHING_EQUIPMENT.md) likewise: "tackle: off" turns the setup and bait off.
+        if (!server.contains("tackle") && shipped.get("tackle") instanceof ConfigurationSection t) {
+            server.createSection("tackle", values(t));
+            notes.add("tackle: not in this file (an update added it), so the plugin's own section is used; write \"tackle: off\" to turn fishing equipment off");
         }
         return notes;
     }
@@ -647,12 +663,14 @@ public final class GatheringCatalog {
         }
 
         FishingRules fishing = FishingRules.from(root == null ? null : root.getConfigurationSection("fishing"), items, skills, problems);
+        TackleRules tackle = fishing.enabled() ? TackleRules.from(root == null ? null : root.getConfigurationSection("tackle"), items, upgrades, problems)
+                : TackleRules.NONE;
 
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, problems);
     }
 
     /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */

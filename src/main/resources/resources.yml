@@ -89,7 +89,7 @@ woodcutting:
 
 # Fishing (docs/design/FISHING.md). Rules the code keeps whatever this file says: only catches a player reels in, in
 # survival or adventure, pay; by hand or with a farm, the same; hooking an entity or an item is no catch. Sea creatures
-# never spawn from a catch: a catch banks a lure, and its owner calls the creature (Sneak and cast), one at a time.
+# never spawn from a catch: a catch banks an encounter, and its owner calls the creature (Sneak and cast), one at a time.
 fishing:
   skill: Fishing
   # Where the bobber floats: an underground water (no sky light, below sea level), else the first water listing the
@@ -146,7 +146,7 @@ fishing:
     sea_glass:           { rarity: uncommon, level: 25 }
     drowned_locket:      { rarity: rare, level: 35 }
     pearl_of_the_depths: { rarity: epic, level: 50 }
-  # Sea creatures (docs/design/FISHING.md §7): a catch banks a lure for one of its water's (the sea-creature-chance stat);
+  # Sea creatures (docs/design/FISHING.md §7): a catch banks an encounter with one of its water's (the sea-creature-chance stat);
   # its owner calls it. Its level follows their Fishing level (never below its own level or the world's there); health
   # multiplies a normal mob's of that level and tier; fishing-share pays that share of its kill XP as Fishing XP too.
   # Drops: an item of items: or a vanilla material, with a chance and an amount.
@@ -267,7 +267,7 @@ fishing:
         - { item: PRISMARINE_CRYSTALS, chance: 1.0, min: 4, max: 8 }
   # Milestones (docs/design/FISHING.md §5).
   techniques:
-    something-stirs: 5                                    # sea creatures take the bait (the first catch from here brings a lure)
+    something-stirs: 5                                    # sea creatures take the bait (the first catch from here banks an encounter)
     quick-bite: { at: 10, wait: 0.85 }                    # the wait for a bite x0.85
     treasure-sense: 25                                    # Cerberus treasure in open water
     deep-waters: { at: 50, health: 1.5, xp: 1.5, drop-rolls: 1 }   # called creatures come as elites
@@ -275,7 +275,7 @@ fishing:
     apex: { at: 100, chance: 0.0005 }                     # the apex of each water, per catch
   wait-floor: 0.4                                         # lure speed and Quick Bite never cut a wait below 40% of vanilla's
   # Called creatures: one per player at a time; at most this many out on the server; one leaves when its owner is farther
-  # than leash-blocks for leash-seconds, or after fight-seconds (its lure comes back either way). level-spread: +/- levels.
+  # than leash-blocks for leash-seconds, or after fight-seconds (its encounter comes back either way). level-spread: +/- levels.
   calls: { server: 32, leash-blocks: 48, leash-seconds: 30, fight-seconds: 300, level-spread: 3 }
   xp:
     junk: 2
@@ -295,7 +295,8 @@ items:
     lore:
       - "The dense core of an old tree."
       - "Craft it with an axe for a heartwood grip,"
-      - "or with a bow for heartwood limbs."
+      - "or with a bow for heartwood limbs;"
+      - "fit it in Fishing → Equipment: a heartwood handle."
   # Fishing's species (docs/design/FISHING.md §4): fish like any other ("vanilla: true": eaten and cooked as their material).
   silver_dace: { material: COD, name: "Silver Dace", vanilla: true, lore: ["A quick silver river fish."] }
   river_perch: { material: COD, name: "River Perch", vanilla: true, lore: ["Striped, bold and always hungry."] }
@@ -340,7 +341,7 @@ items:
     name: "Sea Glass"
     lore:
       - "Worn smooth by the tide."
-      - "Craft it with a fishing rod for a sea-glass float."
+      - "Fit it in Fishing → Equipment: a sea-glass float."
   drowned_locket:
     material: CLOCK
     name: "Drowned Locket"
@@ -352,62 +353,96 @@ items:
     name: "Pearl of the Depths"
     lore:
       - "It glows a little in the dark."
-      - "Craft it with a fishing rod for a pearl inlay."
+      - "Fit it in Fishing → Equipment: a pearl inlay."
   lurker_scale:
     material: TURTLE_SCUTE
     name: "Lurker Scale"
     lore:
       - "From a River Lurker."
-      - "Craft it with a fishing rod for a scaled grip."
+      - "Fit it in Fishing → Equipment: a scaled grip."
   bog_resin:
     material: RESIN_CLUMP
     name: "Bog Resin"
     lore:
       - "From a Bog Stalker. Sticky and strong."
-      - "Craft it with a fishing rod for a resin line."
+      - "Fit it in Fishing → Equipment: a resin line."
   tide_pearl:
     material: PRISMARINE_CRYSTALS
     name: "Tide Pearl"
     lore:
       - "From a Tidecaller."
-      - "Craft it with a fishing rod for a pearl float."
+      - "Fit it in Fishing → Equipment: a pearl float."
   rime_shard:
     material: QUARTZ
     name: "Rime Shard"
     lore:
       - "From a Frostbound Mariner. Never melts."
-      - "Craft it with a fishing rod for a rime hook."
+      - "Fit it in Fishing → Equipment: a rime hook."
   anglers_lantern:
     material: LANTERN
     name: "Angler's Lantern"
     lore:
       - "From a Hollow Angler."
-      - "Craft it with a fishing rod for a lantern bob."
+      - "Fit it in Fishing → Equipment: a lantern bob."
   reef_eye:
     material: ECHO_SHARD
     name: "Reef Eye"
     lore:
       - "From a Reef Guardian. It still watches."
-      - "Craft it with a fishing rod for a reef-eye lens."
+      - "Fit it in Fishing → Equipment: a reef-eye lens."
   monarchs_seal:
     material: NETHER_STAR
     name: "Monarch's Seal"
     lore:
       - "From the Drowned Monarch."
-      - "Craft it with a fishing rod for the Monarch's blessing."
+      - "Fit it in Fishing → Equipment: the Monarch's blessing."
   leviathan_scale:
     material: SHULKER_SHELL
     name: "Leviathan Scale"
     lore:
       - "From the Leviathan."
-      - "Craft it with a fishing rod for a Leviathan line."
+      - "Fit it in Fishing → Equipment: a Leviathan line."
+  # Fishing equipment (docs/design/FISHING_EQUIPMENT.md): bait goes into the Bait Bag (one is used per catch it applies
+  # to); the reel is fitted in Equipment → Reel. Never placed, burnt or used in vanilla recipes. Their materials have no
+  # right-click use of their own (a dye would dye sheep and signs).
+  grub_bait:
+    material: SLIME_BALL
+    name: "Grub Bait"
+    lore:
+      - "Bait: bites come sooner."
+      - "Put it in your Bait Bag (Fishing → Equipment)."
+  chum:
+    material: CLAY_BALL
+    name: "Chum"
+    lore:
+      - "Bait: more sea-creature encounters."
+      - "Put it in your Bait Bag (Fishing → Equipment)."
+  glowworm_bait:
+    material: PRISMARINE_CRYSTALS
+    name: "Glowworm Bait"
+    lore:
+      - "Bait: at night, night-only species bite more."
+      - "Put it in your Bait Bag (Fishing → Equipment)."
+  wayfarers_bait:
+    material: RABBIT_HIDE
+    name: "Wayfarer's Bait"
+    lore:
+      - "Bait: species you haven't caught bite more."
+      - "Put it in your Bait Bag (Fishing → Equipment)."
+  auto_hook_reel:
+    material: CLOCK
+    name: "Auto-hook Reel"
+    lore:
+      - "Reels in each bite for you; you still cast."
+      - "Fit it in Fishing → Equipment → Reel (Fishing 50)."
 
 # Upgrades (docs/design/WOODCUTTING.md §8): a custom item crafted with a tool or weapon of these kinds gives
 # that item the stat while it is held. Once per item; the item keeps its enchantments, damage and quality.
 upgrades:
   heartwood_grip:  { item: heartwood, for: [axe], stat: chop-speed, amount: 0.08, name: Heartwood grip }
   heartwood_limbs: { item: heartwood, for: [bow], stat: draw-speed, amount: 0.08, name: Heartwood limbs }
-  # Rods (docs/design/FISHING.md §8): counted on the rod in your main hand, each stat within its cap (attributes.yml).
+  # Rods (docs/design/FISHING.md §8): since docs/design/FISHING_EQUIPMENT.md these are setup parts (tackle: below), fitted in
+  # Fishing → Equipment with the same item; rods upgraded the old way keep them and still count them in your main hand.
   scaled_grip:       { item: lurker_scale, for: [rod], stat: lure-speed, amount: 0.06, name: Scaled grip }
   rime_hook:         { item: rime_shard, for: [rod], stat: lure-speed, amount: 0.04, name: Rime hook }
   heartwood_handle:  { item: heartwood, for: [rod], stat: lure-speed, amount: 0.04, name: Heartwood handle }
@@ -419,6 +454,59 @@ upgrades:
   pearl_inlay:       { item: pearl_of_the_depths, for: [rod], stat: sea-creature-chance, amount: 0.01, name: Pearl inlay }
   monarchs_blessing: { item: monarchs_seal, for: [rod], stat: lure-speed, amount: 0.08, name: "Monarch's blessing" }
   leviathan_line:    { item: leviathan_scale, for: [rod], stat: sea-creature-chance, amount: 0.02, name: Leviathan line }
+
+# Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup on your character that any rod you fish with uses.
+# "tackle: off" turns the setup, bait and the reel off (old upgraded rods keep working).
+tackle:
+  # Each category holds every owned part of its kind (an assembly), from this Fishing level.
+  categories:
+    rod:  { name: Rod, unlock: 1 }
+    line: { name: Line, unlock: 10 }
+    lure: { name: Lure, unlock: 25 }
+    reel: { name: Reel, unlock: 50 }
+  # Parts: a rod upgrade (upgrades:, fitted once with its item) or a special part. A specialist (discovery, specimen) counts
+  # one at a time per preset; Surveyor's Float and the Specimen Hook come from collection milestones (rewards:).
+  parts:
+    scaled_grip:       { category: rod,  upgrade: scaled_grip }
+    heartwood_handle:  { category: rod,  upgrade: heartwood_handle }
+    pearl_inlay:       { category: rod,  upgrade: pearl_inlay }
+    monarchs_blessing: { category: rod,  upgrade: monarchs_blessing }
+    resin_line:        { category: line, upgrade: resin_line }
+    leviathan_line:    { category: line, upgrade: leviathan_line }
+    rime_hook:         { category: lure, upgrade: rime_hook }
+    pearl_float:       { category: lure, upgrade: pearl_float }
+    sea_glass_float:   { category: lure, upgrade: sea_glass_float }
+    lantern_bob:       { category: lure, upgrade: lantern_bob }
+    reef_eye_lens:     { category: lure, upgrade: reef_eye_lens }
+    surveyors_float:   { category: lure, special: discovery, factor: 1.5, name: "Surveyor's Float" }   # undiscovered species x1.5
+    specimen_hook:     { category: lure, special: specimen, strength: 0.25, name: "Specimen Hook" }    # weight roll u^2.5 -> u^2.0
+    auto_reel:         { category: reel, special: auto-reel, item: auto_hook_reel, name: "Auto-hook Reel" }
+  # The most equipment and bait together multiply one species' weight by.
+  max-weight-factor: 2.0
+  # The auto-hook reel reels a bite this many ticks after it starts (a bite lasts 20-40 ticks).
+  reel: { delay-ticks: 8 }
+  # The Bait Bag: slot 1 from Fishing 1, slot 2 and 3 from these levels; a slot holds one bait, up to stack.
+  bait-bag: { slot-2: 20, slot-3: 40, stack: 64 }
+  # Bait: speed and encounters add their stat (raw, through the attribute engine and its caps); night and discovery
+  # multiply species' weights (night-only species at night; species you haven't caught). One is used per catch it applied to.
+  bait:
+    grub_bait:      { item: grub_bait, purpose: speed, amount: 0.08 }
+    chum:           { item: chum, purpose: encounters, amount: 0.015 }
+    glowworm_bait:  { item: glowworm_bait, purpose: night, factor: 2.0 }
+    wayfarers_bait: { item: wayfarers_bait, purpose: discovery, factor: 1.5 }
+  # Crafting-table recipes (shapeless): each ingredient a material or a list of materials any of which will do.
+  recipes:
+    grub_bait:      { ingredients: [ROTTEN_FLESH, WHEAT_SEEDS], makes: 4 }
+    chum:           { ingredients: [[COD, SALMON], BONE_MEAL], makes: 4 }
+    glowworm_bait:  { ingredients: [GLOW_BERRIES, WHEAT_SEEDS], makes: 4 }
+    wayfarers_bait: { ingredients: [DRIED_KELP, SWEET_BERRIES], makes: 4, unlocked-by: waters_3 }
+    auto_hook_reel: { ingredients: [IRON_INGOT, IRON_INGOT, IRON_INGOT, TRIPWIRE_HOOK, REDSTONE], makes: 1 }
+  # Collection milestones (recorded automatically, each granted once): what they count and what they unlock.
+  rewards:
+    waters_3:      { name: "Wayfarer", waters: 3, unlocks: ["recipe:wayfarers_bait"] }
+    species_8:     { name: "Surveyor", species: 8, unlocks: ["part:surveyors_float"] }
+    bests_10:      { name: "Record Keeper", bests: 10, unlocks: ["part:specimen_hook"] }
+    master_angler: { name: "Master Angler", species: all, unlocks: ["title:master_angler"] }
 
 # XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
 smelting:

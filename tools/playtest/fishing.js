@@ -16,13 +16,17 @@
 //               catch at the end as at the start, with no inactivity notice
 //   inventory - a full inventory: the catch falls to the ground, but its XP is paid and a lure is still banked
 //   economy   - Fortune (fish) at Fishing 100 adds extra fish, never extra treasure; a species cooks like any fish; a
-//               creature's drop can't be placed; a rod upgrade (Scaled grip) makes bites sooner, once per rod
+//               creature's drop can't be placed; a crafting grid no longer upgrades a rod (it says rod parts are fitted in
+//               Fishing → Equipment) and the Scaled grip as a setup part makes bites sooner with any rod
+//   guards    - Cerberus items stay out of anvils (a Lurker Scale is a turtle scute: no turtle-shell repair) and brewing
+//               stands (a test item made of nether wart, added to the sandbox resources.yml when SERVER_DIR is set), each
+//               with the plain vanilla item as the control
 //   creative  - creative mode: vanilla catches, no Fishing XP, no species, no lures
 //   persist-set / persist-check - the journal (species, lures) survives a restart (the caller restarts in between)
 //   restart-set / restart-check - a creature out when the server stops: its lure is back at the next join
 //   control   - on a build without Fishing (expected to show the old behaviour): catches pay no Fishing XP and spawn
 //               "Sea Monster" guardians
-//   all       - basic, waters, force, call, refund, inventory, economy, creative
+//   all       - basic, waters, force, call, refund, inventory, economy, guards, creative
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
@@ -551,49 +555,125 @@ async function economy() {
   await sleep(800);
   const placed = bot.blockAt(below.offset(0, 1, 0));
   check('Angler\'s Lantern can\'t be placed', !placed || placed.name !== 'lantern', placed ? placed.name : 'none');
-  // A rod upgrade: Scaled grip, once per rod.
+  // Rod upgrades are setup parts now (docs/design/FISHING_EQUIPMENT.md §5): a crafting grid makes nothing from a rod and a
+  // Lurker Scale and says where they are fitted; the part (given here; fishgear.js fits one through the menu) makes bites
+  // sooner with any rod.
+  await cmd(`/cerb fish part ${NAME} scaled_grip remove`, 400);
   await cmd('/clear @s', 300);
   await cmd(`/give @s fishing_rod`, 500);
-  await cmd(`/cerb gather item lurker_scale 2`, 800);
+  await cmd(`/cerb gather item lurker_scale 1`, 800);
   await hold('fishing_rod', false);
   const lureBefore = await lureInfo();
   const ct = new Vec3(X - 2, Y, Z - 2);
   await cmd(`/setblock ${ct.x} ${ct.y} ${ct.z} crafting_table`, 600);
   const tbl = bot.blockAt(ct);
-  let upgraded = '', again = '';
+  let upgraded = '';
+  const atHint = chat.length;
   try {
     await bot.lookAt(tbl.position.offset(0.5, 0.5, 0.5), true);
-    let w = await bot.openBlock(tbl);
+    const w = await bot.openBlock(tbl);
     await sleep(500);
-    const findIn = (name, re) => { for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && w.slots[i].name === name && (!re || re.test(loreOf(w.slots[i])))) return i; return -1; };
+    const findIn = (name) => { for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && w.slots[i].name === name) return i; return -1; };
     const click = async (slot, button = 0, mode = 0) => { try { await bot.clickWindow(slot, button, mode); } catch (e) { /* the server decides */ } await sleep(250); };
-    const putOne = async (name, to) => { const from = findIn(name); if (from < 0) return false; await click(from); await click(to, 1); await click(from); return true; };
     await click(findIn('fishing_rod')); await click(1);
-    await putOne('turtle_scute', 2);
-    await sleep(500);
+    const sc = findIn('turtle_scute'); await click(sc); await click(2, 1); await click(sc);
+    await sleep(600);
     upgraded = w.slots[0] ? `${w.slots[0].name}: ${loreOf(w.slots[0])}` : '';
-    await click(0, 0, 1); // shift-click the result into the inventory
-    await sleep(400);
-    bot.closeWindow(w);
-    await sleep(500);
-    w = await bot.openBlock(tbl);
-    await sleep(500);
-    await click(findIn('fishing_rod', /Scaled grip/)); await click(1);
-    await putOne('turtle_scute', 2);
-    await sleep(500);
-    again = w.slots[0] ? `${w.slots[0].name}: ${loreOf(w.slots[0])}` : '';
     await click(1, 0, 1); await click(2, 0, 1); // everything back into the inventory
     bot.closeWindow(w);
   } catch (e) { note('crafting: ' + e.message); }
   await sleep(800);
-  const gripped = bot.inventory.slots.findIndex((it, i) => it && it.name === 'fishing_rod' && /Scaled grip/.test(loreOf(it)));
-  if (gripped >= 36) bot.setQuickBarSlot(gripped - 36); else if (gripped >= 0) { try { await bot.clickWindow(gripped, 0, 2); } catch (e) { /* ignore */ } }
-  await sleep(600);
+  check('Rod + Lurker Scale makes nothing at a crafting table now', upgraded === '', upgraded || 'nothing');
+  check('...and says where rod parts are fitted', !!saw(/Rod parts are fitted in Player Menu → Skills → Fishing → Equipment now/, atHint), sawAll(/Rod parts/, atHint).join(' / '));
+  await cmd(`/cerb fish part ${NAME} scaled_grip`, 600);
+  await hold('fishing_rod', false);
   const lureAfter = await lureInfo();
-  check('Rod + Lurker Scale makes the same rod with a Scaled grip', /fishing_rod.*Scaled grip/.test(upgraded), upgraded || 'nothing');
-  check('...once per rod (the upgraded rod and another scale make nothing)', again === '', again);
-  check('...and bites come sooner with it in hand', lureAfter > lureBefore, `${lureBefore}% -> ${lureAfter}% sooner`);
+  check('The Scaled grip as a setup part makes bites sooner with any rod', lureAfter > lureBefore, `${lureBefore}% -> ${lureAfter}% sooner`);
+  await cmd(`/cerb fish part ${NAME} scaled_grip remove`, 400);
 }
+
+/**
+ * Cerberus items stay out of vanilla's anvils and brewing stands: a Lurker Scale (a turtle scute) repairs no turtle shell,
+ * and a Cerberus item made of nether wart brews nothing; the plain vanilla items do (the controls).
+ */
+async function guards() {
+  await arena(345);
+  await biome('plains');
+  await survivalSetup(20);
+  await cmd('/clear @s', 300);
+  const click = async (slot, button = 0, mode = 0) => { try { await bot.clickWindow(slot, button, mode); } catch (e) { /* the server decides */ } await sleep(250); };
+  const findIn = (w, pred) => { for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && pred(w.slots[i])) return i; return -1; };
+  const putOne = async (w, pred, to) => { const from = findIn(w, pred); if (from < 0) return false; await click(from); await click(to, 1); await click(from); return true; };
+  const isScale = it => it.name === 'turtle_scute' && (itemName(it) || '').includes('Lurker Scale');
+  const isPlainScute = it => it.name === 'turtle_scute' && !itemName(it);
+  // Anvil: a damaged turtle helmet and a scute.
+  const an = new Vec3(X - 2, Y, Z - 2);
+  await cmd(`/setblock ${an.x} ${an.y} ${an.z} anvil`, 600);
+  await cmd('/give @s turtle_helmet[damage=200] 2', 500);
+  await cmd(`/cerb gather item lurker_scale 1`, 600);
+  await cmd('/give @s turtle_scute 1', 500);
+  const anvilResult = async (pred) => {
+    let out = '';
+    try {
+      await bot.lookAt(an.offset(0.5, 0.5, 0.5), true);
+      const w = await bot.openBlock(bot.blockAt(an));
+      await sleep(500);
+      await putOne(w, it => it.name === 'turtle_helmet', 0);
+      await putOne(w, pred, 1);
+      await sleep(700);
+      out = w.slots[2] ? w.slots[2].name : '';
+      await click(0, 0, 1); await click(1, 0, 1);
+      bot.closeWindow(w);
+    } catch (e) { note('anvil: ' + e.message); }
+    await sleep(600);
+    return out;
+  };
+  const withScale = await anvilResult(isScale);
+  const withScute = await anvilResult(isPlainScute);
+  check('An anvil repairs nothing with a Lurker Scale', withScale === '', withScale || 'no result');
+  check('...while a plain turtle scute repairs (the control)', withScute === 'turtle_helmet', withScute || 'no result');
+  // Brewing: no shipped Cerberus item is a brewing ingredient, so the sandbox's resources.yml gets a test item made of
+  // nether wart for this check (SERVER_DIR=...; put back afterwards). A water bottle and nether wart brew an awkward potion.
+  const dir = process.env.SERVER_DIR;
+  if (!dir) { note('SERVER_DIR not set: skipping the brewing check (it adds a test item to the sandbox resources.yml)'); return; }
+  const file = path.join(dir, 'plugins/CerberusPlugin/resources.yml');
+  const orig = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(file, orig.replace(/^items:\n/m, 'items:\n  test_wart: { material: NETHER_WART, name: "Test Wart" }\n'));
+  await cmd('/cerb reload', 2500);
+  const bs = new Vec3(X + 2, Y, Z - 2);
+  const brew = async (give) => {
+    await cmd('/clear @s', 300);
+    await cmd(`/setblock ${bs.x} ${bs.y} ${bs.z} air`, 300);
+    await cmd(`/setblock ${bs.x} ${bs.y} ${bs.z} brewing_stand`, 600);
+    await cmd('/give @s potion[potion_contents={potion:"minecraft:water"}] 1', 500);
+    await cmd('/give @s blaze_powder 1', 500);
+    await cmd(give, 600);
+    let out = '';
+    try {
+      await bot.lookAt(bs.offset(0.5, 0.5, 0.5), true);
+      const w = await bot.openBlock(bot.blockAt(bs));
+      await sleep(500);
+      // Shift-clicks put each where it goes: the bottle below, the powder as fuel, the wart as the ingredient.
+      for (const name of ['potion', 'blaze_powder', 'nether_wart']) { const i = findIn(w, it => it.name === name); if (i >= 0) await click(i, 0, 1); }
+      await sleep(600);
+      const placed = [0, 3].map(i => (w.slots[i] ? w.slots[i].name : '-')).join('/'); // the powder goes into the fuel gauge at once
+      const before = JSON.stringify((w.slots[0] || {}).components || null);
+      await sleep(23000);
+      const after = JSON.stringify((w.slots[0] || {}).components || null);
+      out = (before === after ? 'unchanged' : 'brewed') + ' (' + placed + ')';
+      bot.closeWindow(w);
+    } catch (e) { note('brewing: ' + e.message); }
+    await sleep(600);
+    return out;
+  };
+  const withItem = await brew('/cerb gather item test_wart 1');
+  const withWart = await brew('/give @s nether_wart 1');
+  fs.writeFileSync(file, orig);
+  await cmd('/cerb reload', 2500);
+  check('A brewing stand brews nothing with a Cerberus item (a test item made of nether wart)', /^unchanged \(potion\/nether_wart\)/.test(withItem), withItem);
+  check('...while plain nether wart brews (the control)', /^brewed/.test(withWart), withWart);
+}
+
 /** A species cooks like any fish: a forced Pond Bream (a cod with its name) smelted in a furnace. */
 async function cookSpecies() {
   await cmd(`/cerb fish force ${NAME} species pond_bream`, 250);
@@ -742,10 +822,10 @@ async function control() {
   await clearMobs();
 }
 
-const PHASES = { basic, waters, force, call, refund, limits, afk, inventory, economy, creative, cook: async () => { await arena(330); await biome('plains'); await survivalSetup(20); await cookSpecies(); },
+const PHASES = { basic, waters, force, call, refund, limits, afk, inventory, economy, guards, creative, cook: async () => { await arena(330); await biome('plains'); await survivalSetup(20); await cookSpecies(); },
   'persist-set': persistSet, 'persist-check': persistCheck, 'restart-set': restartSet, 'restart-check': restartCheck,
   'crash-set': crashSet, 'crash-check': crashCheck, control };
-const ALL = ['basic', 'waters', 'force', 'call', 'refund', 'inventory', 'economy', 'creative'];
+const ALL = ['basic', 'waters', 'force', 'call', 'refund', 'inventory', 'economy', 'guards', 'creative'];
 
 connect().then(async () => {
   await sleep(3500);
