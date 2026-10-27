@@ -144,6 +144,19 @@ class FishingGearTest {
     }
 
     @Test
+    void aReleasedBaitGoesBackToTheSlotItEmptied() {
+        UUID h = UUID.randomUUID();
+        FishingGear g = new FishingGear();
+        g.load(0, "grub_bait", 3, 64);
+        g.load(1, "chum", 1, 64);
+        assertTrue(g.hold(1, h));
+        assertTrue(g.slot(1).empty(), "the hold took the last chum");
+        assertEquals("", g.release(h, 1), "back to its own slot, even with one slot counted open (a join before skills load)");
+        assertEquals(new FishingGear.Slot("chum", 1), g.slot(1));
+        assertEquals(new FishingGear.Slot("grub_bait", 3), g.slot(0), "never into another slot a preset may skip");
+    }
+
+    @Test
     void aRefundMayGoOneOverTheStack() {
         FishingGear g = new FishingGear();
         g.load(0, "grub_bait", 64, 64);

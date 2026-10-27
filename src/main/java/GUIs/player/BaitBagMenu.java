@@ -35,6 +35,9 @@ public final class BaitBagMenu extends PlayerMenu {
 
     @Override public String title() { return PlayerTheme.title("Bait Bag"); }
 
+    /** Its buttons act at once: always its own window, so a click aimed at the screen before never lands here. */
+    @Override public boolean reuseWindow() { return false; }
+
     @Override protected Material headerGlass() { return Material.BROWN_STAINED_GLASS_PANE; }
 
     @Override
@@ -76,7 +79,7 @@ public final class BaitBagMenu extends PlayerMenu {
                             .text("Opens at Fishing " + t.bagUnlock(i) + "; not used").text("until then.")
                             .hint("Click: take it out (what fits)").build()), c -> {
                         Tackle tt = plugin.getTackle();
-                        if (tt == null || !c.isMouse()) return; // items move on a click only, never a number key or a drop
+                        if (tt == null || !c.isMouse() || justDrawn(c.player())) return; // a click only, never a number key, a drop or a double-click's second half
                         FishingEquipmentMenu.say(c.player(), tt.unload(c.player(), slot));
                         menus.refresh(c.player());
                     });
@@ -103,7 +106,7 @@ public final class BaitBagMenu extends PlayerMenu {
             if (!s.empty()) Ui.amount(tile, Math.min(64, s.count()));
             v.button(SLOT_TILES[i], Ui.glow(tile, uses && !s.empty()), c -> {
                 Tackle tt = plugin.getTackle();
-                if (tt == null || !c.isMouse()) return; // items move on a click only, never a number key or a drop
+                if (tt == null || !c.isMouse() || justDrawn(c.player())) return; // a click only, never a number key, a drop or a double-click's second half
                 FishingGear gg = tt.gear(c.player());
                 if (c.isShift()) { if (slot > 0) FishingEquipmentMenu.say(c.player(), tt.swapSlots(c.player(), slot, slot - 1)); }
                 else if (c.isRight()) FishingEquipmentMenu.say(c.player(), tt.useSlot(c.player(), gg.activeIndex(), slot, !gg.preset(gg.activeIndex()).usesSlot(slot)));
@@ -129,7 +132,7 @@ public final class BaitBagMenu extends PlayerMenu {
             else l.hint("Click: put it into slot " + (target + 1));
             v.button(LOAD_TILES[k++], Ui.item(iconOf(b), ChatColor.YELLOW + "Put in: " + b.name(), l.build()), c -> {
                 Tackle tt = plugin.getTackle();
-                if (tt == null || !c.isMouse()) return;
+                if (tt == null || !c.isMouse() || justDrawn(c.player())) return;
                 int to = targetSlot(tt.gear(c.player()), b.id(), t.bagSlots(tt.level(c.player())));
                 if (to < 0) Ui.fail(c.player(), "No free slot for " + b.name() + ": take another bait out first.");
                 else FishingEquipmentMenu.say(c.player(), tt.load(c.player(), to, b.id()));

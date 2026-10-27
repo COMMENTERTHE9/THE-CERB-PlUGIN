@@ -80,10 +80,11 @@ public final class FishingJournalMenu extends PlayerMenu {
         FishingJournal j = f.journal(p);
         int level = plugin.getSkillManager().getSkillLevel(p, r.skill());
         Fishing.Place place = f.place(p);
+        boolean earns = Manager.XpIntegrity.earns(p); // creative and spectator fish vanilla only: nothing of ours bites
 
         v.set(MenuView.HEADER, header(r, j));
-        v.set(PLACE, placeTile(r, place));
-        v.button(TRACKED, trackedTile(r, j, level, place), c -> {
+        v.set(PLACE, placeTile(r, place, earns));
+        v.button(TRACKED, trackedTile(r, j, level, place, earns), c -> {
             FishingJournal jj = f.journal(c.player());
             if (jj.tracked() == null) { Ui.info(c.player(), "Click a species below to track it."); return; }
             jj.track(null);
@@ -95,10 +96,12 @@ public final class FishingJournalMenu extends PlayerMenu {
         List<ItemStack> items = new ArrayList<>();
         List<String> ids = new ArrayList<>();
         if (TREASURE.equals(tab)) {
+            // Treasure comes only to a bobber in open water (vanilla's rule): a preview or no bobber can't tell.
+            boolean openHere = earns && place.source() == Fishing.PlaceSource.BOBBER && Boolean.TRUE.equals(place.openWater());
             for (FishingRules.Treasure t : r.treasure()) {
                 boolean found = j.caught(t.id());
                 if (filter == Filter.UNDISCOVERED && found) continue;
-                if (filter == Filter.HERE && !(level >= t.level() && r.treasureSense(level))) continue;
+                if (filter == Filter.HERE && !(openHere && level >= t.level() && r.treasureSense(level))) continue;
                 items.add(treasureTile(r, t, found, level));
                 ids.add(null);
             }
@@ -109,8 +112,8 @@ public final class FishingJournalMenu extends PlayerMenu {
                     boolean found = j.caught(s.id());
                     List<FishingRules.Check> checks = r.checks(s, place.moment(), level);
                     if (filter == Filter.UNDISCOVERED && found) continue;
-                    if (filter == Filter.HERE && (place.source() == Fishing.PlaceSource.UNKNOWN || !FishingRules.allMet(checks))) continue;
-                    items.add(speciesTile(r, s, j, checks, place, s.id().equals(j.tracked())));
+                    if (filter == Filter.HERE && (!earns || place.source() == Fishing.PlaceSource.UNKNOWN || !FishingRules.allMet(checks))) continue;
+                    items.add(speciesTile(r, s, j, checks, place, s.id().equals(j.tracked()), earns));
                     ids.add(s.id());
                 }
             }
@@ -128,7 +131,7 @@ public final class FishingJournalMenu extends PlayerMenu {
                 menus.refresh(c.player());
             });
         }
-        if (items.isEmpty()) v.set(31, emptyTile(place));
+        if (items.isEmpty()) v.set(31, emptyTile(place, earns));
         if (page > 0) v.button(MenuView.PREV, Ui.item(Material.SPECTRAL_ARROW, ChatColor.YELLOW + "Previous page",
                 Ui.lore().stat("Page", page + " / " + pages).build()), c -> { page--; menus.refresh(c.player()); });
         if (page < pages - 1) v.button(MenuView.NEXT, Ui.item(Material.SPECTRAL_ARROW, ChatColor.YELLOW + "Next page",
@@ -182,17 +185,21 @@ public final class FishingJournalMenu extends PlayerMenu {
     }
 
     /** Where "here" is, said plainly (never the player's standing position). */
-    static ItemStack placeTile(FishingRules r, Fishing.Place place) {
+    static ItemStack placeTile(FishingRules r, Fishing.Place place, boolean earns) {
         Ui.Lore l = Ui.lore();
         FishingRules.Moment m = place.moment();
         String water = m.water() == null ? null : r.water(m.water()) == null ? m.water() : r.water(m.water()).name();
         switch (place.source()) {
-            case BOBBER -> l.stat("Water", water).text("where your bobber floats.");
+            case BOBBER -> {
+                l.stat("Water", water).text("where your bobber floats.");
+                if (place.openWater() != null) l.stat("Open water", place.openWater() ? "yes (treasure can come)" : "no (no treasure here)");
+            }
             case LOOKING -> l.stat("Water", water + ChatColor.DARK_GRAY + " (preview)").text("the water you were looking at").text("when this screen opened.");
             default -> l.text("Not known yet: cast your line, or").text("look at water before opening the").text("journal, to check where you fish.");
         }
         if (m.biome() != null) l.stat("Biome", m.biome().replace('_', ' '));
         l.stat("Time", m.night() ? "night" : "day").stat("Weather", m.thunder() ? "thunderstorm" : m.rain() ? "rain" : "clear");
+        if (!earns) l.gap().raw(ChatColor.YELLOW + "Creative or spectator: vanilla fishing").raw(ChatColor.YELLOW + "only. Species and treasure bite in").raw(ChatColor.YELLOW + "survival and adventure.");
         Material icon = place.source() == Fishing.PlaceSource.BOBBER ? Material.FISHING_ROD
                 : place.source() == Fishing.PlaceSource.LOOKING ? Material.SPYGLASS : Material.COMPASS;
         String name = place.source() == Fishing.PlaceSource.UNKNOWN ? ChatColor.GRAY + "Where you fish: not known yet"
@@ -200,7 +207,7 @@ public final class FishingJournalMenu extends PlayerMenu {
         return Ui.item(icon, name, l.build());
     }
 
-    private ItemStack trackedTile(FishingRules r, FishingJournal j, int level, Fishing.Place place) {
+    private ItemStack trackedTile(FishingRules r, FishingJournal j, int level, Fishing.Place place, boolean earns) {
         FishingRules.Species s = r.speciesById(j.tracked());
         if (s == null) {
             return Ui.item(Material.ENDER_EYE, ChatColor.GRAY + "★ No species tracked", Ui.lore()
@@ -215,7 +222,8 @@ public final class FishingJournalMenu extends PlayerMenu {
         l.gap();
         boolean all = FishingRules.allMet(checks);
         boolean unknown = checks.stream().anyMatch(c -> c.state() == FishingRules.CheckState.UNKNOWN);
-        if (all) l.raw(ChatColor.GREEN + "It can bite here now.");
+        if (!earns) l.raw(ChatColor.YELLOW + "In creative or spectator only vanilla fish bite.");
+        else if (all) l.raw(ChatColor.GREEN + "It can bite here now.");
         else if (unknown && checks.stream().noneMatch(c -> c.state() == FishingRules.CheckState.MISSING)) l.raw(ChatColor.YELLOW + "Cast your line to check the water.");
         else l.raw(ChatColor.RED + "It can't bite here now.");
         l.raw(ChatColor.DARK_GRAY + "Tracking never changes the odds.");
@@ -237,7 +245,7 @@ public final class FishingJournalMenu extends PlayerMenu {
     }
 
     private ItemStack speciesTile(FishingRules r, FishingRules.Species s, FishingJournal j, List<FishingRules.Check> checks,
-                                  Fishing.Place place, boolean tracked) {
+                                  Fishing.Place place, boolean tracked, boolean earns) {
         boolean found = j.caught(s.id());
         GatheringCatalog.ItemDef def = GatheringCatalog.current().item(s.item());
         Material icon = found && def != null ? def.material() : Material.GRAY_DYE;
@@ -253,7 +261,7 @@ public final class FishingJournalMenu extends PlayerMenu {
         l.raw(ChatColor.DARK_GRAY + "Range " + String.format(Locale.ROOT, "%s–%s kg", trim(s.minKg()), trim(s.maxKg())));
         l.gap();
         for (FishingRules.Check c : checks) l.raw(checkLine(c, place));
-        if (place.source() != Fishing.PlaceSource.UNKNOWN) {
+        if (place.source() != Fishing.PlaceSource.UNKNOWN && earns) {
             l.raw(FishingRules.allMet(checks) ? ChatColor.GREEN + "Can bite here now" : ChatColor.GRAY + "Can't bite here now");
         }
         if (tracked) l.gap().raw(ChatColor.LIGHT_PURPLE + "★ Tracked");
@@ -277,9 +285,15 @@ public final class FishingJournalMenu extends PlayerMenu {
         return Ui.item(found && def != null ? def.material() : Material.GRAY_DYE, (found ? t.rarity().color : ChatColor.GRAY) + name, l.build());
     }
 
-    private ItemStack emptyTile(Fishing.Place place) {
+    private ItemStack emptyTile(Fishing.Place place, boolean earns) {
         Ui.Lore l = Ui.lore();
-        if (filter == Filter.HERE && place.source() == Fishing.PlaceSource.UNKNOWN) {
+        if (filter == Filter.HERE && !earns) {
+            l.text("Creative or spectator: vanilla").text("fishing only. Species and treasure").text("bite in survival and adventure.");
+        } else if (filter == Filter.HERE && TREASURE.equals(tab) && place.source() != Fishing.PlaceSource.BOBBER) {
+            l.text("Treasure needs open water around").text("your bobber: cast your line to").text("check.");
+        } else if (filter == Filter.HERE && TREASURE.equals(tab) && !Boolean.TRUE.equals(place.openWater())) {
+            l.text("Your bobber isn't in open water:").text("treasure needs water and air all").text("around it (vanilla's rule).");
+        } else if (filter == Filter.HERE && place.source() == Fishing.PlaceSource.UNKNOWN) {
             l.text("Where you fish isn't known yet:").text("cast your line, or look at water").text("before opening the journal.");
         } else if (filter == Filter.UNDISCOVERED) {
             l.text("Everything here is in your journal.");

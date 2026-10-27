@@ -95,4 +95,25 @@ class AttributeServiceTest {
         assertEquals(50, what.power(WeaponClass.SWORD));
         assertEquals(10, service.get(alice).power(WeaponClass.SWORD));
     }
+
+    @Test
+    void aSkillLevelPreviewAsksLevelGatedSourcesAtThatLevel() {
+        // Like the fishing setup's Lure parts, which open at Fishing 25: a level-up to 25 shows them as its gain.
+        AttributeSource gated = new AttributeSource() {
+            @Override public String id() { return "gated"; }
+            @Override public List<Contribution> contributions(UUID p, AttributeRules r) { return at(30); }
+            @Override public List<Contribution> contributionsAt(UUID p, AttributeRules r, String skill, int level) {
+                return skill.equals("Fishing") ? at(level) : contributions(p, r);
+            }
+            private List<Contribution> at(int level) {
+                return level >= 25 ? List.of(Contribution.attribute("gated", "Gated", Attribute.POWER, 7, WeaponClass.SWORD)) : List.of();
+            }
+        };
+        service.addSource(gated);
+        service.track(alice);
+        assertEquals(7, service.get(alice).power(WeaponClass.SWORD), "the player is at 30 now");
+        assertEquals(0, service.withSkillLevel(alice, "Fishing", 24).power(WeaponClass.SWORD), "at 24 the part isn't open");
+        assertEquals(7, service.withSkillLevel(alice, "Fishing", 25).power(WeaponClass.SWORD));
+        assertEquals(7, service.withSkillLevel(alice, "Mining", 1).power(WeaponClass.SWORD), "another skill's level changes nothing here");
+    }
 }

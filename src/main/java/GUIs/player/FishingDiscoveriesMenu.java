@@ -36,6 +36,9 @@ public final class FishingDiscoveriesMenu extends PlayerMenu {
 
     @Override public String title() { return PlayerTheme.title("New discoveries"); }
 
+    /** Its buttons act at once (mark as read): always its own window, so a click aimed at the screen before never lands here. */
+    @Override public boolean reuseWindow() { return false; }
+
     @Override protected Material headerGlass() { return Material.LIGHT_BLUE_STAINED_GLASS_PANE; }
 
     @Override
@@ -80,7 +83,7 @@ public final class FishingDiscoveriesMenu extends PlayerMenu {
                     .text("Catches made since it opened")
                     .text("stay unread.").build()), c -> {
                 Fishing ff = plugin.getFishing();
-                if (ff == null) return;
+                if (ff == null || !c.isMouse() || justDrawn(c.player())) return; // a double-click never clears what came in since
                 ff.journal(c.player()).acknowledge(shown, unreadAt);
                 ff.saveJournal(c.player());
                 menus.refresh(c.player());

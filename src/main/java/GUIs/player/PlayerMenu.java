@@ -26,6 +26,9 @@ public abstract class PlayerMenu extends Menu {
         this.plugin = plugin;
     }
 
+    /** When this screen was last drawn (System.nanoTime), for {@link #justDrawn}. */
+    private volatile long drawnAt;
+
     @Override
     protected final void build(MenuView v) {
         v.row(0, headerGlass());
@@ -33,6 +36,17 @@ public abstract class PlayerMenu extends Menu {
         content(v);
         v.fill(PlayerTheme.FRAME);
         memory().shown(v.viewer(), plugin.getSkillManager()); // what "since you last looked" compares with next time
+        drawnAt = System.nanoTime();
+    }
+
+    /**
+     * True within about one round trip after this screen was (re)drawn: a click then was aimed at what the player saw
+     * before the redraw. Buttons that acknowledge what they show (mark as read) ignore such clicks, so a double-click
+     * never clears something the player hasn't seen. (The framework does this for screen switches, not for a redraw.)
+     */
+    protected boolean justDrawn(Player p) {
+        long guardMs = Math.min(1000, Math.max(250, p.getPing() + 150L));
+        return System.nanoTime() - drawnAt < guardMs * 1_000_000L;
     }
 
     /** The screen's own items. Frame and navigation are already in place; empty slots get filled after. */

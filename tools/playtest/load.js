@@ -30,6 +30,10 @@
 //   fishing - each bot fishes in survival from the edge of its own pond (7x7, 3 deep, open to the sky), as an AFK farm or a
 //            macro does with a Lure III rod: cast, wait for the bite, reel, again, nothing else in between. Fishing is set to 25 at the
 //            start (species, treasure and lure rolls all run). The Fishing baseline (2026-10-27).
+//   gearmenu - each bot browses the Fishing page's new screens as fast as a hurried player (Fishing 50, four parts owned,
+//            so every category is open and its tiles compute their previews from the engine): Equipment -> Rod -> back
+//            -> Lure -> back -> Bait Bag -> back -> back -> Journal -> two filters -> the Treasure tab -> back -> close.
+//            Only on builds with Fishing equipment (2026-10-27); compare its per-click cost with fishmenu's.
 //   autofish - like fishing, but each bot is at Fishing 50 with the Auto-hook Reel in its setup
 //            (docs/design/FISHING_EQUIPMENT.md §9): it only casts, and casts again when the reel has caught (its bobber
 //            gone) or after 45 s without a bite. One delayed task per bite is the reel's whole cost; compare with
@@ -379,6 +383,27 @@ async function fishmenu(b, deadline) {
   }
 }
 
+async function gearmenu(b, deadline, controller) {
+  b.chat('/gamemode creative'); await sleep(400);
+  // Fishing 50 (every category open) and four owned parts, so the screens compute their engine previews as for a player.
+  controller.chat(`/cerb skill ${b.username} Fishing level 50`); await sleep(300);
+  for (const part of ['scaled_grip', 'resin_line', 'rime_hook', 'sea_glass_float']) { controller.chat(`/cerb fish part ${b.username} ${part}`); await sleep(250); }
+  const step = async slot => { if (!b.currentWindow) return false; await b.clickWindow(slot, 0, 0); bump(b.username, 'clicks'); await sleep(300); return true; };
+  while (Date.now() < deadline) {
+    b.chat('/menu'); await sleep(600);
+    if (!b.currentWindow) { await sleep(500); continue; }
+    bump(b.username, 'opens');
+    // Skills -> Utility -> Fishing -> Equipment -> Rod -> back -> Lure -> back -> Bait Bag -> back -> back -> Journal ->
+    // filter, filter -> Treasure tab -> back
+    for (const s of [19, 24, 13, 29, 19, 45, 23, 45, 29, 45, 45, 31, 47, 47, 17, 45]) if (!(await step(s))) break;
+    if (b.currentWindow) { await b.clickWindow(53, 0, 0); bump(b.username, 'clicks'); }
+    await sleep(300);
+  }
+  // Leave the bot as it came (the fishing loads that follow compare builds without parts).
+  for (const part of ['scaled_grip', 'resin_line', 'rime_hook', 'sea_glass_float']) controller.chat(`/cerb fish part ${b.username} ${part} remove`);
+  controller.chat(`/cerb skill ${b.username} Fishing level 1`);
+}
+
 async function menuidle(b, deadline) {
   b.chat('/gamemode creative'); await sleep(400);
   b.chat('/menu'); await sleep(1500);
@@ -424,6 +449,7 @@ async function menuidle(b, deadline) {
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)
         : m === 'autofish' ? autofish(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
+        : m === 'gearmenu' ? gearmenu(b, deadline, controller)
         : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));

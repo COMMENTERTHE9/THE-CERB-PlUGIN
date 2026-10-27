@@ -147,6 +147,28 @@ class FishingJournalTest {
     }
 
     @Test
+    void anotherVersionsJournalIsReadOnlyAndALongerPartNameIsKept() {
+        FishingJournal later = FishingJournal.decode("2|s=silver_dace:0.31");
+        assertTrue(later.readOnly(), "another version marker: never written back over");
+        assertFalse(later.caught("silver_dace"));
+        assertFalse(FishingJournal.decode("1|s=silver_dace:0.31").readOnly());
+        assertFalse(FishingJournal.decode(null).readOnly());
+        FishingJournal j = FishingJournal.decode("1|s=silver_dace:0.31|zz=a later part|sx=also later");
+        assertEquals(0.31, j.best("silver_dace"), 1e-9);
+        assertFalse(j.caught("also later"), "sx= is not s=");
+        String back = j.encode();
+        assertTrue(back.contains("|zz=a later part") && back.contains("|sx=also later"), back);
+    }
+
+    @Test
+    void aKnownPartWithMoreFieldsStillReads() {
+        FishingJournal j = FishingJournal.decode("1|v=3,120,1,1,1,9|n=D:silver_dace:0.5:1000:u:extra");
+        assertEquals(new FishingJournal.Summary(3, 120, 1, 1, 1), j.summary());
+        assertEquals(1, j.notable().size());
+        assertEquals("silver_dace", j.notable().get(0).species());
+    }
+
+    @Test
     void trackingTakesOnlyPlainIdsAndNeverAnythingElse() {
         FishingJournal j = new FishingJournal();
         assertFalse(j.track("Not|An Id"));

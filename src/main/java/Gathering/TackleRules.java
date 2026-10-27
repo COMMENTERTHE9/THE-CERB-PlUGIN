@@ -41,11 +41,11 @@ public final class TackleRules {
 
     /**
      * A bait: the item that carries it, its purpose, and either a stat it adds (lure speed, sea-creature chance) or a
-     * weight factor (night species, undiscovered species). {@code night} limits it to the night; {@code unlockedBy} names
-     * the collection reward that opens its recipe (null: open to everyone).
+     * weight factor (night species, undiscovered species). {@code night} limits it to the night. A bait is never locked
+     * itself: a collection reward locks its recipe ({@link Recipe#unlockedBy}).
      */
     public record Bait(String id, String item, String name, Purpose purpose, Attributes.Stat stat, double amount, double factor,
-                       boolean night, String unlockedBy) {}
+                       boolean night) {}
 
     /** A crafting-table recipe (shapeless): each ingredient is a list of materials any of which will do. */
     public record Recipe(String id, String result, List<List<Material>> ingredients, int makes, String unlockedBy) {}
@@ -131,13 +131,20 @@ public final class TackleRules {
 
     /**
      * The parts that count: those {@code installed} that are owned, configured here, and whose category is open at
-     * {@code level}. Parts and ids unknown here are left out (kept owned, shown unavailable).
+     * {@code level}, with one specialist at most (the first). Parts and ids unknown here are left out (kept owned, shown
+     * unavailable).
      */
     public Set<String> active(Set<String> installed, Set<String> owned, int level) {
         Set<String> out = new LinkedHashSet<>();
+        boolean specialist = false;
         for (String id : installed) {
             Part p = parts.get(id);
-            if (p != null && owned.contains(id) && unlocked(p.category(), level)) out.add(id);
+            if (p == null || !owned.contains(id) || !unlocked(p.category(), level)) continue;
+            if (p.specialist()) {
+                if (specialist) continue;
+                specialist = true;
+            }
+            out.add(id);
         }
         return out;
     }
@@ -340,9 +347,8 @@ public final class TackleRules {
                 if (!(factor > 1 && factor <= 4)) { problems.add("tackle.bait." + id + ".factor: (1, 4]"); continue; }
             }
             boolean night = purpose == Purpose.NIGHT || "night".equalsIgnoreCase(b.getString("time", ""));
-            String unlocked = b.getString("unlocked-by");
-            bait.put(id, new Bait(id, item, items.get(item).name(), purpose, stat, amount, factor, night,
-                    unlocked == null || unlocked.isBlank() ? null : unlocked.trim()));
+            if (b.contains("unlocked-by")) problems.add("tackle.bait." + id + ".unlocked-by: not used (a reward locks a recipe: tackle.recipes.<id>.unlocked-by)");
+            bait.put(id, new Bait(id, item, items.get(item).name(), purpose, stat, amount, factor, night));
         }
 
         Map<String, Recipe> recipes = new LinkedHashMap<>();
@@ -394,9 +400,6 @@ public final class TackleRules {
                 else problems.add("tackle.rewards." + id + ": unknown unlock " + u + " (part:<id>, recipe:<id>, title:<id>)");
             }
             rewards.put(id, new Reward(id, w.getString("name", id), counts, amount, List.copyOf(unlocks)));
-        }
-        for (Bait b : bait.values()) if (b.unlockedBy() != null && !rewards.containsKey(b.unlockedBy())) {
-            problems.add("tackle.bait." + b.id() + ".unlocked-by: unknown reward " + b.unlockedBy());
         }
         for (Recipe r : recipes.values()) if (r.unlockedBy() != null && !rewards.containsKey(r.unlockedBy())) {
             problems.add("tackle.recipes." + r.id() + ".unlocked-by: unknown reward " + r.unlockedBy());

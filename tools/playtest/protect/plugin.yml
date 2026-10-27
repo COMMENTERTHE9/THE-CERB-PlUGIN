@@ -17,6 +17,10 @@ commands:
     description: Refuse a player's catches (as another plugin may), or "off".
     usage: /testnocatch <player> | off
     permission: cerbtest.protect
+  testnoreel:
+    description: Refuse a player's empty reel-ins (the bobber stays out), or "off".
+    usage: /testnoreel <player> | off
+    permission: cerbtest.protect
 permissions:
   cerbtest.protect:
     default: op

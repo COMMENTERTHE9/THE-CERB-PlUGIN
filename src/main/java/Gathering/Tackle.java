@@ -32,6 +32,7 @@ import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,6 +77,8 @@ public final class Tackle implements AttributeSource, Listener {
     private final Map<UUID, long[]> renaming = new ConcurrentHashMap<>();
     private final Set<NamespacedKey> recipeKeys = ConcurrentHashMap.newKeySet();
     private volatile String registeredRecipes = "";
+    /** The materials a locked recipe's result is made of: a crafting grid showing anything else needs no recipe lookup. */
+    private volatile Set<Material> lockedResults = Set.of();
 
     private final LongAdder holds = new LongAdder(), used = new LongAdder(), putBack = new LongAdder(), fits = new LongAdder(),
             conversions = new LongAdder(), restocked = new LongAdder();
@@ -152,9 +155,18 @@ public final class Tackle implements AttributeSource, Listener {
 
     @Override
     public List<Contribution> contributions(UUID player, AttributeRules ruleSet) {
+        return at(player, skills.getSkillLevel(player, skill()));
+    }
+
+    /** With Fishing at {@code level}: a level-up's "before" leaves out the parts that open at the new level. */
+    @Override
+    public List<Contribution> contributionsAt(UUID player, AttributeRules ruleSet, String skill, int level) {
+        return skill().equalsIgnoreCase(skill) ? at(player, level) : contributions(player, ruleSet);
+    }
+
+    private List<Contribution> at(UUID player, int level) {
         GatheringCatalog c = catalog.get();
         View v = views.getOrDefault(player, View.EMPTY);
-        int level = skills.getSkillLevel(player, skill());
         Set<String> active = c.tackle().active(v.installed(), v.owned(), level);
         return contributions(active, rodUpgrades(player), c, v.preset());
     }
@@ -285,6 +297,8 @@ public final class Tackle implements AttributeSource, Listener {
                 if (s.empty() || !g.activePreset().usesSlot(i)) continue;
                 TackleRules.Bait b = t.baitById(s.bait());
                 if (b == null || !canApplyAtCast(b, p.getWorld(), level)) continue; // stays stored, shown inactive
+                if (b.stat() != null && paused(p)) continue; // its stat is paused in PvP: it would be spent for nothing
+                if (b.purpose() == TackleRules.Purpose.DISCOVERY && journal.readOnly()) continue; // no record of what was caught
                 if (g.hold(i, hook)) {
                     bait = b;
                     holds.increment();
@@ -305,10 +319,15 @@ public final class Tackle implements AttributeSource, Listener {
         return new CastGear(specialist, bait, reel, caught, lure, creature);
     }
 
+    /** True while {@code p}'s secondary stats are paused (PvP combat). */
+    private boolean paused(Player p) {
+        Manager.SecondaryEffects sec = plugin.getSecondaryEffects();
+        return sec != null && sec.paused(p.getUniqueId());
+    }
+
     /** The bait's stat as the engine gives it with the bait added to everything else (0 while paused in PvP). */
     private double withBait(Player p, TackleRules.Bait bait) {
-        Manager.SecondaryEffects sec = plugin.getSecondaryEffects();
-        if (sec != null && sec.paused(p.getUniqueId())) return 0;
+        if (paused(p)) return 0;
         Contribution c = Contribution.stat(SOURCE_PREFIX + "bait", "Bait · " + bait.name(), bait.stat(), bait.amount(), null);
         return attributes.preview(p.getUniqueId(), cs -> {
             List<Contribution> out = new ArrayList<>(cs);
@@ -461,7 +480,7 @@ public final class Tackle implements AttributeSource, Listener {
         if (def == null) return Result.no("Its item isn't on this server.");
         if (takeFromInventory(p.getInventory(), part.item(), 1) != 1) return Result.no("You need 1 " + def.name() + " in your inventory.");
         g.own(partId);
-        for (int i : t.defaultPresets(partId, catalog.get().upgrades())) g.install(i, partId);
+        installDefaults(g, t, partId);
         fits.increment();
         save(p, true);
         return Result.yes("Fitted the " + part.name() + " (1 " + def.name() + " used). It stays on your character for any rod.");
@@ -473,9 +492,22 @@ public final class Tackle implements AttributeSource, Listener {
         if (!writable(p) || t.part(partId) == null) return false;
         FishingGear g = gear(p);
         if (!g.own(partId)) return false;
-        for (int i : t.defaultPresets(partId, catalog.get().upgrades())) g.install(i, partId);
+        installDefaults(g, t, partId);
         save(p, true);
         return true;
+    }
+
+    /**
+     * A newly owned part goes into its default presets; a specialist leaves out a preset that already has one (only one
+     * counts there, and the player chose it).
+     */
+    private void installDefaults(FishingGear g, TackleRules t, String partId) {
+        TackleRules.Part part = t.part(partId);
+        for (int i : t.defaultPresets(partId, catalog.get().upgrades())) {
+            if (part != null && part.specialist() && g.preset(i).parts().stream().map(t::part)
+                    .anyMatch(o -> o != null && o.specialist())) continue;
+            g.install(i, partId);
+        }
     }
 
     /** Put a part into, or take it out of, preset {@code i}. Installing a specialist removes the other one there. */
@@ -540,7 +572,11 @@ public final class Tackle implements AttributeSource, Listener {
         if (!writable(p)) return Result.no("Your fishing equipment was saved by a newer version of the plugin.");
         gear(p).autoReel(on);
         save(p, false);
-        return Result.yes("Auto-hook reel " + (on ? "on" : "off") + " from your next cast.");
+        if (!on) return Result.yes("Auto-hook reel off from your next cast.");
+        if (rules().hasAutoReel(active(p))) return Result.yes("Auto-hook reel on from your next cast.");
+        TackleRules.Category reel = rules().category("reel");
+        return Result.yes("Auto-hook reel on, but it does nothing until the Auto-hook Reel is fitted in your active setup"
+                + (reel == null ? "." : " (" + reel.name() + " opens at Fishing " + reel.unlock() + ")."));
     }
 
     public Result restock(Player p, boolean on) {
@@ -687,9 +723,7 @@ public final class Tackle implements AttributeSource, Listener {
         if (!fits(inv, back)) return Result.no("Make room for " + back.size() + " item" + (back.size() == 1 ? "" : "s") + " first: nothing was converted.");
         ItemStack plain = GearItems.withoutUpgrades(rod, removed, c);
         FishingGear g = gear(p);
-        for (Line l : now) if (l.fate() == Fate.BECOMES_PART && g.own(l.part())) {
-            for (int i : t.defaultPresets(l.part(), c.upgrades())) g.install(i, l.part());
-        }
+        for (Line l : now) if (l.fate() == Fate.BECOMES_PART && g.own(l.part())) installDefaults(g, t, l.part());
         inv.setItemInMainHand(plain);
         for (ItemStack it : back) inv.addItem(it);
         conversions.increment();
@@ -735,9 +769,11 @@ public final class Tackle implements AttributeSource, Listener {
         if (sig.toString().equals(registeredRecipes)) return;
         for (NamespacedKey k : recipeKeys) Bukkit.removeRecipe(k);
         recipeKeys.clear();
+        Set<Material> locked = EnumSet.noneOf(Material.class);
         for (TackleRules.Recipe r : c.tackle().recipes().values()) {
             GatheringCatalog.ItemDef def = c.item(r.result());
             if (def == null) continue;
+            if (r.unlockedBy() != null) locked.add(GearItems.makeItem(def, 1).getType());
             if (r.ingredients().stream().flatMap(List::stream).anyMatch(m -> !m.isItem())) { // a block such as water (the server's registry knows)
                 plugin.getLogger().warning("[Fishing] resources.yml tackle.recipes." + r.id() + ": an ingredient is not an item - recipe left out");
                 continue;
@@ -747,6 +783,7 @@ public final class Tackle implements AttributeSource, Listener {
             for (List<Material> any : r.ingredients()) sr.addIngredient(new RecipeChoice.MaterialChoice(any));
             if (Bukkit.addRecipe(sr)) recipeKeys.add(key);
         }
+        lockedResults = locked;
         registeredRecipes = sig.toString();
     }
 
@@ -778,13 +815,20 @@ public final class Tackle implements AttributeSource, Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPrepare(PrepareItemCraftEvent e) {
-        TackleRules.Recipe r = recipeKeys.isEmpty() ? null : recipeOf(e.getRecipe());
-        if (r != null && r.unlockedBy() != null && (!(e.getView().getPlayer() instanceof Player p) || !mayCraft(p, r))) {
-            e.getInventory().setResult(null);
+        // Every change to any crafting grid comes here, and getRecipe() builds a whole recipe (docs/PERFORMANCE.md): the
+        // result vanilla already worked out decides first. A locked recipe makes one of its results; the old rod upgrade
+        // makes nothing.
+        ItemStack shown = e.getInventory().getResult();
+        if (shown != null && !shown.getType().isAir()) {
+            if (!lockedResults.contains(shown.getType())) return;
+            TackleRules.Recipe r = recipeOf(e.getRecipe());
+            if (r != null && r.unlockedBy() != null && (!(e.getView().getPlayer() instanceof Player p) || !mayCraft(p, r))) {
+                e.getInventory().setResult(null);
+            }
             return;
         }
         // A rod and a part's item in the grid: the old way of upgrading a rod. Say where it is done now.
-        if (e.getRecipe() == null && rules().enabled() && e.getView().getPlayer() instanceof Player p) {
+        if (rules().enabled() && e.getView().getPlayer() instanceof Player p) {
             ItemStack[] grid = e.getInventory().getMatrix();
             boolean rod = false;
             String part = null;
@@ -832,6 +876,7 @@ public final class Tackle implements AttributeSource, Listener {
         TackleRules t = rules();
         if (f == null || !t.enabled() || t.rewards().isEmpty() || !writable(p)) return List.of();
         FishingJournal j = f.journal(p);
+        if (j.readOnly()) return List.of(); // a journal that can't be saved grants nothing it couldn't remember
         FishingRules fr = catalog.get().fishing();
         List<TackleRules.Reward> now = new ArrayList<>();
         boolean setup = false, recipes = false;
@@ -843,7 +888,7 @@ public final class Tackle implements AttributeSource, Listener {
                 if (u.startsWith("part:")) {
                     String id = u.substring(5);
                     FishingGear g = gear(p);
-                    if (g.own(id)) for (int i : t.defaultPresets(id, catalog.get().upgrades())) g.install(i, id);
+                    if (g.own(id)) installDefaults(g, t, id);
                     setup = true;
                 } else if (u.startsWith("recipe:")) recipes = true;
             }
@@ -923,8 +968,9 @@ public final class Tackle implements AttributeSource, Listener {
         long fresh = fr.eligible(place.moment(), level).stream().filter(s -> !j.caught(s.id())).count();
         FishingRules.Water w = fr.water(place.moment().water());
         String where = w == null ? place.moment().water() : w.name();
-        return fresh == 0 ? "§7Nothing new can bite in " + where + " now: normal odds"
-                : "§d" + fresh + " species you haven't caught can bite in " + where + " now";
+        String preview = place.source() == Fishing.PlaceSource.LOOKING ? " §8(preview: the water you look at)" : "";
+        return (fresh == 0 ? "§7Nothing new can bite in " + where + " now: normal odds"
+                : "§d" + fresh + " species you haven't caught can bite in " + where + " now") + preview;
     }
 
     /**

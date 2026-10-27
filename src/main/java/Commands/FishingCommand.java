@@ -309,6 +309,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         int count = n;
         t.getScheduler().run(plugin, task -> {
             FishingJournal j = f.journal(t);
+            if (j.readOnly()) { sender.sendMessage(ChatColor.RED + t.getName() + "'s journal was saved by a newer version: left as it is."); return; }
             int added = 0;
             for (int i = 0; i < count; i++) if (j.addLure(c.id(), 0)) added++;
             t.getPersistentDataContainer().set(Fishing.JOURNAL, org.bukkit.persistence.PersistentDataType.STRING, j.encode());

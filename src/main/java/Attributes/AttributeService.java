@@ -132,7 +132,9 @@ public final class AttributeService {
     public AttributeSnapshot withSkillLevel(UUID player, String skill, int level) {
         AttributeRules r = rules.get();
         String id = SkillAttributes.SOURCE_PREFIX + skill;
-        return preview(player, cs -> {
+        previews.increment();
+        // Every source at that level (a part that opens at it counts), the skill's own points replaced.
+        return build(player, r, src -> src.contributionsAt(player, r, skill, level), cs -> {
             List<Contribution> out = new ArrayList<>();
             for (Contribution c : cs) if (!c.sourceId().equals(id)) out.add(c);
             out.addAll(SkillAttributes.contributions(java.util.Map.of(skill, level), r));
@@ -141,8 +143,13 @@ public final class AttributeService {
     }
 
     private AttributeSnapshot build(UUID player, AttributeRules r, UnaryOperator<List<Contribution>> edit) {
+        return build(player, r, src -> src.contributions(player, r), edit);
+    }
+
+    private AttributeSnapshot build(UUID player, AttributeRules r, java.util.function.Function<AttributeSource, List<Contribution>> from,
+                                    UnaryOperator<List<Contribution>> edit) {
         List<Contribution> all = new ArrayList<>();
-        for (AttributeSource src : sources) all.addAll(src.contributions(player, r));
+        for (AttributeSource src : sources) all.addAll(from.apply(src));
         RealmContext realm = r.switches().realmMagnitude() ? realms.apply(player) : RealmContext.NEUTRAL;
         return AttributeCalculator.compute(edit.apply(all), r, realm);
     }

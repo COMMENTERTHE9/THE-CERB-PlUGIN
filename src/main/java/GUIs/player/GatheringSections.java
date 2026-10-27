@@ -232,7 +232,7 @@ public final class GatheringSections {
         Fishing f = plugin.getFishing();
         if (f == null) return;
         if (!right) { plugin.getMenuManager().open(p, new FishingDiscoveriesMenu(plugin)); return; }
-        if (!(from instanceof SkillDetailMenu page)) return;
+        if (!(from instanceof SkillDetailMenu page) || page.redrawnJustNow(p)) return; // a double right-click clears only what was seen
         FishingJournal.Summary shown = page.shownSummary();
         Set<Long> at = page.shownUnreadAt();
         if (shown == null) return;

@@ -7,10 +7,11 @@
 //   track    - tracking a species: each requirement checked where you fish (a labelled preview of the water you look at,
 //              your bobber while a cast is out, "not known" otherwise, never where you stand), "Available here" lists
 //              exactly what /cerb fish info (the bite's own eligibility) lists, the tracked species is saved (/fishing
-//              track), and the cast hint says whether it can bite there, once per change
+//              track), and the cast hint says whether it can bite there, once per change; open water is told only at
+//              the bobber, so treasure is "Available here" only for a bobber in open water
 //   summary  - "since your last visit": real catches and the XP really awarded (measured), a discovery and its weight
-//              among the notable catches, redraws never clear it, marking it read takes off what was shown; creative
-//              fishing adds nothing
+//              among the notable catches, redraws never clear it, marking it read (even a quick double click) takes off
+//              what was shown; creative fishing adds nothing, and the journal says only vanilla fish bite there
 //   terms    - Encounters: a banked sea creature says "encounter", /fishing encounters (and the old /fishing lures) list them
 //   equip    - Fishing → Equipment for a new character: presets, the four categories and their levels, fitting a part (asks
 //              first, uses one item, owned once, any rod), the effect previewed from the engine (raw change, when it
@@ -19,9 +20,11 @@
 //              never moving items on shift-clicks or number keys
 //   bait     - crafting bait (and a recipe that waits for its milestone), the Bait Bag, one bait held per cast and used
 //              only by a completed catch it applied to: put back on a reel-in, a refused catch (needs CerbTestProtect's
-//              /testnocatch), a logout; a preset switch mid-cast; situational bait waiting in the bag; "Bait depleted"
-//              once; opt-in restocking; a held bait with nowhere to go comes back as an item
-//   reel     - the Auto-hook Reel (crafted, fitted at Fishing 50): reels real bites through the normal path (XP, the rod's
+//              /testnocatch), a refused reel-in (/testnoreel), a logout; a preset switch mid-cast; situational bait
+//              waiting in the bag; "Bait depleted" once; opt-in restocking; a held bait with nowhere to go comes back
+//              as an item; one that took its slot's last bait goes back to that slot
+//   reel     - "/fishing reel on" before it is fitted says it does nothing yet; the Auto-hook Reel (crafted, fitted at
+//              Fishing 50): reels real bites through the normal path (XP, the rod's
 //              wear), never recasts, one catch per bite when you reel too, off when switched off, a refused catch (the
 //              cast goes on), a full inventory, with a menu open, switching items, a breaking rod, death, logout, and
 //              never a Sneak-cast call
@@ -32,7 +35,8 @@
 //              last three need CERB_SERVER_DIR: they lower thresholds in the sandbox resources.yml and put them back)
 //   specialists - Surveyor's Float in /cerb fish info (the shares the bite rolls with): the same species and share of
 //              species bites, the caught one less often, the others at most x1.5; "normal odds" on the tile and once at
-//              the first bite where nothing new can bite; the Specimen Hook replacing it, weights in range
+//              the first bite where nothing new can bite; the Specimen Hook replacing it, weights in range; a specialist
+//              granted where one is in a preset stays out; "Next levels" count a part from the level it opens at
 //   trophy   - Keep as trophy: asks first, one fish becomes the catch's trophy (name and weight, who, date, water), once
 //              per notable catch, trophies never stack, a stale confirmation changes nothing
 //   oldstate - (run on the build BEFORE Fishing equipment, with the bot name you will use for legacy) a character with an
@@ -41,12 +45,22 @@
 //              counting an upgrade once, converting (preview, a full inventory and a changed rod refused, name,
 //              enchantments and damage kept, an owned part's item back once); without oldstate's rods it makes them
 //              with /cerb fish legacyrod
+//   restart-set / restart-check - a setup (parts, a renamed preset, the one in use, switches, two bait slots) with a
+//              bait on the line when the server stops cleanly: all of it after the restart, the bait back once (the
+//              caller restarts the server on "READY"; STATE names the file passed between the two)
+//   crash-set / crash-check - the same mid-cast, but the player's data is written with the bait held (needs
+//              CerbTestProtect's /testsave) and the server is killed: the bait is back once at the next join, not twice
 //   all      - pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
+const fs = require('fs');
+const path = require('path');
 const phaseArg = process.argv[2] || 'all';
 // A new name is a fresh character (op it first: the sandbox console's "op <name>"); oldstate and legacy share one name.
-const NAME = process.argv[3] || 'CerbGear';
+// In a run of several phases, rewards, specialists and trophy each get a fresh character of their own (<name>rew...).
+let NAME = process.argv[3] || 'CerbGear';
+/** Phases that need a character with nothing reached yet: in a run of several phases each gets its own (op'd by the bot). */
+const FRESH = ['rewards', 'specialists', 'trophy'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chat = [];
 const bars = [];
@@ -59,13 +73,15 @@ const check = (name, ok, detail = '') => {
 };
 const note = s => console.log('      ' + s);
 let bot, pchat;
+/** True once a phase waits for the server to stop: the kick that follows is expected. */
+let serverGoing = false;
 function connect(name = NAME) {
   const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   b._client.on('action_bar', p => {
     try { pchat = pchat || require('prismarine-chat')(b.registry); bars.push({ t: Date.now(), m: pchat.fromNotch(p.text).toString() }); } catch (e) { /* ignore */ }
   });
-  b.on('kicked', r => { console.log('KICKED', name, r); process.exit(2); });
+  b.on('kicked', r => { if (serverGoing) return; console.log('KICKED', name, r); process.exit(2); });
   bot = b;
   return new Promise(r => b.once('spawn', () => r(b)));
 }
@@ -284,7 +300,7 @@ async function track() {
   await openSkill('Fishing');
   await click(findSlot(/^Journal: /, 27, 35));
   await waitTitle(SCREEN('Fishing Journal'));
-  check('Before a cast: the water you look at, labelled a preview', /Where you fish: Rivers/.test(slotName(2)) && /preview/.test(flat(2)), slotName(2) + ' / ' + flat(2));
+  check('Before a cast: the water you look at, labelled a preview', /Where you fish: Rivers/.test(slotName(2)) && /preview/.test(flat(2)) && !/Open water/.test(flat(2)), slotName(2) + ' / ' + flat(2));
   const trout = findSlot(/Goldfin Trout/);
   await click(trout);
   check('Clicking a species tracks it', /★ Tracked: Goldfin Trout/.test(slotName(6)), slotName(6));
@@ -318,8 +334,20 @@ async function track() {
   await click(findSlot(/^Journal: /, 27, 35));
   await waitTitle(SCREEN('Fishing Journal'));
   check('With a cast out: where your bobber floats', /Where you fish: Rivers/.test(slotName(2)) && /where your bobber floats/.test(flat(2)) && /your bobber: Rivers/.test(flat(6)), flat(2) + ' / ' + flat(6));
+  check('...and whether it floats in open water (vanilla\'s treasure rule)', /Open water: yes/.test(flat(2)), flat(2));
+  await click(17); await click(47); await click(47); // Treasure, then All -> Undiscovered -> Available here
+  const tre = [19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34].map(slotName).filter(n => n && !/Nothing to show/.test(n));
+  check('"Available here" on Treasure with the bobber in open water: what can come (Fishing 30: the level-25 treasure)', tre.length === 2, tre.join(', ') || flat(31));
   await closeAny();
   await reelIn();
+  // Without a bobber, treasure can't be told: vanilla decides open water at the bobber.
+  await stand();
+  await openSkill('Fishing');
+  await click(findSlot(/^Journal: /, 27, 35));
+  await waitTitle(SCREEN('Fishing Journal'));
+  await click(17); await click(47); await click(47);
+  check('"Available here" on Treasure with only a preview: cast to check, nothing claimed', /Nothing to show/.test(slotName(31)) && /open water around/.test(flat(31)), slotName(31) + ' / ' + flat(31));
+  await closeAny();
   // Cast hint: once per verdict.
   check('The cast hint said the tracked species can bite here', hint1.some(m => /can bite here/.test(m)), hint1.join(' / ') || 'no hint');
   let t = Date.now();
@@ -386,7 +414,9 @@ async function summary() {
   } catch (e) { note('the bot could not catch with the window open (' + e.message + '): FishingJournalTest covers that case'); }
   check('The screen stayed open during that catch', SCREEN('New discoveries').test(title()), title());
   const before = await summaryDump();
-  await click(51, 900);
+  // Two quick clicks: the second lands on the redrawn screen, which shows the catch made meanwhile: it is not taken.
+  Promise.resolve(bot.clickWindow(51, 0, 0)).catch(() => {}); await sleep(60);
+  Promise.resolve(bot.clickWindow(51, 0, 0)).catch(() => {}); await sleep(900);
   const after = await summaryDump();
   if (extra) check('Mark as read takes off what the screen showed: the catch made while it was open stays unread', after && after.catches === before.catches - s1.catches && after.catches >= 1,
     `shown ${s1.catches}, before ${before && before.catches}, after ${after && after.catches}`);
@@ -400,6 +430,14 @@ async function summary() {
   for (let i = 0; i < 2; i++) await catchOne();
   const c1 = await summaryDump();
   check('Creative fishing adds nothing to the summary', c1 && c0 && c1.catches === c0.catches && c1.xp === c0.xp, `${JSON.stringify(c0)} -> ${JSON.stringify(c1)}`);
+  await stand();
+  await openSkill('Fishing');
+  await click(findSlot(/^Journal: /, 27, 35));
+  await waitTitle(SCREEN('Fishing Journal'));
+  check('The journal in creative says only vanilla fish bite there', /Creative or spectator: vanilla fishing/.test(flat(2)), flat(2));
+  await click(47); await click(47);
+  check('...and "Available here" lists nothing, saying why', /Nothing to show/.test(slotName(31)) && /Creative or spectator/.test(flat(31)), slotName(31) + ' / ' + flat(31));
+  await closeAny();
   await cmd('/gamemode survival', 300);
 }
 
@@ -817,9 +855,28 @@ async function bait() {
   const s1 = await summaryDump();
   check('A refused catch: no catch counted, the bait still on the line', s1 && s0 && s1.catches === s0.catches && g.held === 'grub_bait' && baitIn(g) === 10, g.raw + ' ' + JSON.stringify(s1));
   await cmd('/testnocatch off', 400);
+  const s2 = await summaryDump();
   await reelIn(); await sleep(600);
   g = await gear();
-  check('...and when the cast ends, it goes back', !g.held && baitIn(g) === 11, g.raw);
+  const s3 = await summaryDump();
+  const bitFirst = !!(s2 && s3 && s3.catches > s2.catches); // a new bite before the reel-in: that catch used it, rightly
+  check('...and when the cast ends, it goes back', !g.held && baitIn(g) === (bitFirst ? 10 : 11), g.raw + (bitFirst ? ' (a fish bit first: its catch used it)' : ''));
+  if (bitFirst) await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);
+  // A reel-in another plugin refuses (CerbTestProtect's /testnoreel) keeps the bobber out: the cast and its bait go on.
+  const sA = await summaryDump();
+  await stand(); await castOnly();
+  await cmd(`/testnoreel ${NAME}`, 400);
+  await reelIn(); await sleep(700);
+  g = await gear();
+  const stillHeld = g.held === 'grub_bait';
+  await cmd('/testnoreel off', 400);
+  await reelIn(); await sleep(800);
+  g = await gear();
+  const sB = await summaryDump();
+  const bitMeanwhile = !!(sA && sB && sB.catches > sA.catches); // a bite before the last reel-in: a catch used it
+  check('A refused reel-in: the cast goes on with its bait; the next reel-in ends it', stillHeld && !g.held && baitIn(g) === (bitMeanwhile ? 10 : 11),
+    `held after the refused reel-in: ${stillHeld}; ${g.raw}${bitMeanwhile ? ' (a catch meanwhile)' : ''}`);
+  if (bitMeanwhile) await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);
   // Logging out with bait on the line: it goes back.
   await castOnly();
   g = await gear();
@@ -881,16 +938,28 @@ async function bait() {
   g = await gear();
   check('Restocking: the empty slot refills with the same bait from the inventory', g.restock && baitIn(g) === 5 && carry('Grub Bait') === 0, `${g.raw}; carried ${carry('Grub Bait')}`);
   await openEquipment(); await click(41); await closeAny();             // restock off
-  // A held bait with no room to go back: handed over as an item (never hidden in a locked slot).
-  await castOnly();
-  g = await gear();
-  const heldNow = g.held;
-  await openBag(); await click(20); await closeAny();                  // take out what's left in slot 1
-  await cmd(`/cerb fish bait ${NAME} chum 2`, 600);                     // slot 1 now holds chum
-  const grub0 = carry('Grub Bait');
-  await reelIn(); await sleep(800);
-  g = await gear();
-  check('No room in the open slots: the held bait comes back as an item', heldNow === 'grub_bait' && carry('Grub Bait') === grub0 + 1 && !g.bag[1] && !g.bag[2], `${g.raw}; grub ${grub0} -> ${carry('Grub Bait')}`);
+  // A held bait with no room to go back: handed over as an item (never hidden in a locked slot). A fish that bites
+  // before the reel-in makes it a catch, which rightly uses the bait: then the scenario runs again.
+  let heldNow = null, grub0 = 0, grubAfter = 0;
+  for (let t = 0; t < 3; t++) {
+    const before = await summaryDump();
+    await stand(); await castOnly();
+    g = await gear();
+    heldNow = g.held;
+    if (baitIn(g, 1) > 0) { await openBag(); await click(20); await closeAny(); } // take out what's left in slot 1
+    await cmd(`/cerb fish bait ${NAME} chum 2`, 600);                   // slot 1 now holds chum
+    grub0 = carry('Grub Bait');
+    await reelIn(); await sleep(800);
+    g = await gear();
+    grubAfter = carry('Grub Bait');
+    const after = await summaryDump();
+    if (!(before && after && after.catches > before.catches)) break;
+    note('a fish bit before the reel-in (its catch used the bait): again');
+    await openBag(); await click(20); await closeAny();                // the chum out
+    await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);
+  }
+  check('No room in the open slots: the held bait comes back as an item', heldNow === 'grub_bait' && grubAfter === grub0 + 1 && !g.bag[1] && !g.bag[2],
+    `held ${heldNow}; ${g.raw}; grub ${grub0} -> ${grubAfter}`);
   // Bag screen: number keys and shift-clicks never move items into or out of the bag by themselves.
   await openBag();
   const bag0 = (await gear()).raw;
@@ -901,11 +970,38 @@ async function bait() {
   check('Number keys and shift-clicks on the bag screen move nothing', (await gear()).raw.replace(/held: [^·]*/, '') === bag0.replace(/held: [^·]*/, '') && carry('Grub Bait') === grub0 + 1,
     (await gear()).raw);
   await openBag(); await click(20); await closeAny();
+  // A cast that took a slot's last bait: an empty end puts it back in that slot, never in one the preset skips.
+  await setLevel('Fishing', 20);
+  await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600);                 // slot 1
+  await cmd(`/cerb fish bait ${NAME} wayfarers_bait 1`, 600);            // slot 2
+  await openBag(); await click(20); await closeAny();                  // slot 1 emptied
+  await openEquipment(); await click(13); await closeAny();           // Treasure skips slot 1
+  let tookLast = false;
+  for (let t = 0; t < 3; t++) {
+    const before = await summaryDump();
+    await stand(); await castOnly();
+    g = await gear();
+    tookLast = g.held === 'wayfarers_bait' && !g.bag[1];
+    await reelIn(); await sleep(800);
+    g = await gear();
+    const after = await summaryDump();
+    if (!(before && after && after.catches > before.catches)) break;
+    note('a fish bit before the reel-in (its catch used the bait): again');
+    await cmd(`/cerb fish bait ${NAME} grub_bait 1`, 600); await cmd(`/cerb fish bait ${NAME} wayfarers_bait 1`, 600);
+    await openBag(); await click(20); await closeAny();
+  }
+  check('The last bait of slot 2, held and not used: back in slot 2, slot 1 left empty', tookLast && g.bag[1] && g.bag[1].bait === 'wayfarers_bait' && g.bag[1].n === 1 && !g.bag[0], g.raw);
+  await openEquipment(); await click(11); await closeAny();
+  await openBag(); await click(22); await closeAny();
+  await setLevel('Fishing', 1);
 }
 
 async function reel() {
   await arena(300, 'river');
   await survival(50);
+  const owns = (await gear()).owned.includes('auto_reel');
+  const reelOn = await cmd('/fishing reel on', 800);
+  if (!owns) check('"/fishing reel on" before the reel is fitted says it does nothing yet', !!saw(/does nothing until the Auto-hook Reel is fitted/, reelOn), sawAll(/reel/i, reelOn).join(' / '));
   await cmd('/give @s iron_ingot 3', 400); await cmd('/give @s tripwire_hook 1', 400); await cmd('/give @s redstone 1', 400);
   const made = await craftAt([it => it.name === 'iron_ingot', it => it.name === 'iron_ingot', it => it.name === 'iron_ingot', it => it.name === 'tripwire_hook', it => it.name === 'redstone']);
   check('3 iron ingots, a tripwire hook and redstone: an Auto-hook Reel', /Auto-hook Reel/.test(made) && carry('Auto-hook Reel') === 1, made);
@@ -1166,7 +1262,7 @@ async function specialists() {
   await stand();
   await openSkill('Fishing');
   const eq = await waitSlot(/^Equipment: /, 27, 35);
-  check('Everything here caught: the Equipment tile says the odds are normal', /Nothing new can bite in Rivers now: normal odds/.test(flat(eq)), flat(eq));
+  check('Everything here caught: the Equipment tile says the odds are normal (a preview of the water you look at)', /Nothing new can bite in Rivers now: normal odds \(preview: the water you look at\)/.test(flat(eq)), flat(eq));
   await closeAny();
   // A catch's own HUD line can hold the bar at that moment: the hint then waits for a later bite there.
   let t = Date.now(), said = false, bites = 0;
@@ -1189,6 +1285,25 @@ async function specialists() {
   const jl = chat.slice(await cmd(`/cerb fish journal ${NAME}`, 1300)).join(' ');
   const best = Number((jl.match(/Goldfin Trout · \w+ · best ([\d.]+) kg/) || [])[1]);
   check('With the hook: catches as usual, weights in the species\' range (0.5-4.5 kg)', ok >= 3 && best >= 0.5 && best <= 4.5, `${ok} catches, best ${best} kg`);
+  // A Float granted again while the Hook is in Discoveries: it stays out (one specialist; the player chose the Hook).
+  await cmd(`/cerb fish part ${NAME} surveyors_float remove`, 500);
+  await cmd(`/cerb fish part ${NAME} surveyors_float`, 500);
+  const g2 = await gear();
+  check('A specialist granted where one is already in a preset stays out of it', g2.owned.includes('surveyors_float') && g2.presets[0].parts.includes('specimen_hook') && !g2.presets[0].parts.includes('surveyors_float'), g2.raw);
+  // Next levels at Fishing 24 count the Rime hook (a Lure part, which opens at 25) only at 25.
+  await setLevel('Fishing', 24);
+  await cmd(`/cerb fish part ${NAME} rime_hook`, 500);
+  const lureAt25 = async () => {
+    await openSkill('Fishing');
+    const m = flat(25).match(/At level 25 .*?Lure speed: \+([\d.]+)%/);
+    await closeAny();
+    return m ? Number(m[1]) : NaN;
+  };
+  const withHook = await lureAt25();
+  await cmd(`/cerb fish part ${NAME} rime_hook remove`, 500);
+  const withoutHook = await lureAt25();
+  // +4% raw; the engine's diminishing returns make it about +3% here. Before the fix both read the same.
+  check('"Next levels" at Fishing 24: level 25 counts the Lure part that opens there', withHook - withoutHook > 1, `with ${withHook}%, without ${withoutHook}%`);
 }
 
 async function trophy() {
@@ -1251,22 +1366,86 @@ async function trophy() {
   await closeAny();
 }
 
-const PHASES = { pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, oldstate, legacy };
+// ── restarts and crashes (the caller stops or kills the server on "READY", then runs the -check phase) ──
+const STATE = process.env.STATE || path.join(__dirname, '.fishgear-state.json');
+async function holdUntilServerGoes() {
+  serverGoing = true;
+  console.log('READY');
+  await new Promise(res => { bot.once('end', res); setTimeout(res, 240000); });
+}
+const setup = g => JSON.stringify({ owned: g.owned, presets: g.presets.map(p => [p.active, p.name, p.parts, p.slots]), reel: g.reel, restock: g.restock });
+/** A setup worth keeping, with bait held on the line when the server stops cleanly. */
+async function restartSet() {
+  await arena(660, 'river');
+  await survival(25);
+  await cmd(`/cerb fish part ${NAME} scaled_grip`, 500);
+  await cmd(`/cerb fish part ${NAME} rime_hook`, 500);
+  await cmd('/fishing setup rename 3 Deep Water', 600);
+  await cmd('/fishing setup 2', 600);
+  await cmd('/fishing reel off', 500); await cmd('/fishing restock on', 500);
+  await cmd(`/cerb fish bait ${NAME} grub_bait 5`, 600); await cmd(`/cerb fish bait ${NAME} chum 3`, 600);
+  await stand(); await castOnly();
+  const g = await gear();
+  fs.writeFileSync(STATE, JSON.stringify({ setup: setup(g) }));
+  check('Before the stop: parts, a renamed preset, Treasure in use, switches, and one Grub Bait on the line',
+    g.held === 'grub_bait' && baitIn(g, 1) === 4 && baitIn(g, 2) === 3 && g.presets[2].name === 'Deep Water' && g.presets[1].active && !g.reel && g.restock
+    && g.owned.includes('scaled_grip') && g.owned.includes('rime_hook'), g.raw);
+  await holdUntilServerGoes();
+}
+async function restartCheck() {
+  const s = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+  await sleep(2500); // the join's own release runs first
+  const g = await gear();
+  check('After a clean stop: the same setup (parts, presets, names, the one in use, switches)', setup(g) === s.setup, `${s.setup} vs ${setup(g)}`);
+  check('...and the bait on the line is back in its slot, once', !g.held && baitIn(g, 1) === 5 && baitIn(g, 2) === 3, g.raw);
+}
+/** A crash mid-cast: the player's data was written with the bait held (CerbTestProtect's /testsave, as an autosave). */
+async function crashSet() {
+  await arena(660, 'river');
+  await survival(25, false); await hold(ROD);
+  await stand(); await castOnly();
+  const g = await gear();
+  fs.writeFileSync(STATE, JSON.stringify({ setup: setup(g) }));
+  check('A cast holds one bait', g.held === 'grub_bait' && baitIn(g, 1) === 4, g.raw);
+  const at = await cmd(`/testsave ${NAME}`, 1500);
+  check('...and the player\'s data was written with it (sandbox test plugin)', !!saw(/testsave: saved/, at), sawAll(/testsave|Unknown/, at).join(' / ') || 'no answer');
+  await holdUntilServerGoes();
+}
+async function crashCheck() {
+  const s = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+  await sleep(2500);
+  let g = await gear();
+  check('After a crash mid-cast: the held bait is back in the bag, once; the setup unchanged', !g.held && baitIn(g, 1) === 5 && baitIn(g, 2) === 3 && setup(g) === s.setup, g.raw);
+  bot.quit(); await sleep(3500); await connect(); await sleep(3000);
+  g = await gear();
+  check('...and a second join gives nothing more', !g.held && baitIn(g, 1) === 5 && baitIn(g, 2) === 3, g.raw);
+}
+
+const PHASES = { pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, oldstate, legacy,
+  'restart-set': restartSet, 'restart-check': restartCheck, 'crash-set': crashSet, 'crash-check': crashCheck };
 const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel', 'rewards', 'specialists', 'trophy'];
 
 connect().then(async () => {
   await sleep(3500);
   const list = phaseArg === 'all' ? ALL : phaseArg.split(',');
+  const base = NAME;
   for (const ph of list) {
     if (!PHASES[ph]) { console.log('Unknown phase ' + ph); results.push(false); continue; }
-    console.log(`── ${ph} ──`);
+    if (list.length > 1 && FRESH.includes(ph)) { // a new character for it: op it, then rejoin under its name
+      const fresh = (base.slice(0, 13) + ph.slice(0, 3)).slice(0, 16);
+      try { await closeAny(); } catch (e) { /* none open */ }
+      await cmd('/op ' + fresh, 800);
+      bot.quit(); await sleep(3500);
+      NAME = fresh; await connect(fresh); await sleep(3000);
+    }
+    console.log(`── ${ph} ──${NAME !== base ? ' (' + NAME + ')' : ''}`);
     try { await PHASES[ph](); } catch (e) { console.log('SCRIPT ERROR in ' + ph, e.stack); results.push(false); failed.push(ph + ' (script error)'); }
   }
   try { await closeAny(); await cmd('/gamemode creative', 300); } catch (e) { /* gone */ }
   const bad = results.filter(r => !r).length;
   console.log(`\n${results.length - bad}/${results.length} passed`);
   if (failed.length) console.log('FAILED: ' + failed.join(' | '));
-  bot.quit();
+  try { bot.quit(); } catch (e) { /* the server is gone */ }
   await sleep(500); process.exit(bad ? 1 : 0);
 });
 setTimeout(() => { console.log('TIMEOUT'); process.exit(3); }, 3600000);

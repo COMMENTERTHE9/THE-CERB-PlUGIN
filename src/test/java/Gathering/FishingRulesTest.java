@@ -314,5 +314,20 @@ class FishingRulesTest {
         assertEquals("ok", night);
         assertEquals(night, nightAgain, "rain or another river biome changes nothing for this species");
         assertNotEquals(day, night);
+        String at10 = Fishing.verdict(r.checks(trout, at("river", "river", true, false), 10));
+        String at11 = Fishing.verdict(r.checks(trout, at("river", "river", true, false), 11));
+        assertEquals(at10, at11, "a level-up that still falls short doesn't repeat the hint");
+        assertEquals("ok", Fishing.verdict(r.checks(trout, at("river", "river", true, false), 15)));
+    }
+
+    @Test
+    void theTrackingLineNeverSaysCanBiteWhereTheWaterIsUnknown() throws Exception {
+        FishingRules r = shipped().fishing();
+        FishingRules.Species trout = r.speciesById("brook_char");
+        String known = Fishing.trackingLine(r, trout, r.checks(trout, at("river", "river", true, false), 30));
+        assertTrue(known.contains("can bite here"), known);
+        String unknown = Fishing.trackingLine(r, trout, r.checks(trout, at(null, "void", true, false), 30));
+        assertFalse(unknown.contains("can bite"), unknown);
+        assertTrue(unknown.contains("isn't one of the fishing waters"), unknown);
     }
 }

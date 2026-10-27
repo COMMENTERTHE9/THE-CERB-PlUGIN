@@ -88,6 +88,15 @@ class TackleRulesTest {
     }
 
     @Test
+    void onlyOneSpecialistCountsInASetup() throws Exception {
+        TackleRules t = shipped().tackle();
+        Set<String> owned = Set.of("specimen_hook", "surveyors_float", "scaled_grip");
+        Set<String> installed = new LinkedHashSet<>(List.of("specimen_hook", "scaled_grip", "surveyors_float"));
+        assertEquals(Set.of("specimen_hook", "scaled_grip"), t.active(installed, owned, 100), "the first specialist; a second never counts");
+        assertEquals("specimen_hook", t.specialist(t.active(installed, owned, 100)).id());
+    }
+
+    @Test
     void anOldRodAndTheSetupCountEachUpgradeOnce() throws Exception {
         TackleRules t = shipped().tackle();
         Set<String> active = Set.of("scaled_grip", "resin_line");

@@ -220,6 +220,9 @@ public final class SkillDetailMenu extends PlayerMenu {
 
     java.util.Set<Long> shownUnreadAt() { return shownUnreadAt; }
 
+    /** True within about one round trip after this page was redrawn (see {@link PlayerMenu#justDrawn}). */
+    boolean redrawnJustNow(Player p) { return justDrawn(p); }
+
     private ItemStack attributeTile(AttributeService svc, AttributeRules rules, UUID id, SkillDef d, SkillView.Progress pr) {
         List<AttributeRules.SkillWeight> weights = SkillView.weights(rules, d.name());
         List<AttributeRules.StatWeight> speed = SkillView.statWeights(rules, d.name());

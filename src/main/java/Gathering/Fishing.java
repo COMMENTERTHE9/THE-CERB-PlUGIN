@@ -178,11 +178,17 @@ public final class Fishing implements Listener {
 
     /** {@code p}'s journal, read from the player once and kept while they are online. Player's thread. */
     public FishingJournal journal(Player p) {
-        return journals.computeIfAbsent(p.getUniqueId(),
-                id -> FishingJournal.decode(p.getPersistentDataContainer().get(JOURNAL, PersistentDataType.STRING)));
+        return journals.computeIfAbsent(p.getUniqueId(), id -> {
+            FishingJournal j = FishingJournal.decode(p.getPersistentDataContainer().get(JOURNAL, PersistentDataType.STRING));
+            if (j.readOnly()) plugin.getLogger().warning("[Fishing] " + p.getName() + "'s fishing journal was saved by a newer version; "
+                    + "it is kept as it is and nothing is recorded in it until that version runs again.");
+            return j;
+        });
     }
 
-    private static void save(Player p, FishingJournal j) {
+    /** Write the journal onto the player (never over one this version can't read). Player's thread. */
+    static void save(Player p, FishingJournal j) {
+        if (j.readOnly()) return;
         p.getPersistentDataContainer().set(JOURNAL, PersistentDataType.STRING, j.encode());
     }
 
@@ -194,8 +200,11 @@ public final class Fishing implements Listener {
     /** Where "here" is for the journal: the bobber, the water the player looked at, or not known (docs/design/FISHING_EQUIPMENT.md §3). */
     public enum PlaceSource { BOBBER, LOOKING, UNKNOWN }
 
-    /** The moment "here" (time and weather are known anywhere in the world; the water only from a bobber or a look). */
-    public record Place(FishingRules.Moment moment, PlaceSource source) {}
+    /**
+     * The moment "here" (time and weather are known anywhere in the world; the water only from a bobber or a look), and
+     * for a bobber whether it floats in open water (vanilla's treasure rule; null when there is no bobber).
+     */
+    public record Place(FishingRules.Moment moment, PlaceSource source, Boolean openWater) {}
 
     /**
      * Where {@code p} fishes now: their bobber in the water when a cast is out, else the water they look at within 30 blocks
@@ -206,16 +215,16 @@ public final class Fishing implements Listener {
         FishHook hook = p.getFishHook();
         if (hook != null && hook.isValid() && Bukkit.isOwnedByCurrentRegion(hook) && hook.getState() == FishHook.HookState.BOBBING) {
             FishingRules.Moment m = moment(r, hook.getLocation());
-            if (m.water() != null) return new Place(m, PlaceSource.BOBBER);
+            if (m.water() != null) return new Place(m, PlaceSource.BOBBER, hook.isInOpenWater());
         }
         Block b = p.getTargetBlockExact(30, org.bukkit.FluidCollisionMode.ALWAYS);
         if (b != null && b.getType() == Material.WATER && Bukkit.isOwnedByCurrentRegion(b.getLocation())) {
             FishingRules.Moment m = moment(r, b.getLocation().add(0.5, 0.9, 0.5));
-            if (m.water() != null) return new Place(m, PlaceSource.LOOKING);
+            if (m.water() != null) return new Place(m, PlaceSource.LOOKING, null);
         }
         World w = p.getWorld();
         long t = w.getTime() % 24000;
-        return new Place(new FishingRules.Moment(null, null, t >= 13000 && t < 23000, w.hasStorm(), w.isThundering()), PlaceSource.UNKNOWN);
+        return new Place(new FishingRules.Moment(null, null, t >= 13000 && t < 23000, w.hasStorm(), w.isThundering()), PlaceSource.UNKNOWN, null);
     }
 
     /** The lure {@code p} chose to call next ({@code /fishing call}, the Fishing page), if they still have one and it is configured. */
@@ -363,10 +372,18 @@ public final class Fishing implements Listener {
                 + " now is in your journal · normal odds", 3500)) told.add(m.water());
     }
 
-    /** A short key for what the checks say (what changed decides whether the hint shows again). */
+    /**
+     * A short key for what the checks say (what changed decides whether the hint shows again). A missing level's "you: 31"
+     * is left out, so a level-up that still falls short doesn't repeat the hint.
+     */
     static String verdict(List<FishingRules.Check> checks) {
         StringBuilder sb = new StringBuilder();
-        for (FishingRules.Check c : checks) if (c.state() != FishingRules.CheckState.MET) sb.append(c.kind()).append(':').append(c.have()).append(';');
+        for (FishingRules.Check c : checks) {
+            if (c.state() == FishingRules.CheckState.MET) continue;
+            sb.append(c.kind()).append(':').append(c.state());
+            if (c.kind() != FishingRules.Need.LEVEL) sb.append('=').append(c.have());
+            sb.append(';');
+        }
         return sb.length() == 0 ? "ok" : sb.toString();
     }
 
@@ -375,7 +392,11 @@ public final class Fishing implements Listener {
         GatheringCatalog.ItemDef d = GatheringCatalog.current() == null ? null : GatheringCatalog.current().item(s.item());
         String name = s.rarity().color + (d == null ? s.id() : d.name());
         List<FishingRules.Check> missing = checks.stream().filter(c -> c.state() == FishingRules.CheckState.MISSING).toList();
-        if (missing.isEmpty()) return "§a★ " + name + " §acan bite here";
+        if (FishingRules.allMet(checks)) return "§a★ " + name + " §acan bite here";
+        if (missing.isEmpty()) { // nothing missing, but the water can't be told (no fishing water covers it): never "can bite"
+            FishingRules.Check u = checks.stream().filter(c -> c.state() == FishingRules.CheckState.UNKNOWN).findFirst().orElseThrow();
+            return "§7★ " + name + " §7needs §f" + u.need() + " §7(this water isn't one of the fishing waters)";
+        }
         FishingRules.Check first = missing.get(0);
         String need = switch (first.kind()) {
             case WATER -> "needs §f" + first.need() + " §7(you're at " + first.have() + ")";
@@ -617,6 +638,7 @@ public final class Fishing implements Listener {
             case FAILED_ATTEMPT -> { Cast c = casts.get(hook); if (c != null) c.biteLive = false; }
             case BITE -> { if (e.isCancelled()) { Cast c = casts.get(hook); if (c != null) c.biteLive = false; } }
             case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> {
+                if (e.isCancelled()) return; // another plugin kept the bobber out: the cast goes on, its bait too
                 casts.remove(hook);
                 outcomes.remove(hook);
                 castOf.remove(who, hook);
@@ -625,6 +647,9 @@ public final class Fishing implements Listener {
             default -> { }
         }
     }
+
+    /** Why a discovery pays no bonus while the journal can't be saved (the XP display says it, as every withheld XP does). */
+    static final String NO_BONUS_READ_ONLY = "bonus for discoveries · your fishing journal was saved by a newer plugin version";
 
     /** A catch that really happened (player's thread): XP, the journal, Fortune's extra fish, maybe an encounter, the bait. */
     private void pay(Player p, Outcome o, Item item, Cast c, FishHook hook) {
@@ -643,12 +668,14 @@ public final class Fishing implements Listener {
                 FishingJournal.Record rec = j.record(s.id(), o.kg());
                 line = s.rarity().color + "◆ " + name + " §7" + kg(o.kg());
                 milestone = rec == FishingJournal.Record.DISCOVERY || rec == FishingJournal.Record.PERSONAL_BEST;
-                if (rec == FishingJournal.Record.DISCOVERY) {
+                if (rec == FishingJournal.Record.DISCOVERY && !j.readOnly()) { // a journal that can't keep it pays no bonus
                     double bonus = r.xp().discovery(s.rarity());
                     xp += bonus;
                     discoveries.increment();
                     j.countDiscovery(s.id(), o.kg(), now);
                     discovered(p, name, s.rarity(), bonus, j, r, "species");
+                } else if (rec == FishingJournal.Record.DISCOVERY) {
+                    skills.xpWithheld(p, r.skill(), NO_BONUS_READ_ONLY);
                 } else if (rec == FishingJournal.Record.PERSONAL_BEST) {
                     j.countPersonalBest(s.id(), o.kg(), now);
                     if (s.rarity().ordinal() >= FishingRules.Rarity.UNCOMMON.ordinal()) line += " §6★ personal best";
@@ -660,10 +687,13 @@ public final class Fishing implements Listener {
                 String name = itemName(t.item());
                 line = t.rarity().color + "✦ Treasure: " + name;
                 if (j.record(t.id(), 0) == FishingJournal.Record.DISCOVERY) {
-                    double bonus = r.xp().discovery(t.rarity());
-                    xp += bonus;
-                    discoveries.increment();
-                    discovered(p, name, t.rarity(), bonus, j, r, "treasure");
+                    if (j.readOnly()) skills.xpWithheld(p, r.skill(), NO_BONUS_READ_ONLY);
+                    else {
+                        double bonus = r.xp().discovery(t.rarity());
+                        xp += bonus;
+                        discoveries.increment();
+                        discovered(p, name, t.rarity(), bonus, j, r, "treasure");
+                    }
                 }
             }
             default -> { }
@@ -750,7 +780,7 @@ public final class Fishing implements Listener {
 
     /** The encounter rolls after a catch: Something Stirs' first one, the sea-creature chance, the apex. True when one was banked. */
     private boolean lures(Player p, Outcome o, FishingJournal j, FishingRules r, Cast c) {
-        if (o.water() == null) return false;
+        if (o.water() == null || j.readOnly()) return false; // a journal that can't keep a lure banks none
         int level = o.level();
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         boolean force = o.force() != null && "lure".equals(o.force().kind());

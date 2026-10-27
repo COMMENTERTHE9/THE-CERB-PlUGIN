@@ -46,6 +46,8 @@ public final class FishingJournal {
     private final List<Notable> notable = new ArrayList<>();
     /** Parts of the save this version doesn't know (a later version's): written back as they were. */
     private final List<String> unknown = new ArrayList<>();
+    /** Saved by a later version this one can't read: kept as it is, never written over (see {@link #readOnly}). */
+    private boolean readOnly;
     private Active active;
     private String tracked;
     private long bestsSet;
@@ -285,16 +287,32 @@ public final class FishingJournal {
         }
     }
 
-    /** Read {@link #encode}'s text; anything unreadable is skipped (never an exception). Null or blank: an empty journal. */
+    /**
+     * True when the saved text came from a version this one can't read (another version marker): the journal is empty
+     * here and must never be written back over that text (Fishing skips its saves and discovery bonuses).
+     */
+    public boolean readOnly() { return readOnly; }
+
+    /**
+     * Read {@link #encode}'s text; anything unreadable is skipped (never an exception). Null or blank: an empty journal.
+     * Another version marker: an empty, {@link #readOnly} journal. Parts this version doesn't know are kept as they are;
+     * a known part may carry more fields than this version reads (a later version must change the marker to change one).
+     */
     public static FishingJournal decode(String text) {
         FishingJournal j = new FishingJournal();
         if (text == null || text.isBlank()) return j;
         String[] parts = text.split("\\|", -1);
-        if (parts.length == 0 || !parts[0].equals("1")) return j;
+        if (parts.length == 0 || !parts[0].equals("1")) { j.readOnly = true; return j; }
+        List<Notable> notes = new ArrayList<>();
         for (int i = 1; i < parts.length; i++) {
             String p = parts[i];
-            if (p.length() < 2 || p.charAt(1) != '=') continue;
-            String body = p.substring(2);
+            int eq = p.indexOf('=');
+            if (eq < 1) continue;
+            String body = p.substring(eq + 1);
+            if (eq != 1 || "scflatbrvn".indexOf(p.charAt(0)) < 0) { // a later version's part: kept
+                if (j.unknown.size() < 16 && p.length() <= 4096) j.unknown.add(p);
+                continue;
+            }
             switch (p.charAt(0)) {
                 case 's' -> {
                     for (String e : body.split(",")) {
@@ -339,7 +357,7 @@ public final class FishingJournal {
                 }
                 case 'v' -> {
                     String[] v = body.split(",");
-                    if (v.length == 5) {
+                    if (v.length >= 5) {
                         j.sumCatches = Math.max(0, parseLong(v[0]));
                         j.sumXp = Math.max(0, parseLong(v[1]));
                         j.sumSpecies = (int) Math.max(0, Math.min(Integer.MAX_VALUE, parseLong(v[2])));
@@ -350,20 +368,20 @@ public final class FishingJournal {
                 case 'n' -> {
                     for (String e : body.split(",")) {
                         String[] f = e.split(":", -1);
-                        if (f.length != 5 || !(f[0].equals("D") || f[0].equals("P")) || !FishingRules.ID.matcher(f[1]).matches()) continue;
+                        if (f.length < 5 || !(f[0].equals("D") || f[0].equals("P")) || !FishingRules.ID.matcher(f[1]).matches()) continue;
                         try {
                             double kg = Double.parseDouble(f[2]);
                             long at = Long.parseLong(f[3]);
                             if (!Double.isFinite(kg) || kg < 0) continue;
-                            if (j.notable.size() < MAX_NOTABLE) {
-                                j.notable.add(new Notable(f[0].equals("D"), f[1], kg, at, f[4].contains("u"), f[4].contains("t")));
-                            }
+                            notes.add(new Notable(f[0].equals("D"), f[1], kg, at, f[4].contains("u"), f[4].contains("t")));
                         } catch (NumberFormatException ignored) { /* skipped */ }
                     }
                 }
-                default -> { if (j.unknown.size() < 16 && p.length() <= 4096) j.unknown.add(p); } // a later version's part: kept
+                default -> { }
             }
         }
+        // The newest MAX_NOTABLE (the list is oldest first).
+        j.notable.addAll(notes.subList(Math.max(0, notes.size() - MAX_NOTABLE), notes.size()));
         return j;
     }
 

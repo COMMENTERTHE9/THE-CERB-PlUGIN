@@ -38,6 +38,9 @@ public final class FishingEquipmentMenu extends PlayerMenu {
 
     @Override public String title() { return PlayerTheme.title("Fishing Equipment"); }
 
+    /** Its buttons act at once: always its own window, so a click aimed at the screen before never lands here. */
+    @Override public boolean reuseWindow() { return false; }
+
     @Override protected Material headerGlass() { return Material.LIGHT_BLUE_STAINED_GLASS_PANE; }
 
     @Override
@@ -90,7 +93,7 @@ public final class FishingEquipmentMenu extends PlayerMenu {
             ItemStack tile = Ui.glow(Ui.item(on ? Material.FISHING_ROD : Material.STICK, (on ? ChatColor.AQUA : ChatColor.YELLOW) + pr.name(), l.build()), on);
             v.button(PRESET_SLOTS[i], tile, c -> {
                 Tackle tt = plugin.getTackle();
-                if (tt == null) return;
+                if (tt == null || justDrawn(c.player())) return;
                 if (c.isShift()) { menus.close(c.player()); tt.askRename(c.player(), idx); return; }
                 say(c.player(), tt.activate(c.player(), idx));
                 menus.refresh(c.player());
@@ -154,6 +157,7 @@ public final class FishingEquipmentMenu extends PlayerMenu {
                     .text("still cast. Never a Sneak-cast call.")
                     .raw(works ? ChatColor.GREEN + "In use in " + g.activePreset().name() : ChatColor.GRAY + "Not in use now (Reel, Fishing " + catUnlock(t, "reel") + ")")
                     .hint("Click to turn " + (on ? "off" : "on")).build()), c -> {
+                if (justDrawn(c.player())) return;
                 say(c.player(), plugin.getTackle().autoReel(c.player(), !on));
                 menus.refresh(c.player());
             });
@@ -164,6 +168,7 @@ public final class FishingEquipmentMenu extends PlayerMenu {
                 .text("bait comes from your inventory.")
                 .text("Never another bait, never a chest.")
                 .hint("Click to turn " + (restock ? "off" : "on")).build()), c -> {
+            if (justDrawn(c.player())) return;
             say(c.player(), plugin.getTackle().restock(c.player(), !restock));
             menus.refresh(c.player());
         });

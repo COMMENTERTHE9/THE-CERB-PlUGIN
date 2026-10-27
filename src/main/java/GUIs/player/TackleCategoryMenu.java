@@ -41,6 +41,9 @@ public final class TackleCategoryMenu extends PlayerMenu {
 
     @Override protected Material headerGlass() { return Material.LIGHT_BLUE_STAINED_GLASS_PANE; }
 
+    /** Its buttons act at once (a part in or out): always its own window, so a click aimed at the screen before never lands here. */
+    @Override public boolean reuseWindow() { return false; }
+
     @Override
     protected void content(MenuView v) {
         Player p = v.viewer();
@@ -69,7 +72,7 @@ public final class TackleCategoryMenu extends PlayerMenu {
         for (TackleRules.Part part : t.parts().values()) if (part.category().equals(category)) parts.add(part);
         for (int i = 0; i < parts.size() && i < SLOTS.length; i++) {
             TackleRules.Part part = parts.get(i);
-            v.button(SLOTS[i], tile(tk, t, g, p, part, open, level), c -> clicked(c.player(), part));
+            v.button(SLOTS[i], tile(tk, t, g, p, part, open, level), c -> { if (!justDrawn(c.player())) clicked(c.player(), part); });
         }
         if (parts.isEmpty()) v.set(31, Ui.item(Material.GRAY_DYE, ChatColor.GRAY + "No parts in this category yet", List.of()));
         v.refreshButton();
@@ -83,6 +86,9 @@ public final class TackleCategoryMenu extends PlayerMenu {
         l.raw(effect(part, c));
         if (owned) l.raw(in ? ChatColor.GREEN + "✔ In " + g.activePreset().name() : ChatColor.GRAY + "Owned, not in " + g.activePreset().name());
         else l.raw(ChatColor.DARK_GRAY + "✘ Not owned yet");
+        if (in && open && part.specialist() && !tk.active(p).contains(part.id())) {
+            l.raw(ChatColor.YELLOW + "Not counting: another specialist is in it (one at a time)");
+        }
         if (!open) l.raw(ChatColor.RED + "Waits until Fishing " + t.category(part.category()).unlock());
         if (owned) {
             l.gap().text(in ? "Taking it out:" : "Putting it in:");

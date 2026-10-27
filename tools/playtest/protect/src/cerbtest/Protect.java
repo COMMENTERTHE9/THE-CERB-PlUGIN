@@ -20,12 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code /testsave <player>} writes a player's data to disk now (Folia has no save-all; fishing.js crash-set uses it).
  * {@code /testnocatch <player>|off} refuses that player's catches (PlayerFishEvent CAUGHT_FISH, cancelled after Cerberus
  * decides), the way a minigame or claim plugin may (fishgear.js bait: a refused catch uses no bait).
+ * {@code /testnoreel <player>|off} refuses that player's empty reel-ins (REEL_IN): the bobber stays out (fishgear.js bait).
  */
 public final class Protect extends JavaPlugin implements Listener {
 
     private volatile int[] box;
     private volatile int refused;
     private final Set<UUID> noCatch = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> noReel = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -41,6 +43,15 @@ public final class Protect extends JavaPlugin implements Listener {
             if (p == null) return false;
             noCatch.add(p.getUniqueId());
             sender.sendMessage("testnocatch: refusing " + p.getName() + "'s catches");
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("testnoreel")) {
+            if (args.length != 1) return false;
+            if (args[0].equalsIgnoreCase("off")) { noReel.clear(); sender.sendMessage("testnoreel: off"); return true; }
+            org.bukkit.entity.Player p = getServer().getPlayerExact(args[0]);
+            if (p == null) return false;
+            noReel.add(p.getUniqueId());
+            sender.sendMessage("testnoreel: refusing " + p.getName() + "'s reel-ins");
             return true;
         }
         if (command.getName().equalsIgnoreCase("testsave")) {
@@ -81,5 +92,6 @@ public final class Protect extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onFish(PlayerFishEvent e) {
         if (e.getState() == PlayerFishEvent.State.CAUGHT_FISH && noCatch.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
+        if (e.getState() == PlayerFishEvent.State.REEL_IN && noReel.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
     }
 }

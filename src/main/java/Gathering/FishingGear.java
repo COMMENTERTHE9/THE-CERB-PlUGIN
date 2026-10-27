@@ -182,9 +182,9 @@ public final class FishingGear {
 
     /**
      * The cast ended without using the held bait ({@code hook}, or any when null: a restart): it goes back to its slot if
-     * that still holds the same bait, else to an open slot (the first {@code open}) with the same bait, else to an empty
-     * open slot. Returns the bait when it could go nowhere in the bag (the caller hands it over as an item), "" when it
-     * went back, null when nothing was held.
+     * that still holds the same bait or is empty (the hold took its last one; the slot was open then), else to an open
+     * slot (the first {@code open}) with the same bait, else to an empty open slot. Returns the bait when it could go
+     * nowhere in the bag (the caller hands it over as an item), "" when it went back, null when nothing was held.
      */
     public String release(UUID hook, int open) {
         if (held == null || (hook != null && !held.hook().equals(hook))) return null;
@@ -192,6 +192,7 @@ public final class FishingGear {
         held = null;
         int n = Math.max(1, Math.min(SLOTS, open));
         if (back(h.slot(), h.bait())) return "";
+        if (bag[h.slot()].empty()) { bag[h.slot()] = new Slot(h.bait(), 1); return ""; }
         for (int i = 0; i < n; i++) if (back(i, h.bait())) return "";
         for (int i = 0; i < n; i++) if (bag[i].empty()) { bag[i] = new Slot(h.bait(), 1); return ""; }
         return h.bait();
