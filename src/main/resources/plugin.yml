@@ -44,6 +44,10 @@ commands:
     description: Your herbs, rare reagents and Herbalism's techniques; the Herbarium.
     usage: /<command> [herbs | rare]
     aliases: [herbs]
+  alchemy:
+    description: The tier you brew at, your running elixir and draught, and the brews list.
+    usage: /<command> [brews]
+    aliases: [brew]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

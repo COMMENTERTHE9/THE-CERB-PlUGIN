@@ -210,10 +210,19 @@ public final class Upgrades implements Listener {
         if (guarded(second) || (guarded(first) && second != null && !second.getType().isAir())) e.setResult(null);
     }
 
-    /** ...nor a brewing ingredient (a turtle scute brews the Turtle Master): the stand brews nothing with it. */
+    /** Alchemy's own reagents (Herbalism's rare reagents in its brews): the one brewing use a Cerberus item has. */
+    private volatile java.util.function.Predicate<ItemStack> ownBrew = it -> false;
+
+    public void setOwnBrew(java.util.function.Predicate<ItemStack> ownBrew) { this.ownBrew = ownBrew; }
+
+    /**
+     * ...nor a brewing ingredient (a turtle scute brews the Turtle Master): the stand brews nothing with it, except an
+     * Alchemy reagent in Alchemy's own brews (docs/design/ALCHEMY.md §6).
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBrew(BrewEvent e) {
-        if (guarded(e.getContents().getIngredient())) e.setCancelled(true);
+        ItemStack ingredient = e.getContents().getIngredient();
+        if (guarded(ingredient) && !ownBrew.test(ingredient)) e.setCancelled(true);
     }
 
     /** ...nor smelted (heartwood would make charcoal): it stays in the furnace. */

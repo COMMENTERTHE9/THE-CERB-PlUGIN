@@ -176,24 +176,7 @@ public final class CookingRules {
             if (recipe.isEmpty() || recipe.size() > 9) why.add("a recipe takes 1-9 ingredients (has " + recipe.size() + ")");
             int minutes = m.getInt("minutes", 10);
             if (minutes < 1 || minutes > 240) why.add("minutes " + minutes + " outside 1-240");
-            List<Effect> effects = new ArrayList<>();
-            for (Map<?, ?> e : m.getMapList("effects")) {
-                Object a = e.get("attribute"), st = e.get("stat"), am = e.get("amount"), y = e.get("yield");
-                double amount = am instanceof Number n ? n.doubleValue() : Double.NaN;
-                if (a != null) {
-                    Attribute at = Attribute.parse(String.valueOf(a));
-                    Yield yy = y == null ? null : Yield.parse(String.valueOf(y));
-                    if (at == null) why.add("unknown attribute " + a);
-                    else if (y != null && (yy == null || at != Attribute.FORTUNE)) why.add("yield " + y + " (only fortune takes one: ore, wood, fish, crops)");
-                    else if (!(amount > 0 && amount <= 100)) why.add(a + " amount " + am + " outside (0, 100]");
-                    else effects.add(new Effect(at, null, yy, amount));
-                } else if (st != null) {
-                    Stat stat = Stat.parse(String.valueOf(st));
-                    if (stat == null || !stat.isSecondary()) why.add("stat " + st + " is not a speed stat");
-                    else if (!(amount > 0 && amount <= 0.5)) why.add(st + " amount " + am + " outside (0, 0.5]");
-                    else effects.add(new Effect(null, stat, null, amount));
-                } else why.add("an effect needs an attribute or a stat: " + e);
-            }
+            List<Effect> effects = effects(m.getMapList("effects"), why);
             Restore restore = null;
             if (m.isConfigurationSection("restore")) {
                 double share = m.getDouble("restore.share", 0);
@@ -210,6 +193,29 @@ public final class CookingRules {
                 Collections.unmodifiableMap(meals));
     }
 
+    /** A meal's or a brew's effects: { attribute, amount } (fortune may add a yield) or { stat, amount }; what's wrong goes to {@code why}. */
+    static List<Effect> effects(List<Map<?, ?>> written, List<String> why) {
+        List<Effect> effects = new ArrayList<>();
+        for (Map<?, ?> e : written) {
+            Object a = e.get("attribute"), st = e.get("stat"), am = e.get("amount"), y = e.get("yield");
+            double amount = am instanceof Number n ? n.doubleValue() : Double.NaN;
+            if (a != null) {
+                Attribute at = Attribute.parse(String.valueOf(a));
+                Yield yy = y == null ? null : Yield.parse(String.valueOf(y));
+                if (at == null) why.add("unknown attribute " + a);
+                else if (y != null && (yy == null || at != Attribute.FORTUNE)) why.add("yield " + y + " (only fortune takes one: ore, wood, fish, crops, herbs)");
+                else if (!(amount > 0 && amount <= 100)) why.add(a + " amount " + am + " outside (0, 100]");
+                else effects.add(new Effect(at, null, yy, amount));
+            } else if (st != null) {
+                Stat stat = Stat.parse(String.valueOf(st));
+                if (stat == null || !stat.isSecondary()) why.add("stat " + st + " is not a speed stat");
+                else if (!(amount > 0 && amount <= 0.5)) why.add(st + " amount " + am + " outside (0, 0.5]");
+                else effects.add(new Effect(null, stat, null, amount));
+            } else why.add("an effect needs an attribute or a stat: " + e);
+        }
+        return effects;
+    }
+
     private static Map<Material, Double> xpTable(ConfigurationSection s, String where, List<String> problems) {
         Map<Material, Double> out = new EnumMap<>(Material.class);
         if (s != null) for (String k : s.getKeys(false)) {
@@ -221,7 +227,7 @@ public final class CookingRules {
         return out;
     }
 
-    private static double[] factors(ConfigurationSection s, double[] dflt, double min, double max, String where, List<String> problems) {
+    static double[] factors(ConfigurationSection s, double[] dflt, double min, double max, String where, List<String> problems) {
         double[] out = dflt.clone();
         if (s == null) return out;
         for (Quality q : Quality.values()) {

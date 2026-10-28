@@ -308,6 +308,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Fishing fishing;
     private Gathering.Farming farming;
     private Gathering.Herbalism herbalism;
+    private Gathering.Alchemy alchemy;
     private Gathering.Cooking cooking;
     private IronReprisal ironReprisal;
     /** Every effect on a player right now, for the menus (docs/design/ACTIVE_EFFECTS.md). */
@@ -325,6 +326,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     /** Herbalism's gathering, rare reagents and Wildcrafting (docs/design/HERBALISM.md); null until gathering is set up. */
     public Gathering.Herbalism getHerbalism() { return herbalism; }
+
+    /** Alchemy's brewing, draughts and elixirs (docs/design/ALCHEMY.md); null until gathering is set up. */
+    public Gathering.Alchemy getAlchemy() { return alchemy; }
     /** Cooking's XP, meals and the running meal (docs/design/FARMING_COOKING.md §4); null until gathering is up. */
     public Gathering.Cooking getCooking() { return cooking; }
     public IronReprisal getIronReprisal() { return ironReprisal; }
@@ -337,6 +341,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private void registerEffectSources() {
         activeEffects = new Effects.ActiveEffects(getLogger());
         activeEffects.register("meals", (p, now, out) -> { if (cooking != null) cooking.effects(p, now, out); });
+        activeEffects.register("elixirs", (p, now, out) -> { if (alchemy != null) alchemy.effects(p, now, out); });
         activeEffects.register("class abilities", (p, now, out) -> { if (classService != null) classService.effects(p, now, out); });
         activeEffects.register("attribute buffs", (p, now, out) -> {
             if (attributeBuffs == null) return;
@@ -592,6 +597,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (c == null) return List.of();
             if (skill.equals(c.fishing().skill())) return c.fishing().openedBetween(from, to);
             if (skill.equals(c.herbalism().skill())) return c.herbalism().openedBetween(from, to);
+            if (skill.equals(c.alchemy().skill())) return c.alchemy().openedBetween(from, to);
             return !skill.equals(c.woodSkill()) ? List.of() : c.wood().openedBetween(from, to);
         });
     }
@@ -657,7 +663,16 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var herbCmd = Objects.requireNonNull(getCommand("herbalism"));
         herbCmd.setExecutor(herbalismCommand);
         herbCmd.setTabCompleter(herbalismCommand);
+        alchemyCommand = new Commands.AlchemyCommand(this);
+        var alchCmd = Objects.requireNonNull(getCommand("alchemy"));
+        alchCmd.setExecutor(alchemyCommand);
+        alchCmd.setTabCompleter(alchemyCommand);
     }
+
+    private Commands.AlchemyCommand alchemyCommand;
+
+    /** /alchemy, and the admin /cerb alchemy subcommand. */
+    public Commands.AlchemyCommand getAlchemyCommand() { return alchemyCommand; }
 
     private Commands.FarmingCommand farmingCommand;
     private Commands.HerbalismCommand herbalismCommand;
@@ -847,6 +862,22 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (force) { playerHUDManager.queueNotice(p, text, 4000); return true; }
             return playerHUDManager.noticeIfIdle(p, text, 4000);
         });
+        // Alchemy (docs/design/ALCHEMY.md): XP for completed brews, draughts on the health pool, elixirs as one more attribute source.
+        alchemy = new Gathering.Alchemy(this, gatheringService, skillManager, attributeService, (p, msg) -> playerHUDManager.flash(p, msg, 2500),
+                p -> attributeEffects.refresh(p));
+        alchemy.setHealth((p, amount) -> playerVirtualHealthManager.heal(p, amount), p -> playerVirtualHealthManager.getMaxHealth(p));
+        alchemy.setPvpTagged(id -> pvpTag != null && pvpTag.isTagged(id));
+        alchemy.setHeadsUp((p, text, force) -> {
+            if (force) { playerHUDManager.queueNotice(p, text, 4000); return true; }
+            return playerHUDManager.noticeIfIdle(p, text, 4000);
+        });
+        alchemy.setAnnouncer((p, b, made, all) -> celebrations.celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.ORDINARY,
+                "§d✦ §fFirst brew: " + b.name(), "§d✦ §f" + b.name(), null, null,
+                List.of("§d✦ First brew: §f" + b.name() + " §7(" + made + " of " + all + " brews)"), -1)));
+        attributeService.addSource(alchemy);
+        alchemy.registerMixes(gatheringService.catalog());
+        upgrades.setOwnBrew(alchemy::isReagent); // Herbalism's rare reagents go into Alchemy's own brews, nothing else
+        pm.registerEvents(alchemy, this);
         registerEffectSources();
         // Heavy Armor Mastery's Iron Reprisal: a creature's landed melee hit throws it back (docs/design/COMBAT_IMPROVEMENTS.md §2).
         ironReprisal = new IronReprisal(this, skillManager,
@@ -894,6 +925,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 gatheringService.setCatalog(next);
                 if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
                 if (itemRecipes != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> itemRecipes.register(next));
+                if (alchemy != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> alchemy.registerMixes(next)); // brewing mixes: global thread
                 if (tackle != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> tackle.registerRecipes(next));
                 if (cooking != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> cooking.registerRecipes(next));
                 if (fishing != null) fishing.registerCreatures(mobRegistry); // its sea creatures by id

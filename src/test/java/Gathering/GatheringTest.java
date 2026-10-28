@@ -62,7 +62,7 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(9, notes.size(), notes.toString());
+        assertEquals(10, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
         assertTrue(notes.get(3).startsWith("recipes: sowers_charm"), "the Sower's Charm's recipe (Replant on the hoe, 2026-10-28): " + notes.get(3));
         assertTrue(notes.get(4).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(4));
@@ -70,6 +70,7 @@ class GatheringTest {
         assertTrue(notes.get(6).startsWith("farming: not in this file"), "and Farming (2026-10-28): " + notes.get(6));
         assertTrue(notes.get(7).startsWith("cooking: not in this file"), "and Cooking: " + notes.get(7));
         assertTrue(notes.get(8).startsWith("herbalism: not in this file"), "and Herbalism: " + notes.get(8));
+        assertTrue(notes.get(9).startsWith("alchemy: not in this file"), "and Alchemy: " + notes.get(9));
         assertTrue(notes.get(1).contains("bloodroot") && notes.get(1).contains("emberbloom"), "with its rare reagents: " + notes.get(1));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
@@ -88,6 +89,8 @@ class GatheringTest {
         assertTrue(c.farming().enabled() && c.farming().crops().size() == 12 && c.tracked(Material.MELON),
                 "Farming came whole, and the placed-block memory keeps melons");
         assertTrue(c.cooking().enabled() && c.cooking().meals().size() == 6, "Cooking came whole, its meals with it");
+        assertTrue(c.herbalism().enabled() && c.alchemy().enabled() && c.alchemy().brews().size() == 8,
+                "Herbalism and Alchemy came whole, the brews with their reagents");
         assertEquals(List.of(), GatheringCatalog.addUpdates(server, shipped), "nothing twice");
 
         // The owner leaves one out, or has an entry of their own: both stay as written.

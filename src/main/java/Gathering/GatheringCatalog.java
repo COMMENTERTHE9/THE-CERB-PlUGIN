@@ -133,6 +133,7 @@ public final class GatheringCatalog {
     private final FarmingRules farming;
     private final CookingRules cooking;
     private final HerbalismRules herbalism;
+    private final AlchemyRules alchemy;
     private final Map<String, TackleRules.Recipe> recipes;
     private final List<String> problems;
 
@@ -142,7 +143,7 @@ public final class GatheringCatalog {
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
                              FishingRules fishing, TackleRules tackle, FarmingRules farming, CookingRules cooking,
-                             HerbalismRules herbalism, Map<String, TackleRules.Recipe> recipes, List<String> problems) {
+                             HerbalismRules herbalism, AlchemyRules alchemy, Map<String, TackleRules.Recipe> recipes, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -167,6 +168,7 @@ public final class GatheringCatalog {
         this.farming = farming;
         this.cooking = cooking;
         this.herbalism = herbalism;
+        this.alchemy = alchemy;
         this.recipes = recipes;
         this.problems = List.copyOf(problems);
     }
@@ -251,6 +253,8 @@ public final class GatheringCatalog {
     public CookingRules cooking() { return cooking; }
     /** Herbalism's herbs, rare reagents and techniques (docs/design/HERBALISM.md); {@link HerbalismRules#NONE} when off. */
     public HerbalismRules herbalism() { return herbalism; }
+    /** Alchemy's brews and tiers (docs/design/ALCHEMY.md); {@link AlchemyRules#NONE} when off. */
+    public AlchemyRules alchemy() { return alchemy; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -423,6 +427,13 @@ public final class GatheringCatalog {
                     + "machines pay nobody. The first gather of each herb is a discovery.");
             if (weakGap > 0) lines.add("Each herb has a level; " + weakGap + "+ levels above it you get " + Math.round(weakFactor * 100) + "% of its XP.");
         }
+        if (alchemy.enabled()) {
+            List<String> lines = out.computeIfAbsent(alchemy.skill(), k -> new ArrayList<>());
+            lines.add("Brew at a brewing stand in survival: every completed vanilla bottle pays " + number(alchemy.vanillaXp())
+                    + " XP to the player who started the brew; a stand hoppers started pays nobody.");
+            if (!alchemy.brews().isEmpty()) lines.add("Cerberus brews open from Alchemy " + alchemy.brews().stream().mapToInt(AlchemyRules.Brew::level).min().orElse(0)
+                    + ": an Awkward Potion and a herb (or a rare reagent) make a draught or an elixir, and pay their own XP (the Brews list).");
+        }
         return out;
     }
 
@@ -559,6 +570,11 @@ public final class GatheringCatalog {
         if (!server.contains("herbalism") && shipped.get("herbalism") instanceof ConfigurationSection he) {
             server.createSection("herbalism", values(he));
             notes.add("herbalism: not in this file (an update added it), so the plugin's own section is used; write \"herbalism: off\" to turn herbalism's rules off");
+        }
+        // Alchemy (2026-10-28, docs/design/ALCHEMY.md) likewise: "alchemy: off" turns its brews and brewing XP off.
+        if (!server.contains("alchemy") && shipped.get("alchemy") instanceof ConfigurationSection al) {
+            server.createSection("alchemy", values(al));
+            notes.add("alchemy: not in this file (an update added it), so the plugin's own section is used; write \"alchemy: off\" to turn alchemy's rules off");
         }
         return notes;
     }
@@ -810,12 +826,16 @@ public final class GatheringCatalog {
         for (ResourceDef r : byBlock.values()) for (Material m : r.blocks()) taken.put(m, "resource " + r.id());
         for (FarmingRules.Crop c : farming.crops()) for (Material m : c.blocks()) taken.put(m, "crop " + c.id());
         HerbalismRules herbalism = HerbalismRules.from(root == null ? null : root.getConfigurationSection("herbalism"), items, skills, taken, problems);
+        Set<String> rareIds = new java.util.HashSet<>();
+        for (HerbalismRules.Rare r : herbalism.rares()) rareIds.add(r.id());
+        AlchemyRules alchemy = AlchemyRules.from(root == null ? null : root.getConfigurationSection("alchemy"), skills, rareIds,
+                AlchemyRules.VANILLA_INGREDIENTS, problems);
 
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking, herbalism,
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking, herbalism, alchemy,
                 Collections.unmodifiableMap(recipes), problems);
     }
 

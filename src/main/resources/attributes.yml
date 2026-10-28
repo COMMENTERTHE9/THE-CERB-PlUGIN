@@ -89,6 +89,7 @@ attributes:
     Herbalism:                                                                      # docs/design/HERBALISM.md
       - { attribute: essence, per-level: 0.25 }                                     # mind and spirit
       - { attribute: fortune, per-level: 0.5, yield: herbs }                        # a chance of one more of a gathered herb
+    Alchemy:              [ { attribute: essence, per-level: 0.5 } ]                # docs/design/ALCHEMY.md
 
   # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
   caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }

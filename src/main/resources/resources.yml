@@ -652,6 +652,94 @@ herbalism:
     wither_rose:        { name: Wither Rose, blocks: [WITHER_ROSE], level: 40, xp: 12, discovery-xp: 100, grows: "where the wither or its victims fell" }
     chorus_flower:      { name: Chorus Flower, blocks: [CHORUS_FLOWER], level: 40, xp: 10, discovery-xp: 100, grows: "the End" }
 
+# Alchemy (docs/design/ALCHEMY.md). Rules the code keeps whatever this file says: a completed brew pays the player whose click
+# started it, per bottle (a stand hoppers started pays nobody; creative pays nothing); a Cerberus brew below its level, or
+# started by nobody, comes out a Mundane Potion. "alchemy: off" turns it off.
+#   vanilla-xp: per bottle of a vanilla brew. tiers / potency / duration: as Cooking's (the alchemist's level when the brew
+#   starts; a reagent with a quality, or the brew's lift, makes it one tier better).
+#   brews: kind draught (restore: a share of max health over its seconds) or elixir (effects for minutes, one at a time);
+#   reagent: a material (never one of vanilla brewing's own) or a rare reagent's id; lift: a rare reagent that stands in for
+#   the reagent and lifts the tier; color: the bottle's colour.
+alchemy:
+  skill: Alchemy
+  vanilla-xp: 2
+  tiers: { fine: 25, superior: 50, masterwork: 75 }
+  potency:  { common: 1.0, fine: 1.2, superior: 1.4, masterwork: 1.6 }
+  duration: { common: 1.0, fine: 1.25, superior: 1.5, masterwork: 2.0 }
+  brews:
+    mending:
+      name: Draught of Mending
+      kind: draught
+      level: 10
+      xp: 6
+      reagent: POPPY
+      color: "#C0392B"
+      restore: { share: 0.25, seconds: 5 }
+    swiftness:
+      name: Tonic of Swiftness
+      kind: elixir
+      level: 15
+      xp: 6
+      reagent: CORNFLOWER
+      color: "#5DADE2"
+      minutes: 8
+      effects: [ { stat: movement-speed, amount: 0.08 } ]
+    vigor:
+      name: Elixir of Vigor
+      kind: elixir
+      level: 20
+      xp: 8
+      reagent: DANDELION
+      lift: sunpetal
+      color: "#F4D03F"
+      minutes: 8
+      effects: [ { attribute: vitality, amount: 8 } ]
+    stoneskin:
+      name: Elixir of Stoneskin
+      kind: elixir
+      level: 25
+      xp: 8
+      reagent: ALLIUM
+      color: "#95A5A6"
+      minutes: 8
+      effects: [ { attribute: fortitude, amount: 8 } ]
+    insight:
+      name: Philter of Insight
+      kind: elixir
+      level: 30
+      xp: 10
+      reagent: LILY_OF_THE_VALLEY
+      color: "#A9CCE3"
+      minutes: 8
+      effects: [ { attribute: essence, amount: 10 } ]
+    might:
+      name: Elixir of Might
+      kind: elixir
+      level: 40
+      xp: 12
+      reagent: CRIMSON_FUNGUS
+      lift: emberbloom
+      color: "#E74C3C"
+      minutes: 6
+      effects: [ { attribute: power, amount: 4 } ]
+    bloodroot:
+      name: Bloodroot Draught
+      kind: draught
+      level: 50
+      xp: 16
+      reagent: bloodroot
+      color: "#7B241C"
+      restore: { share: 0.40, seconds: 4 }
+    moonlit:
+      name: Moonlit Elixir
+      kind: elixir
+      level: 60
+      xp: 20
+      reagent: moonpetal
+      color: "#D6EAF8"
+      minutes: 10
+      effects: [ { attribute: vitality, amount: 6 }, { attribute: fortitude, amount: 6 }, { attribute: essence, amount: 6 } ]
+
 # Cooking (docs/design/FARMING_COOKING.md §4). Rules the code keeps whatever this file says: only food a player really
 # makes pays (taken out of a furnace or smoker, or crafted at a grid; the game's crafted-items statistic counts it, so a
 # shift-click pays every item and a click that makes nothing pays nothing); hoppers, crafters and campfires pay nobody;

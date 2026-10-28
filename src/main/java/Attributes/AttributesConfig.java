@@ -271,7 +271,8 @@ public final class AttributesConfig {
             "Smithing",     // 2026-10-26, Smithing's Fortitude (Fishing's Fortune was in the first file: not here)
             "Farming",      // 2026-10-28, Farming's Vitality and Fortune on crops (docs/design/FARMING_COOKING.md)
             "Cooking",      // 2026-10-28, Cooking's Vitality
-            "Herbalism");   // 2026-10-28, Herbalism's Essence and Fortune on herbs (docs/design/HERBALISM.md)
+            "Herbalism",    // 2026-10-28, Herbalism's Essence and Fortune on herbs (docs/design/HERBALISM.md)
+            "Alchemy");     // 2026-10-28, Alchemy's Essence (docs/design/ALCHEMY.md)
 
     /**
      * Skills whose shipped entry an update changed, with the entry every earlier version shipped and how to keep it. A

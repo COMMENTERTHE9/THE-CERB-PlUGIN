@@ -32,7 +32,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Your two XP reports (2026-10-27)**, Fishing XP and bow kills, are reproduced and fixed: what you saw is what creative mode gives, silently until now; the real defects found on the way are fixed, skills start at level 1, and an independent review's findings are fixed too (section "Done: your XP reports" below; checklist §14).
 - **Built since, each waiting for your playtest:** Fishing equipment, goals and collections (2026-10-27, checklist §15) and **Farming and Cooking** (2026-10-28, your milestone: crops, Replant, Wide Harvest, crop quality, Cooking XP and six meals; section "Done: Farming and Cooking" below; checklist §16).
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
-- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting.
+- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting. **Increment 5, Alchemy** (section "Done: Alchemy", checklist §22): completed brews pay their starter, eight draughts and elixirs, tiers and Essence, with an independent review's findings fixed.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1303,6 +1303,61 @@ A ravager (knockback resistance 0.75) at 100 in full iron: 0.13–0.64 blocks in
 **Performance:** gathering, Wildcrafting and the farm loads are measured with Alchemy in one before/after pass at the end of this milestone (increment 6), on a sandbox with nothing else running.
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §21): the herbs' XP and levels, the rare reagent odds, Wildcrafting's reach, whether gathering flowers feels worth doing.
+
+## Done: Alchemy (2026-10-28, your milestone, increment 5)
+
+**What it is for:** brews that act on the character, made from Herbalism's reagents. Design and every number: `docs/design/ALCHEMY.md`. Built on the vanilla brewing stand (Paper's brewing mixes), the attribute engine, the Cerberus health pool, Active Effects and the shipped-config rules. The old `Skills/AlchemySkill` stays unwired.
+
+**What pays** (`Gathering/Alchemy`, `AlchemyRules`; `resources.yml alchemy:`):
+- **Only a completed brew,** to the player who started it: the one whose click put a bottle, the reagent or the fuel into the stand that made it brewable. A vanilla brew pays 2 XP a bottle; a Cerberus brew pays its own XP.
+- **Pays nobody:**
+  - a stand that hoppers feed, however often someone clicks in its open window;
+  - a brew whose starter has left (the brew still finishes);
+  - creative (the XP display says why).
+- **A restart mid-brew changes nothing:** the stand keeps who started it, and the brew completes as theirs after the restart.
+- **The character:** Essence 0.5 per level.
+
+**Eight brews as data, with Western names:**
+- **Draughts** (heal the Cerberus health pool): Draught of Mending (Alchemy 10, poppy) and Bloodroot Draught (50, Bloodroot).
+- **Elixirs** (a timed effect on your attributes): Tonic of Swiftness (15, cornflower), Elixir of Vigor (20, dandelion), Elixir of Stoneskin (25, allium), Philter of Insight (30, lily of the valley), Elixir of Might (40, crimson fungus) and Moonlit Elixir (60, Moonpetal).
+- **Below its level, or with no starter,** a Cerberus recipe brews a Mundane Potion, and the HUD says which level it needs.
+- **Tiers** come from the alchemist's level: Fine at 25, Superior at 50, Masterwork at 75. A reagent of Fine quality or better (a herb or a rare reagent) lifts the brew one tier, and so does the brew's own lifting rare reagent (Sunpetal for Vigor, Emberbloom for Might). Strength ×1.2/1.4/1.6, time ×1.25/1.5/2.
+
+**Drinking:**
+- **Elixirs:** one at a time. A new one replaces the running one, and the same one refreshes its time. Beside a meal, both count, within the engine's caps. Saved with its real end time.
+- **Draughts:** one at a time; a second is refused while the first heals, and the bottle is kept. Paused while PvP-tagged.
+- Death ends both. The Player Menu's head and Active Effects show them with their time left, and a heads-up comes one minute before an elixir ends.
+- The effect starts only when the drink really happened (another plugin may still cancel it).
+
+**Shown:** the Alchemy page (your tier, Brews: N of 8), `/alchemy`, Collections → Brews; admin `/cerb alchemy give|brews|clear|stats`.
+
+**Older servers:** an unedited `resources.yml`/`attributes.yml` is refreshed. An edited one gets the `alchemy:` section and Alchemy's skill line from the plugin's own files (logged; `alchemy: off` turns it off).
+
+**An independent review** of Herbalism and Alchemy found eight defects. All six in Alchemy are fixed, each run against the build before the fix where the game can show it:
+- **Any click in a stand's window claimed a hopper's brew** (serious). The window of a stand a hopper fed was kept open, and an empty slot clicked every half second. On the build before the fix, the clicker took the hopper's brew and its XP: 47 clicks, +6 XP. Now only a click that puts something into the stand arms it: the same 47 clicks leave the brew nobody's, +0 XP.
+- **A brew interrupted by a restart came out Mundane** and its reagent was lost. A Draught of Mending was started, and the server stopped about 7.5 s into the brew. On the build before the fix it finished as three Mundane Potions, +0 XP. Now the stand keeps who started it: three Draughts of Mending, +18 XP to the starter, and the server counts "resumed after a restart 1".
+- **A rare reagent's quality never lifted its brew.** A Fine Bloodroot at Alchemy 50 (Superior) brewed Superior; now Masterwork. A Common Bloodroot still brews Superior.
+- **A lift that can't be used dropped the whole brew:** with Herbalism off, the Elixirs of Vigor and Might vanished. Now only the lift is left out, with a line in the log (unit test).
+- **An elixir's effect started before the drink was final:** if another plugin later cancelled the drink, the bottle stayed and the effect still applied. The effect now starts only after every plugin had its say; the one-draught refusal still comes first. Nothing in the sandbox cancels a drink, so this is shown by the code and the drink checks passing.
+- **A reload changed the server's list of brewing mixes,** which stands read on their own threads. Now only a reload that adds or removes a brew touches the list. Each mix asks the catalog of the moment what its brew takes. In game, `/cerb reload` with the same brews left the mixes registered once (1x → 1x), and a brew right after it still made Draughts of Mending.
+
+**Checks** (a sandbox Folia 1.21.11 server in the cloud container; your Windows world and database were never touched; `tools/playtest/alchemy.js`):
+- **Unit tests:** 410 (`AlchemyRulesTest`: the shipped brews, tiers and the one-tier lift, strength, time and healing by tier, the level announcements, a lift that can't be used, which clicks arm a stand, bad brews refused one by one).
+- **Every phase on the final build:** 29/29, no plugin errors in the log. The phases:
+  - vanilla brews (2 XP a bottle), a hopper-fed stand (nobody paid), creative, and the hopper stand's window clicked 47 times (nobody's);
+  - a brew below and at its level, tiers and lifts (a Fine poppy, Sunpetal, a Fine Bloodroot);
+  - drinking: Vitality on max health, a meal beside an elixir, replacing and refreshing, a draught healing and a second refused;
+  - the hub's head, a relog and death, the Alchemy page and Collections, and a reload.
+- **A restart mid-brew:** the server stopped 6.3 s into a Draught of Mending and started again. The stand finished three Draughts of Mending, paid +18 XP to the starter, and the server counted "resumed after a restart 1".
+- **An owner's edited files from increment 4** (`resources.yml` and `attributes.yml`): never rewritten on disk. Alchemy's section and its skill line came from the plugin's own files, each logged; vanilla and Cerberus brews 12/12.
+- **An unedited file from increment 4** was refreshed to this version's at startup, with the old copy kept beside it (`resources.yml.old.N`), as for every update.
+- **Herbalism on the Alchemy build:** 54/54, protection 2/2.
+- **Code shared with other skills:** Cooking 32/32, Active effects 48/48, Fishing's Collections pages 30/30, Wide Harvest 13/13. Also: a Cerberus item still brews nothing in vanilla brewing (4/4), custom resources 9/9, the smoke test 14/14, and the menus' skill names 4/4 and navigation 63/63.
+- **The brewing load** for the final performance pass works: three bots, nine brews in 50 s.
+
+**Performance:** brewing is measured with Herbalism and Farming in one before/after pass at the end of this milestone (increment 6), on a sandbox with nothing else running.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §22): the brews' strength and time, the level of each, and whether draughts and elixirs feel worth making beside meals.
 
 ## Roadmap
 

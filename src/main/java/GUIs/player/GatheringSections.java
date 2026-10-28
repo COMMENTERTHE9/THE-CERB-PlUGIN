@@ -45,6 +45,8 @@ public final class GatheringSections {
                 (pl, p) -> new HerbariumMenu(pl)));
         sections.register(new SkillSections.Section("herbalism.rare", "Herbalism", 20, GatheringSections::rareReagentsTile,
                 (pl, p) -> HerbariumMenu.rare(pl)));
+        sections.register(new SkillSections.Section("alchemy.brews", "Alchemy", 10, GatheringSections::brewsTile,
+                (pl, p) -> new BrewsMenu(pl)));
 
         collections.register(new CollectionIndex.Entry("fish", "Fish species", Material.TROPICAL_FISH, 10, "Fishing",
                 List.of("Every water's species, with your", "heaviest catch of each."),
@@ -119,6 +121,15 @@ public final class GatheringSections {
                     java.util.Map<String, Integer> found = h.rareFound(p);
                     return new CollectionIndex.Progress(r.rares().stream().filter(x -> found.containsKey(x.id())).count(), r.rares().size(), true);
                 }, (pl, p) -> HerbariumMenu.rare(pl)));
+        collections.register(new CollectionIndex.Entry("brews", "Brews", Material.POTION, 90, "Alchemy",
+                List.of("Every brew you made at", "a brewing stand."),
+                (pl, p) -> {
+                    Gathering.Alchemy al = pl.getAlchemy();
+                    Gathering.AlchemyRules r = GatheringCatalog.current().alchemy();
+                    if (al == null || !r.enabled() || r.brews().isEmpty()) return CollectionIndex.Progress.OFF;
+                    Set<String> made = al.made(p);
+                    return new CollectionIndex.Progress(r.brews().stream().filter(b -> made.contains(b.id())).count(), r.brews().size(), true);
+                }, (pl, p) -> new BrewsMenu(pl)));
     }
 
     /**
@@ -242,6 +253,20 @@ public final class GatheringSections {
                 .text("its ingredients, and what it does")
                 .text("at the tier you cook at.")
                 .hint("Click to open the cookbook").build());
+    }
+
+    static ItemStack brewsTile(CerberusPlugin plugin, Player p) {
+        Gathering.Alchemy al = plugin.getAlchemy();
+        Gathering.AlchemyRules r = GatheringCatalog.current().alchemy();
+        if (al == null || !r.enabled() || r.brews().isEmpty()) return null;
+        Set<String> made = al.made(p);
+        long have = r.brews().stream().filter(b -> made.contains(b.id())).count();
+        return Ui.item(Material.BREWING_STAND, ChatColor.GOLD + "Brews: " + have + " of " + r.brews().size() + " brewed", Ui.lore()
+                .raw(PlayerTheme.bar(have, Math.max(1, r.brews().size()), 20, ChatColor.LIGHT_PURPLE))
+                .text("Each brew, the level it opens at,")
+                .text("its reagent, and what it does at")
+                .text("the tier you brew at.")
+                .hint("Click to see the brews").build());
     }
 
     static ItemStack herbariumTile(CerberusPlugin plugin, Player p) {

@@ -240,6 +240,7 @@ public final class ActiveEffectsMenu extends PlayerMenu {
     private static ChatColor color(ActiveEffect e) {
         return switch (e.category()) {
             case MEAL -> ChatColor.GOLD;
+            case ELIXIR -> ChatColor.DARK_PURPLE;
             case ABILITY -> ChatColor.YELLOW;
             case BUFF -> ChatColor.LIGHT_PURPLE;
             case POTION -> ChatColor.AQUA;

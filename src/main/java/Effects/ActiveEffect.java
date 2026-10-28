@@ -35,6 +35,8 @@ public record ActiveEffect(String key, Category category, String name, String so
     /** Kinds of source, in the order they are listed. {@link #ALWAYS_ON} is never mixed with the timed ones. */
     public enum Category {
         MEAL("Meal"),
+        /** Alchemy's elixirs and draughts (docs/design/ALCHEMY.md). */
+        ELIXIR("Elixir"),
         ABILITY("Ability"),
         BUFF("Buff"),
         POTION("Potion"),

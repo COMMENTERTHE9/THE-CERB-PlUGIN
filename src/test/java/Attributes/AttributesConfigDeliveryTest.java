@@ -53,12 +53,14 @@ class AttributesConfigDeliveryTest {
         server.setDefaults(shipped()); // as AttributesConfig.reload does with the jar's copy
         List<String> problems = new ArrayList<>();
         AttributeRules r = AttributesConfig.parseRules(AttributesConfig.section(server, "attributes"), AttributeRules.DEFAULT_CURVES, problems::add);
-        assertEquals(10, problems.size(), problems.toString());
+        assertEquals(11, problems.size(), problems.toString());
         assertTrue(problems.stream().allMatch(p -> p.contains("Mining") && p.contains("Mining: []") || p.contains("Woodcutting") && p.contains("Woodcutting: []")
                         || p.contains("Smithing") && p.contains("Smithing: []") || p.contains("secondary.skills.Fishing") && p.contains("Fishing: []")
                         || p.contains("Farming") && p.contains("Farming: []") || p.contains("Cooking") && p.contains("Cooking: []")
-                        || p.contains("Herbalism") && p.contains("Herbalism: []")),
-                "the log says where Mining, Woodcutting, Smithing, Farming, Cooking, Herbalism and Fishing's stats came from: " + problems);
+                        || p.contains("Herbalism") && p.contains("Herbalism: []") || p.contains("Alchemy") && p.contains("Alchemy: []")),
+                "the log says where Mining, Woodcutting, Smithing, Farming, Cooking, Herbalism, Alchemy and Fishing's stats came from: " + problems);
+        assertEquals(List.of(new AttributeRules.SkillWeight(Attribute.ESSENCE, 0.5, null)), r.skillWeights().get("Alchemy"),
+                "Alchemy's Essence reaches an edited older file");
         assertEquals(List.of(new AttributeRules.SkillWeight(Attribute.ESSENCE, 0.25, null), new AttributeRules.SkillWeight(Attribute.FORTUNE, 0.5, null, Yield.HERB)),
                 r.skillWeights().get("Herbalism"), "Herbalism's Essence and Fortune on herbs reach an edited older file");
         assertEquals(List.of(new AttributeRules.SkillWeight(Attribute.VITALITY, 0.25, null), new AttributeRules.SkillWeight(Attribute.FORTUNE, 0.5, null, Yield.CROP)),

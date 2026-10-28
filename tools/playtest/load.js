@@ -53,6 +53,9 @@
 //            reagents or quality), so every build does the same work (the Herbalism baseline, 2026-10-28).
 //   wildcraft - like herb, at Herbalism 40 with shears and Sneak held: each gather is a Wildcrafting sweep of up to 5x5
 //            (builds with Herbalism only).
+//   brew   - each bot brews at its own brewing stand in survival: three water bottles, blaze powder and nether wart
+//            shift-clicked in, the finished bottles taken out, again when the 20 s brew is done (vanilla's own brew, so
+//            every build does the same work; with Alchemy it arms the stand, binds the brew and pays 2 XP a bottle).
 //   mealidle - like menuidle, but each bot first eats a Hearty Stew and has Speed I for 10 minutes: an open hub while
 //            timed effects run (the Active Effects milestone, 2026-10-28: the head's summary counts down on later builds).
 //   effectsmenu - each bot, with the same meal and potion, opens the menu and clicks its head, then Back, then closes, as
@@ -283,6 +286,35 @@ async function herb(b, deadline, controller, wild = false) {
   }
   if (wild) b.setControlState('sneak', false);
   controller.chat(`/cerb skill ${n} Herbalism level 1`);
+}
+
+/** Brewing Awkward Potions at a stand of one's own, one brew every ~21 s (Alchemy's brewing path; vanilla's own brew). */
+async function brew(b, deadline, controller) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Alchemy level 10`); await sleep(400);
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  const p = b.entity.position.floored();
+  controller.chat(`/setblock ${p.x + 1} ${p.y} ${p.z} brewing_stand`); await sleep(800);
+  const vec3 = require('vec3');
+  const at = new vec3(p.x + 1, p.y, p.z);
+  const shift = async (w, pred) => { for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && pred(w.slots[i])) { await b.clickWindow(i, 0, 1); return true; } return false; };
+  while (Date.now() < deadline) {
+    b.chat('/clear @s potion'); await sleep(200);
+    b.chat('/give @s potion[potion_contents={potion:"minecraft:water"}] 3'); b.chat('/give @s nether_wart 1'); b.chat('/give @s blaze_powder 1');
+    await sleep(900);
+    try {
+      const w = await b.openBlock(b.blockAt(at)); await sleep(300);
+      for (let i = 0; i < 3; i++) if (w.slots[i]) { await b.clickWindow(i, 0, 1); await sleep(100); } // the last brew's bottles out
+      for (let k = 0; k < 3; k++) { await shift(w, it => it.name === 'potion'); await sleep(100); }
+      await shift(w, it => it.name === 'blaze_powder'); await sleep(100);
+      await shift(w, it => it.name === 'nether_wart');
+      b.closeWindow(w);
+      bump(n, 'brews');
+    } catch (e) { bump(n, 'brewfail'); }
+    await sleep(21500); // a brew takes 20 s
+  }
+  controller.chat(`/cerb skill ${n} Alchemy level 1`);
 }
 
 /** Baking bread at a crafting table as fast as a hurried player (3 wheat each), about two a second (Cooking's crafting path). */
@@ -641,7 +673,7 @@ async function menuidle(b, deadline, keepMode = false) {
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)
         : m === 'autofish' ? autofish(b, deadline, controller)
         : m === 'farm' ? farm(b, deadline, controller) : m === 'widefarm' ? farm(b, deadline, controller, true)
-        : m === 'cook' ? cook(b, deadline, controller)
+        : m === 'cook' ? cook(b, deadline, controller) : m === 'brew' ? brew(b, deadline, controller)
         : m === 'herb' ? herb(b, deadline, controller) : m === 'wildcraft' ? herb(b, deadline, controller, true)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)

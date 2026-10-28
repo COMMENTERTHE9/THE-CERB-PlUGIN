@@ -29,7 +29,7 @@ public class CerbTabCompleter implements TabCompleter {
             "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
-            "speed", "spawn", "mobs", "labels", "gather", "fish", "farm", "cook", "herb", "reprisal"
+            "speed", "spawn", "mobs", "labels", "gather", "fish", "farm", "cook", "herb", "alchemy", "reprisal"
     );
 
     private static final List<String> ON_OFF = List.of("on", "off");
@@ -84,6 +84,12 @@ public class CerbTabCompleter implements TabCompleter {
             case "spawn" -> args.length == 2 ? filterMobIds(args[1]) : List.of();
             case "gather" -> completeGather(args);
             case "fish" -> completeFish(args);
+            case "alchemy" -> args.length == 2 ? filter(AlchemyCommand.ADMIN, args[1])
+                    : args.length == 3 && !args[1].equalsIgnoreCase("stats") ? filterPlayers(args[2])
+                    : args.length == 4 && args[1].equalsIgnoreCase("give")
+                        ? filter(Gathering.GatheringCatalog.current().alchemy().brews().stream().map(Gathering.AlchemyRules.Brew::id).toList(), args[3])
+                    : args.length == 4 && args[1].equalsIgnoreCase("brews") ? filter(List.of("reset"), args[3])
+                    : args.length == 5 && args[1].equalsIgnoreCase("give") ? filter(List.of("common", "fine", "superior", "masterwork"), args[4]) : List.of();
             case "herb" -> args.length == 2 ? filter(HerbalismCommand.ADMIN, args[1])
                     : args.length == 3 && !args[1].equalsIgnoreCase("info") && !args[1].equalsIgnoreCase("stats") ? filterPlayers(args[2])
                     : args.length == 4 && args[1].equalsIgnoreCase("herbs") ? filter(List.of("reset"), args[3])

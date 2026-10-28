@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal, Herbalism
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal, Herbalism, Alchemy
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes), and section 21, Herbalism (about 20 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes), section 21, Herbalism (about 20 minutes), and section 22, Alchemy (about 25 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -395,6 +395,25 @@ Gathering wild plants (`docs/design/HERBALISM.md`): 35 herbs as data, Essence an
 | 8 | Player Menu → Skills → Herbalism → Herbarium; Collections → Herbs and Rare reagents; `/herbalism`. | The same counts everywhere ("Herbarium: N of 35", "Rare reagents: N of 4"). |
 | 9 | Overall. | Do the herbs' XP, levels and rare odds feel worth gathering? Every number is data in `resources.yml` (`herbalism:`). |
 
-## 22. Afterwards
+## 22. Alchemy
+
+Brewing (`docs/design/ALCHEMY.md`): vanilla brews pay Alchemy XP; eight Cerberus brews, draughts that heal and elixirs that last, are made from Herbalism's herbs and rare reagents; your level sets their tier; Alchemy gives Essence. Play in survival. Helpers: `/cerb skill <you> Alchemy level <n>`; `/cerb alchemy give <you> <brew> [common|fine|superior|masterwork] [count]` (brews: mending, swiftness, vigor, stoneskin, insight, might, bloodroot, moonlit); `/cerb alchemy clear <you>` (ends your elixir and draught); `/cerb alchemy brews <you> [reset]`; `/cerb alchemy stats`.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | At a brewing stand with blaze powder: brew three water bottles with nether wart, then the Awkward Potions with sugar. | When each brew completes, 2 Alchemy XP a bottle (6 for three), on the XP display. Nothing while it brews. |
+| 2 | Feed a stand from hoppers (bottles and blaze powder from the side, nether wart from above). Stand at it with its window open and click an empty slot now and then. | It brews as in vanilla and pays nobody, however often you click. A bottle or reagent you put in yourself makes that brew yours. |
+| 3 | Brew in creative. | It brews; no XP (the XP display says why). |
+| 4 | At Alchemy 9, brew Awkward Potions with a poppy; then at 10. | At 9: three **Mundane Potions**, and the HUD says the Draught of Mending needs Alchemy 10. At 10: three **Draughts of Mending** (Common), 18 XP, and the first is a discovery (chat and a sound, once). |
+| 5 | At Alchemy 25, 50 and 75, brew a Draught of Mending. At 50, brew one with a **✦ Fine** poppy (Herbalism 50 rolls a quality), then an Elixir of Vigor with Sunpetal instead of a dandelion (Alchemy 20 or more). | Fine at 25, Superior at 50, Masterwork at 75, on the bottle with its effect and time. A Fine reagent lifts the brew one tier (Superior to Masterwork at 50), and so does Sunpetal in place of the dandelion (Emberbloom in place of crimson fungus for the Elixir of Might). |
+| 6 | On a test copy: start a brew, stop the server before it finishes, start it again and let the brew finish. | The brew finishes as yours: the right brew, paid to you. |
+| 7 | Hurt yourself and drink a Draught of Mending; drink a second at once. | 25% of max health back over 5 s, never past full. The second is refused while the first heals ("A draught is still working"), and you keep the bottle. |
+| 8 | Drink an Elixir of Vigor; eat a Hearty Stew; drink a Tonic of Swiftness; drink the Tonic again. | Vigor: Vitality +8 (max health up on the Stats page). The stew and the elixir both count. The Tonic **replaces** the Elixir of Vigor and says so; the same Tonic again **refreshes** its time. |
+| 9 | Open the Player Menu: hover your head, then click it. | The elixir with its time left, after the meal. Active Effects shows it ("Elixir · Common · Alchemy"), what it adds and every number it moves; a draught shows its seconds while it heals. |
+| 10 | Relog with an elixir running; restart the server; die. Let one run to its last minute. | It survives a relog and a restart, its time running on in real time; death ends it (and a draught). A minute before it ends, the HUD says "… wears off in 1 min" once. |
+| 11 | Player Menu → Skills → **Alchemy**, then **Brews**; Collections → Brews; `/alchemy`. Set Alchemy to 50 and look at the Stats page. | The tier you brew at, **Brews: N of 8**, each brew with its level, reagent, effect and time at your tier, made or not. `/alchemy` shows your tier and your running elixir and draught. Essence rises 0.5 per level (+24.5 from 1 to 50). |
+| 12 | Overall. | Values to judge (all in `resources.yml` → `alchemy:`): each brew's level, reagent, effect, time and XP; the tiers (25/50/75) and their steps (×1.2/1.4/1.6 strength, ×1.25/1.5/2 time); 2 XP a vanilla bottle. Are draughts and elixirs worth making beside meals? |
+
+## 23. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

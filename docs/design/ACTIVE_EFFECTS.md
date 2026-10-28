@@ -24,6 +24,7 @@ Every effect is read from the system that runs it, at the moment it is shown. No
 | Source | Runtime state read | Ends |
 |---|---|---|
 | A meal (`Gathering/Cooking`) | the running meal: id, tier, end time (saved on the player) and its restoration (heals done of heals due, paused or not) | its time; a new meal replaces it; death; it continues across a relog or restart |
+| An elixir or a draught (`Gathering/Alchemy`, since 2026-10-28) | the running elixir: id, tier, end time (saved on the player); a draught's healing seconds left | its time; a new elixir replaces it; death; an elixir continues across a relog or restart, a draught (seconds long) doesn't |
 | A class ability (`Classes/ClassService`) | running buffs (War Cry: +15% damage, 8 s), an open Riposte guard, a Feint (next hit crits) | its time; leaving the loadout in use; death; leaving the server |
 | A temporary attribute buff (`Attributes/BuffSource`) | the admin's dev buffs (+25 or +100 of an attribute, 5 min) | its time; the admin clears it; leaving the server |
 | An admin test realm (`Attributes/PlayerRealms`) | the realm an admin set for testing | when the admin clears it or you leave |
@@ -36,7 +37,7 @@ Vanilla effects are described **as they work under Cerberus**, which runs its ow
 - **Poison and Wither** hurt the Cerberus pool.
 - **Fire Resistance, Speed, Slowness, Haste and the rest** work as in vanilla.
 
-Planned systems (Alchemy, Herbalism, later magic) are not shown until they exist.
+Planned systems (later magic) are not shown until they exist. Alchemy's elixirs and draughts are shown since 2026-10-28 (`docs/design/ALCHEMY.md` §5), right after the meal; Herbalism has no timed effect.
 
 **The interface for later systems.** `Effects/ActiveEffect` is the read-only snapshot of one effect:
 - name, source, icon and end time;
@@ -44,7 +45,7 @@ Planned systems (Alchemy, Herbalism, later magic) are not shown until they exist
 - fixed notes;
 - an optional inner phase.
 
-A system offers its effects through `Effects/EffectProvider`, registered once on `Effects/ActiveEffects`. A later Alchemy potion registers a provider; the menus, the head summary and the countdown need no change.
+A system offers its effects through `Effects/EffectProvider`, registered once on `Effects/ActiveEffects`. Alchemy's elixirs and draughts did exactly that (2026-10-28): one provider, one new category and its colour on the screen; the head summary and the countdown needed no change.
 
 ## 3. Countdowns without a scanner
 
