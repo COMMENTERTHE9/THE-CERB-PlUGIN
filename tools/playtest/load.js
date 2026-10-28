@@ -43,6 +43,13 @@
 //            nothing replants and every build does the same work (the Farming baseline, 2026-10-28).
 //   widefarm - like farm, at Farming 50 with Sneak held: each cut is a wide harvest (builds with Farming only).
 //   cook   - each bot bakes bread at its own crafting table, about two a second (Cooking's crafting path).
+//   mealidle - like menuidle, but each bot first eats a Hearty Stew and has Speed I for 10 minutes: an open hub while
+//            timed effects run (the Active Effects milestone, 2026-10-28: the head's summary counts down on later builds).
+//   effectsmenu - each bot, with the same meal and potion, opens the menu and clicks its head, then Back, then closes, as
+//            fast as a hurried player: the head's destination (Stats before the Active Effects milestone, the Active
+//            Effects screen after) and the way back.
+//   effectsidle - each bot, with the same meal and potion, opens the menu, clicks its head and leaves that screen open
+//            (on later builds the Active Effects screen, whose timers count down while it is open).
 //   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
 //            again from real XP: many level-ups at once across the server (the progression feedback's workload).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
@@ -471,8 +478,58 @@ async function gearmenu(b, deadline, controller) {
   controller.chat(`/cerb skill ${b.username} Fishing level 1`);
 }
 
-async function menuidle(b, deadline) {
+/** A Hearty Stew eaten and Speed I for 10 minutes: the timed effects the mealidle/effects loads run with. */
+async function mealAndPotion(b, controller) {
   b.chat('/gamemode creative'); await sleep(400);
+  controller.chat(`/cerb cook give ${b.username} hearty_stew common 1`); await sleep(800);
+  controller.chat(`/effect give ${b.username} speed 600 0`); await sleep(300);
+  const stew = b.inventory.items().find(i => i.name === 'rabbit_stew');
+  if (stew) {
+    try { await b.equip(stew, 'hand'); b.activateItem(); await sleep(2300); b.deactivateItem(); bump(b.username, 'ate'); } catch (e) { bump(b.username, 'eatfail'); }
+  }
+  await sleep(500);
+}
+
+/** The meal and potion end with the load, so the next load on this server starts from the same state. */
+function clearMealAndPotion(b, controller) {
+  controller.chat(`/cerb cook clear ${b.username}`);
+  controller.chat(`/effect clear ${b.username}`);
+}
+
+async function mealidle(b, deadline, controller) {
+  await mealAndPotion(b, controller);
+  await menuidle(b, deadline, true);
+  clearMealAndPotion(b, controller);
+}
+
+async function effectsmenu(b, deadline, controller) {
+  await mealAndPotion(b, controller);
+  const step = async slot => { if (!b.currentWindow) return false; await b.clickWindow(slot, 0, 0); bump(b.username, 'clicks'); await sleep(300); return true; };
+  while (Date.now() < deadline) {
+    b.chat('/menu'); await sleep(600);
+    if (!b.currentWindow) { await sleep(500); continue; }
+    bump(b.username, 'opens');
+    for (const s of [4, 45]) if (!(await step(s))) break;
+    if (b.currentWindow) { await b.clickWindow(53, 0, 0); bump(b.username, 'clicks'); }
+    await sleep(300);
+  }
+  clearMealAndPotion(b, controller);
+}
+
+async function effectsidle(b, deadline, controller) {
+  await mealAndPotion(b, controller);
+  b.chat('/menu'); await sleep(1200);
+  if (b.currentWindow) { await b.clickWindow(4, 0, 0); await sleep(800); bump(b.username, 'open'); }
+  while (Date.now() < deadline) {
+    if (!b.currentWindow) { b.chat('/menu'); await sleep(1000); if (b.currentWindow) await b.clickWindow(4, 0, 0); bump(b.username, 'reopened'); }
+    await sleep(1000);
+  }
+  if (b.currentWindow) b.closeWindow(b.currentWindow);
+  clearMealAndPotion(b, controller);
+}
+
+async function menuidle(b, deadline, keepMode = false) {
+  if (!keepMode) { b.chat('/gamemode creative'); await sleep(400); }
   b.chat('/menu'); await sleep(1500);
   if (b.currentWindow) bump(b.username, 'open');
   while (Date.now() < deadline) {
@@ -519,6 +576,8 @@ async function menuidle(b, deadline) {
         : m === 'cook' ? cook(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)
+        : m === 'mealidle' ? mealidle(b, deadline, controller) : m === 'effectsmenu' ? effectsmenu(b, deadline, controller)
+        : m === 'effectsidle' ? effectsidle(b, deadline, controller)
         : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
