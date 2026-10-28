@@ -85,6 +85,22 @@ public final class Cooking implements Listener, AttributeSource {
         }
     }
 
+    /**
+     * A meal's restoration while it runs: {@code heals} heals a second apart, {@code done} so far, {@code paused} while
+     * PvP holds it. Read by the menus (docs/design/ACTIVE_EFFECTS.md); written only by its own task.
+     */
+    private static final class Restoration {
+        final String meal;
+        final int heals;
+        volatile int done;
+        volatile boolean paused;
+
+        Restoration(String meal, int heals) {
+            this.meal = meal;
+            this.heals = heals;
+        }
+    }
+
     /** An armed payment: items of {@code material} made in {@code view} now pay {@code xpEach}; {@code meal} when it is one. */
     private record Pending(Material material, double xpEach, String meal, InventoryView view, long until) {
         boolean live(long now) { return now - until < 0; }
@@ -102,16 +118,35 @@ public final class Cooking implements Listener, AttributeSource {
     private volatile java.util.function.ToDoubleFunction<Player> maxHealth = p -> 0;
     private volatile java.util.function.Predicate<UUID> pvpTagged = id -> false;
 
+    /** Shows the one-minute heads-up on the HUD: {@code force} once it has waited long enough for a free moment. */
+    @FunctionalInterface
+    public interface HeadsUp {
+        /** True when shown. {@code force}: show it now, behind any message on the bar. */
+        boolean show(Player p, String text, boolean force);
+    }
+
+    private volatile HeadsUp headsUp = (p, text, force) -> true;
+
+    /** About a minute before a meal ends, the HUD says so once (docs/design/ACTIVE_EFFECTS.md §4). */
+    static final long WARN_BEFORE_MS = 60_000L;
+    /** A meal eaten with less than this past the warning time gets no heads-up (it is said when eaten). */
+    static final long WARN_MIN_AFTER_EATING_MS = 5_000L;
+    /** After a join with under a minute left: a heads-up a moment later, if at least this much remains. */
+    static final long WARN_MIN_LEFT_MS = 15_000L, WARN_AFTER_JOIN_MS = 2_000L;
+    /** While the HUD shows a message or a level-up, the heads-up tries again this often, this many times, then waits behind it. */
+    private static final long WARN_RETRY_TICKS = 40L;
+    private static final int WARN_TRIES = 8;
+
     private final Map<UUID, Active> active = new ConcurrentHashMap<>();
     private final Map<UUID, Pending> pending = new ConcurrentHashMap<>();
-    /** A token per running restoration, so a new meal's ends the old one's. */
-    private final Map<UUID, Object> restoring = new ConcurrentHashMap<>();
+    /** The running restoration per player (its own token: a new meal's replaces the old one's). */
+    private final Map<UUID, Restoration> restoring = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> cooked = new ConcurrentHashMap<>();
     private final Set<NamespacedKey> recipeKeys = ConcurrentHashMap.newKeySet();
     private volatile Set<Material> mealBases = Set.of();
     private volatile String registered = "";
     private final LongAdder furnaceItems = new LongAdder(), campfireItems = new LongAdder(), craftedItems = new LongAdder(), mealsMade = new LongAdder(), mealsEaten = new LongAdder(),
-            refused = new LongAdder(), restored = new LongAdder(), qualityCarried = new LongAdder();
+            refused = new LongAdder(), restored = new LongAdder(), qualityCarried = new LongAdder(), warnings = new LongAdder();
 
     public Cooking(Plugin plugin, GatheringService gathering, SkillManager skills, AttributeService attributes, BiConsumer<Player, String> notice,
                    Consumer<Player> refresh) {
@@ -122,6 +157,9 @@ public final class Cooking implements Listener, AttributeSource {
         this.notice = notice;
         this.refresh = refresh;
     }
+
+    /** How the one-minute heads-up reaches the HUD (Manager.PlayerHUDManager.noticeIfIdle / notice). */
+    public void setHeadsUp(HeadsUp headsUp) { this.headsUp = headsUp; }
 
     public void setHealth(BiConsumer<Player, Double> heal, java.util.function.ToDoubleFunction<Player> maxHealth) {
         this.heal = heal;
@@ -505,28 +543,30 @@ public final class Cooking implements Listener, AttributeSource {
                 + duration(next.end() - now) + (change.startsWith("replaces") ? " §7(" + change + ")" : ""));
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_BURP, 0.6f, 1.2f);
         scheduleEnd(p, next);
+        scheduleWarning(p, next, true);
         restore(p, m, q);
     }
 
     /** Heal {@code m}'s share over its seconds, a second at a time: paused while PvP-tagged, ended by a new meal or death. */
     private void restore(Player p, CookingRules.Meal m, Quality q) {
         UUID id = p.getUniqueId();
-        Object token = new Object();
         if (m.restore() == null) { restoring.remove(id); return; }
-        restoring.put(id, token);
         double share = Math.min(1, m.restore().share() * rules().potency(q));
         int ticks = m.restore().seconds();
-        int[] done = {0}, waited = {0};
+        Restoration token = new Restoration(m.id(), ticks);
+        restoring.put(id, token);
+        int[] waited = {0};
         p.getScheduler().runAtFixedRate(plugin, task -> {
-            if (restoring.get(id) != token || !p.isOnline() || p.isDead() || done[0] >= ticks || waited[0] > ticks * 3) {
+            if (restoring.get(id) != token || !p.isOnline() || p.isDead() || token.done >= ticks || waited[0] > ticks * 3) {
                 restoring.remove(id, token);
                 task.cancel();
                 return;
             }
             waited[0]++;
-            if (pvpTagged.test(id)) return; // paused, not lost: the rest comes after the fight
+            if (pvpTagged.test(id)) { token.paused = true; return; } // paused, not lost: the rest comes after the fight
+            token.paused = false;
             heal.accept(p, maxHealth.applyAsDouble(p) * share / ticks);
-            done[0]++;
+            token.done++;
             restored.increment();
         }, null, 20L, 20L);
     }
@@ -538,6 +578,42 @@ public final class Cooking implements Listener, AttributeSource {
             if (active.get(p.getUniqueId()) != a) return; // replaced, refreshed or ended meanwhile
             end(p, true);
         }, null, ticks);
+    }
+
+    /**
+     * When to say {@code end} is near, in milliseconds from {@code now}, or -1 for no heads-up. {@code eatenNow}: set when
+     * the meal is eaten (a meal with about a minute or less to run gets none: the eating message said its time); else set
+     * at a join (under a minute left: a moment after the join, if at least {@link #WARN_MIN_LEFT_MS} remain). Pure.
+     */
+    static long warnDelayMs(long now, long end, boolean eatenNow) {
+        long left = end - now;
+        if (left > WARN_BEFORE_MS) {
+            long delay = left - WARN_BEFORE_MS;
+            return eatenNow && delay < WARN_MIN_AFTER_EATING_MS ? -1 : delay;
+        }
+        return !eatenNow && left > WARN_MIN_LEFT_MS ? WARN_AFTER_JOIN_MS : -1;
+    }
+
+    /** The one-minute heads-up for meal {@code a}: one delayed task; a replaced, refreshed or ended meal never warns. */
+    private void scheduleWarning(Player p, Active a, boolean eatenNow) {
+        long delay = warnDelayMs(System.currentTimeMillis(), a.end(), eatenNow);
+        if (delay < 0) return;
+        p.getScheduler().runDelayed(plugin, t -> warn(p, a, WARN_TRIES), null, Math.max(1, delay / 50));
+    }
+
+    private void warn(Player p, Active a, int tries) {
+        if (active.get(p.getUniqueId()) != a || !p.isOnline()) return; // replaced, refreshed or ended meanwhile
+        long left = a.end() - System.currentTimeMillis();
+        if (left <= 0) return;
+        CookingRules.Meal m = rules().meal(a.id());
+        String text = "§6" + (m == null ? "Your meal" : m.name()) + " §7wears off in " + duration(left);
+        if (headsUp.show(p, text, tries <= 1)) {
+            p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 0.45f, 1.4f);
+            warnings.increment();
+            return;
+        }
+        // The bar is busy (a fight's messages, a level-up): try again shortly, at most WARN_TRIES times.
+        p.getScheduler().runDelayed(plugin, t -> warn(p, a, tries - 1), null, WARN_RETRY_TICKS);
     }
 
     /** End {@code p}'s meal now (admin). Player's thread. */
@@ -581,7 +657,7 @@ public final class Cooking implements Listener, AttributeSource {
             active.put(p.getUniqueId(), a);
             attributes.markDirty(p.getUniqueId());
             Active run = a;
-            p.getScheduler().runDelayed(plugin, t -> { refresh.accept(p); scheduleEnd(p, run); }, null, 1L);
+            p.getScheduler().runDelayed(plugin, t -> { refresh.accept(p); scheduleEnd(p, run); scheduleWarning(p, run, false); }, null, 1L);
         }
         discoverRecipes(p);
     }
@@ -593,6 +669,33 @@ public final class Cooking implements Listener, AttributeSource {
         restoring.remove(id); // restoration doesn't survive a relog
         pending.remove(id);
         cooked.remove(id);
+    }
+
+    // ── the meal in the menus (docs/design/ACTIVE_EFFECTS.md) ────
+
+    /**
+     * {@code p}'s running meal as the menus show it: its timed effect until its end, and, apart, its restoration, which
+     * heals only in the first seconds after eating. Read from the same state the engine uses. Player's thread.
+     */
+    public void effects(Player p, long now, List<Effects.ActiveEffect> out) {
+        Active a = active.get(p.getUniqueId());
+        if (a == null || a.end() <= now) return;
+        CookingRules r = rules();
+        CookingRules.Meal m = r.meal(a.id());
+        if (m == null) return;
+        Effects.ActiveEffect.Phase phase = null;
+        if (m.restore() != null) {
+            String what = CookingRules.trim(Math.min(1, m.restore().share() * r.potency(a.tier())) * 100) + "% of max health over "
+                    + m.restore().seconds() + " s";
+            Restoration rs = restoring.get(p.getUniqueId());
+            if (rs != null && rs.meal.equals(a.id()) && rs.done < rs.heals) {
+                phase = new Effects.ActiveEffect.Phase("Restoration", what + ", a heal a second", now + (rs.heals - rs.done) * 1000L, rs.paused);
+            } else {
+                phase = new Effects.ActiveEffect.Phase("Restoration", what + " after eating; not running now", 0L, false);
+            }
+        }
+        out.add(new Effects.ActiveEffect("meal:" + a.id() + ":" + a.tier().id(), Effects.ActiveEffect.Category.MEAL, m.name(),
+                "Meal · " + a.tier().displayName + " · " + m.role(), m.item(), a.end(), null, contributions(m, a.tier(), r), List.of(), phase));
     }
 
     // ── the meal in the attribute engine ─────────────────────────
@@ -626,6 +729,6 @@ public final class Cooking implements Listener, AttributeSource {
     public String stats() {
         return "furnace food " + furnaceItems.sum() + ", campfire food " + campfireItems.sum() + ", crafted food " + craftedItems.sum() + ", meals made " + mealsMade.sum()
                 + " (refused " + refused.sum() + "), eaten " + mealsEaten.sum() + ", restoration ticks " + restored.sum()
-                + ", quality carried through a furnace " + qualityCarried.sum() + ", running now " + active.size();
+                + ", quality carried through a furnace " + qualityCarried.sum() + ", running now " + active.size() + ", one-minute warnings " + warnings.sum();
     }
 }

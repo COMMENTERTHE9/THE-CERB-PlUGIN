@@ -35,6 +35,9 @@ public final class MenuView {
     /** Animation steps asked for while building (null: none). */
     private List<Keyframe> keyframes;
     private BitSet animatedSlots;
+    /** A live update asked for while building (null: none) and how often, in ticks. */
+    private MenuTicker.Update live;
+    private int livePeriod;
 
     /** One animation step: {@code tick} ticks after the screen appears, show {@code item} in {@code slot}, play {@code sound} and/or run {@code action}. */
     record Keyframe(int tick, int slot, ItemStack item, Sound sound, float volume, float pitch, Runnable action) {}
@@ -89,6 +92,26 @@ public final class MenuView {
      */
     public void runLater(int ticks, Runnable action) {
         if (action != null) add(new Keyframe(clampTick(ticks), -1, null, null, 0f, 0f, action));
+    }
+
+    /**
+     * Keep this screen live (docs/design/ACTIVE_EFFECTS.md §3): run {@code update} every {@code periodTicks} ticks (at
+     * least {@link MenuTicker#MIN_PERIOD}) on the viewer's thread for as long as this exact render is shown, until it
+     * returns false. For countdowns: an update rewrites only the slots that show a time ({@link #set}); a screen whose
+     * content changed asks for a {@link MenuManager#refresh}. Ask only when something on the screen changes by itself.
+     */
+    public void every(int periodTicks, MenuTicker.Update update) {
+        this.live = update;
+        this.livePeriod = periodTicks;
+    }
+
+    MenuTicker.Update live() { return live; }
+
+    int livePeriod() { return livePeriod; }
+
+    /** The item now in {@code slot} (for a live update that changes only part of it). */
+    public ItemStack get(int slot) {
+        return slot < 0 || slot >= inventory.getSize() ? null : inventory.getItem(slot);
     }
 
     /** True if this screen animates {@code slot} itself (generic transitions leave it alone). */

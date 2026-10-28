@@ -165,6 +165,19 @@ public class PlayerHUDManager {
     }
 
     /**
+     * A {@link #notice} only when nothing else is on the bar (no message, no notice): for low-priority heads-ups such as a
+     * meal about to wear off (docs/design/ACTIVE_EFFECTS.md §4), which must never cover an ability's result, a fight's
+     * message or a level-up. An XP line waits behind it as behind any notice. True when shown. Player's thread.
+     */
+    public boolean noticeIfIdle(Player player, String legacyText, long ms) {
+        Sent s = sent.get(player.getUniqueId());
+        long now = System.nanoTime();
+        if (s != null && ((s.flash != null && s.flashUntil - now > 0) || (s.notice != null && s.noticeUntil - now > 0))) return false;
+        notice(player, legacyText, ms);
+        return true;
+    }
+
+    /**
      * Show the XP line (the real-time XP display) in the same place as {@link #flash} messages, for
      * {@code ms}: below them in priority, so an ability's result or a refusal is never covered, and
      * an XP line that arrives during one shows once it ends. Empty text clears it. Player's thread.

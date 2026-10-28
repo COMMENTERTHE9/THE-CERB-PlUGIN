@@ -45,24 +45,24 @@ public final class PlayerHubMenu extends PlayerMenu {
         AttributeSnapshot s = plugin.getAttributeService().get(id);
         Realm realm = s.realm().realm();
         boolean testRealm = plugin.getPlayerRealms().hasTestRealm(id);
-        int total = SkillView.totalLevel(plugin, id), cap = SkillDefinitions.all().size() * SkillProgression.MAX_LEVEL;
 
-        // ── Header: the character ──────────────────────────────
-        WeaponClass best = bestPowerClass(s);
-        v.button(MenuView.HEADER, Ui.head(p, ChatColor.GOLD + "" + ChatColor.BOLD + p.getName(), Ui.lore()
-                .raw(realm.color() + "R" + realm.number + " " + realm.displayName + ChatColor.DARK_GRAY + "  " + realm.epithet)
-                .gap()
-                .stat("Total skill level", Numbers.hud(total) + ChatColor.DARK_GRAY + " / " + Numbers.hud(cap))
-                .raw(PlayerTheme.bar(total, cap, 20, ChatColor.GREEN))
-                .gap()
-                .raw(Attribute.POWER.color + "Power " + ChatColor.WHITE + one(s.power(best))
-                        + ChatColor.DARK_GRAY + " (" + best.displayName.toLowerCase() + ")"
-                        + "   " + Attribute.AGILITY.color + "Agility " + ChatColor.WHITE + one(s.get(Attribute.AGILITY)))
-                .raw(Attribute.VITALITY.color + "Vitality " + ChatColor.WHITE + one(s.get(Attribute.VITALITY))
-                        + "   " + Attribute.FORTITUDE.color + "Fortitude " + ChatColor.WHITE + one(s.get(Attribute.FORTITUDE)))
-                .raw(Attribute.ESSENCE.color + "Essence " + ChatColor.WHITE + one(s.get(Attribute.ESSENCE))
-                        + "   " + Attribute.FORTUNE.color + "Fortune " + ChatColor.WHITE + GUIs.stats.StatsMenu.fortuneText(s))
-                .hint("Click for your full stats").build()), c -> openSection(c.player(), "stats"));
+        // ── Header: the character, and the effects on it (docs/design/ACTIVE_EFFECTS.md) ──
+        Effects.ActiveEffects effects = plugin.getActiveEffects();
+        long now = System.currentTimeMillis();
+        List<Effects.ActiveEffect> temp = effects == null ? List.of() : Effects.ActiveEffects.temporary(effects.of(p, now));
+        v.button(MenuView.HEADER, Ui.head(p, ChatColor.GOLD + "" + ChatColor.BOLD + p.getName(), headLore(p, temp, now)),
+                c -> menus.open(c.player(), new ActiveEffectsMenu(plugin)));
+        if (!temp.isEmpty()) {
+            // Its times count down while the hub is open: the head's lines only, once a second, until nothing is left.
+            v.every(20, () -> {
+                if (!p.isOnline() || !loaded(p)) return false;
+                long t = System.currentTimeMillis();
+                List<Effects.ActiveEffect> left = Effects.ActiveEffects.temporary(effects.of(p, t));
+                org.bukkit.inventory.ItemStack head = v.get(MenuView.HEADER);
+                if (head != null) v.set(MenuView.HEADER, ActiveEffectsMenu.withLore(head, headLore(p, left, t)));
+                return !left.isEmpty();
+            });
+        }
 
         // ── Vitals strip ───────────────────────────────────────
         var hs = plugin.getPlayerVirtualHealthManager().peekSnapshot(id);
@@ -123,6 +123,31 @@ public final class PlayerHubMenu extends PlayerMenu {
             v.button(sec.slot(), PlayerTheme.badge(Ui.item(sec.icon(), (a.isAvailable() ? PlayerTheme.PRIMARY : ChatColor.GRAY) + sec.name(),
                     l.build()), news), c -> openSection(c.player(), sec.id()));
         }
+    }
+
+    /** The head's lines: realm, total level, attributes, then the effects on the player now (meal first). */
+    private List<String> headLore(Player p, List<Effects.ActiveEffect> temp, long now) {
+        AttributeSnapshot s = plugin.getAttributeService().get(p.getUniqueId());
+        Realm realm = s.realm().realm();
+        int total = SkillView.totalLevel(plugin, p.getUniqueId()), cap = SkillDefinitions.all().size() * SkillProgression.MAX_LEVEL;
+        WeaponClass best = bestPowerClass(s);
+        Ui.Lore l = Ui.lore()
+                .raw(realm.color() + "R" + realm.number + " " + realm.displayName + ChatColor.DARK_GRAY + "  " + realm.epithet)
+                .gap()
+                .stat("Total skill level", Numbers.hud(total) + ChatColor.DARK_GRAY + " / " + Numbers.hud(cap))
+                .raw(PlayerTheme.bar(total, cap, 20, ChatColor.GREEN))
+                .gap()
+                .raw(Attribute.POWER.color + "Power " + ChatColor.WHITE + one(s.power(best))
+                        + ChatColor.DARK_GRAY + " (" + best.displayName.toLowerCase() + ")"
+                        + "   " + Attribute.AGILITY.color + "Agility " + ChatColor.WHITE + one(s.get(Attribute.AGILITY)))
+                .raw(Attribute.VITALITY.color + "Vitality " + ChatColor.WHITE + one(s.get(Attribute.VITALITY))
+                        + "   " + Attribute.FORTITUDE.color + "Fortitude " + ChatColor.WHITE + one(s.get(Attribute.FORTITUDE)))
+                .raw(Attribute.ESSENCE.color + "Essence " + ChatColor.WHITE + one(s.get(Attribute.ESSENCE))
+                        + "   " + Attribute.FORTUNE.color + "Fortune " + ChatColor.WHITE + GUIs.stats.StatsMenu.fortuneText(s))
+                .gap()
+                .raw(ChatColor.YELLOW + "Active effects:");
+        for (String line : ActiveEffectsMenu.summary(temp, now, 4)) l.raw(" " + line);
+        return l.hint("Click for your active effects").build();
     }
 
     /** Open a hub section by id, honouring its availability (re-evaluated at click time). */

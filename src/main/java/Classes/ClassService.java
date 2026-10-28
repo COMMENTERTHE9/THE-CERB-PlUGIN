@@ -56,6 +56,9 @@ public final class ClassService implements AttributeSource {
     /** An open Riposte window. */
     record CounterWindow(String abilityId, long until, double coefficient, long successCooldownMs) {}
 
+    /** A Feint: the next weapon hit before {@code until} crits ({@code abilityId}: the ability that gave it, for the menus). */
+    record Empowered(String abilityId, long until) {}
+
     private final JavaPlugin plugin;
     private final DatabaseManager db;
     private final SkillManager skills;
@@ -68,7 +71,7 @@ public final class ClassService implements AttributeSource {
     private final Map<UUID, List<Contribution>> contributions = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastCombat = new ConcurrentHashMap<>();
     final Map<UUID, CounterWindow> counters = new ConcurrentHashMap<>();
-    final Map<UUID, Long> empowered = new ConcurrentHashMap<>();
+    final Map<UUID, Empowered> empowered = new ConcurrentHashMap<>();
     /** Final saves on quit: written in order on one thread, drained on shutdown (never throttled away). */
     private final java.util.concurrent.ExecutorService writer = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Cerberus-Classes-DB");
@@ -705,6 +708,70 @@ public final class ClassService implements AttributeSource {
         return contributions.getOrDefault(player, List.of());
     }
 
+    // ── what the menus show (docs/design/ACTIVE_EFFECTS.md) ─────
+
+    /**
+     * {@code p}'s ability effects running at {@code now}: buffs (only those of the loadout in use, as the engine counts
+     * them), an open Riposte guard and a Feint; and, apart, the equipped passives and keystone (always on). Read from the
+     * same state the engine and the damage events use. Player's thread.
+     */
+    public void effects(org.bukkit.entity.Player p, long now, List<Effects.ActiveEffect> out) {
+        UUID id = p.getUniqueId();
+        ClassProfile prof = profiles.get(id);
+        if (prof == null) return;
+        Loadout l = prof.activeLoadout();
+        List<Running> list = buffs.get(id);
+        if (list != null) {
+            for (Running r : List.copyOf(list)) {
+                if (r.until() <= now || !l.contains(r.abilityId())) continue;
+                AbilityDef a = catalog.ability(r.abilityId());
+                out.add(new Effects.ActiveEffect("class:" + r.abilityId(), Effects.ActiveEffect.Category.ABILITY,
+                        a != null ? a.displayName() : r.abilityId(), source(a), icon(a), r.until(), null, List.of(r.contribution()), List.of(), null));
+            }
+        }
+        CounterWindow c = counters.get(id);
+        if (c != null && c.until() > now) {
+            AbilityDef a = catalog.ability(c.abilityId());
+            out.add(new Effects.ActiveEffect("class:" + c.abilityId() + ":guard", Effects.ActiveEffect.Category.ABILITY,
+                    (a != null ? a.displayName() : c.abilityId()) + " guard", source(a), icon(a), c.until(), null, List.of(),
+                    List.of("The next melee hit you take is", "negated and answered at x" + AbilityCaster.oneDecimal(c.coefficient()) + " a basic hit."), null));
+        }
+        Empowered em = empowered.get(id);
+        if (em != null && em.until() > now) {
+            AbilityDef a = catalog.ability(em.abilityId());
+            out.add(new Effects.ActiveEffect("class:" + em.abilityId() + ":empowered", Effects.ActiveEffect.Category.ABILITY,
+                    a != null ? a.displayName() : em.abilityId(), source(a), icon(a), em.until(), null, List.of(),
+                    List.of("Your next weapon hit is a critical hit."), null));
+        }
+        // Always on, not timed: what the loadout in use adds whatever you do (the same contributions refreshContributions counts).
+        List<String> passive = new ArrayList<>(l.passives());
+        passive.add(l.keystone());
+        for (String aid : passive) {
+            AbilityDef a = catalog.ability(aid);
+            if (a == null || !prof.unlocked(a) || a.passives().isEmpty()) continue;
+            List<Contribution> cs = new ArrayList<>();
+            for (AbilityDef.Passive ps : a.passives()) {
+                cs.add(ps.attribute() != null
+                        ? Contribution.attribute("class:" + a.id(), a.displayName(), ps.attribute(), ps.amount(), null)
+                        : Contribution.stat("class:" + a.id(), a.displayName(), ps.stat(), ps.amount(), null));
+            }
+            String kind = a.kind() == AbilityDef.Kind.KEYSTONE ? "keystone" : "passive";
+            out.add(new Effects.ActiveEffect("always:" + a.id(), Effects.ActiveEffect.Category.ALWAYS_ON, a.displayName(),
+                    source(a) + " · " + kind, icon(a), Effects.ActiveEffect.NO_END, "while equipped", cs, List.of(), null));
+        }
+    }
+
+    /** "Warrior ability" for an ability's class. */
+    private String source(AbilityDef a) {
+        ClassDef c = a == null ? null : catalog.classDef(a.classId());
+        return (c != null ? c.displayName() : "Class") + " ability";
+    }
+
+    private org.bukkit.Material icon(AbilityDef a) {
+        org.bukkit.Material m = a == null ? null : org.bukkit.Material.matchMaterial(String.valueOf(catalog.icon(a.id())));
+        return m != null && m.isItem() ? m : org.bukkit.Material.BLAZE_POWDER;
+    }
+
     // ── Riposte and Feint windows (read by damage events) ───────
 
     void openCounter(UUID player, AbilityDef a, EffectSpec.Counter c) {
@@ -717,14 +784,14 @@ public final class ClassService implements AttributeSource {
         return w != null && w.until() >= System.currentTimeMillis() ? w : null;
     }
 
-    void empower(UUID player, double seconds) {
-        empowered.put(player, System.currentTimeMillis() + Math.round(seconds * 1000));
+    void empower(UUID player, AbilityDef a, double seconds) {
+        empowered.put(player, new Empowered(a.id(), System.currentTimeMillis() + Math.round(seconds * 1000)));
     }
 
     /** True once if the player's next weapon hit is empowered (Feint): used up by that hit. Any thread. */
     public boolean consumeEmpower(UUID player) {
-        Long until = empowered.remove(player);
-        return until != null && until >= System.currentTimeMillis();
+        Empowered e = empowered.remove(player);
+        return e != null && e.until() >= System.currentTimeMillis();
     }
 
     // ── text ────────────────────────────────────────────────────

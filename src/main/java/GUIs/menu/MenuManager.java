@@ -57,6 +57,7 @@ public final class MenuManager implements Listener {
     private final Map<UUID, Deque<Menu>> stacks = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastClick = new ConcurrentHashMap<>();
     private final MenuAnimator animator;
+    private final MenuTicker ticker;
     /** Set when a click's action moved to another screen (that screen played its own sound). Per region thread. */
     private final ThreadLocal<Boolean> navigated = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
@@ -66,10 +67,14 @@ public final class MenuManager implements Listener {
     public MenuManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.animator = new MenuAnimator(plugin);
+        this.ticker = new MenuTicker(plugin);
     }
 
     /** The animation player (diagnostics: how many run now, how many started). */
     public MenuAnimator animator() { return animator; }
+
+    /** The live screens' updates (diagnostics: how many count down now, how many updates ran). */
+    public MenuTicker ticker() { return ticker; }
 
     public JavaPlugin plugin() { return plugin; }
 
@@ -147,6 +152,7 @@ public final class MenuManager implements Listener {
                 if (!allowed(player, holder.menu())) { deny(player); return; }
                 MenuView v = render(player, holder.menu(), top, holder);
                 animator.play(player, holder, top, v.keyframes());
+                ticker.start(player, holder, top, v.livePeriod(), v.live());
             }
         });
     }
@@ -176,6 +182,7 @@ public final class MenuManager implements Listener {
             if (top.getHolder() instanceof MenuHolder) top.clear();
         }
         animator.cancelAll();
+        ticker.cancelAll();
         stacks.clear();
         lastClick.clear();
     }
@@ -208,6 +215,7 @@ public final class MenuManager implements Listener {
             if (retitle) view.setTitle(menu.title());
             if (another && menu.animationBackground() != null) sweep(v, top, open);
             animator.play(player, open, top, v.keyframes());
+            ticker.start(player, open, top, v.livePeriod(), v.live());
             sound(player, menu, nav);
             return;
         }
@@ -220,6 +228,7 @@ public final class MenuManager implements Listener {
         player.openInventory(inv);
         if (player.getOpenInventory().getTopInventory() != inv) return; // another plugin cancelled the open
         animator.play(player, holder, inv, v.keyframes());
+        ticker.start(player, holder, inv, v.livePeriod(), v.live());
         sound(player, menu, fromNothing ? Nav.OPEN : nav);
     }
 
@@ -359,6 +368,7 @@ public final class MenuManager implements Listener {
         // Switching screens closes the old inventory with reason OPEN_NEW - keep the history then.
         UUID id = event.getPlayer().getUniqueId();
         animator.cancel(id);
+        ticker.cancel(id);
         if (event.getReason() != InventoryCloseEvent.Reason.OPEN_NEW) {
             stacks.remove(id);
             if (event.getInventory().getHolder() instanceof MenuHolder h && event.getPlayer() instanceof Player p) {
@@ -392,6 +402,7 @@ public final class MenuManager implements Listener {
         stacks.remove(event.getPlayer().getUniqueId());
         lastClick.remove(event.getPlayer().getUniqueId());
         animator.cancel(event.getPlayer().getUniqueId());
+        ticker.cancel(event.getPlayer().getUniqueId());
     }
 
     /** How many screens deep the player is (1 = a root screen, 0 = no menu open). */

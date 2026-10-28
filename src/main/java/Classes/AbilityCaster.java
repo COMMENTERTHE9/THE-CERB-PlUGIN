@@ -284,7 +284,7 @@ public final class AbilityCaster {
                     p.getWorld().spawnParticle(Particle.ENCHANTED_HIT, p.getLocation().add(0, 1.1, 0), 14, 0.45, 0.5, 0.45, 0.05);
                 }
                 case EffectSpec.Empower em -> {
-                    service.empower(p.getUniqueId(), em.seconds());
+                    service.empower(p.getUniqueId(), a, em.seconds());
                     self = true;
                     note(detail, "next hit crits");
                     p.getWorld().spawnParticle(Particle.WITCH, p.getLocation().add(0, 1.2, 0), 10, 0.35, 0.4, 0.35, 0.02);

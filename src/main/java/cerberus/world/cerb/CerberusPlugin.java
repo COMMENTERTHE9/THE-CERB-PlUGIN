@@ -307,6 +307,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Fishing fishing;
     private Gathering.Farming farming;
     private Gathering.Cooking cooking;
+    /** Every effect on a player right now, for the menus (docs/design/ACTIVE_EFFECTS.md). */
+    private Effects.ActiveEffects activeEffects;
     private Gathering.Tackle tackle;
     private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
@@ -318,6 +320,36 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public Gathering.Farming getFarming() { return farming; }
     /** Cooking's XP, meals and the running meal (docs/design/FARMING_COOKING.md §4); null until gathering is up. */
     public Gathering.Cooking getCooking() { return cooking; }
+    public Effects.ActiveEffects getActiveEffects() { return activeEffects; }
+
+    /**
+     * The systems whose effects the Player Menu shows (docs/design/ACTIVE_EFFECTS.md §2): each read from its own state when
+     * shown. A later system (Alchemy, magic) registers one more here; the menus need no change.
+     */
+    private void registerEffectSources() {
+        activeEffects = new Effects.ActiveEffects(getLogger());
+        activeEffects.register("meals", (p, now, out) -> { if (cooking != null) cooking.effects(p, now, out); });
+        activeEffects.register("class abilities", (p, now, out) -> { if (classService != null) classService.effects(p, now, out); });
+        activeEffects.register("attribute buffs", (p, now, out) -> {
+            if (attributeBuffs == null) return;
+            for (Attributes.BuffSource.Buff b : attributeBuffs.active(p.getUniqueId())) {
+                if (b.expiresAt() <= now) continue;
+                out.add(new Effects.ActiveEffect(Attributes.BuffSource.SOURCE_PREFIX + b.id(), Effects.ActiveEffect.Category.BUFF, b.label(),
+                        "Admin test buff · never saved, gone when you leave", GUIs.stats.AttributeView.icon(b.attribute()), b.expiresAt(), null,
+                        java.util.List.of(Attributes.Contribution.attribute(Attributes.BuffSource.SOURCE_PREFIX + b.id(), b.label(), b.attribute(), b.amount(), null)),
+                        java.util.List.of(), null));
+            }
+        });
+        activeEffects.register("test realm", (p, now, out) -> {
+            if (playerRealms == null || !playerRealms.hasTestRealm(p.getUniqueId())) return;
+            Manager.Realm r = playerRealms.realmOf(p.getUniqueId());
+            out.add(new Effects.ActiveEffect("realm:test", Effects.ActiveEffect.Category.BUFF, "Test realm: R" + r.number + " " + r.displayName,
+                    "Admin test", org.bukkit.Material.END_CRYSTAL, Effects.ActiveEffect.NO_END, "until an admin clears it or you leave",
+                    java.util.List.of(), java.util.List.of("Your realm is set for a test: damage,", "health and defense scale with it",
+                    "(realm magnitude x" + Manager.Numbers.compact(attributeService.get(p.getUniqueId()).realmMultiplier()) + ")."), null));
+        });
+        activeEffects.register("vanilla effects", new Effects.VanillaEffects());
+    }
     /** Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup, bait and the reel. */
     public Gathering.Tackle getTackle() { return tackle; }
     public Celebrations getCelebrations() { return celebrations; }
@@ -771,6 +803,12 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         cooking.registerRecipes(gatheringService.catalog());
         forgeListener.setCooking(cooking);
         pm.registerEvents(cooking, this);
+        // A meal's one-minute heads-up waits for a free moment on the HUD (no ability, fight or level-up message showing).
+        cooking.setHeadsUp((p, text, force) -> {
+            if (force) { playerHUDManager.notice(p, text, 4000); return true; }
+            return playerHUDManager.noticeIfIdle(p, text, 4000);
+        });
+        registerEffectSources();
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
         pm.registerEvents(celebrations, this);
@@ -1042,6 +1080,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         sender.sendMessage(ChatColor.GRAY + "Attribute previews since start: " + ChatColor.WHITE + attributeService.previewCount());
         sender.sendMessage(ChatColor.GRAY + "Menu animations running: " + ChatColor.WHITE + menuManager.animator().runningCount()
                 + ChatColor.GRAY + " (started since start: " + ChatColor.WHITE + menuManager.animator().startedCount() + ChatColor.GRAY + ")");
+        sender.sendMessage(ChatColor.GRAY + "Live menu countdowns running: " + ChatColor.WHITE + menuManager.ticker().runningCount()
+                + ChatColor.GRAY + " (updates since start: " + ChatColor.WHITE + menuManager.ticker().updateCount() + ChatColor.GRAY + ")");
         sender.sendMessage(ChatColor.GRAY + "Players with a menu open: " + ChatColor.WHITE + menuManager.activeViewers());
         sender.sendMessage(ChatColor.GRAY + "Mob HP pools tracked: " + ChatColor.WHITE + mobVirtualHealthManager.size());
         if (classService != null && abilityCaster != null) {
