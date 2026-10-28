@@ -367,6 +367,7 @@ public final class Woodcutting implements Listener {
             if (GatheringService.paysNothing(f.r, origin)) continue;     // placed meanwhile
             ItemStack axe = f.p.getInventory().getItemInMainHand();
             if (wouldBreak(axe)) { go = false; break; }
+            if (!GatheringService.vanillaAllows(f.p, b)) { go = false; break; } // spawn protection, the world border
             FellingBreak e = new FellingBreak(b, f.p);
             Bukkit.getPluginManager().callEvent(e);
             if (e.isCancelled()) { go = false; break; }                   // a protection plugin said no: stop here
@@ -486,6 +487,7 @@ public final class Woodcutting implements Listener {
         for (; i < sweep.size() && i < from + CANOPY_PER_TICK; i++) {
             Block b = sweep.get(i);
             if (!Bukkit.isOwnedByCurrentRegion(b) || !(b.getBlockData() instanceof Leaves l) || l.isPersistent()) continue;
+            if (!GatheringService.vanillaAllows(f.p, b)) continue;
             FellingBreak e = new FellingBreak(b, f.p);
             Bukkit.getPluginManager().callEvent(e);
             if (e.isCancelled()) continue;

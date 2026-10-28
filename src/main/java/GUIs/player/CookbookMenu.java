@@ -56,7 +56,7 @@ public final class CookbookMenu extends PlayerMenu {
                 .raw(ChatColor.GRAY + "You cook " + tier.color + tier.displayName + ChatColor.GRAY + " meals: effects ×"
                         + CookingRules.trim(r.potency(tier)) + ", lasting ×" + CookingRules.trim(r.durationFactor(tier)))
                 .raw(CookingCommand.activeLine(c, r, p)).gap();
-        for (String w : PlayerTheme.wrap("Craft meals at a crafting table. Half or more of a meal's crops with a quality "
+        for (String w : PlayerTheme.wrap("Craft meals in a crafting grid (four-ingredient meals fit your own). Half or more of a meal's crops with a quality "
                 + "(Farming 50) make it one tier better. One meal at a time: a new one replaces the last.", SkillView.WIDTH)) head.text(w);
         v.set(MenuView.HEADER, Ui.item(Material.CAKE, ChatColor.GOLD + "" + ChatColor.BOLD + "Cookbook", head.build()));
 

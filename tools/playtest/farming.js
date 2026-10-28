@@ -261,14 +261,25 @@ async function placedPhase() {
   await sleep(500);
   g = (await farmXp()) - c1;
   check('A cane planted by hand with two grown above: the two grown pay, the placed one doesn\'t', g === 2, `+${g}`);
+  // A fast macro breaks the bottom and the middle in the same tick, before the middle falls: each segment pays once.
+  await fill(4, 0, 0, 4, 2, 0, 'sugar_cane');
+  await sleep(300);
+  const d0 = await farmXp();
+  const p0 = block(4, 0, 0).position, p1 = block(4, 1, 0).position;
+  await bot.lookAt(p0.offset(0.5, 0.5, 0.5), true);
+  bot._client.write('block_dig', { status: 0, location: p0, face: 1, sequence: seq++ });
+  bot._client.write('block_dig', { status: 0, location: p1, face: 1, sequence: seq++ });
+  await sleep(800);
+  g = (await farmXp()) - d0;
+  check('Bottom and middle cane broken in the same instant: 3 segments, 3 XP (never the middle twice)', g === 3, `+${g}`);
   await cmd('/kill @e[type=item,distance=..20]', 300);
   // A melon grown from a stem pays.
   await setblock(8, -1, 0, 'farmland'); await setblock(8, 0, 0, 'melon_stem[age=7]');
   await fill(7, -1, 0, 9, -1, 1, 'dirt replace air');
   await setblock(8, -1, 0, 'farmland');
-  await cmd('/gamerule random_tick_speed 400', 300);
+  await cmd('/gamerule random_tick_speed 1000', 300); // a stem grows its fruit on a random tick, 1 in 13-26 tries
   let grown = null;
-  for (let i = 0; i < 40 && !grown; i++) {
+  for (let i = 0; i < 90 && !grown; i++) {
     await sleep(500);
     for (const [dx, dz] of [[7, 0], [9, 0], [8, 1], [8, -1]]) if (blockName(dx, 0, dz) === 'melon') grown = [dx, dz];
   }

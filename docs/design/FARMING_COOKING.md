@@ -70,7 +70,7 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
   - creative or spectator (the XP display says why);
   - a crop another plugin's protection refused.
 - **No player, no XP.** Water, pistons, villagers, dispensers and observer farms keep their vanilla outputs. With no player in the event, nobody earns Farming XP; see §6.
-- **Sugar cane and cactus:** breaking a segment pays for it and for each grown segment above it that falls with it, counted at the break.
+- **Sugar cane and cactus:** breaking a segment pays for it and for each grown segment above it that falls with it, counted at the break. Those segments fall a tick later; one broken again before it falls (a fast macro) pays nothing, since it was already counted.
 - **The weak-crop rule** (Mining's and Woodcutting's `weak-resources`) applies.
 
 ### 3.3 What Farming gives the character (`attributes.yml`, the one engine)
@@ -94,7 +94,7 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
   - **Bounded steps:** 16 crops a tick on the region thread that owns them, one sweep per player at a time. The reach is checked on the region thread before it starts.
   - **Every crop, at its step:**
     - ripeness, type, ownership and loaded chunk are checked again;
-    - it is offered to protection plugins as the player's own break (`Farming.HarvestBreak`), and the sweep stops at the first refusal;
+    - it must be inside the world border and outside spawn protection, as vanilla checks for the player's own break, and it is offered to protection plugins as the player's own break (`Farming.HarvestBreak`); the sweep stops at the first refusal;
     - it costs 1 hoe durability (Unbreaking and Smithing's wear resistance apply), and the sweep stops before the hoe would break;
     - it pays its XP, Fortune roll and quality roll, and is replanted when Replant is on and a seed is there.
   - It also stops when the hoe leaves the hand, the player leaves or dies, or the sweep reaches another region or an unloaded chunk.
@@ -109,7 +109,7 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
 
   - The quality is written on the produce items (`cerberus:crop_quality`, a lore line; Common produce stays a plain item). Those items stay vanilla: edible, craftable, compostable, tradeable. They stack only with the same quality. The key is not forged gear's `cerberus:quality`, so produce never counts as equipment.
   - Only the crops meals use roll one (the table's last column): cane, cactus, melons, pumpkins and glow berries roll none.
-  - A furnace or smoker passes the quality on: a Fine potato bakes into a Fine baked potato. It is rolled once at the harvest, can't be rerolled and has no upgrade path.
+  - A campfire passes the quality on: a Fine potato roasts into a Fine baked potato. A furnace or smoker makes plain food: its output slot takes only items like the recipe's plain result, so a quality result would stop it until emptied (or burn fuel for nothing beside plain food). The quality is rolled once at the harvest, can't be rerolled and has no upgrade path.
 - **75 and 100:** the reach grows (7×7, then 9×9) and the quality odds keep rising.
   - **Proposed, not built:** scythes (a Farming tool with its own reach), irrigation and harvesting machines (with the attribution in §6), custom crops for Herbalism and Alchemy, and seasonal or regional crops.
 
@@ -149,13 +149,13 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
   | golden carrot | 5 |
 
 - **Cerberus meals** (§4.2) pay their own XP per meal made.
-- **Food a player puts on a campfire** pays that player, at the furnace table's rate, when the campfire finishes it: the slot they filled is remembered (in memory, for two minutes) and paid when that slot's food is done. Food put on in creative, food whose player left before it was done, and food another plugin put there pay nobody. (In Java Edition only a player puts food on a campfire: hoppers and dispensers can't.)
+- **Food a player puts on a campfire** pays that player, at the furnace table's rate, when the campfire finishes it: the slot they filled is remembered (in memory, from the campfire's own start event) and paid when that slot's food is done. Food put on in creative, food whose player left before it was done, and food another plugin put there pay nobody. (In Java Edition only a player puts food on a campfire: hoppers and dispensers can't.)
 - **Never:** creative or spectator (the XP display says why), a crafter block (no player), or a click that made nothing.
 - **Cooking gives Vitality 0.25 per level** (`attributes.yml`).
 
 ### 4.2 Meals
 
-Each meal is data in `resources.yml` → `cooking.meals`: a stable id, name, edible base item, shapeless crafting recipe, the Cooking level that unlocks it, XP, and effect. The base item's own food points and eating time are vanilla. Recipes are crafted at a crafting table and stay locked until the level: the grid shows no result, and the recipe book shows them once open.
+Each meal is data in `resources.yml` → `cooking.meals`: a stable id, name, edible base item, shapeless crafting recipe, the Cooking level that unlocks it, XP, and effect. The base item's own food points and eating time are vanilla. Recipes are crafted in a crafting grid (the four-ingredient meals fit a player's own 2×2 grid) and stay locked until the level: the grid shows no result, and the recipe book shows them once open.
 
 | Meal | Level | Role | Recipe (shapeless) | Made on | Effect (Common tier) | Duration | XP |
 |---|---|---|---|---|---|---|---|

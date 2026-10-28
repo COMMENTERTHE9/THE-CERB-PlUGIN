@@ -187,6 +187,27 @@ public final class GatheringService {
         return new Extraction(true, drops, null);
     }
 
+    /**
+     * True when vanilla would let {@code p} break {@code b} by hand: inside the world border, and outside spawn protection
+     * (as vanilla: the main world only, a radius set, operators exempt, and none while the server has no operators). Breaks
+     * a technique makes for the player (Felling, the canopy, Wide Harvest) check this as well as asking protection
+     * plugins, since vanilla checks only the player's own break. The block's region thread.
+     */
+    public static boolean vanillaAllows(Player p, Block b) {
+        org.bukkit.World w = b.getWorld();
+        try {
+            if (!w.getWorldBorder().isInside(b.getLocation())) return false;
+        } catch (RuntimeException ignored) { /* no border to read here: the plugins' own check still applies */ }
+        int radius = org.bukkit.Bukkit.getSpawnRadius();
+        if (radius <= 0 || p.isOp() || !w.equals(org.bukkit.Bukkit.getWorlds().get(0)) || org.bukkit.Bukkit.getOperators().isEmpty()) return true;
+        try {
+            org.bukkit.Location s = w.getSpawnLocation();
+            return Math.max(Math.abs(b.getX() - s.getBlockX()), Math.abs(b.getZ() - s.getBlockZ())) > radius;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
     /** "a drill (tier 5)", "a pickaxe": what a resource needs, for messages. */
     public static String needs(GatheringCatalog.ResourceDef r) {
         if (r.tool() == null || r.tool().isEmpty()) return "nothing special";

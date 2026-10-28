@@ -1,9 +1,9 @@
 // Cooking in game (docs/design/FARMING_COOKING.md §4). LOCAL SANDBOX servers only; the bot must be op.
 // Usage: node cooking.js [phase[,phase...]] [botName]
 //   furnace  - food taken out of a smoker pays Cooking XP (cooked beef 3 each, a shift-click every item); a hopper's take
-//              pays nobody; creative takes nothing (and the XP display says why); a Fine potato bakes into a Fine baked potato
-//   campfire - food the bot put on a campfire pays it when the campfire finishes it (cooked beef 3 each); food put on in
-//              creative pays nothing
+//              pays nobody; creative takes nothing (and the XP display says why); Fine potatoes in a smoker all bake, plain
+//   campfire - food the bot put on a campfire pays it when the campfire finishes it (cooked beef 3 each); a Fine potato
+//              roasts into a Fine baked potato; food put on in creative pays nothing
 //   craft    - bread at a crafting table pays 4, a shift-click batch every loaf; dried kelp from a dried kelp block nothing
 //              (reversible storage); creative nothing
 //   meals    - a meal's recipe makes nothing below its level, the meal from it (Cooking 10: Hearty Stew, Common), its
@@ -168,32 +168,43 @@ async function furnacePhase() {
   check('Creative takes the cooked beef: no XP, and the XP display says why', (await cookXp()) - c0 === 0 && hudSince(t).some(h => /creative/i.test(h)),
     JSON.stringify(hudSince(t).slice(-2)));
   await cmd('/gamemode survival', 400);
-  // A Fine potato bakes into a Fine baked potato.
+  // Fine potatoes in a smoker all bake, plain: a quality result would stop it at the first (its output takes only the
+  // recipe's plain result); a campfire carries the quality (campfire phase).
   await cmd('/clear @s', 300);
-  await give('potato' + fineData, 1); await give('coal', 1);
-  const s4 = await smoke('potato', 1, 1, { take: 'none' });
+  await give('potato' + fineData, 3); await give('coal', 1);
+  const s4 = await smoke('potato', 3, 3, { take: 'none' });
   const lore = loreOf(s4.output);
   await click(2, 0, 1);
   bot.closeWindow(s4.w);
-  check('A Fine potato bakes into a Fine baked potato', s4.output && s4.output.name === 'baked_potato' && /Fine quality/.test(lore), `${s4.output ? s4.output.name : 'nothing'}: ${lore}`);
+  check('Three Fine potatoes in a smoker: all three bake, plain (the smoker never stalls)', s4.out === 3 && s4.output && s4.output.name === 'baked_potato' && !/quality/.test(lore),
+    `${s4.out} baked; ${lore || 'plain'}`);
 }
 
 async function campfirePhase() {
   await kitchen();
   await setLevel(1);
   await setblock(0, 0, 2, 'campfire[lit=true]', 500);
-  await give('beef', 2);
-  const idx = bot.inventory.slots.findIndex((it, i) => it && it.name === 'beef' && i >= 36 && i <= 44);
-  if (idx >= 0) bot.setQuickBarSlot(idx - 36);
-  await sleep(300);
+  await give('beef', 2); await give('potato' + fineData, 1);
+  const holdItem = async name => {
+    const k = bot.inventory.slots.findIndex((it, i) => it && it.name === name && i >= 36 && i <= 44);
+    if (k >= 0) bot.setQuickBarSlot(k - 36);
+    await sleep(300);
+  };
+  await holdItem('beef');
   const x0 = await cookXp();
   try { await bot.activateBlock(bot.blockAt(at(0, 0, 2))); } catch (e) { /* the server decides */ }
   await sleep(300);
   try { await bot.activateBlock(bot.blockAt(at(0, 0, 2))); } catch (e) { /* the server decides */ }
-  note('two beef on the campfire; it takes 30 s');
+  await sleep(300);
+  await holdItem('potato');
+  try { await bot.activateBlock(bot.blockAt(at(0, 0, 2))); } catch (e) { /* the server decides */ }
+  note('two beef and a Fine potato on the campfire; it takes 30 s');
   await sleep(33_000);
   const g = (await cookXp()) - x0;
-  check('Two beef the bot put on a campfire: cooked, 3 XP each to the bot', g === 6, `+${g}`);
+  check('Two beef and a potato the bot put on a campfire: cooked, 3 + 3 + 2 XP to the bot', g === 8, `+${g}`);
+  const roasted = Object.values(bot.entities).filter(e => e.name === 'item' && e.position.distanceTo(at(0, 0, 2)) < 3)
+    .map(e => { try { const d = e.getDroppedItem(); return d.name + (loreOf(d) ? ' (' + loreOf(d) + ')' : ''); } catch (er) { return '?'; } });
+  check('...and the Fine potato roasts into a Fine baked potato (a campfire carries the quality)', roasted.some(r => /baked_potato \(.*Fine quality/.test(r)), roasted.join(', '));
   // Food put on in creative pays nothing, even when the campfire finishes it in survival.
   await cmd('/kill @e[type=item,distance=..20]', 300);
   await setblock(3, 0, 2, 'campfire[lit=true]', 400);

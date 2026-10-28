@@ -140,13 +140,16 @@ public final class Farming implements Listener {
         FarmingRules.Crop c = f.crop(b.getType());
         if (c == null) return;
         boolean placedHere = placed(c, b);
-        int above = c.column() ? column(b, c) : 0; // grown segments above that fall with it (and their marks forgotten)
+        // A segment a break below already paid for, still standing until its fall next tick (a fast macro can break it
+        // in the same tick): it and the segments above it were counted then, so they pay nothing again.
+        boolean counted = c.column() && falling.remove(Seg.of(b)) instanceof Long until && until - System.currentTimeMillis() > 0;
+        int above = c.column() && !counted ? column(b, c) : 0; // grown segments above that fall with it, each counted once
         if (c.ripe() == FarmingRules.Ripe.GROWN && gathering.placedBlocks() != null) gathering.placedBlocks().unmark(b);
-        boolean ripe = ripe(c, b.getBlockData(), placedHere);
+        boolean ripe = !counted && ripe(c, b.getBlockData(), placedHere);
         int count = (ripe ? 1 : 0) + above;
         boolean creative = GatheringService.methodOf(p) == GatherRules.Method.CREATIVE;
         if (count == 0) {
-            if (creative) return;
+            if (creative || counted) return;
             if (placedHere) {
                 placedHarvests.increment();
                 hint(p, "placed", "§7" + c.name() + " placed by hand pays no Farming XP; " + c.name().toLowerCase(java.util.Locale.ROOT)
@@ -173,19 +176,35 @@ public final class Farming implements Listener {
         if (ripe && c.wide() && p.isSneaking()) startSweep(p, c, b, level);
     }
 
+    /** A cane or cactus segment's place, for the ones counted before they fall. */
+    private record Seg(UUID world, int x, int y, int z) {
+        static Seg of(Block b) { return new Seg(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ()); }
+    }
+
+    /** Segments a break counted above it, until when (they fall a tick later; a second break of one meanwhile pays nothing). */
+    private final Map<Seg, Long> falling = new ConcurrentHashMap<>();
+    static final long FALL_MS = 1_000;
+
     /**
-     * Sugar cane or cactus above {@code b}: the segments that will fall once it is broken. Returns how many of them grew
-     * (a placed one pays nothing), and forgets every one's mark (they are about to come down). The block's region thread.
+     * Sugar cane or cactus above {@code b}: the segments that will fall once it is broken. Returns how many of them grew (a
+     * placed one pays nothing; its mark stays until it is gone, and a segment that grows there later clears it) and
+     * remembers each counted one until it has fallen. The block's region thread.
      */
     private int column(Block b, FarmingRules.Crop c) {
         PlacedBlocks marks = gathering.placedBlocks();
         int grown = 0;
         World w = b.getWorld();
+        long until = System.currentTimeMillis() + FALL_MS;
         for (int y = b.getY() + 1, n = 0; y < w.getMaxHeight() && n < COLUMN_MAX; y++, n++) {
             Block up = w.getBlockAt(b.getX(), y, b.getZ());
             if (!c.blocks().contains(up.getType())) break;
-            if (marks == null || !marks.isPlaced(up)) grown++;
-            else marks.unmark(up);
+            if (marks != null && marks.isPlaced(up)) continue;
+            Long before = falling.put(Seg.of(up), until);
+            if (before == null || before - System.currentTimeMillis() <= 0) grown++; // never counted twice
+        }
+        if (falling.size() > 256) {
+            long now = System.currentTimeMillis();
+            falling.values().removeIf(t -> t - now <= 0);
         }
         return grown;
     }
@@ -487,6 +506,7 @@ public final class Farming implements Listener {
                 go = false;
                 break;
             }
+            if (!GatheringService.vanillaAllows(s.p, b)) { refusals.increment(); go = false; break; } // spawn protection, the border
             HarvestBreak e = new HarvestBreak(b, s.p);
             Bukkit.getPluginManager().callEvent(e);
             if (e.isCancelled()) { refusals.increment(); go = false; break; } // a protection plugin said no: stop here

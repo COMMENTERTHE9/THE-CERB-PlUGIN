@@ -149,11 +149,14 @@ public final class Cooking implements Listener, AttributeSource {
     }
 
     /**
-     * A crop's quality carried through a furnace, smoker or campfire: a Fine potato bakes into a Fine baked potato. (A
-     * furnace's smelt event is a cook event too: one handler sees both.)
+     * A crop's quality carried through a campfire: a Fine potato roasts into a Fine baked potato. A campfire drops what it
+     * cooks. A furnace or smoker makes plain food: its output slot takes only items like the recipe's plain result, so a
+     * quality result would stop it until emptied, or burn fuel for nothing beside plain food. (A furnace's smelt event is a
+     * cook event too, hence the block check.)
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCookQuality(BlockCookEvent e) {
+        if (e instanceof FurnaceSmeltEvent || !isCampfire(e.getBlock().getType())) return;
         Quality q = GearItems.cropQuality(e.getSource());
         if (q == null) return;
         ItemStack out = e.getResult();
@@ -172,38 +175,57 @@ public final class Cooking implements Listener, AttributeSource {
     /** Who put the food in a campfire slot, and when (a record older than {@link #CAMPFIRE_RECORD_MS} is stale). */
     private record Placed(UUID player, long at) {}
 
-    /** A campfire takes 30 s; a record this old belongs to food that never finished (the fire went out, it was broken). */
-    static final long CAMPFIRE_RECORD_MS = 120_000;
+    /**
+     * A campfire takes 30 s, longer unlit; a slot's record is replaced by the next food put in that slot, so this only
+     * bounds memory for campfires that are gone.
+     */
+    static final long CAMPFIRE_RECORD_MS = 30 * 60_000L;
     private final Map<CampfireSlot, Placed> campfire = new ConcurrentHashMap<>();
 
     private static boolean isCampfire(Material m) { return m == Material.CAMPFIRE || m == Material.SOUL_CAMPFIRE; }
 
+    /** A player using a campfire with an item in hand, just now: the food a campfire takes in that same call is theirs. */
+    private final Map<CampfireSlot, Placed> using = new ConcurrentHashMap<>();
+
     /**
-     * A player putting food on a campfire: the slots it fills are theirs. Vanilla places the food after this event, so the
-     * slots are compared a tick later on the campfire's region thread. A dispenser places food with no player: no record.
+     * A player putting food on a campfire. Vanilla places it right after this event, in the same call, and the campfire's
+     * start event says when it does; this only notes who is using which campfire (creative players aren't noted: their food
+     * pays nothing).
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onCampfireUse(org.bukkit.event.player.PlayerInteractEvent e) {
         if (e.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK || e.getClickedBlock() == null
                 || !isCampfire(e.getClickedBlock().getType()) || e.useItemInHand() == org.bukkit.event.Event.Result.DENY) return;
-        ItemStack hand = e.getItem();
-        if (hand == null || !rules().enabled() || creative(e.getPlayer())) return;
+        if (e.getItem() == null || !rules().enabled() || creative(e.getPlayer())) return;
         org.bukkit.block.Block b = e.getClickedBlock();
-        if (!(b.getState() instanceof org.bukkit.block.Campfire before)) return;
-        boolean[] empty = new boolean[before.getSize()];
-        for (int i = 0; i < empty.length; i++) empty[i] = before.getItem(i) == null || before.getItem(i).getType().isAir();
-        UUID player = e.getPlayer().getUniqueId();
-        Bukkit.getRegionScheduler().run(plugin, b.getLocation(), t -> {
-            if (!(b.getState() instanceof org.bukkit.block.Campfire after)) return;
+        using.put(new CampfireSlot(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ(), -1), new Placed(e.getPlayer().getUniqueId(), System.nanoTime()));
+    }
+
+    /**
+     * Food goes into a campfire: the first empty slot, as vanilla fills them. The player who used the campfire in this same
+     * call owns that slot's food; food put there any other way (another plugin) owns nobody, and replaces whatever record
+     * the slot had (food that left without cooking: a campfire broken or put out).
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onCampfireStart(org.bukkit.event.block.CampfireStartEvent e) {
+        org.bukkit.block.Block b = e.getBlock();
+        if (!(b.getState() instanceof org.bukkit.block.Campfire state)) return;
+        int slot = -1;
+        for (int i = 0; i < state.getSize(); i++) {
+            ItemStack it = state.getItem(i);
+            if (it == null || it.getType().isAir()) { slot = i; break; }
+        }
+        if (slot < 0) return;
+        UUID w = b.getWorld().getUID();
+        Placed who = using.remove(new CampfireSlot(w, b.getX(), b.getY(), b.getZ(), -1));
+        CampfireSlot key = new CampfireSlot(w, b.getX(), b.getY(), b.getZ(), slot);
+        if (who != null && System.nanoTime() - who.at() < 50_000_000L) campfire.put(key, new Placed(who.player(), System.currentTimeMillis()));
+        else campfire.remove(key);
+        if (campfire.size() > 512) {
             long now = System.currentTimeMillis();
-            for (int i = 0; i < empty.length && i < after.getSize(); i++) {
-                ItemStack it = after.getItem(i);
-                if (empty[i] && it != null && !it.getType().isAir()) {
-                    campfire.put(new CampfireSlot(b.getWorld().getUID(), b.getX(), b.getY(), b.getZ(), i), new Placed(player, now));
-                }
-            }
-            if (campfire.size() > 512) campfire.values().removeIf(p -> now - p.at() > CAMPFIRE_RECORD_MS);
-        });
+            campfire.values().removeIf(p -> now - p.at() > CAMPFIRE_RECORD_MS);
+        }
+        if (using.size() > 64) using.clear(); // notes are used in the same call; any left over are stale
     }
 
     /** A campfire finished a slot's food: the player who put it there earns its Cooking XP (on their own thread). */
