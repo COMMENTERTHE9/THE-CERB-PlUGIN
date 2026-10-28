@@ -314,6 +314,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Tackle tackle;
     private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
+    private Gathering.ItemRecipes itemRecipes;
 
     /** Woodcutting's techniques after a cut (docs/design/WOODCUTTING.md); null until gathering is up. */
     public Gathering.Woodcutting getWoodcutting() { return woodcutting; }
@@ -795,6 +796,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         upgrades = new Gathering.Upgrades(this, gatheringService::catalog);
         upgrades.register(gatheringService.catalog());
         pm.registerEvents(upgrades, this);
+        // Crafting-table recipes for Cerberus items (resources.yml recipes:), such as the Sower's Charm for the Replanting hoe.
+        itemRecipes = new Gathering.ItemRecipes(this);
+        itemRecipes.register(gatheringService.catalog());
+        pm.registerEvents(itemRecipes, this);
         forgeListener = new Gathering.ForgeListener(this, gatheringService, skillManager);
         forgeListener.setDebug(this::isCombatDebugEnabled);
         forgeListener.setNotice((p, msg) -> playerHUDManager.flash(p, msg, 2500));
@@ -860,6 +865,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             if (next != null) {
                 gatheringService.setCatalog(next);
                 if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
+                if (itemRecipes != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> itemRecipes.register(next));
                 if (tackle != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> tackle.registerRecipes(next));
                 if (cooking != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> cooking.registerRecipes(next));
                 if (fishing != null) fishing.registerCreatures(mobRegistry); // its sea creatures by id

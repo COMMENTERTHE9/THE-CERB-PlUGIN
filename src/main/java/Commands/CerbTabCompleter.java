@@ -89,8 +89,10 @@ public class CerbTabCompleter implements TabCompleter {
                     : args.length == 4 && args[1].equalsIgnoreCase("give") ? filter(Gathering.GatheringCatalog.current().cooking().meals().stream().map(Gathering.CookingRules.Meal::id).toList(), args[3])
                     : args.length == 5 && args[1].equalsIgnoreCase("give") ? filter(List.of("common", "fine", "superior", "masterwork"), args[4]) : List.of();
             case "farm" -> args.length == 2 ? filter(FarmingCommand.ADMIN, args[1])
-                    : args.length == 3 && args[1].equalsIgnoreCase("crops") ? filterPlayers(args[2])
-                    : args.length == 4 && args[1].equalsIgnoreCase("crops") ? filter(List.of("reset"), args[3]) : List.of();
+                    : args.length == 3 && List.of("crops", "hoe", "notice").contains(args[1].toLowerCase()) ? filterPlayers(args[2])
+                    : args.length == 4 && List.of("crops", "notice").contains(args[1].toLowerCase()) ? filter(List.of("reset"), args[3])
+                    : args.length == 4 && args[1].equalsIgnoreCase("hoe")
+                        ? filter(List.of("WOODEN_HOE", "STONE_HOE", "IRON_HOE", "GOLDEN_HOE", "DIAMOND_HOE", "NETHERITE_HOE"), args[3]) : List.of();
 
             // No further args
             default -> List.of();

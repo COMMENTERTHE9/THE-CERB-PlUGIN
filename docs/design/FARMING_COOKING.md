@@ -79,11 +79,11 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
 - **Fortune (crops) 0.5 per level,** a new yield scope `crops`.
   - Each ripe harvest has a chance (the shared Fortune rule: 0.5% a point, at most 50%) of one more of its produce, never of its seeds.
   - Mining's Fortune stays on ore, Woodcutting's on wood, Fishing's on fish.
-- **Harvesting efficiency is a mechanic, not a number.** Crops break instantly, so a "harvest speed" stat would do nothing. Farming's efficiency is how much one action harvests: Replant at 10 and Wide Harvest's reach (3×3 at 25, 5×5 at 50, 7×7 at 75, 9×9 at 100).
+- **Harvesting efficiency is a mechanic, not a number.** Crops break instantly, so a "harvest speed" stat would do nothing. Farming's efficiency is how much one action harvests: Replant (on the hoe since 2026-10-28, §9) and Wide Harvest's reach (3×3 at 25, 5×5 at 50, 7×7 at 75, 9×9 at 100).
 
 ### 3.4 Techniques
 
-- **10, Replant.** A ripe crop of a replanting kind, broken by hand, is planted again at once (age 0). *Owner's note, 2026-10-28: Replant is to become a tool enchantment instead of a level unlock, later (`docs/DECISIONS.md`).*
+- **Replant** (*until 2026-10-28 at Farming 10; now a hoe with the Replanting upgrade, at any level: §9*). A ripe crop of a replanting kind, broken with such a hoe, is planted again at once (age 0).
   - The seed comes from that harvest's own drops first, else from the player's inventory.
   - With neither, the spot stays empty, and the HUD says so once a minute.
   - Never a free seed, never a second harvest.
@@ -276,3 +276,36 @@ Two new harnesses, `tools/playtest/farming.js` and `cooking.js`, with positive a
 - Fortune's cap: the engine's, covered by its unit tests; Farming 100's 25.8% is below it.
 
 Spawn protection and the world border on Wide Harvest (added by the review) were checked in the code too: the test bots must be operators, who are exempt.
+
+## 9. Replant moves to the hoe (2026-10-28, the owner's note)
+
+*"Why is replanting a level upgrade and not a tool enchant… fix it later" (the owner, after the Farming build). Taken up by the milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy", increment 2.*
+
+**The choice: a Cerberus hoe upgrade, not a registered enchantment.** A real enchantment was checked first, as the owner preferred:
+- **What it would take.** Paper registers new enchantments only while the server boots, through a plugin *bootstrapper* (`PluginBootstrap`, `RegistryEvents.ENCHANTMENT`). That needs the plugin to become a *Paper plugin* (`paper-plugin.yml`). A Paper plugin ignores `plugin.yml`'s `commands:`: all twelve commands (`/cerb`, `/menu`, `/class`, `/fishing`, `/farming`, `/cooking`…) would have to be rewritten on the Brigadier command API, and its class loading changes for other plugins (the protection plugins that listen to Felling's and Wide Harvest's events). That is a migration of the whole plugin, not a Farming change. The other way, a datapack enchantment, means writing a datapack into the world folder: the owner's world, which this work must not touch.
+- **What it would risk.** An enchantment registered by a plugin lives in the server's registry. Items carrying it name `cerberus:replanting`; on a server where the plugin is missing or fails to start, the game can't read those items and drops them from inventories and chests. Vanilla would also offer it at enchanting tables, anvils and librarians unless it is kept out with tags, and it would need its own rules there.
+- **So:** a Cerberus upgrade stored on the hoe (`cerberus:upgrades`), the same system as heartwood grips and limbs (`Gathering/Upgrades`). Its lore line uses the upgrade style, "✦ Replanting: ripe crops it harvests are planted again", never the grey "Replant I" of a vanilla enchantment, and the hoe gets no enchantment glint. The game never treats it as an enchantment; nothing on the item claims to be one.
+
+**How it works now:**
+- **The hoe is the source.** A ripe crop of a replanting kind (wheat, carrots, potatoes, beetroots, cocoa, nether wart) broken with a hoe that has the Replanting upgrade is planted again at its first stage. No Farming level is needed. Without such a hoe in the main hand, nothing is replanted, at any level.
+- **Seed accounting is unchanged:** the seed comes from the harvest's own drops (a ripe crop always drops one); only when another plugin removed the drops is one taken from the inventory; with none, nothing is replanted and the HUD says so. Never a second harvest.
+- **Fortune first, then the seed:** a carrot or potato is its own seed, so a harvest of one carrot that rolls a Fortune extra keeps the extra when the carrot goes back in the ground (until the review of 2026-10-28 the seed went first and the extra was lost). The produce left after the seed gets the harvest's quality; with none left, no quality is announced.
+- **Wide Harvest recognises it:** a sweep made with a Replanting hoe plants the field again, crop by crop, with each crop's own seed. A plain hoe sweeps without replanting.
+- **`/farming replant off`** still turns it off for you, hoe or not.
+- **Cocoa** is replanted on the same side of the same log, as before, when broken with the hoe.
+
+**Getting it in survival:**
+1. **A Sower's Charm**, crafted (shapeless, any crafting table) from wheat seeds, beetroot seeds, melon or pumpkin seeds, bone meal, string and a gold nugget. It is a Cerberus item: it can't be placed, brewed, smelted or used in a vanilla recipe.
+2. **A hoe and the charm in a crafting grid** make the same hoe with the Replanting upgrade, keeping its enchantments, damage, quality and name (the heartwood upgrade's rules: checked when the result is taken; a crafter block never makes it; once per hoe).
+Every number and the recipe are data in `resources.yml` (`items: sowers_charm`, `upgrades: replanting`, `recipes:`). A recipe naming a block that is no item (carrots, water) is left out with a line in the log; it never stops the plugin's startup or a reload. To turn Replant off on a server: `replanting: off` under `upgrades:`.
+
+**Moving over (players who had Replant from a Farming level):** at their next join, players at that level or more get one chat message, once: Replant now comes from a hoe, with the recipe. The level is the server's own: an older `resources.yml`'s `replant-at`, else 10. Nothing is taken or given; Wide Harvest and crop quality still come from the Farming level. `replant-at` no longer opens anything (the log says so once), with one exception: an older file with `replant-at: 0` had Replant off, and it stays off there: the update adds neither the Replanting upgrade nor the charm's recipe to that file, and nobody is told it moved.
+
+**Shown:**
+- the Farming page's training lines: "Replant comes from the hoe, at any level: a hoe with the Replanting upgrade (a Sower's Charm and a hoe in a crafting grid)…";
+- `/farming` and the Crops screen's header: "Replant with a hoe that has the Replanting upgrade", or that it is switched off (no more "Replant from Farming 10");
+- `/farming` with a hoe in hand: whether that hoe replants, and if not, how to make one (the recipe, read from the data);
+- the hoe's own lore: "✦ Replanting: ripe crops it harvests are planted again";
+- the Crops screen's "techniques that work on it" still lists Replant for the replanting crops.
+
+**Admin:** `/cerb farm hoe <player> [hoe material]` gives a Replanting hoe as the crafting grid makes it (for testing); `/cerb farm notice <player> reset` makes the one-time message say itself again at the next join.

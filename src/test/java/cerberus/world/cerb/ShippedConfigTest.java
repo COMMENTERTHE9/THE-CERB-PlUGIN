@@ -21,7 +21,7 @@ class ShippedConfigTest {
     private static final String CURRENT_ABILITIES = "677925246e61266f82d703fd4336c5a240c047f53516571e9a897624cc339830";
     private static final String CURRENT_CLASSES = "dce0224e4c4a60ab457f301d14b4bcb6b89f3b04407c24fa2ed36d9b2f1157be";
     private static final String CURRENT_ATTRIBUTES = "bc60fbe8a94a7ca4f6b2b92b677b53aad5e52cd4392684022c656841bdedf8ce";
-    private static final String CURRENT_RESOURCES = "d64023d247a21a773aa3358ece0687c3820442e341442297847a0822f8cc7595";
+    private static final String CURRENT_RESOURCES = "7f9ae3e2beb63048ba563ebf9c23a56f8dc928720a4b2903c0d30c19f7069ac2";
 
     @Test
     void everyShippedChangeKeepsTheVersionItReplaces() throws Exception {

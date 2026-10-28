@@ -80,7 +80,7 @@ The owner's two-phase milestone, built in verified increments on the development
 |---|---|---|
 | 0 | **Preflight:** Active Effects' regression, persistence, performance and documentation confirmed; the independent review's findings fixed | Done (`docs/STATUS.md` → "Done: Active effects") |
 | 1 | **Martial Expertise +1.25 Agility per level** (Power on bare hands kept) and **Iron Reprisal** (Heavy Armor Mastery throws melee attackers back; no chance, no reflected damage, PvP switchable) | Done (`docs/STATUS.md` → "Done: Combat improvements"; `docs/design/COMBAT_IMPROVEMENTS.md`). Found on the way and fixed: shields didn't keep creatures' blows off the Cerberus health pool |
-| 2 | **Replant as a tool:** a registered enchantment if practical, otherwise a Cerberus hoe upgrade; the tool is the source, no Farming 10; Wide Harvest recognises it; seed accounting kept; a survival way to get it; a migration message | Next |
+| 2 | **Replant as a tool:** a registered enchantment if practical, otherwise a Cerberus hoe upgrade; the tool is the source, no Farming 10; Wide Harvest recognises it; seed accounting kept; a survival way to get it; a migration message | Done (`docs/STATUS.md` → "Done: Replant on the hoe"): the Replanting hoe upgrade from a Sower's Charm (`docs/design/FARMING_COOKING.md` §9) |
 | 3 | **Lifesteal review:** measured analysis and a recommendation, no change (decision 6 stays until the owner decides) | Planned |
 | 4 | **Herbalism:** herbs as data, XP, discoveries, +0.25 Essence and +0.5 Fortune on herbs per level, potency/quality, milestones (rare herbs at 25, reagent quality at 50), one bounded active technique, the journal through the skill page and Collections | Planned |
 | 5 | **Alchemy:** XP only for completed brews at the brewing stand, +0.5 Essence per level, potency and duration progression, potions as data with Western names, healing on the Cerberus pool, stacking and replacement rules with meals, shown through Active Effects, saved | Planned |
@@ -94,7 +94,7 @@ After playing the Farming and Cooking build ("everything seems to work"), the ow
 
 **Right away (small):**
 1. **Active effects in the Player Menu** (the owner's request, 2026-10-28): done (`docs/STATUS.md` → "Done: Active effects").
-2. **Replant as a tool enchantment** (the owner's note, 2026-10-28; `docs/DECISIONS.md`): taken up by the milestone above, increment 2.
+2. **Replant as a tool enchantment** (the owner's note, 2026-10-28; `docs/DECISIONS.md`): done by the milestone above, increment 2 (a hoe upgrade).
 3. **Decision 6 (lifesteal):** reviewed by the milestone above, increment 3 (analysis only).
 4. **A reviewed pull request into `master`** when the owner is happy with the branch (never merged automatically).
 
@@ -123,11 +123,11 @@ After playing the Farming and Cooking build ("everything seems to work"), the ow
 **Why.** Farming and Cooking as disciplines worth mastering, at the standard of Felling and Fishing: Farming grows better ingredients, Cooking turns them into meals that make the character stronger, and each stands on its own. Design: `docs/design/FARMING_COOKING.md`; the owner's rulings: `docs/DECISIONS.md`.
 
 1. **Design and baseline** (done): the design, the `farm`, `widefarm` and `cook` loads, and the baseline measured before any code.
-2. **Increment A, Farming** (done): ripe harvests broken or picked, 12 crops as data, discoveries, Vitality and Fortune on crops, Replant (10), Wide Harvest (25, bounded and protection-aware), crop quality (50), the Crops screen and Collections.
+2. **Increment A, Farming** (done): ripe harvests broken or picked, 12 crops as data, discoveries, Vitality and Fortune on crops, Replant (10; on the hoe since 2026-10-28), Wide Harvest (25, bounded and protection-aware), crop quality (50), the Crops screen and Collections.
 3. **Increment B, Cooking** (done): Cooking XP for food really made (furnace, smoker, campfire, crafting), six meals with tiers from level and ingredient quality, one timed effect at a time through the attribute engine, restoration on the Cerberus health pool, the Cookbook and Collections.
 4. **Verification** (done): `farming.js`, `cooking.js`, the regression slices, an independent review and its fixes, performance before and after (`docs/STATUS.md` → "Done: Farming and Cooking"; `docs/PERFORMANCE.md`).
 5. **The owner's playtest (2026-10-28):** "everything seems to work". One request: show the effects running on you (a meal and its time left) in the Player Menu, item 1 of "Next: proposed order" above. Still open: decision 6 (lifesteal) now that meals heal. Proposed, not built: the Farm Ledger (machine attribution), scythes, irrigation, custom crops for Herbalism and Alchemy.
-6. **Later, the owner's note (2026-10-28):** Replant moves from a Farming level unlock to a tool enchantment (`docs/DECISIONS.md` → Farming, Cooking and meaningful food). Design it when taken up: a real enchantment or a Cerberus hoe upgrade, which tools, how it is obtained, whether a level still gates it.
+6. **The owner's note (2026-10-28):** Replant moves from a Farming level unlock to a tool enchantment (`docs/DECISIONS.md` → Farming, Cooking and meaningful food). Done the same day: the Replanting hoe upgrade (`docs/design/FARMING_COOKING.md` §9).
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27, approved): built, waiting for the owner's playtest
 

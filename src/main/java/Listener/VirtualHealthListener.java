@@ -146,6 +146,19 @@ public class VirtualHealthListener implements Listener {
                 && wholeBlocked(event.getDamage(), event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING));
     }
 
+    /** The last player's hit on a player this thread saw a raised shield take whole: the pipeline still resolves it (PvP as before). */
+    private static final ThreadLocal<java.lang.ref.WeakReference<EntityDamageEvent>> SHIELDED = new ThreadLocal<>();
+
+    /**
+     * True when a raised shield took the whole of {@code event}'s hit, for a listener after this one: a creature's hit still
+     * shows its blocking share; a player's, which this listener resolves as before (and so sets to 0), is remembered.
+     */
+    public static boolean blockedByShield(EntityDamageEvent event) {
+        if (shieldTookAll(event)) return true;
+        java.lang.ref.WeakReference<EntityDamageEvent> r = SHIELDED.get();
+        return event != null && r != null && r.get() == event;
+    }
+
     /** Pure: a hit of {@code base} whose blocking share is {@code blocking} (0 or less) is blocked whole. */
     static boolean wholeBlocked(double base, double blocking) {
         return base > 0 && -blocking >= base - 1e-9;
@@ -182,8 +195,9 @@ public class VirtualHealthListener implements Listener {
             // A raised shield took the whole hit of a creature (its blow, arrow, fangs or blast): the pool takes nothing, and
             // the game's own blocking runs after this event (the block sound, the shield's wear).
             // A player's hit stays as it was: PvP plays as before (docs/ROADMAP.md → PvP).
-            if (shieldTookAll(event) && !causedByAnotherPlayer(event, event instanceof EntityDamageByEntityEvent by ? by.getDamager() : null, p)) {
-                return;
+            if (shieldTookAll(event)) {
+                if (!causedByAnotherPlayer(event, event instanceof EntityDamageByEntityEvent by ? by.getDamager() : null, p)) return;
+                SHIELDED.set(new java.lang.ref.WeakReference<>(event)); // a player's blow: resolved as before, answered by nothing
             }
         }
         if (isHandlingEvent.get()) return;

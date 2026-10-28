@@ -61,7 +61,8 @@ public final class ShippedConfig {
                     "47345bec2da7986655418171ed4b32ffba90a61d54ea43a567b55a2d3b378d43",  // grown trees
                     "6958e4f1d44e18c8665afc45aac456f1ec3f567a357e638989757737e8e9565d",  // Fishing
                     "e2513b9df28f2557c1e9de8115136b1b90088a60005ce80b331a55153dcac313",  // Fishing equipment
-                    "3c9d3ef0c83cb9ba30546d7972c8e08c91dd43403fe1358aff1d30285230fc14")); // Farming
+                    "3c9d3ef0c83cb9ba30546d7972c8e08c91dd43403fe1358aff1d30285230fc14",  // Farming
+                    "d64023d247a21a773aa3358ece0687c3820442e341442297847a0822f8cc7595")); // Farming and Cooking
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

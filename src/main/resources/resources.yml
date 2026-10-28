@@ -289,6 +289,13 @@ fishing:
 # custom item is never placed, burnt or used in a vanilla recipe.
 tools: {}
 items:
+  # Replant on the hoe (docs/design/FARMING_COOKING.md §9): crafted from farm goods (recipes: below), then with a hoe.
+  sowers_charm:
+    material: RABBIT_FOOT
+    name: "Sower's Charm"
+    lore:
+      - "Craft it with a hoe: ripe crops that"
+      - "hoe harvests are planted again."
   heartwood:
     material: STRIPPED_DARK_OAK_WOOD
     name: Heartwood
@@ -439,6 +446,8 @@ items:
 # Upgrades (docs/design/WOODCUTTING.md §8): a custom item crafted with a tool or weapon of these kinds gives
 # that item the stat while it is held. Once per item; the item keeps its enchantments, damage and quality.
 upgrades:
+  # A stat while held (stat, amount) or an ability of the tool (ability: replant), made in a crafting grid: the tool and the item.
+  replanting:      { item: sowers_charm, for: [hoe], ability: replant, name: Replanting }
   heartwood_grip:  { item: heartwood, for: [axe], stat: chop-speed, amount: 0.08, name: Heartwood grip }
   heartwood_limbs: { item: heartwood, for: [bow], stat: draw-speed, amount: 0.08, name: Heartwood limbs }
   # Rods (docs/design/FISHING.md §8): since docs/design/FISHING_EQUIPMENT.md these are setup parts (tackle: below), fitted in
@@ -454,6 +463,11 @@ upgrades:
   pearl_inlay:       { item: pearl_of_the_depths, for: [rod], stat: sea-creature-chance, amount: 0.01, name: Pearl inlay }
   monarchs_blessing: { item: monarchs_seal, for: [rod], stat: lure-speed, amount: 0.08, name: "Monarch's blessing" }
   leviathan_line:    { item: leviathan_scale, for: [rod], stat: sea-creature-chance, amount: 0.02, name: Leviathan line }
+
+# Crafting-table recipes for Cerberus items outside a skill's own section (shapeless): each ingredient a material or a list of
+# materials any of which will do; "makes" how many. Shown in every player's recipe book. "<id>: off" leaves one out.
+recipes:
+  sowers_charm: { ingredients: [WHEAT_SEEDS, BEETROOT_SEEDS, [MELON_SEEDS, PUMPKIN_SEEDS], BONE_MEAL, STRING, GOLD_NUGGET], makes: 1 }
 
 # Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup on your character that any rod you fish with uses.
 # "tackle: off" turns the setup, bait and the reel off (old upgraded rods keep working).
@@ -520,7 +534,8 @@ tackle:
 #   wide:     Wide Harvest takes it; quality: its produce rolls a quality; column: the segments above fall with it.
 farming:
   skill: Farming
-  replant-at: 10
+  # Replant is no longer a level: a ripe crop broken with a hoe that has the Replanting upgrade (upgrades: above) is planted
+  # again with a seed from its own drops; Wide Harvest with such a hoe plants the field again. "/farming replant off" turns it off.
   # Wide Harvest: Sneak and break a ripe crop with a hoe; every ripe crop of that kind in a square this wide, on the same
   # level or one up or down, is harvested in steps of per-tick crops.
   wide-harvest:

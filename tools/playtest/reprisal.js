@@ -278,13 +278,23 @@ async function withCombat(lines, body) {
 
 async function pvp() {
   const o = await arena(1500, 300);
+  // The shield first, into the off hand of an empty inventory (after the armor swaps the bot's off-hand equip doesn't
+  // take: see shieldChecks); it stays lowered until the strike that raises it.
+  await cmd('/clear @s', 500);
+  await cmd('/give @s shield', 500);
+  const sh = bot.inventory.items().find(it => it.name === 'shield');
+  if (sh) { try { await bot.equip(sh, 'off-hand'); } catch (e) { note('shield: ' + e.message); } }
+  await sleep(300);
   await setup(o, 100, 'iron', 4);
+  note(`off hand: ${(bot.inventory.slots[45] || {}).name || 'empty'}`);
   const t = await connect(SECOND);
   await sleep(1500);
-  const strike = async () => {
+  const strike = async (shield = false) => {
     await clear();
     t.chat(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z - 1.5} 0 0`); await sleep(1200);
     await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 180 0`, 600);
+    let raised = null;
+    if (shield) { bot.activateItem(true); await sleep(500); raised = bot.handState; } // raised (off hand), facing the attacker
     const before = await counters();
     const start = t.entity.position.clone();
     t.selfPush = 0;
@@ -293,7 +303,8 @@ async function pvp() {
     let far = 0;
     const t0 = Date.now();
     while (Date.now() - t0 < 1500) { await sleep(50); far = Math.max(far, flat(t.entity.position, start)); }
-    return { far, push: t.selfPush, c: diff(before, await counters()) };
+    if (shield) bot.deactivateItem();
+    return { far, push: t.selfPush, raised, c: diff(before, await counters()) };
   };
   let r = await strike();
   check('PvP off (the default): a player who hits you is not thrown, and the counter says "PvP off"', r.c.thrown === 0 && r.c.pvpOff === 1,
@@ -303,7 +314,14 @@ async function pvp() {
     r = await strike();
     check('pvp: true: the player who hits you is thrown back (the server sends their client the push, and they fly)',
       r.c.thrown === 1 && r.push > 0.3 && r.far > 1.5, `sent ${r.push.toFixed(2)} blocks/tick, moved ${r.far.toFixed(2)}, ${JSON.stringify(r.c)}`);
+    // A player's blow the shield takes whole is never answered either: PvP plays as before, so the damage pipeline still
+    // resolves it (and zeroes the hit), yet Iron Reprisal knows the shield took it.
+    await sleep(1200);
+    r = await strike(true);
+    check('pvp: true, your shield raised toward them: their blow is not answered (the counter says the shield took it)',
+      r.raised === 3 && r.c.thrown === 0 && r.c.shield === 1 && r.push < 0.1, `hand state ${r.raised} (3 = the off hand's shield in use), sent ${r.push.toFixed(2)} blocks/tick, moved ${r.far.toFixed(2)}, ${JSON.stringify(r.c)}`);
   });
+  await cmd('/clear @s shield', 300);
   t.quit(); await sleep(500);
 }
 

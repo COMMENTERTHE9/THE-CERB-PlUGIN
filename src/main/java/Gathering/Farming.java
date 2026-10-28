@@ -22,6 +22,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.player.PlayerHarvestBlockEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -43,7 +44,7 @@ import java.util.function.BiConsumer;
 
 /**
  * Farming (docs/design/FARMING_COOKING.md §3): ripe harvests pay Farming XP, by breaking or by picking, with Fortune on
- * crops, discoveries, Replant (10), Wide Harvest (25) and crop quality (50). Crops planted by players are farming: only a
+ * crops, discoveries, Replant (a hoe with the Replanting upgrade), Wide Harvest (25) and crop quality (50). Crops planted by players are farming: only a
  * melon, pumpkin, cane or cactus placed by hand pays nothing ({@link PlacedBlocks}). A harvest with no player in it (water,
  * pistons, villagers, machines) keeps vanilla's drops and pays nobody. Folia: a harvest is handled on the region thread
  * that owns the block (the player's); a Wide Harvest's steps run on the region scheduler at the first crop, every crop and
@@ -91,7 +92,7 @@ public final class Farming implements Listener {
     private final Map<String, Long> lastHint = new ConcurrentHashMap<>();
     private final LongAdder harvests = new LongAdder(), unripe = new LongAdder(), placedHarvests = new LongAdder(), bonuses = new LongAdder(),
             replants = new LongAdder(), noSeed = new LongAdder(), sweeps = new LongAdder(), swept = new LongAdder(), refusals = new LongAdder(),
-            discoveries = new LongAdder(), picks = new LongAdder();
+            discoveries = new LongAdder(), picks = new LongAdder(), bonusRolls = new LongAdder();
     private final LongAdder[] qualities = {new LongAdder(), new LongAdder(), new LongAdder(), new LongAdder()};
 
     public Farming(Plugin plugin, GatheringService gathering, SkillManager skills, BiConsumer<Player, String> notice) {
@@ -170,7 +171,7 @@ public final class Farming implements Listener {
         discover(p, c);
         int extra = rollBonuses(p.getUniqueId(), count);
         Quality q = ripe ? roll(f, c, level) : Quality.COMMON;
-        boolean replant = ripe && c.replants() && f.replants(level) && replanting(p);
+        boolean replant = ripe && c.replants() && replants(p.getInventory().getItemInMainHand()) && replanting(p);
         BlockData planted = replant ? seedling(b.getBlockData()) : null;
         if (extra > 0 || q != Quality.COMMON || planted != null) pending.put(p.getUniqueId(), new Pending(b, c, extra, q, planted != null, planted));
         if (ripe && c.wide() && p.isSneaking()) startSweep(p, c, b, level);
@@ -215,6 +216,7 @@ public final class Farming implements Listener {
         if (!(chance > 0)) return 0;
         int n = 0;
         for (int i = 0; i < count; i++) if (ThreadLocalRandom.current().nextDouble() < chance) n++;
+        bonusRolls.add(n);
         return n;
     }
 
@@ -232,7 +234,10 @@ public final class Farming implements Listener {
         return d;
     }
 
-    /** A break's drops: the replant's seed taken out, the Fortune bonus added, the produce marked with its quality. */
+    /**
+     * A break's drops: the Fortune bonus added, the replant's seed taken out, what is left of the produce marked with its
+     * quality. The bonus comes first: a carrot or potato is its own seed, and a harvest of one would otherwise lose it.
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDrop(BlockDropItemEvent e) {
         Player p = e.getPlayer();
@@ -240,16 +245,6 @@ public final class Farming implements Listener {
         if (h == null || !h.block().equals(e.getBlock())) return;
         FarmingRules.Crop c = h.crop();
         List<Item> items = e.getItems();
-        if (h.replant()) {
-            boolean seed = takeSeed(items, c.seed()) || takeSeed(p.getInventory(), c.seed());
-            if (seed && e.getBlock().getType().isAir() && h.planted().isSupported(e.getBlock())) {
-                e.getBlock().setBlockData(h.planted(), true);
-                replants.increment();
-            } else if (!seed) {
-                noSeed.increment();
-                hint(p, "seed", "§7No " + GearItems.label(c.seed().name()).toLowerCase(java.util.Locale.ROOT) + " to replant with.", 60_000);
-            }
-        }
         if (h.bonuses() > 0) {
             for (Item item : items) {
                 ItemStack s = item.getItemStack();
@@ -261,14 +256,26 @@ public final class Farming implements Listener {
                 break;
             }
         }
+        if (h.replant()) {
+            boolean seed = takeSeed(items, c.seed()) || takeSeed(p.getInventory(), c.seed());
+            if (seed && e.getBlock().getType().isAir() && h.planted().isSupported(e.getBlock())) {
+                e.getBlock().setBlockData(h.planted(), true);
+                replants.increment();
+            } else if (!seed) {
+                noSeed.increment();
+                hint(p, "seed", "§7No " + GearItems.label(c.seed().name()).toLowerCase(java.util.Locale.ROOT) + " to replant with.", 60_000);
+            }
+        }
         if (h.quality() != Quality.COMMON) {
+            boolean marked = false;
             for (Item item : items) {
                 ItemStack s = item.getItemStack();
                 if (s.getType() != c.produce()) continue;
                 GearItems.setCropQuality(s, h.quality());
                 item.setItemStack(s);
+                marked = true;
             }
-            announceQuality(p, c, h.quality());
+            if (marked) announceQuality(p, c, h.quality()); // none left when the only one went back in the ground
         }
     }
 
@@ -395,7 +402,68 @@ public final class Farming implements Listener {
                 + ", Fortune chance " + Math.round(gathering.bonusChance(p.getUniqueId(), Attributes.Yield.CROP) * 1000) / 10.0 + "%";
     }
 
-    // ── Replant's switch ─────────────────────────────────────────
+    // ── Replant: the hoe's upgrade, and the player's switch ──────
+
+    /** True when {@code tool} replants: a hoe with the Replanting upgrade (docs/design/FARMING_COOKING.md §9). */
+    public boolean replants(ItemStack tool) {
+        return gathering.catalog().hasAbility(tool, GatheringCatalog.REPLANT);
+    }
+
+    /** True when this server has a Replanting upgrade at all (an older file's {@code replant-at: 0} keeps it out). */
+    public static boolean replantAvailable(GatheringCatalog c) {
+        return c.upgrades().values().stream().anyMatch(u -> GatheringCatalog.REPLANT.equals(u.ability()));
+    }
+
+    /** How to get a Replanting hoe, from the data: "craft a Sower's Charm (wheat seeds, ...), then put it with a hoe..." */
+    public static String howToReplant(GatheringCatalog c) {
+        for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
+            if (!GatheringCatalog.REPLANT.equals(u.ability())) continue;
+            GatheringCatalog.ItemDef charm = c.item(u.item());
+            String name = charm == null ? u.item() : charm.name();
+            List<String> parts = new ArrayList<>();
+            for (TackleRules.Recipe rec : c.recipes().values()) {
+                if (!rec.result().equals(u.item())) continue;
+                for (List<Material> any : rec.ingredients()) {
+                    List<String> names = new ArrayList<>();
+                    for (Material m : any) names.add(GearItems.label(m.name()).toLowerCase(java.util.Locale.ROOT));
+                    parts.add(String.join(" or ", names));
+                }
+                break;
+            }
+            return "craft a §f" + name + "§7" + (parts.isEmpty() ? "" : " (" + String.join(", ", parts) + ")")
+                    + ", then put it with a hoe in a crafting grid.";
+        }
+        return "Replant isn't available on this server (no Replanting upgrade in resources.yml).";
+    }
+
+    /** Set once a player was told that Replant moved to the hoe (2026-10-28): it is said once. */
+    public static final NamespacedKey REPLANT_MOVED = new NamespacedKey("cerberus", "replant_moved");
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent e) {
+        Player p = e.getPlayer();
+        if (!p.getPersistentDataContainer().has(REPLANT_MOVED, PersistentDataType.BYTE)) tellReplantMoved(p, 10);
+    }
+
+    /** Skills load a moment after a join: look again every 2 s a few times; then tell a player who had Replant, once. */
+    private void tellReplantMoved(Player p, int tries) {
+        p.getScheduler().runDelayed(plugin, t -> {
+            if (!p.isOnline()) return;
+            if (!skills.hasLoadedSkills(p.getUniqueId())) {
+                if (tries > 1) tellReplantMoved(p, tries - 1);
+                return;
+            }
+            FarmingRules f = rules();
+            if (!f.enabled()) return; // farming off: nothing to tell yet
+            int had = f.replantMovedFrom(); // the level it opened at on this server; 0: it was off, nobody had it
+            if (had > 0 && skills.getSkillLevel(p, f.skill()) >= had) {
+                p.sendMessage("§6✦ Replant has moved to the hoe. §7Your Farming level no longer replants; a hoe with the §6Replanting "
+                        + "§7upgrade does, at any level, Wide Harvest too. To make one, " + howToReplant(gathering.catalog()));
+                p.sendMessage("§7Wide Harvest and crop quality still come from your Farming level. §8(/farming)");
+            }
+            p.getPersistentDataContainer().set(REPLANT_MOVED, PersistentDataType.BYTE, (byte) 1);
+        }, null, 40L);
+    }
 
     /** True unless {@code p} turned Replant off. Player's thread. */
     public boolean replanting(Player p) {
@@ -457,7 +525,7 @@ public final class Farming implements Listener {
         if (targets.isEmpty()) return;
         sweeping.put(p.getUniqueId(), now);
         sweeps.increment();
-        Sweep s = new Sweep(p, c, hand.getType(), targets, b.getLocation().add(0.5, 0.5, 0.5), level, c.replants() && f.replants(level) && replanting(p));
+        Sweep s = new Sweep(p, c, hand.getType(), targets, b.getLocation().add(0.5, 0.5, 0.5), level, c.replants() && replants(hand) && replanting(p));
         b.getWorld().playSound(s.at, Sound.ITEM_HOE_TILL, SoundCategory.BLOCKS, 0.8f, 0.8f);
         Bukkit.getRegionScheduler().runDelayed(plugin, s.at, task -> step(s), 1L);
     }
@@ -488,9 +556,12 @@ public final class Farming implements Listener {
     /** One step of a Wide Harvest: up to per-tick crops, their drops at the first crop and their XP to the player. */
     private void step(Sweep s) {
         FarmingRules f = rules();
-        boolean go = f.enabled() && s.p.isOnline() && !s.p.isDead() && Bukkit.isOwnedByCurrentRegion(s.p)
+        // Nothing of the player is read unless this region owns them (they may have left it mid-sweep).
+        boolean go = f.enabled() && s.p.isOnline() && Bukkit.isOwnedByCurrentRegion(s.p) && !s.p.isDead()
                 && s.p.getGameMode() == GameMode.SURVIVAL;
-        if (go && s.p.getInventory().getItemInMainHand().getType() != s.hoe) go = false; // the hoe left the hand
+        ItemStack held = go ? s.p.getInventory().getItemInMainHand() : null;
+        if (go && held.getType() != s.hoe) go = false; // the hoe left the hand
+        boolean replant = go && s.replant && replants(held); // a plain hoe swapped in mid-sweep plants nothing
         List<ItemStack> drops = new ArrayList<>();
         int took = 0, bonus = 0;
         double xp = 0;
@@ -511,7 +582,7 @@ public final class Farming implements Listener {
             Bukkit.getPluginManager().callEvent(e);
             if (e.isCancelled()) { refusals.increment(); go = false; break; } // a protection plugin said no: stop here
             List<ItemStack> mine = e.isDropItems() ? new ArrayList<>(b.getDrops(hoe, s.p)) : new ArrayList<>();
-            BlockData planted = s.replant ? seedling(data) : null;
+            BlockData planted = replant ? seedling(data) : null;
             boolean seed = planted != null && (takeSeedFrom(mine, s.crop.seed()) || takeSeed(s.p.getInventory(), s.crop.seed()));
             if (s.effects < EFFECTS && took % 4 == 0) { s.world.playEffect(b.getLocation(), Effect.STEP_SOUND, b.getType()); s.effects++; }
             b.setType(Material.AIR, true);
@@ -580,7 +651,7 @@ public final class Farming implements Listener {
     public String stats() {
         return "harvests " + harvests.sum() + " (picked " + picks.sum() + ", swept " + swept.sum() + " in " + sweeps.sum() + " wide harvests, "
                 + refusals.sum() + " stopped by protection), unripe " + unripe.sum() + ", placed " + placedHarvests.sum() + ", Fortune +"
-                + bonuses.sum() + ", replanted " + replants.sum() + " (no seed " + noSeed.sum() + "), discoveries " + discoveries.sum()
+                + bonuses.sum() + " (rolled " + bonusRolls.sum() + "), replanted " + replants.sum() + " (no seed " + noSeed.sum() + "), discoveries " + discoveries.sum()
                 + ", quality fine/superior/masterwork " + qualities[1].sum() + "/" + qualities[2].sum() + "/" + qualities[3].sum();
     }
 }

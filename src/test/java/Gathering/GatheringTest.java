@@ -62,18 +62,21 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(7, notes.size(), notes.toString());
+        assertEquals(8, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
-        assertTrue(notes.get(3).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(3));
-        assertTrue(notes.get(4).startsWith("tackle: not in this file"), "so does its equipment: " + notes.get(4));
-        assertTrue(notes.get(5).startsWith("farming: not in this file"), "and Farming (2026-10-28): " + notes.get(5));
-        assertTrue(notes.get(6).startsWith("cooking: not in this file"), "and Cooking: " + notes.get(6));
+        assertTrue(notes.get(3).startsWith("recipes: sowers_charm"), "the Sower's Charm's recipe (Replant on the hoe, 2026-10-28): " + notes.get(3));
+        assertTrue(notes.get(4).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(4));
+        assertTrue(notes.get(5).startsWith("tackle: not in this file"), "so does its equipment: " + notes.get(5));
+        assertTrue(notes.get(6).startsWith("farming: not in this file"), "and Farming (2026-10-28): " + notes.get(6));
+        assertTrue(notes.get(7).startsWith("cooking: not in this file"), "and Cooking: " + notes.get(7));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
         assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");
         assertEquals(11, c.woods().size(), "every wood the update added");
         assertEquals(4, c.resource(Material.OAK_LOG).xp());
         assertNotNull(c.item("heartwood"));
+        assertTrue(c.item("sowers_charm") != null && c.upgrades().containsKey("replanting") && c.recipes().containsKey("sowers_charm"),
+                "Replant on the hoe: the charm, its upgrade and its recipe");
         assertTrue(c.upgrades().keySet().containsAll(Set.of("heartwood_grip", "heartwood_limbs", "scaled_grip", "heartwood_handle", "leviathan_line")),
                 "the woods' and the rods' upgrades: " + c.upgrades().keySet());
         assertTrue(c.fishing().enabled() && c.fishing().allSpecies().size() == 31, "Fishing came whole, its species with it");
@@ -464,6 +467,82 @@ class GatheringTest {
         assertNull(c.wood().heartwoodItem(), "an unknown heartwood item: no heartwood drops");
         String all = String.join("\n", c.problems());
         for (String bad : List.of("leafless", "oddleaves", "sure", "nothing", "toomuch", "power", "ghost", "felling.at")) assertTrue(all.contains(bad), bad + " in " + all);
+    }
+
+    @Test
+    void anEditedFileThatTurnedReplantOffKeepsItOff() throws Exception {
+        // "farming.replant-at: 0" turned Replant off before it moved to the hoe: the update adds no Replanting upgrade and no
+        // charm recipe to that file, so nothing replants there. Another value gets both, as every other edited file does.
+        YamlConfiguration shipped = new YamlConfiguration();
+        shipped.loadFromString(java.nio.file.Files.readString(new File("src/main/resources/resources.yml").toPath()).replace("\r\n", "\n"));
+        String off = """
+                resources:
+                  stone: { skill: Mining, blocks: [STONE], tool: pickaxe, level: 1, xp: 2 }
+                items: {}
+                farming:
+                  skill: Farming
+                  replant-at: 0
+                """;
+        YamlConfiguration server = new YamlConfiguration();
+        server.loadFromString(off);
+        GatheringCatalog.addUpdates(server, shipped);
+        GatheringCatalog c = GatheringCatalog.from(server);
+        assertNull(c.upgrade("replanting"), "Replant stays off");
+        assertFalse(c.recipes().containsKey("sowers_charm"), "and the charm has no recipe");
+        assertTrue(c.problems().stream().anyMatch(p -> p.contains("kept Replant off")), c.problems().toString());
+        assertEquals(0, c.farming().replantMovedFrom());
+        YamlConfiguration on = new YamlConfiguration();
+        on.loadFromString(off.replace("replant-at: 0", "replant-at: 15"));
+        GatheringCatalog.addUpdates(on, shipped);
+        GatheringCatalog d = GatheringCatalog.from(on);
+        assertNotNull(d.upgrade("replanting"));
+        assertTrue(d.recipes().containsKey("sowers_charm"));
+        assertEquals(15, d.farming().replantMovedFrom());
+    }
+
+    @Test
+    void replantIsAHoeUpgradeWithASurvivalRecipe() throws Exception {
+        // docs/design/FARMING_COOKING.md §9: Replant comes from a hoe with the Replanting upgrade, not a Farming level.
+        GatheringCatalog c = shipped();
+        GatheringCatalog.UpgradeDef r = c.upgrade("replanting");
+        assertNotNull(r, String.join("\n", c.problems()));
+        assertEquals(GatheringCatalog.REPLANT, r.ability());
+        assertEquals(Set.of("hoe"), r.on());
+        assertNull(r.stat(), "an ability, not a stat");
+        assertEquals("sowers_charm", r.item());
+        GatheringCatalog.ItemDef charm = c.item("sowers_charm");
+        assertEquals(Material.RABBIT_FOOT, charm.material());
+        assertFalse(charm.vanilla(), "a Cerberus item: kept out of vanilla recipes, brewing and the ground");
+        TackleRules.Recipe recipe = c.recipes().get("sowers_charm");
+        assertNotNull(recipe, "a survival recipe: farm goods at a crafting table");
+        assertEquals(6, recipe.ingredients().size());
+        assertEquals(List.of(Material.MELON_SEEDS, Material.PUMPKIN_SEEDS), recipe.ingredients().get(2), "either seed will do");
+        assertEquals(1, recipe.makes());
+        assertTrue(c.problems().stream().noneMatch(x -> x.contains("replant")), "the shipped file has no retired replant-at: " + c.problems());
+        // An upgrade gives a stat, an ability, or both; anything else is refused on its own.
+        GatheringCatalog edited = of("""
+                items:
+                  charm: { material: RABBIT_FOOT, name: Charm }
+                upgrades:
+                  plant: { item: charm, for: [hoe], ability: replant }
+                  both: { item: charm, for: [hoe], ability: replant, stat: gather-speed, amount: 0.05 }
+                  magic: { item: charm, for: [hoe], ability: fly }
+                  empty: { item: charm, for: [hoe] }
+                recipes:
+                  charm: { ingredients: [WHEAT_SEEDS, [MELON_SEEDS, PUMPKIN_SEEDS]], makes: 2 }
+                  ghost: { ingredients: [WHEAT_SEEDS] }
+                  junk: { result: charm, ingredients: [NOT_A_THING] }
+                farming:
+                  skill: Farming
+                  replant-at: 10
+                """);
+        assertEquals(Set.of("plant", "both"), edited.upgrades().keySet(), String.join("\n", edited.problems()));
+        assertEquals(Attributes.Stat.GATHER_SPEED, edited.upgrade("both").stat());
+        assertEquals(Set.of("charm"), edited.recipes().keySet(), String.join("\n", edited.problems()));
+        String all = String.join("\n", edited.problems());
+        for (String bad : List.of("upgrade magic", "upgrade empty", "recipes.ghost", "recipes.junk", "farming.replant-at")) {
+            assertTrue(all.contains(bad), bad + " in " + all);
+        }
     }
 
     @Test

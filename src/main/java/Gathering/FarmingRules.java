@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 /**
  * Farming's rules (docs/design/FARMING_COOKING.md §3), parsed from {@code resources.yml farming:}: the crops, when each is
- * ripe, what it pays, and the techniques by level (Replant, Wide Harvest's reach, crop quality). Pure: no server calls,
+ * ripe, what it pays, and the techniques by level (Wide Harvest's reach, crop quality; Replant comes from the hoe). Pure: no server calls,
  * so the numbers the game uses, the menus show and the tests check are the same.
  */
 public final class FarmingRules {
@@ -72,33 +72,48 @@ public final class FarmingRules {
     private final String skill;
     private final Map<String, Crop> crops;
     private final Map<Material, Crop> byBlock;
-    private final int replantAt;
     /** Wide Harvest's side length (3 = 3x3) from each level on. */
     private final NavigableMap<Integer, Integer> reach;
     private final int perTick;
     private final int qualityAt;
     private final double[] qualityAtStart, qualityAt100;
+    /** Replant opened at this Farming level before it moved to the hoe (2026-10-28); 0 or less: it was off. */
+    private final int replantMovedFrom;
 
-    public static final FarmingRules NONE = new FarmingRules(null, Map.of(), Map.of(), 0, new TreeMap<>(), 16, 0,
-            new double[] {100, 0, 0, 0}, new double[] {100, 0, 0, 0});
+    /** Replant's level before it moved to the hoe, for a file that never set {@code replant-at}. */
+    public static final int OLD_REPLANT_AT = 10;
 
-    FarmingRules(String skill, Map<String, Crop> crops, Map<Material, Crop> byBlock, int replantAt, NavigableMap<Integer, Integer> reach,
-                 int perTick, int qualityAt, double[] qualityAtStart, double[] qualityAt100) {
+    public static final FarmingRules NONE = new FarmingRules(null, Map.of(), Map.of(), new TreeMap<>(), 16, 0,
+            new double[] {100, 0, 0, 0}, new double[] {100, 0, 0, 0}, OLD_REPLANT_AT);
+
+    FarmingRules(String skill, Map<String, Crop> crops, Map<Material, Crop> byBlock, NavigableMap<Integer, Integer> reach,
+                 int perTick, int qualityAt, double[] qualityAtStart, double[] qualityAt100, int replantMovedFrom) {
         this.skill = skill;
         this.crops = crops;
         this.byBlock = byBlock;
-        this.replantAt = replantAt;
         this.reach = reach;
         this.perTick = perTick;
         this.qualityAt = qualityAt;
         this.qualityAtStart = qualityAtStart;
         this.qualityAt100 = qualityAt100;
+        this.replantMovedFrom = replantMovedFrom;
     }
 
     /** False when farming: is off or unusable: harvests then pay nothing and nothing changes them. */
     public boolean enabled() { return skill != null; }
 
     public String skill() { return skill; }
+
+    /**
+     * The Farming level Replant opened at before it moved to the hoe: this file's old {@code replant-at}, else 10. Players
+     * at it or above are told once that it moved. 0 or less: it was off here, and stays off (no Replanting upgrade).
+     */
+    public int replantMovedFrom() { return replantMovedFrom; }
+
+    /** True when this file's old {@code replant-at} turned Replant off: the update adds no Replanting upgrade to it. */
+    public static boolean replantKeptOff(ConfigurationSection farming) {
+        return farming != null && farming.contains("replant-at", true) && farming.getInt("replant-at", OLD_REPLANT_AT) <= 0;
+    }
 
     public Crop crop(Material m) { return m == null ? null : byBlock.get(m); }
 
@@ -123,10 +138,6 @@ public final class FarmingRules {
     }
 
     // ── techniques ───────────────────────────────────────────────
-
-    public int replantAt() { return replantAt; }
-
-    public boolean replants(int level) { return replantAt > 0 && level >= replantAt; }
 
     /** Wide Harvest's side length at {@code level} (3 = 3x3), 0 before it opens. */
     public int reach(int level) {
@@ -228,7 +239,16 @@ public final class FarmingRules {
             for (Material m : blocks) byBlock.put(m, c);
         }
 
-        int replantAt = Math.max(0, f.getInt("replant-at", 10));
+        // Replant comes from a hoe with the Replanting upgrade since 2026-10-28 (docs/design/FARMING_COOKING.md §9), not a level.
+        int movedFrom = OLD_REPLANT_AT;
+        if (f.contains("replant-at", true)) {
+            movedFrom = f.getInt("replant-at", OLD_REPLANT_AT);
+            problems.add(replantKeptOff(f)
+                    ? "farming.replant-at: " + movedFrom + " kept Replant off, so it stays off: Replant now comes from a hoe with the Replanting"
+                      + " upgrade, which the update leaves out of this file (remove replant-at to have it)"
+                    : "farming.replant-at: no longer used: Replant comes from a hoe with the Replanting upgrade (a Sower's Charm and a hoe in"
+                      + " a crafting grid); \"replanting: off\" under upgrades turns it off");
+        }
         NavigableMap<Integer, Integer> reach = new TreeMap<>();
         ConfigurationSection rs = f.getConfigurationSection("wide-harvest.reach");
         if (rs != null) for (String k : rs.getKeys(false)) {
@@ -244,8 +264,8 @@ public final class FarmingRules {
         int qualityAt = Math.max(0, f.getInt("quality.at", 50));
         double[] start = odds(f.getConfigurationSection("quality.odds.at-level-" + qualityAt), "quality.odds.at-level-" + qualityAt, problems);
         double[] top = odds(f.getConfigurationSection("quality.odds.at-level-100"), "quality.odds.at-level-100", problems);
-        return new FarmingRules(skill, Collections.unmodifiableMap(crops), Collections.unmodifiableMap(byBlock), replantAt, reach, perTick,
-                qualityAt, start, top);
+        return new FarmingRules(skill, Collections.unmodifiableMap(crops), Collections.unmodifiableMap(byBlock), reach, perTick,
+                qualityAt, start, top, movedFrom);
     }
 
     /** Fine, superior and masterwork chances in percent (each 0-100); Common is what is left of 100. */

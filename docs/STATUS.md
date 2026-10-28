@@ -1199,6 +1199,48 @@ A ravager (knockback resistance 0.75) at 100 in full iron: 0.13–0.64 blocks in
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §18): Martial Expertise's Agility with fists and with other weapons; Iron Reprisal's push at 10 and 100, its opening level and cooldown.
 
+## Done: Replant on the hoe (2026-10-28, your milestone, increment 2)
+
+**What it is for:** your note after the Farming build: *"why is replanting a level upgrade and not a tool enchant"*. Replant now comes from the tool, not from Farming 10. Design, the reasons and every rule: `docs/design/FARMING_COOKING.md` §9.
+
+**A Cerberus hoe upgrade, not a registered enchantment** (checked first, as you preferred):
+- A real enchantment can only be registered while the server boots, by a *Paper plugin* bootstrapper. Cerberus would have to become a Paper plugin, which drops `plugin.yml`'s commands: all twelve commands rewritten on another command system, and the class loading the protection plugins rely on changed. That is a migration of the whole plugin. A datapack enchantment would have to be written into your world folder, which this work must not touch.
+- An enchantment registered by a plugin also lives in the world's data: if the plugin were ever missing, the server couldn't read those hoes and would drop them from inventories and chests.
+- So it is an upgrade stored on the hoe (the heartwood grips' system), shown as "✦ Replanting: ripe crops it harvests are planted again". Nothing on the item claims to be a vanilla enchantment: no "Replant I" line, no glint.
+
+**How it works:**
+- **The hoe is the source.** A ripe wheat, carrot, potato, beetroot, cocoa or nether wart broken with a Replanting hoe is planted again at its first stage, at any Farming level. Without one in the main hand nothing is replanted, at any level.
+- **Seeds, as before:** from the harvest's own drops; from the inventory only when another plugin removed the drops; with none, nothing is replanted and the HUD says so. Never a second harvest. Cocoa on the same side of the same log.
+- **Wide Harvest recognises it:** a sweep with a Replanting hoe plants the field again, crop by crop; a plain hoe sweeps without replanting. `/farming replant off` still turns it off for you.
+- **Getting one in survival:** a **Sower's Charm** (shapeless, any crafting grid: wheat seeds, beetroot seeds, melon or pumpkin seeds, bone meal, string, a gold nugget), then the charm and any hoe in a crafting grid make the same hoe with the upgrade, keeping its enchantments, damage, quality and name. Once per hoe; a crafter block never makes it; the charm (a rabbit's foot) can't be placed, brewed or used in a vanilla recipe. Recipe, item and upgrade are data in `resources.yml` (`items: sowers_charm`, `upgrades: replanting`, the new `recipes:` section).
+- **Players who had Replant from Farming 10** get one chat line at their next join (Farming 10 or more): Replant now comes from a hoe, with the recipe. Nothing is taken or given.
+- **Shown:** the Farming page, `/farming` (whether the hoe in your hand replants, and how to make one) and the Crops screen say "Replant with a hoe that has the Replanting upgrade"; "Replant at 10" is gone everywhere.
+- **Older servers:** an unedited `resources.yml` is refreshed; an edited one gets the charm, the upgrade and the recipe in memory (the log says so); a `replant-at:` line is ignored, and the log says so once.
+- Admin: `/cerb farm hoe <player> [hoe]` (a Replanting hoe as the grid makes it), `/cerb farm notice <player> reset`.
+
+**An independent review** of increments 1 and 2 found one medium and five low defects; all are fixed, each shown in game with the build before the fix as the control:
+- **A recipe naming a block stopped the plugin** (medium): with `ingredients: [CARROTS, …]` in `recipes:` (carrots the block, not the item), the plugin never finished starting. The control build logged "Cannot have non-item choice CARROTS" and never enabled. Now such a recipe is left out with a line in the log, and everything else starts (Iron Reprisal still throws: 3/3). On a reload the charm's recipe now follows edits to the charm itself.
+- **An old `replant-at: 0` turned Replant back on:** the control build added the Replanting upgrade to a file that had Replant off. Now it stays off (logged): `/farming` says Replant isn't available here, the admin hoe is refused, and nobody is told it moved (3/3). The one-time message follows the file's own old level: with `replant-at: 30` it goes to players at 30, not 29 (3/3).
+- **Fortune on carrots and potatoes with a Replanting hoe:** a harvest of one carrot that rolled a Fortune extra lost it (the carrot became the seed first). Now Fortune comes first: on 168 carrot harvests at Farming 100, 51 extras rolled and 51 given, and 168 replanted.
+- **Wide Harvest read a player's held hoe from another region thread** if they left mid-sweep; it no longer reads anything of a player it doesn't own.
+- **Iron Reprisal answered a player's blow a raised shield took**, once `pvp: true`. The damage pipeline still resolves a player's blow as before PvP's pass, and so hid the block. With `pvp: true` and the shield raised (hand state 3), the control build threw the attacker 5.17 blocks; now nobody is thrown and the counter says the shield took it (3/3).
+
+**Checks** (a sandbox Folia 1.21.11 server in the cloud container; your Windows world and database were never touched):
+- **Unit tests:** 396. New: `FarmingRulesTest`'s old-`replant-at` rule, `GatheringTest`'s edited file that had Replant off, plus the charm, recipe and upgrade parsing.
+- **An edited older `resources.yml`** (from before this increment, `replant-at: 10`): 19/19. The file was never rewritten on disk; the charm, upgrade and recipe came from the plugin's own file. A first run's 18/19 was the harness's seed check, which didn't count a Fortune extra lying on the ground; the check now reads the server's own counts.
+- **A fresh install:** 25/25.
+- **Every farming phase on a fresh character:** 62/63. The one failure was the harness's arena, not the plugin:
+  - That arena sat under a mountain: 31 solid blocks overhead from y=119, sky light 0 at the crop rows.
+  - Crops can't stand in the dark, so each break dropped its whole row unharvested: one counted harvest per row, rows taking 10.8 s instead of 4.5.
+  - The arenas now skip terrain overhead, and every break must be a harvest the server counted.
+- **Fortune reruns:** 6/6, 6/6 and the new carrot check 32/32. One rerun rolled 36 Fortune extras of 84, outside the check's 9–35. On a large sample the rate is the reported chance: two Wide Harvest runs of 800 harvests at Farming 100 gave 197 and 202 extras (24.6% and 25.3%; the server reports 25.8%, expected 206 ± 12). The 36 was chance, about one run in 2,000.
+- **The final build** (with `/farming` saying "Replant isn't available on this server" when a server has no Replanting upgrade): replant and the move notice 15/15; the edited `replant-at: 0` file with a recipe naming carrots 3/3 (the plugin starts, the recipe is left out and Replant kept off, both logged); the PvP shield 3/3; no plugin errors.
+- **Code shared with other skills:** Woodcutting heartwood 10/10; Fishing bait 26/26 and the auto-hook reel 20/20; Cooking's crafting and meals 11/11; custom resources 9/9; the smoke test 14/14; skill names in the menus 4/4. No plugin errors in any server log (the only "errors" were Mojang profile lookups timing out in the sandbox's network).
+
+**Performance:** Wide Harvest and the farm load are measured together with Herbalism and Alchemy in one before/after pass at the end of this milestone (increment 6), on a sandbox with nothing else running.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §19): the charm's recipe and cost, the lore line, whether Replant on the hoe feels right.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.

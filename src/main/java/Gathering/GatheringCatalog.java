@@ -64,7 +64,20 @@ public final class GatheringCatalog {
      * grid with one of {@code on} (item kinds: axe, bow...; "for:" in the file) adds {@code amount} of {@code stat}
      * while it is held. Once per item.
      */
-    public record UpgradeDef(String id, String item, Set<String> on, Attributes.Stat stat, double amount, String name) {}
+    /**
+     * An upgrade made in a crafting grid from an item of the kinds {@code on} and the custom item {@code item}: a speed stat
+     * while held ({@code stat}, {@code amount}), or an {@code ability} the tool gives ({@link #REPLANT}), or both.
+     */
+    public record UpgradeDef(String id, String item, Set<String> on, Attributes.Stat stat, double amount, String name, String ability) {
+        public UpgradeDef(String id, String item, Set<String> on, Attributes.Stat stat, double amount, String name) {
+            this(id, item, on, stat, amount, name, null);
+        }
+    }
+
+    /** An upgrade ability: a ripe crop the tool harvests is planted again (docs/design/FARMING_COOKING.md §9). */
+    public static final String REPLANT = "replant";
+    /** The abilities an upgrade may give. */
+    static final Set<String> UPGRADE_ABILITIES = Set.of(REPLANT);
 
     /** Item kinds an upgrade can go on (GearItems.kind). */
     static final Set<String> ITEM_KINDS = Set.of("axe", "pickaxe", "shovel", "hoe", "sword", "spear", "bow", "crossbow", "trident", "mace", "rod");
@@ -119,6 +132,7 @@ public final class GatheringCatalog {
     private final TackleRules tackle;
     private final FarmingRules farming;
     private final CookingRules cooking;
+    private final Map<String, TackleRules.Recipe> recipes;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
@@ -126,7 +140,8 @@ public final class GatheringCatalog {
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
-                             FishingRules fishing, TackleRules tackle, FarmingRules farming, CookingRules cooking, List<String> problems) {
+                             FishingRules fishing, TackleRules tackle, FarmingRules farming, CookingRules cooking,
+                             Map<String, TackleRules.Recipe> recipes, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -150,6 +165,7 @@ public final class GatheringCatalog {
         this.tackle = tackle;
         this.farming = farming;
         this.cooking = cooking;
+        this.recipes = recipes;
         this.problems = List.copyOf(problems);
     }
 
@@ -203,6 +219,24 @@ public final class GatheringCatalog {
     public double weakToolFactor() { return weakToolFactor; }
     public Map<String, UpgradeDef> upgrades() { return upgrades; }
     public UpgradeDef upgrade(String id) { return id == null ? null : upgrades.get(id); }
+    /** Crafting-table recipes for Cerberus items outside a skill's own section ({@code recipes:}; the Sower's Charm). */
+    public Map<String, TackleRules.Recipe> recipes() { return recipes; }
+
+    /**
+     * True when {@code tool} has an upgrade giving {@code ability} for its kind (a hoe with Replanting replants). Reads the
+     * item's data only: no lookup when it has no upgrade.
+     */
+    public boolean hasAbility(org.bukkit.inventory.ItemStack tool, String ability) {
+        if (tool == null || tool.getType().isAir() || ability == null) return false;
+        List<String> ids = GearItems.upgrades(tool);
+        if (ids.isEmpty()) return false;
+        String kind = GearItems.kind(tool.getType());
+        for (String id : ids) {
+            UpgradeDef u = upgrades.get(id);
+            if (u != null && ability.equals(u.ability()) && u.on().contains(kind)) return true;
+        }
+        return false;
+    }
     /** Fishing's rules (docs/design/FISHING.md); {@link FishingRules#NONE} without a fishing section. */
     public FishingRules fishing() { return fishing; }
     /** Fishing equipment's rules (docs/design/FISHING_EQUIPMENT.md); {@link TackleRules#NONE} without a tackle section. */
@@ -353,6 +387,13 @@ public final class GatheringCatalog {
             lines.add("Harvest ripe crops in survival, by hand or with a macro: " + String.join(", ", parts) + " XP (cane and cactus per grown segment).");
             lines.add("Crops you plant pay in full, bone meal too; melons, pumpkins, cane and cactus placed by hand pay nothing. "
                     + "Machines and water keep their drops and pay nobody. The first harvest of each crop is a discovery.");
+            for (UpgradeDef u : upgrades.values()) {
+                if (!REPLANT.equals(u.ability())) continue;
+                ItemDef charm = items.get(u.item());
+                lines.add("Replant comes from the hoe, at any level: a hoe with the " + u.name() + " upgrade (a "
+                        + (charm == null ? u.item() : charm.name()) + " and a hoe in a crafting grid) plants each ripe crop it harvests again.");
+                break;
+            }
             if (weakGap > 0) lines.add("Each crop has a level; " + weakGap + "+ levels above it you get " + Math.round(weakFactor * 100) + "% of its XP.");
         }
         if (cooking.enabled()) {
@@ -428,6 +469,14 @@ public final class GatheringCatalog {
         List<String> tackleItems = new ArrayList<>(m.get("items"));
         tackleItems.addAll(TACKLE_ITEMS);
         m.put("items", List.copyOf(tackleItems));
+        // 2026-10-28, Replant moves to the hoe: the Sower's Charm, the Replanting upgrade and the charm's recipe
+        List<String> charm = new ArrayList<>(m.get("items"));
+        charm.add("sowers_charm");
+        m.put("items", List.copyOf(charm));
+        List<String> replanting = new ArrayList<>(m.get("upgrades"));
+        replanting.add("replanting");
+        m.put("upgrades", List.copyOf(replanting));
+        m.put("recipes", List.of("sowers_charm"));
         return Collections.unmodifiableMap(m);
     }
 
@@ -445,11 +494,14 @@ public final class GatheringCatalog {
         if (own != null) for (String id : own.getKeys(false)) {
             for (String b : own.getStringList(id + ".blocks")) taken.add(b.trim().toUpperCase(Locale.ROOT));
         }
+        // An old "farming.replant-at: 0" turned Replant off: it stays off (FarmingRules says so in the log).
+        boolean replantOff = FarmingRules.replantKeptOff(server.getConfigurationSection("farming"));
         for (Map.Entry<String, List<String>> e : ADDED_BY_UPDATES.entrySet()) {
             List<String> added = new ArrayList<>();
             for (String id : e.getValue()) {
                 String path = e.getKey() + "." + id;
                 if (server.contains(path) || !(shipped.get(path) instanceof ConfigurationSection s)) continue;
+                if (replantOff && (path.equals("upgrades.replanting") || path.equals("recipes.sowers_charm"))) continue;
                 List<String> clash = s.getStringList("blocks").stream().filter(b -> taken.contains(b.trim().toUpperCase(Locale.ROOT))).toList();
                 if (!clash.isEmpty()) {
                     notes.add(path + ": not added, your file already has " + String.join(", ", clash));
@@ -692,17 +744,35 @@ public final class GatheringCatalog {
                 else on.add(kind);
             }
             if (on.isEmpty() && why.isEmpty()) why.add("for: names no item kind");
-            Attributes.Stat stat = Attributes.Stat.parse(u.getString("stat"));
-            if (stat == null || !stat.isSecondary()) why.add("stat " + u.getString("stat") + " is not a speed stat");
-            double amount = u.getDouble("amount", 0);
-            if (!(amount > 0 && amount <= 1)) why.add("amount " + amount + " outside (0, 1]");
+            String ability = u.getString("ability");
+            if (ability != null) {
+                ability = ability.trim().toLowerCase(Locale.ROOT);
+                if (!UPGRADE_ABILITIES.contains(ability)) why.add("unknown ability " + ability + " (" + String.join(", ", UPGRADE_ABILITIES) + ")");
+            }
+            Attributes.Stat stat = null;
+            double amount = 0;
+            if (u.contains("stat") || ability == null) { // an upgrade gives a speed stat, an ability, or both
+                stat = Attributes.Stat.parse(u.getString("stat"));
+                if (stat == null || !stat.isSecondary()) why.add("stat " + u.getString("stat") + " is not a speed stat");
+                amount = u.getDouble("amount", 0);
+                if (!(amount > 0 && amount <= 1)) why.add("amount " + amount + " outside (0, 1]");
+            }
             if (!why.isEmpty()) { problems.add("upgrade " + id + ": " + String.join("; ", why)); continue; }
-            upgrades.put(id, new UpgradeDef(id, item, Collections.unmodifiableSet(on), stat, amount, u.getString("name", id)));
+            upgrades.put(id, new UpgradeDef(id, item, Collections.unmodifiableSet(on), stat, amount, u.getString("name", id), ability));
         }
 
         FishingRules fishing = FishingRules.from(root == null ? null : root.getConfigurationSection("fishing"), items, skills, problems);
         TackleRules tackle = fishing.enabled() ? TackleRules.from(root == null ? null : root.getConfigurationSection("tackle"), items, upgrades, problems)
                 : TackleRules.NONE;
+        // Crafting-table recipes for Cerberus items that belong to no skill's own section (the Sower's Charm).
+        Map<String, TackleRules.Recipe> recipes = new LinkedHashMap<>();
+        ConfigurationSection rec = root == null ? null : root.getConfigurationSection("recipes");
+        if (rec != null) for (String id : rec.getKeys(false)) {
+            if (off(rec, id)) continue;
+            TackleRules.Recipe r = TackleRules.recipe("recipes", id, rec.getConfigurationSection(id), items, problems);
+            if (r != null) recipes.put(id, r);
+        }
+
         FarmingRules farming = FarmingRules.from(root == null ? null : root.getConfigurationSection("farming"), skills, problems);
         CookingRules cooking = CookingRules.from(root == null ? null : root.getConfigurationSection("cooking"), skills, problems);
         for (FarmingRules.Crop c : farming.crops()) for (Material m : c.blocks()) {
@@ -714,7 +784,8 @@ public final class GatheringCatalog {
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking, problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking,
+                Collections.unmodifiableMap(recipes), problems);
     }
 
     /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */

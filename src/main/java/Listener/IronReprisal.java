@@ -77,7 +77,7 @@ public final class IronReprisal implements Listener {
         if (strength <= 0) return;
         // The shield took the blow: it never landed, so there is nothing to answer (the game itself pushes nobody on a block).
         // A blow from behind, past a raised shield, lands and is answered as any other.
-        if (VirtualHealthListener.shieldTookAll(e)) { shield.increment(); return; }
+        if (VirtualHealthListener.blockedByShield(e)) { shield.increment(); return; }
         if (!VirtualHealthListener.landed(e)) { notLanded.increment(); return; } // invulnerable, countered or lethal: no hit to answer
         Player behind = PvpTag.playerBehind(attacker);
         if (behind != null) {

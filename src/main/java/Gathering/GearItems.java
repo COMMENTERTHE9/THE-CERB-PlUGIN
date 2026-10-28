@@ -249,8 +249,15 @@ public final class GearItems {
         return out;
     }
 
+    /**
+     * The upgrade's lore line, in the upgrade style ("✦ Heartwood grip: chop speed while held"); an ability says what the
+     * tool does ("✦ Replanting: ripe crops it harvests are planted again"). Never styled as a vanilla enchantment.
+     */
     private static Component upgradeLine(GatheringCatalog.UpgradeDef u) {
-        return text("§6✦ " + u.name() + "§7: " + u.stat().displayName.toLowerCase(Locale.ROOT) + " while held");
+        String does = GatheringCatalog.REPLANT.equals(u.ability()) ? "ripe crops it harvests are planted again" : null;
+        String stat = u.stat() == null ? null : u.stat().displayName.toLowerCase(Locale.ROOT) + " while held";
+        String what = does != null && stat != null ? does + "; " + stat : does != null ? does : stat;
+        return text("§6✦ " + u.name() + "§7: " + what);
     }
 
     /** What kind of item a material is, for upgrades: axe, pickaxe, shovel, hoe, sword, spear, bow, crossbow, trident, mace; or null. */
@@ -274,7 +281,7 @@ public final class GearItems {
     }
 
     /** "iron_pickaxe" → "Iron pickaxe" (for labels). */
-    static String label(String material) {
+    public static String label(String material) {
         String s = material.toLowerCase(Locale.ROOT).replace('_', ' ');
         return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }

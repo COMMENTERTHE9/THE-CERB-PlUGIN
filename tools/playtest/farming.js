@@ -8,14 +8,21 @@
 //   pick     - sweet berries picked with a right-click pay (the bush stays), an unripe bush pays nothing; glow berries
 //   creative - creative pays nothing, and the XP display says why
 //   machines - water and a piston harvest ripe crops: vanilla drops, nobody paid
-//   replant  - Farming 10: a ripe crop broken by hand is planted again at its first stage, its seed from the drops (a ripe
-//              crop always drops one: the inventory is used only when something else took the drops), never a second
-//              harvest; cocoa on the same side of its log; not below 10; /farming replant off
+//   replant  - Replant comes from the hoe (docs/design/FARMING_COOKING.md §9): a plain hoe never replants, at Farming 100 too,
+//              and /farming says how to make one; the Sower's Charm crafted from six farm goods at Farming 1, then the charm
+//              and a hoe make the Replanting hoe (an upgrade line, no enchantment); with it a ripe crop is planted again at
+//              its first stage, its seed from the drops (a ripe crop always drops one), never a second harvest; cocoa on the
+//              same side of its log; /farming replant off; a plain hoe again plants nothing
+//   migrate  - a character at Farming 10 is told once, at its first join on this build, that Replant moved to the hoe (with
+//              the recipe); not again; nothing below 10 (/cerb farm notice ... reset re-arms it for the test)
 //   wide     - Farming 25: Sneak + a hoe takes every ripe crop of that kind in 3x3 (5x5 at 50), each paid once with 1 hoe
 //              durability; not without Sneak, a hoe, or below 25; unripe crops and other kinds stay; a hoe about to break
-//              stops it; switching away from the hoe stops it
+//              stops it; switching away from the hoe stops it; at 100 the 9x9 is planted again only with a Replanting hoe
 //   protect  - a protection plugin's claim stops a Wide Harvest at its edge (needs the sandbox-only CerbTestProtect plugin)
-//   fortune  - Fortune (crops) at Farming 100: about a quarter of wheat harvests drop a second wheat; none at Farming 1
+//   fortune  - Fortune (crops) at Farming 100: about a quarter of wheat harvests drop a second wheat; none at Farming 1;
+//              with the Replanting hoe on carrots (their own seed) every Fortune extra the server rolls is given
+//   fortunerate - Fortune's rate on a large sample: ten Wide Harvests of 9x9 ripe wheat at Farming 100 (810 harvests), the
+//              server's own counts against the chance it reports (within 3 standard deviations)
 //   quality  - Farming 100: about a third of the produce carries a quality (lore and data), never below 50
 //   menu     - Player Menu → Skills → Farming → Crops, and Collections → Crops, count the discoveries
 //   relog    - discoveries, Replant's switch and quality items survive a relog
@@ -67,8 +74,16 @@ async function arena() {
   const sp = bot.spawnPoint || bot.entity.position;
   X = Math.floor(sp.x) - 2000 - (Date.now() % 20000) * 96; Y = 110; Z = Math.floor(sp.z) + 400;
   await cmd('/gamemode creative', 300);
-  await cmd(`/tp @s ${X + 0.5} ${Y + 1} ${Z + 0.5}`, 1000);
-  try { await bot.waitForChunksToLoad(); } catch (e) { /* the fill retries */ }
+  // Never under a mountain: the arena clears only 9 blocks above its floor, and terrain higher up keeps the sky light out.
+  // A crop in the dark can't stand, so a break's neighbours pop off unharvested and the phase measures nothing.
+  for (let tries = 0; ; tries++) {
+    await cmd(`/tp @s ${X + 0.5} ${Y + 1} ${Z + 0.5}`, 1000);
+    try { await bot.waitForChunksToLoad(); } catch (e) { /* the fill retries */ }
+    const roof = roofOver();
+    if (!roof || tries >= 9) { if (roof) note(`arena under terrain after ${tries + 1} tries (${roof})`); break; }
+    note(`arena skipped: terrain above it (${roof})`);
+    X -= 5000 + Math.floor(Math.random() * 20000);
+  }
   await cmd('/gamerule spawn_mobs false', 300);
   await cmd('/gamerule random_tick_speed 0', 300); // nothing grows unless the test grows it
   await cmd('/time set day', 300);
@@ -87,6 +102,14 @@ async function arena() {
   await cmd('/effect give @s saturation infinite 1 true', 300);
   await cmd('/xpdisplay compact', 300);
   await stand(0, -3);
+}
+/** The first block above the arena's cleared space (Y+9 up) that is not air, or null: the bot's own copy of the chunks. */
+function roofOver() {
+  for (let x = X - 12; x <= X + 24; x++) for (let z = Z - 12; z <= Z + 12; z++) for (let y = Y + 9; y < 320; y++) {
+    const b = bot.blockAt(new Vec3(x, y, z));
+    if (b && b.name !== 'air' && b.name !== 'cave_air' && b.name !== 'void_air') return `${b.name} at ${x} ${y} ${z}`;
+  }
+  return null;
 }
 async function stand(dx, dz, yaw = 0, pitch = 30) { await cmd(`/tp @s ${X + dx + 0.5} ${Y} ${Z + dz + 0.5} ${yaw} ${pitch}`, 500); }
 const at = (dx, dy, dz) => new Vec3(X + dx, Y + dy, Z + dz);
@@ -360,24 +383,81 @@ async function machinesPhase() {
     `${blockName(5, 0, 0)}; ${count(md, 'melon_slice')} slices`);
 }
 
+/** Open the crafting table at (-2, 0, 2); null when it can't. */
+async function table() {
+  await setblock(-2, 0, 2, 'crafting_table', 500);
+  const tb = bot.blockAt(at(-2, 0, 2));
+  try { await bot.lookAt(tb.position.offset(0.5, 0.5, 0.5), true); const w = await bot.openBlock(tb); await sleep(400); return w; } catch (e) { return null; }
+}
+/** One of the first stack in window `w` matching `pred` into grid slot `to`: pick up, right-click one down, put the rest back. */
+async function putOne(w, pred, to) {
+  let from = -1;
+  for (let i = w.inventoryStart; i < w.inventoryEnd; i++) if (w.slots[i] && pred(w.slots[i])) { from = i; break; }
+  if (from < 0) return false;
+  const c = async (slot, button = 0, mode = 0) => { try { await bot.clickWindow(slot, button, mode); } catch (e) { /* the server decides */ } await sleep(220); };
+  await c(from); await c(to, 1); await c(from);
+  return true;
+}
+const replantingLore = it => /Replanting: ripe crops it harvests are planted again/.test(loreOf(it));
+
+/** Replant comes from the hoe (docs/design/FARMING_COOKING.md §9): a plain hoe never replants; the survival recipe makes one that does. */
 async function replantPhase() {
   await arena();
+  await cmd('/clear @s iron_hoe', 300);
+  await cmd('/clear @s rabbit_foot', 300);
   await give('iron_hoe'); await hold('iron_hoe');
   await stand(0, -2, 0);
-  await setLevel(9);
+  await cmd('/farming replant on', 400);
+  await setLevel(100);
   await setblock(0, 0, 0, 'wheat[age=7]');
   await brk(0, 0, 0);
-  check('Farming 9: no Replant (the spot is empty)', blockName(0, 0, 0) === 'air', blockName(0, 0, 0));
-  await setLevel(10);
-  await cmd('/farming replant on', 400);
+  check('A plain hoe at Farming 100: no Replant (the level gives none any more)', blockName(0, 0, 0) === 'air', blockName(0, 0, 0));
+  const fa = await cmd('/farming', 900);
+  const how = saw(/no Replanting upgrade/, fa) || '';
+  check('/farming: the hoe in hand has no Replanting upgrade, and how to make one (from the recipe data)',
+    /craft a Sower's Charm \(wheat seeds, beetroot seeds, melon seeds or pumpkin seeds, bone meal, string, gold nugget\), then put it with a hoe in a crafting grid/.test(how), how);
+  await cmd('/kill @e[type=item,distance=..20]', 300);
+  // The survival path: the six farm goods make a Sower's Charm at a crafting table; the charm and a hoe make the Replanting hoe.
+  for (const it of ['wheat_seeds', 'beetroot_seeds', 'pumpkin_seeds', 'bone_meal', 'string', 'gold_nugget']) await give(it, 1);
+  await setLevel(1);
+  let w = await table();
+  if (!w) { check('a crafting table opens', false); return; }
+  for (const [i, name] of ['wheat_seeds', 'beetroot_seeds', 'pumpkin_seeds', 'bone_meal', 'string', 'gold_nugget'].entries()) await putOne(w, it => it.name === name, i + 1);
+  await sleep(500);
+  const charm = w.slots[0];
+  check('Wheat and beetroot seeds, pumpkin seeds, bone meal, string and a gold nugget: a Sower\'s Charm, at Farming 1',
+    !!charm && charm.name === 'rabbit_foot' && /Sower's Charm/.test(nameOf(charm)), charm ? `${charm.name} ${nameOf(charm)}` : 'nothing');
+  try { await bot.clickWindow(0, 0, 1); } catch (e) { /* the server decides */ }
+  await sleep(500);
+  await putOne(w, it => it.name === 'rabbit_foot', 1);
+  await putOne(w, it => it.name === 'iron_hoe' && !replantingLore(it), 2);
+  await sleep(500);
+  const up = w.slots[0];
+  check('The charm and a hoe in the grid: the same hoe with "✦ Replanting" (an upgrade line, not a vanilla enchantment)',
+    !!up && up.name === 'iron_hoe' && replantingLore(up) && !(up.enchants && up.enchants.length), up ? `${up.name}: ${loreOf(up)}` : 'nothing');
+  try { await bot.clickWindow(0, 0, 1); } catch (e) { /* the server decides */ }
+  await sleep(500);
+  bot.closeWindow(w);
+  await sleep(500);
+  const hoeIdx = bot.inventory.slots.findIndex(it => it && it.name === 'iron_hoe' && replantingLore(it));
+  check('...taken: the Replanting hoe is in the inventory, the charm used', hoeIdx >= 0 && invCount('rabbit_foot') === 0, `hoe at ${hoeIdx}, charms ${invCount('rabbit_foot')}`);
+  if (hoeIdx >= 36) bot.setQuickBarSlot(hoeIdx - 36); else if (hoeIdx >= 0) { try { await bot.clickWindow(hoeIdx, 0, 2); } catch (e) { /* swap */ } }
+  await sleep(500);
+  await cmd('/clear @s dirt', 300);
+  // Farming 1 with the Replanting hoe: ripe carrots come back, their seed from the harvest's own drops.
   await setblock(0, 0, 0, 'carrots[age=7]');
   await cmd('/clear @s carrot', 300);
   await stuff(); // no room: the harvest's carrots stay on the ground
+  const statsOf = out => { const l = saw(/replanted \d+/, out) || ''; return { fortune: +((l.match(/Fortune \+(\d+)/) || [0, 0])[1]), replanted: +((l.match(/replanted (\d+)/) || [0, 0])[1]) }; };
+  const s0 = statsOf(await cmd('/cerb farm stats', 600));
   await brk(0, 0, 0);
   const d = await dropsNear(0, 0, 0);
-  check('Farming 10: ripe carrots come back as a carrot at stage 0', blockName(0, 0, 0) === 'carrots' && age(0, 0, 0) === 0, `${blockName(0, 0, 0)} age ${age(0, 0, 0)}`);
-  check('...its seed from the harvest\'s own drops (no carrot in the inventory, a vanilla 1-4 less one on the ground)',
-    invCount('carrot') === 0 && count(d, 'carrot') <= 3, `inventory ${invCount('carrot')}; ${count(d, 'carrot')} on the ground`);
+  const s1 = statsOf(await cmd('/cerb farm stats', 600));
+  const rolled = s1.fortune - s0.fortune; // Farming's Fortune on crops (1% at Farming 1) adds one after the seed is taken
+  check('Farming 1 with the Replanting hoe: ripe carrots come back as a carrot at stage 0', blockName(0, 0, 0) === 'carrots' && age(0, 0, 0) === 0, `${blockName(0, 0, 0)} age ${age(0, 0, 0)}`);
+  check('...its seed from the harvest\'s own drops (no carrot in the inventory; on the ground a vanilla 1-4 less one, plus any Fortune extra the server counted)',
+    invCount('carrot') === 0 && count(d, 'carrot') <= 3 + rolled && s1.replanted - s0.replanted === 1,
+    `inventory ${invCount('carrot')}; ${count(d, 'carrot')} on the ground; the server: replanted +${s1.replanted - s0.replanted}, Fortune +${rolled}`);
   const x0 = await farmXp();
   await brk(0, 0, 0);
   check('...and the replanted crop is no second harvest (unripe: nothing)', (await farmXp()) - x0 === 0 && blockName(0, 0, 0) === 'air');
@@ -405,9 +485,70 @@ async function replantPhase() {
   await give('wheat_seeds', 5);
   await setblock(0, 0, 0, 'wheat[age=7]');
   await brk(0, 0, 0);
-  check('/farming replant off: nothing is replanted', blockName(0, 0, 0) === 'air');
+  check('/farming replant off: nothing is replanted, even with the Replanting hoe', blockName(0, 0, 0) === 'air');
   await cmd('/farming replant on', 400);
   await cmd('/kill @e[type=item,distance=..20]', 300);
+  // The control on the same character: a plain hoe again plants nothing.
+  await give('iron_hoe');
+  const plain = bot.inventory.slots.findIndex(it => it && it.name === 'iron_hoe' && !replantingLore(it));
+  if (plain >= 36) bot.setQuickBarSlot(plain - 36); else if (plain >= 0) { try { await bot.clickWindow(plain, 0, 2); } catch (e) { /* swap */ } }
+  await sleep(500);
+  await setblock(0, 0, 0, 'wheat[age=7]');
+  await brk(0, 0, 0);
+  check('Control: the same character with a plain hoe: not replanted', blockName(0, 0, 0) === 'air', blockName(0, 0, 0));
+  await cmd('/kill @e[type=item,distance=..20]', 300);
+}
+
+/** Players who had Replant from Farming 10 are told once, at their next join, that it moved to the hoe. */
+async function migratePhase() {
+  // The level Replant opened at before it moved: the server file's old replant-at (REPLANT_MOVED_FROM for an edited file
+  // that set one; 0 when it turned Replant off), else 10.
+  const from = Number(process.env.REPLANT_MOVED_FROM || 10);
+  if (from <= 0) {
+    await setLevel(100);
+    await cmd(`/cerb farm notice ${NAME} reset`, 600);
+    bot.quit();
+    await sleep(4000);
+    await connect();
+    const t0 = chat.length;
+    await sleep(6000);
+    check('replant-at: 0 kept Replant off on this server: nobody is told it moved, even at Farming 100',
+      !chat.slice(t0).some(m => /Replant has moved to the hoe/.test(m)));
+    await give('iron_hoe'); await hold('iron_hoe');
+    const a = await cmd('/farming', 800);
+    check('...and it stays off: /farming says Replant isn\'t available here (its header and the hoe in hand), never "✔ Replant"',
+      !!saw(/✖ Replant isn't available on this server/, a) && !!saw(/hoe in your hand has no Replanting upgrade: Replant isn't available/, a)
+      && !saw(/✔ Replant/, a), chat.slice(a).join(' / '));
+    const h = await cmd(`/cerb farm hoe ${NAME}`, 800);
+    check('...and the admin\'s Replanting hoe is refused', !!saw(/No Replanting upgrade/, h), chat.slice(h).join(' / '));
+    await setLevel(1);
+    return;
+  }
+  await setLevel(from);
+  await cmd(`/cerb farm notice ${NAME} reset`, 600);
+  bot.quit();
+  await sleep(4000);
+  await connect();
+  const t0 = chat.length;
+  await sleep(6000);
+  const said = chat.slice(t0).filter(m => /Replant has moved to the hoe/.test(m));
+  check(`Farming ${from}, first join on this build: told once that Replant moved to the hoe, with the recipe`, said.length === 1 && /Sower's Charm/.test(said[0]),
+    said.join(' / ') || 'nothing');
+  bot.quit();
+  await sleep(4000);
+  await connect();
+  const t1 = chat.length;
+  await sleep(6000);
+  check('...and not again at the next join', !chat.slice(t1).some(m => /Replant has moved to the hoe/.test(m)));
+  await setLevel(Math.max(1, from - 1));
+  await cmd(`/cerb farm notice ${NAME} reset`, 600);
+  bot.quit();
+  await sleep(4000);
+  await connect();
+  const t2 = chat.length;
+  await sleep(6000);
+  check(`Below Farming ${from} (it never replanted): nothing to tell`, !chat.slice(t2).some(m => /Replant has moved to the hoe/.test(m)));
+  await setLevel(1);
 }
 
 /** A field of ripe wheat, (2r+1)² around (0, z0). */
@@ -489,9 +630,19 @@ async function widePhase() {
   await give('wheat_seeds', 64);
   await brk(0, 0, 5, { sneak: true });
   await sleep(1500);
-  let seedlings = 0;
-  for (let dx = -4; dx <= 4; dx++) for (let dz = 1; dz <= 9; dz++) if (blockName(dx, 0, dz) === 'wheat' && age(dx, 0, dz) === 0) seedlings++;
-  check('Farming 100 with Replant: the 9x9 comes down and is planted again', ripeLeft(4) === 0 && seedlings >= 80, `${ripeLeft(4)} ripe left, ${seedlings} seedlings`);
+  const seedlingsIn = () => { let n = 0; for (let dx = -4; dx <= 4; dx++) for (let dz = 1; dz <= 9; dz++) if (blockName(dx, 0, dz) === 'wheat' && age(dx, 0, dz) === 0) n++; return n; };
+  check('Farming 100 with a plain hoe: the 9x9 comes down and nothing is planted again (Replant is the hoe\'s)', ripeLeft(4) === 0 && seedlingsIn() === 0,
+    `${ripeLeft(4)} ripe left, ${seedlingsIn()} seedlings`);
+  await cmd('/kill @e[type=item,distance=..30]', 300);
+  // A Replanting hoe (the admin's copy of what the crafting grid makes): the field is planted again.
+  await cmd('/clear @s iron_hoe', 300);
+  await cmd(`/cerb farm hoe ${NAME}`, 600);
+  await hold('iron_hoe');
+  await field(4);
+  await brk(0, 0, 5, { sneak: true });
+  await sleep(1500);
+  const seedlings = seedlingsIn();
+  check('Farming 100 with the Replanting hoe: the 9x9 comes down and is planted again', ripeLeft(4) === 0 && seedlings >= 80, `${ripeLeft(4)} ripe left, ${seedlings} seedlings`);
   await cmd('/kill @e[type=item,distance=..30]', 300);
   await setLevel(1);
 }
@@ -549,7 +700,10 @@ async function harvestMany(n, level) {
   const st2 = await cmd('/cerb farm stats', 500);
   const rolled = fortuneOf(st2) - f0; // the server's own count of Fortune extras: tells a real roll from a miscount on the ground
   note('server after: ' + (saw(/quality fine/, st2) || '').replace(/.*quality /, '') + '; Fortune +' + rolled + '; ground: ' + wheat + ' wheat, ' + quality + ' with a quality');
-  return { wheat, extra, quality, lore, rolled };
+  const harvestsOf = out => +(((saw(/harvests \d+/, out) || '').match(/harvests (\d+)/) || [0, 0])[1]);
+  const harvests = harvestsOf(st2) - harvestsOf(st);
+  note(`server harvests counted: +${harvests} (of ${Math.ceil(n / 7) * 7} broken)`);
+  return { wheat, extra, quality, lore, rolled, harvests };
 }
 
 async function fortunePhase() {
@@ -564,6 +718,61 @@ async function fortunePhase() {
   const high = await harvestMany(84, 100);
   check('Farming 100: Fortune (crops) 50, a 25% chance of a second wheat (84 harvests: 9-35 extra)', high.extra >= 9 && high.extra <= 35,
     `${high.extra} extra of 84 on the ground, server Fortune +${high.rolled}`);
+  check('...every break a harvest the server counted (a crop that pops off unharvested measures nothing)',
+    high.harvests === 84 && low.harvests === 42, `${low.harvests} of 42, ${high.harvests} of 84`);
+  // A carrot is its own seed: a harvest of one carrot that rolls a Fortune extra keeps the extra when the Replanting hoe
+  // plants the carrot again (until 2026-10-28 the seed went first and the extra was lost). 168 harvests: about 13 of one
+  // carrot, 3 of them with an extra.
+  await setLevel(100);
+  await cmd('/farming replant on', 300);
+  await cmd('/clear @s iron_hoe', 300);
+  await cmd(`/cerb farm hoe ${NAME}`, 600);
+  await hold('iron_hoe');
+  const st = await cmd('/cerb farm stats', 500);
+  for (let i = 0; i < 168; i += 7) {
+    await fill(-3, 0, 2, 3, 0, 2, 'carrots[age=7]', 400);
+    for (let dx = -3; dx <= 3; dx++) await brk(dx, 0, 2, { ms: 40 });
+    await dropsNear(0, 0, 2, 5);
+  }
+  const st2 = await cmd('/cerb farm stats', 500);
+  const num = (re, out) => +(((saw(re, out) || '').match(re) || [0, 0])[1]);
+  const d = re => num(re, st2) - num(re, st);
+  const given = d(/Fortune \+(\d+)/), rolled = d(/rolled (\d+)/), replanted = d(/replanted (\d+)/), harvests = d(/harvests (\d+)/);
+  check('A Replanting hoe on carrots at Farming 100: every Fortune extra rolled is given, and every harvest planted again',
+    rolled > 0 && given === rolled && harvests === 168 && replanted === 168,
+    `Fortune rolled ${rolled}, given ${given}; ${harvests} harvests, ${replanted} replanted`);
+  await cmd('/clear @s iron_hoe', 300);
+  await give('iron_hoe'); await hold('iron_hoe');
+  await setLevel(1);
+}
+
+async function fortuneRatePhase() {
+  await arena();
+  await give('netherite_hoe'); await hold('netherite_hoe'); // 2,031 uses: an iron hoe's 250 would stop the sweeps
+  await cmd('/farming replant off', 400);
+  await stand(0, 2, 0);
+  await setLevel(100);
+  let chance = 0;
+  const st = await cmd('/cerb farm stats', 500);
+  for (let i = 0; i < 10; i++) {
+    await field(4);
+    if (i === 0) { // the chance the server reports, read with a ripe crop in view
+      await bot.lookAt(at(0, 0, 5).offset(0.5, 0.5, 0.5), true);
+      const fi = await cmd('/cerb farm info', 700);
+      chance = +(((saw(/Fortune chance/, fi) || '').match(/Fortune chance ([\d.]+)%/) || [0, 0])[1]) / 100;
+    }
+    await brk(0, 0, 5, { sneak: true });
+    await sleep(1200);
+    await cmd(`/kill @e[type=item,distance=..30]`, 300);
+  }
+  const st2 = await cmd('/cerb farm stats', 500);
+  const num = (re, out) => +(((saw(re, out) || '').match(re) || [0, 0])[1]);
+  const n = num(/harvests (\d+)/, st2) - num(/harvests (\d+)/, st), extra = num(/Fortune \+(\d+)/, st2) - num(/Fortune \+(\d+)/, st);
+  const sd = Math.sqrt(n * chance * (1 - chance));
+  note(`Farming 100, chance ${(chance * 100).toFixed(1)}%: ${extra} extras of ${n} harvests = ${(n ? extra / n * 100 : 0).toFixed(1)}% (expected ${(n * chance).toFixed(0)} ± ${sd.toFixed(1)})`);
+  // (about 800: the crop under the bot's own feet may not stand)
+  check('Fortune on a large sample: the rate the server rolls is the chance it reports (about 800 harvests, within 3 standard deviations)',
+    n >= 790 && chance > 0 && Math.abs(extra - n * chance) <= 3 * sd, `${extra} of ${n}, chance ${(chance * 100).toFixed(1)}%`);
   await setLevel(1);
 }
 
@@ -632,7 +841,7 @@ async function menuPhase() {
 }
 
 async function relogPhase() {
-  await setLevel(10); // Replant's line shows its switch from the level it opens at
+  await setLevel(10);
   const at0 = await cmd('/farming', 800);
   const before = saw(/crops discovered \d+ of \d+/, at0) || '';
   await cmd('/farming replant off', 400);
@@ -654,8 +863,9 @@ async function relogPhase() {
   await connect();
   await sleep(3000);
   const phases = { harvest: harvestPhase, placed: placedPhase, pick: pickPhase, creative: creativePhase, machines: machinesPhase,
-    replant: replantPhase, wide: widePhase, protect: protectPhase, fortune: fortunePhase, quality: qualityPhase, menu: menuPhase, relog: relogPhase };
-  const run = phaseArg === 'all' ? ['harvest', 'placed', 'pick', 'creative', 'machines', 'replant', 'wide', 'fortune', 'quality', 'menu', 'relog'] : phaseArg.split(',');
+    replant: replantPhase, migrate: migratePhase, wide: widePhase, protect: protectPhase, fortune: fortunePhase, quality: qualityPhase, menu: menuPhase, relog: relogPhase,
+    fortunerate: fortuneRatePhase };
+  const run = phaseArg === 'all' ? ['harvest', 'placed', 'pick', 'creative', 'machines', 'replant', 'migrate', 'wide', 'fortune', 'quality', 'menu', 'relog'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);

@@ -44,7 +44,9 @@
 //   farm   - each bot harvests a 5x5 field of ripe wheat on farmland in survival with an iron hoe, the nearest ripe crop
 //            first, about three a second; the field is refilled ripe when bare. Farming is set to 1 every run, so
 //            nothing replants and every build does the same work (the Farming baseline, 2026-10-28).
-//   widefarm - like farm, at Farming 50 with Sneak held: each cut is a wide harvest (builds with Farming only).
+//   widefarm - like farm, at Farming 50 with Sneak held: each cut is a wide harvest (builds with Farming only). The field
+//            is planted again after each sweep on every build: from Farming 10 before Replant moved to the hoe, from the
+//            hoe after it (the bot gets a Replanting hoe through /cerb farm hoe where that exists, 2026-10-28).
 //   cook   - each bot bakes bread at its own crafting table, about two a second (Cooking's crafting path).
 //   mealidle - like menuidle, but each bot first eats a Hearty Stew and has Speed I for 10 minutes: an open hub while
 //            timed effects run (the Active Effects milestone, 2026-10-28: the head's summary counts down on later builds).
@@ -209,7 +211,8 @@ async function farm(b, deadline, controller, wide = false) {
   controller.chat(`/cerb skill ${n} Farming level ${wide ? 50 : 1}`); await sleep(400);
   b.chat('/gamemode survival'); await sleep(400);
   b.chat('/clear @s'); await sleep(300);
-  b.chat('/give @s iron_hoe'); await sleep(700);
+  if (wide) { controller.chat(`/cerb farm hoe ${n} iron_hoe`); await sleep(900); } // a Replanting hoe (builds with Replant on the hoe)
+  if (!b.inventory.items().some(it => it.name === 'iron_hoe')) { b.chat('/give @s iron_hoe'); await sleep(700); }
   b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
   await sleep(400);
   const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'iron_hoe' && i >= 36 && i <= 44);

@@ -26,7 +26,7 @@ import java.util.Set;
 public final class FarmingCommand implements CommandExecutor, TabCompleter {
 
     static final List<String> SUBS = List.of("crops", "replant");
-    static final List<String> ADMIN = List.of("info", "stats", "crops");
+    static final List<String> ADMIN = List.of("info", "stats", "crops", "hoe", "notice");
 
     private final CerberusPlugin plugin;
 
@@ -50,9 +50,8 @@ public final class FarmingCommand implements CommandExecutor, TabCompleter {
                 String v = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (f.replanting(p) ? "off" : "on");
                 if (!v.equals("on") && !v.equals("off")) { p.sendMessage(ChatColor.GRAY + "/farming replant on|off"); return true; }
                 f.setReplanting(p, v.equals("on"));
-                int level = plugin.getSkillManager().getSkillLevel(p, r.skill());
                 p.sendMessage(ChatColor.GRAY + "Replant " + (v.equals("on") ? ChatColor.GREEN + "on" : ChatColor.RED + "off")
-                        + (level < r.replantAt() ? ChatColor.GRAY + " (it opens at Farming " + r.replantAt() + ")" : ""));
+                        + ChatColor.GRAY + " (it works with a hoe that has the Replanting upgrade)");
             }
             default -> summary(p, f, r);
         }
@@ -65,14 +64,20 @@ public final class FarmingCommand implements CommandExecutor, TabCompleter {
         long have = r.crops().stream().filter(c -> found.contains(c.id())).count();
         p.sendMessage(ChatColor.GOLD + "Farming " + level + ChatColor.GRAY + " · crops discovered " + ChatColor.WHITE + have + " of " + r.crops().size());
         for (String line : techniques(r, level, f.replanting(p))) p.sendMessage(line);
+        org.bukkit.inventory.ItemStack hand = p.getInventory().getItemInMainHand();
+        if ("hoe".equals(Gathering.GearItems.kind(hand.getType()))) {
+            p.sendMessage(f.replants(hand) ? "§7The hoe in your hand: §6✦ Replanting"
+                    : "§7The hoe in your hand has no Replanting upgrade: " + Farming.howToReplant(GatheringCatalog.current()));
+        }
         p.sendMessage(ChatColor.DARK_GRAY + "Crops: /farming crops (or Player Menu → Skills → Farming)");
     }
 
     /** The techniques at {@code level}, one line each (the crops screen and the skill page say the same). */
     public static List<String> techniques(FarmingRules r, int level, boolean replanting) {
         List<String> out = new java.util.ArrayList<>();
-        out.add(r.replants(level) ? "§a✔ §fReplant §7" + (replanting ? "on (/farming replant off)" : "§coff §7(/farming replant on)")
-                : "§8✖ Replant §7from Farming " + r.replantAt());
+        if (!Farming.replantAvailable(GatheringCatalog.current())) out.add("§8✖ Replant §7isn't available on this server");
+        else out.add(replanting ? "§a✔ §fReplant §7with a hoe that has the §6Replanting §7upgrade §8(/farming replant off)"
+                : "§8✖ Replant §coff §7(/farming replant on)");
         int side = r.reach(level);
         if (side > 0) {
             Integer next = r.reachSteps().higherKey(level);
@@ -128,7 +133,28 @@ public final class FarmingCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(ChatColor.GRAY + t.getName() + (reset ? " (reset)" : "") + ": " + String.join(", ", f.discovered(t)));
                 }, null);
             }
-            default -> sender.sendMessage(ChatColor.GRAY + "/cerb farm info | stats | crops <player> [reset]");
+            case "hoe" -> { // a hoe with the Replanting upgrade, as the crafting grid makes it (docs/design/FARMING_COOKING.md §9)
+                Player t = args.length > 2 ? Bukkit.getPlayerExact(args[2]) : null;
+                org.bukkit.Material m = args.length > 3 ? org.bukkit.Material.matchMaterial(args[3]) : org.bukkit.Material.IRON_HOE;
+                GatheringCatalog c = GatheringCatalog.current();
+                GatheringCatalog.UpgradeDef up = c.upgrades().values().stream().filter(u -> GatheringCatalog.REPLANT.equals(u.ability())).findFirst().orElse(null);
+                if (t == null || m == null || !"hoe".equals(Gathering.GearItems.kind(m))) { sender.sendMessage(ChatColor.GRAY + "/cerb farm hoe <online player> [hoe material]"); return; }
+                if (up == null) { sender.sendMessage(ChatColor.RED + "No Replanting upgrade in resources.yml."); return; }
+                org.bukkit.inventory.ItemStack hoe = Gathering.GearItems.withUpgrade(new org.bukkit.inventory.ItemStack(m), up);
+                t.getScheduler().run(plugin, task -> {
+                    t.getInventory().addItem(hoe).values().forEach(left -> t.getWorld().dropItem(t.getLocation(), left));
+                    sender.sendMessage(ChatColor.GRAY + "Gave " + t.getName() + " a " + m.name().toLowerCase(Locale.ROOT) + " with " + up.name() + ".");
+                }, null);
+            }
+            case "notice" -> { // the one-time "Replant moved to the hoe" message: said again at the next join
+                Player t = args.length > 3 && args[3].equalsIgnoreCase("reset") ? Bukkit.getPlayerExact(args[2]) : null;
+                if (t == null) { sender.sendMessage(ChatColor.GRAY + "/cerb farm notice <online player> reset"); return; }
+                t.getScheduler().run(plugin, task -> {
+                    t.getPersistentDataContainer().remove(Farming.REPLANT_MOVED);
+                    sender.sendMessage(ChatColor.GRAY + t.getName() + " will be told again at the next join (if at Farming 10 or more).");
+                }, null);
+            }
+            default -> sender.sendMessage(ChatColor.GRAY + "/cerb farm info | stats | crops <player> [reset] | hoe <player> [material] | notice <player> reset");
         }
     }
 

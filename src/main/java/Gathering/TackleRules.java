@@ -105,6 +105,34 @@ public final class TackleRules {
         return null;
     }
     public Map<String, Recipe> recipes() { return recipes; }
+
+    /**
+     * One shapeless crafting-table recipe at {@code where.id} (tackle.recipes, or the catalog's own recipes:): a Cerberus
+     * item ({@code result}, default the id) from 1-9 ingredients, each a material or a list of materials any of which will
+     * do; null (with the problem said) when it can't be made.
+     */
+    static Recipe recipe(String where, String id, ConfigurationSection r, Map<String, GatheringCatalog.ItemDef> items, List<String> problems) {
+        if (r == null || !FishingRules.ID.matcher(id).matches()) { problems.add(where + "." + id + ": not a section with a plain id"); return null; }
+        String result = r.getString("result", id);
+        if (items.get(result) == null) { problems.add(where + "." + id + ": unknown result item " + result + " (items:)"); return null; }
+        List<List<Material>> ingredients = new ArrayList<>();
+        boolean bad = false;
+        for (Object o : r.getList("ingredients", List.of())) {
+            List<Material> any = new ArrayList<>();
+            for (Object m : o instanceof List<?> l ? l : List.of(o)) {
+                Material mat = GatheringCatalog.material(String.valueOf(m));
+                if (mat == null || mat.isLegacy() || mat == Material.AIR) { problems.add(where + "." + id + ": unknown material " + m); bad = true; }
+                else any.add(mat);
+            }
+            if (!any.isEmpty()) ingredients.add(List.copyOf(any));
+        }
+        if (bad) return null;
+        if (ingredients.isEmpty() || ingredients.size() > 9) { problems.add(where + "." + id + ": 1-9 ingredients"); return null; }
+        int makes = r.getInt("makes", 1);
+        if (makes < 1 || makes > 64) { problems.add(where + "." + id + ".makes: 1-64"); return null; }
+        String unlocked = r.getString("unlocked-by");
+        return new Recipe(id, result, List.copyOf(ingredients), makes, unlocked == null || unlocked.isBlank() ? null : unlocked.trim());
+    }
     public Map<String, Reward> rewards() { return rewards; }
     public int bagStack() { return bagStack; }
     public int reelDelayTicks() { return reelDelayTicks; }
@@ -354,27 +382,8 @@ public final class TackleRules {
         Map<String, Recipe> recipes = new LinkedHashMap<>();
         ConfigurationSection rs = t.getConfigurationSection("recipes");
         if (rs != null) for (String id : rs.getKeys(false)) {
-            ConfigurationSection r = rs.getConfigurationSection(id);
-            if (r == null || !FishingRules.ID.matcher(id).matches()) { problems.add("tackle.recipes." + id + ": not a section with a plain id"); continue; }
-            String result = r.getString("result", id);
-            if (items.get(result) == null) { problems.add("tackle.recipes." + id + ": unknown result item " + result + " (items:)"); continue; }
-            List<List<Material>> ingredients = new ArrayList<>();
-            boolean bad = false;
-            for (Object o : r.getList("ingredients", List.of())) {
-                List<Material> any = new ArrayList<>();
-                for (Object m : o instanceof List<?> l ? l : List.of(o)) {
-                    Material mat = GatheringCatalog.material(String.valueOf(m));
-                    if (mat == null || mat.isLegacy() || mat == Material.AIR) { problems.add("tackle.recipes." + id + ": unknown material " + m); bad = true; }
-                    else any.add(mat);
-                }
-                if (!any.isEmpty()) ingredients.add(List.copyOf(any));
-            }
-            if (bad) continue;
-            if (ingredients.isEmpty() || ingredients.size() > 9) { problems.add("tackle.recipes." + id + ": 1-9 ingredients"); continue; }
-            int makes = r.getInt("makes", 1);
-            if (makes < 1 || makes > 64) { problems.add("tackle.recipes." + id + ".makes: 1-64"); continue; }
-            String unlocked = r.getString("unlocked-by");
-            recipes.put(id, new Recipe(id, result, List.copyOf(ingredients), makes, unlocked == null || unlocked.isBlank() ? null : unlocked.trim()));
+            Recipe r = recipe("tackle.recipes", id, rs.getConfigurationSection(id), items, problems);
+            if (r != null) recipes.put(id, r);
         }
 
         Map<String, Reward> rewards = new LinkedHashMap<>();

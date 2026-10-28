@@ -68,8 +68,6 @@ class FarmingRulesTest {
     @Test
     void techniquesOpenAtTheirLevels() throws Exception {
         FarmingRules f = shipped().farming();
-        assertFalse(f.replants(9));
-        assertTrue(f.replants(10));
         assertEquals(0, f.reach(24));
         assertEquals(3, f.reach(25));
         assertEquals(3, f.reach(49));
@@ -157,6 +155,27 @@ class FarmingRulesTest {
         GatheringCatalog c = GatheringCatalog.from(y, s -> s.equals("Farming") ? s : null);
         assertFalse(c.farming().enabled());
         assertTrue(c.problems().stream().anyMatch(p -> p.contains("unknown skill Gardening")));
+    }
+
+    @Test
+    void anOldReplantAtSaysWhoHadReplantAndKeepsItOffWhenItWasOff() throws Exception {
+        // Replant moved to the hoe (docs/design/FARMING_COOKING.md §9): an old file's replant-at is no longer a level, but it
+        // still says who had Replant (told once that it moved), and "0" (Replant off) keeps it off.
+        assertEquals(FarmingRules.OLD_REPLANT_AT, shipped().farming().replantMovedFrom(), "a file without it: the old default, 10");
+        List<String> problems = new java.util.ArrayList<>();
+        FarmingRules later = parse("farming:\n  skill: Farming\n  replant-at: 30\n", problems);
+        assertEquals(30, later.replantMovedFrom(), "players at 30 or more had it");
+        assertTrue(problems.stream().anyMatch(p -> p.contains("replant-at: no longer used") && p.contains("replanting: off")), problems.toString());
+        problems.clear();
+        FarmingRules off = parse("farming:\n  skill: Farming\n  replant-at: 0\n", problems);
+        assertEquals(0, off.replantMovedFrom(), "nobody had it: nobody is told");
+        assertTrue(problems.stream().anyMatch(p -> p.contains("kept Replant off, so it stays off")), problems.toString());
+        YamlConfiguration y = new YamlConfiguration();
+        y.loadFromString("farming:\n  replant-at: -1\n");
+        assertTrue(FarmingRules.replantKeptOff(y.getConfigurationSection("farming")));
+        y.loadFromString("farming:\n  replant-at: 5\n");
+        assertFalse(FarmingRules.replantKeptOff(y.getConfigurationSection("farming")));
+        assertFalse(FarmingRules.replantKeptOff(null));
     }
 
     @Test
