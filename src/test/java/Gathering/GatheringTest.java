@@ -62,10 +62,11 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(5, notes.size(), notes.toString());
+        assertEquals(6, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
         assertTrue(notes.get(3).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(3));
         assertTrue(notes.get(4).startsWith("tackle: not in this file"), "so does its equipment: " + notes.get(4));
+        assertTrue(notes.get(5).startsWith("farming: not in this file"), "and Farming (2026-10-28): " + notes.get(5));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
         assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");
@@ -78,6 +79,8 @@ class GatheringTest {
         assertTrue(c.tackle().enabled() && c.tackle().part("auto_reel") != null && c.item("grub_bait") != null,
                 "the equipment and its bait came too: " + c.tackle().parts().keySet());
         assertTrue(c.wood().capacity(10) > 0, "Felling from the code's defaults (no woodcutting: section in the file)");
+        assertTrue(c.farming().enabled() && c.farming().crops().size() == 12 && c.tracked(Material.MELON),
+                "Farming came whole, and the placed-block memory keeps melons");
         assertEquals(List.of(), GatheringCatalog.addUpdates(server, shipped), "nothing twice");
 
         // The owner leaves one out, or has an entry of their own: both stay as written.

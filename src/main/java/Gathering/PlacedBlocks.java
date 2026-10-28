@@ -176,6 +176,16 @@ public final class PlacedBlocks implements Listener {
         if (tracked(e.getBlockPlaced())) mark(e.getBlockPlaced());
     }
 
+    /**
+     * A melon or pumpkin from its stem, a cane or cactus segment growing up (docs/design/FARMING_COOKING.md §3.2): it grew
+     * there, so a mark left from a block placed and lost there before (a cactus a neighbour knocked off) is forgotten. Only
+     * those crops come here: a wheat stage is no block a player can place.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCropGrow(org.bukkit.event.block.BlockGrowEvent e) {
+        if (catalog.get().farming().placeable(e.getNewState().getType()) && isPlaced(e.getBlock())) unmark(e.getBlock());
+    }
+
     /** Generators: lava and water forming stone, basalt from lava over soul soil next to blue ice. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onForm(BlockFormEvent e) {
@@ -264,14 +274,16 @@ public final class PlacedBlocks implements Listener {
     /**
      * Blocks a piston moves one step {@code dir}: every resource block among them counts as placed
      * at its new spot, and its old spot is forgotten (all old spots first: in a row, one block's new
-     * spot is the next one's old spot).
+     * spot is the next one's old spot). A block the piston breaks instead (a melon, cane) goes nowhere.
      */
     private void moved(List<Block> blocks, BlockFace dir) {
         List<Block> resources = new ArrayList<>();
         for (Block b : blocks) if (tracked(b)) resources.add(b);
         if (resources.isEmpty()) return;
+        List<Block> moving = new ArrayList<>();
+        for (Block b : resources) if (b.getPistonMoveReaction() != org.bukkit.block.PistonMoveReaction.BREAK) moving.add(b);
         for (Block b : resources) unmark(b);
-        for (Block b : resources) {
+        for (Block b : moving) {
             Block to = b.getRelative(dir);
             if (Bukkit.isOwnedByCurrentRegion(to)) mark(to);
         }

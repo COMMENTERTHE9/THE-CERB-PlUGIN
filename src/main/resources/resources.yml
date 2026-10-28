@@ -508,6 +508,44 @@ tackle:
     bests_10:      { name: "Record Keeper", bests: 10, unlocks: ["part:specimen_hook"] }
     master_angler: { name: "Master Angler", species: all, unlocks: ["title:master_angler"] }
 
+# Farming (docs/design/FARMING_COOKING.md §3). Rules the code keeps whatever this file says: only a ripe crop a player
+# harvests, in survival or adventure, pays, by hand or with a macro; crops planted by players are farming and pay in full,
+# bone meal too; a melon, pumpkin, cane or cactus placed by hand pays nothing (nothing grew); water, pistons, villagers
+# and other machines keep their vanilla drops and pay nobody. Every crop is data:
+#   ripe:     max-age (the last growth stage), { age: N } (stage N or later), berries (cave vines with berries), or grown
+#             (a block that grew, not one placed by hand);
+#   pick:     also harvested with a right-click; produce: the item Fortune adds one more of and quality is rolled on;
+#   seed:     what Replant plants again (none: the stem or plant stays); level: for the weak-crop rule (weak-resources);
+#   xp:       per ripe harvest (a column crop: per grown segment that comes down); discovery-xp: the first one, once;
+#   wide:     Wide Harvest takes it; quality: its produce rolls a quality; column: the segments above fall with it.
+farming:
+  skill: Farming
+  replant-at: 10
+  # Wide Harvest: Sneak and break a ripe crop with a hoe; every ripe crop of that kind in a square this wide, on the same
+  # level or one up or down, is harvested in steps of per-tick crops.
+  wide-harvest:
+    reach: { 25: 3, 50: 5, 75: 7, 100: 9 }
+    per-tick: 16
+  # Crop quality: chances in percent (Common is the rest), between the level it opens at and level 100.
+  quality:
+    at: 50
+    odds:
+      at-level-50:  { fine: 10, superior: 2, masterwork: 0 }
+      at-level-100: { fine: 22, superior: 8, masterwork: 3 }
+  crops:
+    wheat:         { blocks: [WHEAT], ripe: max-age, produce: WHEAT, seed: WHEAT_SEEDS, level: 1, xp: 3, discovery-xp: 20, wide: true, quality: true }
+    carrots:       { blocks: [CARROTS], ripe: max-age, produce: CARROT, seed: CARROT, level: 5, xp: 3, discovery-xp: 20, wide: true, quality: true }
+    potatoes:      { blocks: [POTATOES], ripe: max-age, produce: POTATO, seed: POTATO, level: 5, xp: 3, discovery-xp: 20, wide: true, quality: true }
+    sugar_cane:    { blocks: [SUGAR_CANE], ripe: grown, column: true, produce: SUGAR_CANE, level: 1, xp: 1, discovery-xp: 20 }
+    beetroots:     { blocks: [BEETROOTS], ripe: max-age, produce: BEETROOT, seed: BEETROOT_SEEDS, level: 10, xp: 3.5, discovery-xp: 30, wide: true, quality: true }
+    cactus:        { blocks: [CACTUS], ripe: grown, column: true, produce: CACTUS, level: 10, xp: 1, discovery-xp: 30 }
+    sweet_berries: { blocks: [SWEET_BERRY_BUSH], ripe: { age: 2 }, pick: true, produce: SWEET_BERRIES, level: 15, xp: 3, discovery-xp: 40, quality: true }
+    melon:         { blocks: [MELON], ripe: grown, produce: MELON_SLICE, level: 20, xp: 5, discovery-xp: 40 }
+    pumpkin:       { blocks: [PUMPKIN], ripe: grown, produce: PUMPKIN, level: 20, xp: 5, discovery-xp: 40 }
+    cocoa:         { blocks: [COCOA], ripe: max-age, produce: COCOA_BEANS, seed: COCOA_BEANS, level: 30, xp: 4, discovery-xp: 60, quality: true }
+    glow_berries:  { blocks: [CAVE_VINES, CAVE_VINES_PLANT], ripe: berries, pick: true, produce: GLOW_BERRIES, level: 35, xp: 4, discovery-xp: 80 }
+    nether_wart:   { blocks: [NETHER_WART], ripe: max-age, produce: NETHER_WART, seed: NETHER_WART, level: 40, xp: 4, discovery-xp: 100, wide: true, quality: true }
+
 # XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
 smelting:
   skill: Smithing

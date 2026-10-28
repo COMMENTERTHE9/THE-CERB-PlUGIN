@@ -32,6 +32,10 @@ commands:
     description: Your fishing journal, banked encounters, the species you track and which creature a Sneak-cast calls.
     usage: /<command> [journal [water] | encounters | track <species|off> | call <creature> | cue on|off]
     aliases: [fish]
+  farming:
+    description: Your crops, Farming's techniques and Replant's switch.
+    usage: /<command> [crops | replant on|off]
+    aliases: [farm]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

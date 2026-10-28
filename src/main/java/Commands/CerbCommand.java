@@ -225,6 +225,10 @@ public class CerbCommand implements CommandExecutor {
                 if (plugin.getFishingCommand() != null) plugin.getFishingCommand().admin(sender, args);
                 break;
 
+            case "farm":
+                if (plugin.getFarmingCommand() != null) plugin.getFarmingCommand().admin(sender, args);
+                break;
+
             default:
                 sender.sendMessage(ChatColor.RED + "Unknown sub‑command. " + USAGE);
         }

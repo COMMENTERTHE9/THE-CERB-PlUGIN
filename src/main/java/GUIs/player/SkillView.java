@@ -233,7 +233,7 @@ public final class SkillView {
                     Gathering.GatheringCatalog gc = Gathering.GatheringCatalog.current();
                     Attributes.Yield y = w.yield();
                     String label = y == Attributes.Yield.WOOD ? "Extra log chance" : y == Attributes.Yield.ORE ? "Extra ore chance"
-                            : y == Attributes.Yield.FISH ? "Extra fish chance" : "Extra drop chance";
+                            : y == Attributes.Yield.FISH ? "Extra fish chance" : y == Attributes.Yield.CROP ? "Extra crop chance" : "Extra drop chance";
                     rows.put(label, new String[]{
                             Fmt.pct(Gathering.GatherRules.bonusChance(now.fortune(y), gc.fortunePerPoint(), gc.fortuneMax())),
                             Fmt.pct(Gathering.GatherRules.bonusChance(next.fortune(y), gc.fortunePerPoint(), gc.fortuneMax()))});

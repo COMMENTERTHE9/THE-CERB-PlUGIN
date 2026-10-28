@@ -142,7 +142,7 @@ public final class AttributesConfig {
                     // No yield: the skill's own (Mining's Fortune on ore, as in a file from before scoping); "all": everything.
                     Yield y = yieldName == null ? (a == Attribute.FORTUNE ? Yield.defaultFor(skill) : null) : Yield.parse(String.valueOf(yieldName));
                     if (yieldName != null && y == null && !String.valueOf(yieldName).trim().equalsIgnoreCase("all")) {
-                        problems.accept("skills." + skill + ": unknown yield '" + yieldName + "' (ore, wood, all) - skipped");
+                        problems.accept("skills." + skill + ": unknown yield '" + yieldName + "' (ore, wood, fish, crops, all) - skipped");
                         continue;
                     }
                     if (y != null && a != Attribute.FORTUNE) {
@@ -267,7 +267,9 @@ public final class AttributesConfig {
     static final java.util.Set<String> ADDED_BY_UPDATES = java.util.Set.of(
             "Mining",       // 2026-10-25, the gathering loop
             "Woodcutting",  // 2026-10-26, the Woodcutting loop
-            "Smithing");    // 2026-10-26, Smithing's Fortitude (Fishing's Fortune was in the first file: not here)
+            "Smithing",     // 2026-10-26, Smithing's Fortitude (Fishing's Fortune was in the first file: not here)
+            "Farming",      // 2026-10-28, Farming's Vitality and Fortune on crops (docs/design/FARMING_COOKING.md)
+            "Cooking");     // 2026-10-28, Cooking's Vitality
 
     /** The same for {@code secondary.skills}, which came later: every gathering skill's entry there was added by an update. */
     static final java.util.Set<String> SECONDARY_ADDED_BY_UPDATES = java.util.Set.of(

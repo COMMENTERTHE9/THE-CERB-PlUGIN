@@ -240,6 +240,11 @@ public final class SkillDefinitions {
         return r == null || r.tree() == null ? 0 : c.wood().heartwoodChance(r.tree().heartwood(), level);
     }
 
+    private static double cropQuality(int level) {
+        Gathering.FarmingRules r = Gathering.GatheringCatalog.current().farming();
+        return 1 - r.chance(Gathering.Quality.COMMON, level);
+    }
+
     private static double forged(Gathering.Quality q, int level) {
         Gathering.GatheringCatalog.QualityRules r = Gathering.GatheringCatalog.current().quality();
         return Gathering.Quality.chanceAtLeast(q, level, r.oddsAt1(), r.oddsAt100());
@@ -316,8 +321,11 @@ public final class SkillDefinitions {
         // ── Utility ──
         // Mining and Smithing train through resources.yml: their training lines come from it (setGeneratedTraining).
         d.add(new SkillDef("Mining", "Working stone and ore.", List.of(), Material.DIAMOND_PICKAXE, U, List.of()));
-        d.add(new SkillDef("Farming", "Growing and harvesting crops.", List.of(), Material.DIAMOND_HOE, U,
-                List.of(SkillEffect.planned("Better crop yields"))));
+        // Farming trains through resources.yml's farming: section (docs/design/FARMING_COOKING.md): its crops and techniques.
+        d.add(new SkillDef("Farming", "Growing and harvesting crops for the kitchen.", List.of(),
+                Material.DIAMOND_HOE, U, List.of(
+                SkillEffect.live("Wide Harvest: the square one Sneak + hoe harvests (side)", (cfg, lvl) -> Gathering.GatheringCatalog.current().farming().reach(lvl), Unit.COUNT),
+                SkillEffect.live("Chance of a Fine or better crop", (cfg, lvl) -> cropQuality(lvl), PCT))));
         // Woodcutting trains through resources.yml too (its woods, techniques and heartwood: docs/design/WOODCUTTING.md).
         d.add(new SkillDef("Woodcutting", "Felling trees.", List.of(), Material.DIAMOND_AXE, U, List.of(
                 SkillEffect.live("Felling: logs one Sneak + cut brings down", (cfg, lvl) -> Gathering.GatheringCatalog.current().wood().capacity(lvl), Unit.LOGS),

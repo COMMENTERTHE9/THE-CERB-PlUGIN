@@ -117,6 +117,7 @@ public final class GatheringCatalog {
     private final Map<String, UpgradeDef> upgrades;
     private final FishingRules fishing;
     private final TackleRules tackle;
+    private final FarmingRules farming;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
@@ -124,7 +125,7 @@ public final class GatheringCatalog {
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
-                             FishingRules fishing, TackleRules tackle, List<String> problems) {
+                             FishingRules fishing, TackleRules tackle, FarmingRules farming, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -146,6 +147,7 @@ public final class GatheringCatalog {
         this.upgrades = upgrades;
         this.fishing = fishing;
         this.tackle = tackle;
+        this.farming = farming;
         this.problems = List.copyOf(problems);
     }
 
@@ -167,7 +169,8 @@ public final class GatheringCatalog {
     public ItemDef item(String id) { return id == null ? null : items.get(id); }
     public Map<String, ItemDef> items() { return items; }
     /** True when placing a block of {@code m} must be remembered (it is some resource's block). */
-    public boolean tracked(Material m) { return m != null && byBlock.containsKey(m); }
+    /** Blocks the placed-block memory keeps: resources, and crops a player can also place by hand (melons, cane...). */
+    public boolean tracked(Material m) { return m != null && (byBlock.containsKey(m) || farming.placeable(m)); }
 
     public String smeltingSkill() { return smeltingSkill; }
     /** XP for taking one {@code m} out of a furnace (0 when none). */
@@ -202,6 +205,8 @@ public final class GatheringCatalog {
     public FishingRules fishing() { return fishing; }
     /** Fishing equipment's rules (docs/design/FISHING_EQUIPMENT.md); {@link TackleRules#NONE} without a tackle section. */
     public TackleRules tackle() { return tackle; }
+    /** Farming's crops and techniques (docs/design/FARMING_COOKING.md §3). */
+    public FarmingRules farming() { return farming; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -337,6 +342,15 @@ public final class GatheringCatalog {
                     + " species); time and weather change what bites. The first of each species is a discovery.");
             lines.add("From level " + fishing.techniques().creatures() + " a catch can bank a sea-creature encounter: Sneak and cast to call it and fight it.");
         }
+        if (farming.enabled() && !farming.crops().isEmpty()) {
+            List<String> parts = new ArrayList<>();
+            for (FarmingRules.Crop c : farming.crops()) parts.add(c.name().toLowerCase(Locale.ROOT) + " " + number(c.xp()));
+            List<String> lines = out.computeIfAbsent(farming.skill(), k -> new ArrayList<>());
+            lines.add("Harvest ripe crops in survival, by hand or with a macro: " + String.join(", ", parts) + " XP (cane and cactus per grown segment).");
+            lines.add("Crops you plant pay in full, bone meal too; melons, pumpkins, cane and cactus placed by hand pay nothing. "
+                    + "Machines and water keep their drops and pay nobody. The first harvest of each crop is a discovery.");
+            if (weakGap > 0) lines.add("Each crop has a level; " + weakGap + "+ levels above it you get " + Math.round(weakFactor * 100) + "% of its XP.");
+        }
         return out;
     }
 
@@ -444,6 +458,11 @@ public final class GatheringCatalog {
             server.createSection("tackle", values(t));
             notes.add("tackle: not in this file (an update added it), so the plugin's own section is used; write \"tackle: off\" to turn fishing equipment off");
         }
+        // Farming (2026-10-28, docs/design/FARMING_COOKING.md) likewise: "farming: off" turns its harvests' rules off.
+        if (!server.contains("farming") && shipped.get("farming") instanceof ConfigurationSection fa) {
+            server.createSection("farming", values(fa));
+            notes.add("farming: not in this file (an update added it), so the plugin's own section is used; write \"farming: off\" to turn farming's rules off");
+        }
         return notes;
     }
 
@@ -544,7 +563,7 @@ public final class GatheringCatalog {
                 else if (f.equals("general")) fortune = true; // only Fortune that counts everywhere (a luck skill's)
                 else if (!f.equals("false") && !f.equals("no")) {
                     fortuneYield = Attributes.Yield.parse(f);
-                    if (fortuneYield == null) why.add("fortune " + fo + " is not true, false, ore, wood or general");
+                    if (fortuneYield == null) why.add("fortune " + fo + " is not true, false, ore, wood, fish, crops or general");
                     else fortune = true;
                 }
             }
@@ -665,12 +684,17 @@ public final class GatheringCatalog {
         FishingRules fishing = FishingRules.from(root == null ? null : root.getConfigurationSection("fishing"), items, skills, problems);
         TackleRules tackle = fishing.enabled() ? TackleRules.from(root == null ? null : root.getConfigurationSection("tackle"), items, upgrades, problems)
                 : TackleRules.NONE;
+        FarmingRules farming = FarmingRules.from(root == null ? null : root.getConfigurationSection("farming"), skills, problems);
+        for (FarmingRules.Crop c : farming.crops()) for (Material m : c.blocks()) {
+            ResourceDef clash = byBlock.remove(m); // one block, one set of rules: a harvest never pays twice
+            if (clash != null) problems.add("farming crop " + c.id() + ": " + m + " is also resource " + clash.id() + " (the crop's rules win)");
+        }
 
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, problems);
     }
 
     /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */

@@ -305,6 +305,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Celebrations celebrations;
     private Gathering.Woodcutting woodcutting;
     private Gathering.Fishing fishing;
+    private Gathering.Farming farming;
     private Gathering.Tackle tackle;
     private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
@@ -312,6 +313,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     /** Woodcutting's techniques after a cut (docs/design/WOODCUTTING.md); null until gathering is up. */
     public Gathering.Woodcutting getWoodcutting() { return woodcutting; }
     public Gathering.Fishing getFishing() { return fishing; }
+    /** Farming's harvests and techniques (docs/design/FARMING_COOKING.md §3); null until gathering is up. */
+    public Gathering.Farming getFarming() { return farming; }
     /** Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup, bait and the reel. */
     public Gathering.Tackle getTackle() { return tackle; }
     public Celebrations getCelebrations() { return celebrations; }
@@ -591,7 +594,16 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var fishCmd = Objects.requireNonNull(getCommand("fishing"));
         fishCmd.setExecutor(fishingCommand);
         fishCmd.setTabCompleter(fishingCommand);
+        farmingCommand = new Commands.FarmingCommand(this);
+        var farmCmd = Objects.requireNonNull(getCommand("farming"));
+        farmCmd.setExecutor(farmingCommand);
+        farmCmd.setTabCompleter(farmingCommand);
     }
+
+    private Commands.FarmingCommand farmingCommand;
+
+    /** /farming, and the admin /cerb farm subcommand. */
+    public Commands.FarmingCommand getFarmingCommand() { return farmingCommand; }
 
     private Commands.ClassCommand classCommand;
 
@@ -705,6 +717,17 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         gatheringListener.setWoodcutting(woodcutting);
         pm.registerEvents(gatheringListener, this);
         pm.registerEvents(woodcutting, this);
+        // Farming (docs/design/FARMING_COOKING.md §3): ripe harvests, discoveries, Replant, Wide Harvest, crop quality.
+        farming = new Gathering.Farming(this, gatheringService, skillManager, (p, msg) -> playerHUDManager.flash(p, msg, 1800));
+        farming.setAnnouncer((p, crop, xp) -> {
+            int found = farming.discovered(p).size(), all = gatheringService.catalog().farming().crops().size();
+            String gain = xp > 0 ? (xp == Math.rint(xp) ? String.valueOf((long) xp) : String.valueOf(xp)) : null;
+            celebrations.celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.ORDINARY,
+                    "§a✦ §fDiscovered: " + crop.name() + (gain != null ? " §7· §a+" + gain + " XP" : ""), "§a✦ §f" + crop.name(), null, null,
+                    List.of("§a✦ Discovered: §f" + crop.name() + " §7(" + found + " of " + all + " crops"
+                            + (gain != null ? ", +" + gain + " " + SkillNames.display(gatheringService.catalog().farming().skill()) + " XP" : "") + ")"), -1));
+        });
+        pm.registerEvents(farming, this);
         // Fishing (docs/design/FISHING.md): species, lures, called sea creatures (only their owner can hurt them).
         fishing = new Gathering.Fishing(this, gatheringService, skillManager);
         fishing.registerCreatures(mobRegistry);

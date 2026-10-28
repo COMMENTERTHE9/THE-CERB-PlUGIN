@@ -51,13 +51,15 @@ public final class ShippedConfig {
                     "732ea757732da583653629827eaef11ae7f585e945d7b18a7cf016a00229a95b",  // Mining: gathering speed, Fortune
                     "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373",  // XP integrity
                     "37d1d9e68d88a05114f3a6c67ffded6160f7f66cfd39cd225b4608aafdabda8f",  // Woodcutting
-                    "b4dc2bf1a58dfb99945197a71b82a61563a634eae742e8b3d571cc61b39b935c"), // grown trees, Smithing's growth
+                    "b4dc2bf1a58dfb99945197a71b82a61563a634eae742e8b3d571cc61b39b935c",  // grown trees, Smithing's growth
+                    "16678dabec664b4062cd75540ea6eab49cebbc22387769f0f7e287c6fdcf6015"), // Fishing
             "resources.yml", Set.of(
                     "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9",  // the gathering loop, first cut
                     "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942",  // the gathering loop, as shipped
                     "6d600fab84c4508630dee251232b5809770fb408d674859f4928f17039b829f7",  // Woodcutting
                     "47345bec2da7986655418171ed4b32ffba90a61d54ea43a567b55a2d3b378d43",  // grown trees
-                    "6958e4f1d44e18c8665afc45aac456f1ec3f567a357e638989757737e8e9565d")); // Fishing
+                    "6958e4f1d44e18c8665afc45aac456f1ec3f567a357e638989757737e8e9565d",  // Fishing
+                    "e2513b9df28f2557c1e9de8115136b1b90088a60005ce80b331a55153dcac313")); // Fishing equipment
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

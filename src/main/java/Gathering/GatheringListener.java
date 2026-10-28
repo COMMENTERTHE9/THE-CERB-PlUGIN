@@ -56,7 +56,7 @@ public final class GatheringListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreakDecide(BlockBreakEvent e) {
-        if (e instanceof Woodcutting.FellingBreak) return; // a felling pays its own logs
+        if (e instanceof Woodcutting.FellingBreak || e instanceof Farming.HarvestBreak) return; // a felling or a sweep pays its own
         Player p = e.getPlayer();
         bonus.remove(p.getUniqueId()); // a new break: an earlier block's bonus never carries over
         GatheringService.Evaluation ev = service.evaluate(p, e.getBlock());
@@ -79,7 +79,7 @@ public final class GatheringListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent e) {
-        if (e instanceof Woodcutting.FellingBreak) return;
+        if (e instanceof Woodcutting.FellingBreak || e instanceof Farming.HarvestBreak) return;
         Player p = e.getPlayer();
         Block b = e.getBlock();
         bonus.remove(p.getUniqueId()); // also here: HIGH is skipped for a break another plugin cancelled and then allowed

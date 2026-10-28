@@ -80,6 +80,10 @@ attributes:
       - { attribute: vitality, per-level: 0.25 }
       - { attribute: fortune, per-level: 0.5, yield: wood }                         # a chance of one extra log
     Smithing:             [ { attribute: fortitude, per-level: 0.25 } ]             # heat and endurance at the forge
+    Farming:                                                                        # docs/design/FARMING_COOKING.md
+      - { attribute: vitality, per-level: 0.25 }
+      - { attribute: fortune, per-level: 0.5, yield: crops }                        # a chance of one more of a harvest's produce
+    Cooking:              [ { attribute: vitality, per-level: 0.25 } ]              # a cook eats well
 
   # Safety ceiling for each attribute total (not the balance lever - `limits` below is).
   caps: { vitality: 300, essence: 300, power: 300, fortitude: 300, agility: 300, fortune: 300 }

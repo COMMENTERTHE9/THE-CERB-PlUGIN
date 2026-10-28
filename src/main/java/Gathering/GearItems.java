@@ -24,6 +24,11 @@ public final class GearItems {
     public static final NamespacedKey TOOL = new NamespacedKey("cerberus", "tool");
     public static final NamespacedKey ITEM = new NamespacedKey("cerberus", "item");
     public static final NamespacedKey QUALITY = new NamespacedKey("cerberus", "quality");
+    /**
+     * The quality of a crop's produce, or of what a furnace made from it (docs/design/FARMING_COOKING.md §3.4). A key of its
+     * own: forged gear's {@link #QUALITY} counts as equipment, produce never does.
+     */
+    public static final NamespacedKey CROP_QUALITY = new NamespacedKey("cerberus", "crop_quality");
     /** Upgrades made to the item (docs/design/WOODCUTTING.md §8): their ids, comma-separated, in the order made. */
     public static final NamespacedKey UPGRADES = new NamespacedKey("cerberus", "upgrades");
 
@@ -54,6 +59,26 @@ public final class GearItems {
     /** The forged quality an item carries, or null (never forged, or forged before qualities existed). */
     public static Quality quality(ItemStack it) {
         return Quality.parse(string(it, QUALITY));
+    }
+
+    /** The quality on produce or food (Fine or better), or null: Common produce is a plain item. */
+    public static Quality cropQuality(ItemStack it) {
+        return Quality.parse(string(it, CROP_QUALITY));
+    }
+
+    /**
+     * Mark produce or food as {@code q}: the id in its data and one lore line ("✦ Fine quality"). Common leaves the item as
+     * it is, so it stacks with any plain one; an earlier quality line is replaced, other lore kept.
+     */
+    public static void setCropQuality(ItemStack it, Quality q) {
+        if (it == null || q == null || q == Quality.COMMON || it.getType().isAir()) return;
+        it.editMeta(m -> {
+            m.getPersistentDataContainer().set(CROP_QUALITY, PersistentDataType.STRING, q.id());
+            List<Component> lore = m.lore() == null ? new ArrayList<>() : new ArrayList<>(m.lore());
+            lore.removeIf(line -> QUALITY_LINES.contains(PLAIN.serialize(line)));
+            lore.add(0, text(header(q)));
+            m.lore(lore);
+        });
     }
 
     private static String string(ItemStack it, NamespacedKey key) {

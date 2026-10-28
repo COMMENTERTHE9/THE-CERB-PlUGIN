@@ -37,6 +37,8 @@ public final class GatheringSections {
         // ── Woodcutting ──
         sections.register(new SkillSections.Section("woodcutting.woods", "Woodcutting", 10, GatheringSections::woodsTile,
                 (pl, p) -> new WoodsMenu(pl)));
+        sections.register(new SkillSections.Section("farming.crops", "Farming", 10, GatheringSections::cropsTile,
+                (pl, p) -> new CropsMenu(pl)));
 
         collections.register(new CollectionIndex.Entry("fish", "Fish species", Material.TROPICAL_FISH, 10, "Fishing",
                 List.of("Every water's species, with your", "heaviest catch of each."),
@@ -75,6 +77,15 @@ public final class GatheringSections {
                     Set<String> found = wc.discovered(p);
                     return new CollectionIndex.Progress(woods.stream().filter(r -> found.contains(r.id())).count(), woods.size(), true);
                 }, (pl, p) -> new WoodsMenu(pl)));
+        collections.register(new CollectionIndex.Entry("crops", "Crops", Material.WHEAT, 50, "Farming",
+                List.of("Every crop you harvested ripe."),
+                (pl, p) -> {
+                    Gathering.Farming fa = pl.getFarming();
+                    Gathering.FarmingRules r = GatheringCatalog.current().farming();
+                    if (fa == null || !r.enabled() || r.crops().isEmpty()) return CollectionIndex.Progress.OFF;
+                    Set<String> found = fa.discovered(p);
+                    return new CollectionIndex.Progress(r.crops().stream().filter(c -> found.contains(c.id())).count(), r.crops().size(), true);
+                }, (pl, p) -> new CropsMenu(pl)));
     }
 
     /**
@@ -184,6 +195,20 @@ public final class GatheringSections {
         l.raw(ChatColor.DARK_GRAY + "Defeated: " + r.creatures().keySet().stream().filter(j::defeated).count() + " of " + r.creatures().size());
         l.hint("Click to see them");
         return Ui.item(Material.HEART_OF_THE_SEA, ChatColor.AQUA + "Encounters: " + j.totalLures(), l.build());
+    }
+
+    static ItemStack cropsTile(CerberusPlugin plugin, Player p) {
+        Gathering.Farming fa = plugin.getFarming();
+        Gathering.FarmingRules r = GatheringCatalog.current().farming();
+        if (fa == null || !r.enabled() || r.crops().isEmpty()) return null;
+        Set<String> found = fa.discovered(p);
+        long have = r.crops().stream().filter(c -> found.contains(c.id())).count();
+        return Ui.item(Material.WHEAT, ChatColor.GOLD + "Crops: " + have + " of " + r.crops().size() + " discovered", Ui.lore()
+                .raw(PlayerTheme.bar(have, Math.max(1, r.crops().size()), 20, ChatColor.GREEN))
+                .text("Each crop, when it is ripe, its")
+                .text("level and XP, and the techniques")
+                .text("that work on it.")
+                .hint("Click to see the crops").build());
     }
 
     static ItemStack woodsTile(CerberusPlugin plugin, Player p) {

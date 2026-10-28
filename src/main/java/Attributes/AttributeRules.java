@@ -133,6 +133,8 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
         m.put("Mining", List.of(new SkillWeight(L, 0.5, null, Yield.ORE)));
         m.put("Woodcutting", List.of(new SkillWeight(V, 0.25, null), new SkillWeight(L, 0.5, null, Yield.WOOD)));
         m.put("Smithing", List.of(new SkillWeight(F, 0.25, null)));
+        m.put("Farming", List.of(new SkillWeight(V, 0.25, null), new SkillWeight(L, 0.5, null, Yield.CROP)));
+        m.put("Cooking", List.of(new SkillWeight(V, 0.25, null)));
         DEFAULT_SKILL_WEIGHTS = java.util.Collections.unmodifiableMap(m);
     }
 
