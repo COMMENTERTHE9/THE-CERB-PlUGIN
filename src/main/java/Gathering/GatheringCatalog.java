@@ -225,6 +225,8 @@ public final class GatheringCatalog {
     public double weakToolFactor() { return weakToolFactor; }
     public Map<String, UpgradeDef> upgrades() { return upgrades; }
     public UpgradeDef upgrade(String id) { return id == null ? null : upgrades.get(id); }
+    /** True when {@code u} is made in a crafting grid: rod parts are fitted in Fishing → Equipment while it is on. */
+    public boolean madeInGrid(UpgradeDef u) { return !(tackle.enabled() && u.on().contains("rod")); }
     /** Crafting-table recipes for Cerberus items outside a skill's own section ({@code recipes:}; the Sower's Charm). */
     public Map<String, TackleRules.Recipe> recipes() { return recipes; }
 

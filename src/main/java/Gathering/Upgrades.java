@@ -67,9 +67,8 @@ public final class Upgrades implements Listener {
         for (GatheringCatalog.ItemDef d : c.items().values()) mats.add(d.material());
         customMaterials = mats;
         StringBuilder sig = new StringBuilder();
-        boolean tackle = c.tackle().enabled();
         for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
-            if (tackle && u.on().contains("rod")) continue; // fitted in Fishing → Equipment (docs/design/FISHING_EQUIPMENT.md §5)
+            if (!c.madeInGrid(u)) continue; // rod parts are fitted in Fishing → Equipment (docs/design/FISHING_EQUIPMENT.md §5)
             GatheringCatalog.ItemDef item = c.item(u.item());
             sig.append(u.id()).append(u.on()).append(item == null ? "-" : item.material().name()).append(';');
         }
@@ -77,7 +76,7 @@ public final class Upgrades implements Listener {
         for (NamespacedKey k : keys) Bukkit.removeRecipe(k);
         keys.clear();
         for (GatheringCatalog.UpgradeDef u : c.upgrades().values()) {
-            if (tackle && u.on().contains("rod")) continue;
+            if (!c.madeInGrid(u)) continue;
             GatheringCatalog.ItemDef item = c.item(u.item());
             List<Material> on = materials(u.on());
             if (item == null || on.isEmpty()) continue;

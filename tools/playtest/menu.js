@@ -84,7 +84,7 @@ async function nav() {
   check('Essence tile shows pool and regeneration', /Essence/.test(slotName(15)) && /Regeneration: [\d.,]+ \/ s/.test(slotLore(15)), slotLore(15));
   const expect = { 19: ['Skills', 'Available'], 21: ['Stats & Attributes', 'Available'], 23: ['Ascension', 'Available'],
     25: ['Equipment', 'Available'], 28: ['Bestiary', 'Available'], 30: ['World & Exploration', 'Available'],
-    32: ['Collections', 'Available'], 34: ['Recipes', 'In development'], 38: ['Quests', 'In development'],
+    32: ['Collections', 'Available'], 34: ['Recipes', 'Available'], 38: ['Quests', 'In development'],
     40: ['Classes & Abilities', 'Available'], 42: ['Guide', 'Available'] };
   const wrong = Object.entries(expect).filter(([s, [n, st]]) => slotName(+s) !== n || !slotLore(+s).includes(st)).map(([s]) => s + ':' + slotName(+s));
   check('Every hub destination is there with an honest state', wrong.length === 0, wrong.join(', '));
@@ -92,8 +92,8 @@ async function nav() {
 
   check('Available tiles still say what inside them is not built', /Breakthroughs are not built yet/.test(flat(23)) && /Kill tracking is not built yet/.test(flat(28)), flat(23) + ' || ' + flat(28));
   let at = chat.length;
-  await click(34);
-  check('An in-development tile explains itself and stays on the hub', !!saw(/Recipes is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
+  await click(38);
+  check('An in-development tile explains itself and stays on the hub', !!saw(/Quests is in development/, at) && SCREEN('Player Menu').test(title()), chat.slice(at).join(' / '));
 
   await click(19);
   check('Skills opens', await waitTitle(SCREEN('Skills')), title());
@@ -780,6 +780,61 @@ async function smithingPages() {
   await cmd(`/cerb skill ${NAME} Smithing level 1`, 600);
 }
 
+// ── recipes ───────────────────────────────────────────────────────
+// Player Menu → Recipes (GUIs/player/RecipesMenu): every crafting recipe from the data, with what goes in and where; meals,
+// brews and rod parts open their own screens. A fresh player (a new name) has not unlocked Wayfarer's Bait; with UNLOCKED=1,
+// a character that reached the Wayfarer milestone (fishgear.js rewards, same name) sees it unlocked.
+
+async function recipes() {
+  check('The hub opens', await openViaHead(), title());
+  check('The Recipes tile is available and counts the recipes', slotName(34) === 'Recipes' && /Available/.test(slotLore(34))
+      && /Crafting \d+ · Meals \d+ · Brews \d+/.test(flat(34)), flat(34));
+  await click(34);
+  check('Recipes opens', await waitTitle(SCREEN('Recipes')), title());
+  await sleep(400);
+  const lore = i => i >= 0 ? flat(i) : 'missing';
+  const charm = findSlot(/^Sower's Charm$/);
+  check("Sower's Charm: its six ingredients, at a crafting table", charm >= 0 && /wheat seeds/.test(flat(charm))
+      && /melon seeds or pumpkin seeds/.test(flat(charm)) && /gold nugget/.test(flat(charm)) && /Where: a crafting table/.test(flat(charm))
+      && /Also in your recipe book/.test(flat(charm)), lore(charm));
+  const hoe = findSlot(/^Replanting$/);
+  check('Replanting: the charm and any hoe, any grid, what it gives, not in the recipe book', hoe >= 0 && /Sower's Charm/.test(flat(hoe))
+      && /any hoe/.test(flat(hoe)) && /Where: any crafting grid/.test(flat(hoe)) && /planted again/.test(flat(hoe))
+      && /Not in the recipe book/.test(flat(hoe)), lore(hoe));
+  const grip = findSlot(/^Heartwood grip$/);
+  check('Heartwood grip says what it gives', grip >= 0 && /chopping speed \+8% while held/.test(flat(grip)), lore(grip));
+  check('No rod part is listed as a crafting recipe (fitted in Fishing → Equipment)', findSlot(/^Scaled grip$/) < 0 && findSlot(/^Pearl float$/) < 0);
+  const way = findSlot(/^Wayfarer's Bait$/);
+  if (process.env.UNLOCKED === '1') { // a character that reached the milestone (fishgear.js rewards) under this name
+    check("Wayfarer's Bait is unlocked once its milestone is reached", way >= 0 && /✓ Unlocked \(Wayfarer\)/.test(flat(way))
+        && slot(way).name !== 'gray_dye' && /Also in your recipe book/.test(flat(way)), lore(way));
+  } else {
+    check("Wayfarer's Bait is locked until its milestone and says which", way >= 0 && /Locked: the Wayfarer milestone/.test(flat(way))
+        && /species found in 3 waters/.test(flat(way)) && slot(way).name === 'gray_dye', lore(way));
+  }
+  const grub = findSlot(/^Grub Bait$/);
+  check('Grub Bait makes 4 in any grid', grub >= 0 && /Makes: 4/.test(flat(grub)) && /Where: any crafting grid/.test(flat(grub)), lore(grub));
+
+  await click(38);
+  check('Meals opens the Cookbook', await waitTitle(SCREEN('Cookbook')), title());
+  await click(45);
+  check('Back returns to Recipes', await waitTitle(SCREEN('Recipes')), title());
+  await click(40);
+  check('Brews opens the Brews list', await waitTitle(SCREEN('Brews')), title());
+  await click(45);
+  check('Back returns to Recipes again', await waitTitle(SCREEN('Recipes')), title());
+  await click(42);
+  check('Rod parts opens Fishing Equipment', await waitTitle(SCREEN('Fishing Equipment')), title());
+  await click(45);
+  await waitTitle(SCREEN('Recipes'));
+  if (charm >= 0) {
+    await click(charm);
+    check('A recipe tile is information: clicking it stays on Recipes', SCREEN('Recipes').test(title()) && findSlot(/^Sower's Charm$/) === charm, title());
+  }
+  await click(49);
+  check('Home returns to the hub', await waitTitle(SCREEN('Player Menu')), title());
+}
+
 (async () => {
   await connect();
   await sleep(3000);
@@ -791,6 +846,7 @@ async function smithingPages() {
     else if (phase === 'shelves') await shelves();
     else if (phase === 'motion') await motion();
     else if (phase === 'smithing') await smithingPages();
+    else if (phase === 'recipes') await recipes();
     else console.log('unknown phase ' + phase);
   } catch (e) {
     check('phase ran without errors', false, e.stack);

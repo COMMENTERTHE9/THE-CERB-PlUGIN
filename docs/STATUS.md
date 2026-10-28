@@ -33,6 +33,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Built since, each waiting for your playtest:** Fishing equipment, goals and collections (2026-10-27, checklist §15) and **Farming and Cooking** (2026-10-28, your milestone: crops, Replant, Wide Harvest, crop quality, Cooking XP and six meals; section "Done: Farming and Cooking" below; checklist §16).
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
 - **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting. **Increment 5, Alchemy** (section "Done: Alchemy", checklist §22): completed brews pay their starter, eight draughts and elixirs, tiers and Essence, with an independent review's findings fixed. **Increment 6, integration** (section "Done: integration"): the full regression, an independent review of the whole milestone with its six findings fixed, and the before/after. **The milestone is built and waits for your playtest** (checklist §17–§22).
+- **Your request (2026-10-28):** the hub's Recipes tile is no longer a placeholder: it opens every Cerberus recipe (section "Done: Recipes screen").
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1400,6 +1401,36 @@ No plugin errors in any server log. Each failure above was traced; none was the 
 **Performance** (`docs/PERFORMANCE.md` → "The milestone's before/after"): the before/after pass ran on the main sandbox with the other two stopped; its numbers follow in a separate commit.
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md`): §17–§22 cover both phases; new rows 19.8b (a charm offered to a cleric), 21.4 (a placed dripleaf bone-mealed on top) and 22.7b (a draught in a fight).
+
+## Done: Recipes screen (2026-10-28, your request)
+
+**What it is for:** you asked how to make the new items, and the hub's Recipes tile still said "Custom recipes are not built yet". It now opens **Recipes**: how to make every Cerberus item, read from the same data the game registers its recipes from, so whatever your `resources.yml` adds, changes or turns off shows here the same way.
+
+- **Crafting, on the screen itself** (`GUIs/player/RecipesMenu`, `Gathering/RecipeBook`):
+  - the Sower's Charm;
+  - the four baits and the Auto-hook Reel;
+  - the tool upgrades made in a crafting grid: Replanting on a hoe, Heartwood grip on an axe and Heartwood limbs on a bow.
+- **Each recipe shows** its ingredients and how many it makes, and whether it fits your inventory's own 2×2 grid or needs a crafting table. An upgrade also shows what it gives the tool. The tile says whether the recipe is in your recipe book: item recipes are, tool upgrades are not.
+- **A locked recipe says what unlocks it:** Wayfarer's Bait reads "Locked: the Wayfarer milestone (species found in 3 waters)" until you have it.
+- **Rod parts aren't listed while Fishing equipment is on,** because they are fitted, not crafted. A tile opens Fishing → Equipment instead. With `tackle: off` they are crafting recipes again, and listed.
+- **Meals and Brews** open the Cookbook and Brews lists (ingredients, levels, effects at your tier) and say how many you can make now.
+- **A recipe the server leaves out** (an ingredient that is not an item, or no item to make) is left out here too.
+- **The hub tile counts them,** for example "Crafting 9 · Meals 6 · Brews 8".
+- **One rule, shared:** whether an upgrade is made in a grid is now one rule (`GatheringCatalog.madeInGrid`), read by both the crafting grid and this screen.
+
+**Checks:**
+- **Unit tests:** 415, 4 of them new (`RecipeBookTest`):
+  - the charm and Replanting with their ingredients;
+  - bait, the reel and the Wayfarer lock;
+  - rod parts left out while Fishing equipment is on, and listed with `tackle: off`;
+  - a recipe the server leaves out is left out here too.
+- **In game, on the second sandbox:**
+  - `menu.js recipes` 16/16 for a new character: the tile and its counts, each recipe's ingredients and where it is made, what Replanting gives and that it isn't in the recipe book, no rod part listed, Wayfarer's Bait locked with the reason, and the three links with Back;
+  - `menu.js nav` 63/63; its in-development check now clicks Quests.
+- **A character that has reached the Wayfarer milestone** (`fishgear.js rewards` 11/11, then `menu.js recipes` with `UNLOCKED=1`): 16/16, with Wayfarer's Bait unlocked and in the recipe book.
+- **Server logs:** no errors on either server.
+
+**For you:** Player Menu → Recipes (checklist §23).
 
 ## Roadmap
 

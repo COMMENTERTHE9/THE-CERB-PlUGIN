@@ -416,6 +416,18 @@ Brewing (`docs/design/ALCHEMY.md`): vanilla brews pay Alchemy XP; eight Cerberus
 | 11 | Player Menu → Skills → **Alchemy**, then **Brews**; Collections → Brews; `/alchemy`. Set Alchemy to 50 and look at the Stats page. | The tier you brew at, **Brews: N of 8**, each brew with its level, reagent, effect and time at your tier, made or not. `/alchemy` shows your tier and your running elixir and draught. Essence rises 0.5 per level (+24.5 from 1 to 50). |
 | 12 | Overall. | Values to judge (all in `resources.yml` → `alchemy:`): each brew's level, reagent, effect, time and XP; the tiers (25/50/75) and their steps (×1.2/1.4/1.6 strength, ×1.25/1.5/2 time); 2 XP a vanilla bottle. Are draughts and elixirs worth making beside meals? |
 
-## 23. Afterwards
+## 23. Recipes
+
+Player Menu → **Recipes** (the crafting table in the hub): how to make every Cerberus item, from the same data the game uses.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Open the Player Menu and hover **Recipes**. | Available, with the counts: crafting, meals and brews. |
+| 2 | Click it. Hover the **Sower's Charm**, **Replanting**, **Heartwood grip** and **Wayfarer's Bait**. | Each shows its ingredients and where it is made. The charm needs a crafting table and is in your recipe book. Replanting takes the charm and any hoe in any grid and says what it gives; it is not in the recipe book. Wayfarer's Bait is grey and locked until the Wayfarer milestone (species found in 3 waters), then shows as unlocked. No rod part is listed. |
+| 3 | Make a Sower's Charm and a Replanting hoe exactly as the screen says. | Both work as shown. |
+| 4 | Click **Meals**, then Back; **Brews**, then Back; **Rod parts**, then Back. | The Cookbook, the Brews list and Fishing Equipment open; Back returns to Recipes each time. |
+| 5 | Overall. | Can you find how to make anything new without asking? |
+
+## 24. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

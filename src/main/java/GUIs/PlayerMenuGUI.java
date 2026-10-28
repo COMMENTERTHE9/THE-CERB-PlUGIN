@@ -161,9 +161,10 @@ public class PlayerMenuGUI {
         sections.register(new Section("collections", 32, Material.CHEST, "Collections",
                 List.of("Fish, treasure, sea creatures and", "woods you have found."),
                 PlayerMenuGUI::collectionsLive, p -> Availability.available(), GUIs.player.CollectionsMenu::new));
+        // 2026-10-28: how to make every Cerberus item (GUIs/player/RecipesMenu), read from the recipes the game registers.
         sections.register(new Section("recipes", 34, Material.CRAFTING_TABLE, "Recipes",
-                List.of("Cerberus crafting recipes."),
-                null, p -> Availability.inDevelopment("Custom recipes are not built yet."), null));
+                List.of("How to make Cerberus items:", "crafting, meals and brews."),
+                PlayerMenuGUI::recipesLive, p -> Availability.available(), GUIs.player.RecipesMenu::new));
         sections.register(new Section("quests", 38, Material.WRITABLE_BOOK, "Quests",
                 List.of("Tasks, stories and rewards."),
                 null, p -> Availability.inDevelopment("Quests are not built yet."), null));
@@ -187,6 +188,15 @@ public class PlayerMenuGUI {
             total += pr.total();
         }
         return total == 0 ? List.of() : List.of(ChatColor.GRAY + "Collected: " + ChatColor.WHITE + have + ChatColor.DARK_GRAY + " / " + total);
+    }
+
+    private static List<String> recipesLive(CerberusPlugin plugin, Player p) {
+        Gathering.GatheringCatalog c = Gathering.GatheringCatalog.current();
+        int crafting = Gathering.RecipeBook.crafting(c, Material::isItem).size();
+        int meals = plugin.getCooking() != null && c.cooking().enabled() ? c.cooking().meals().size() : 0;
+        int brews = plugin.getAlchemy() != null && c.alchemy().enabled() ? c.alchemy().brews().size() : 0;
+        return List.of(ChatColor.GRAY + "Crafting " + ChatColor.WHITE + crafting + ChatColor.GRAY + " · Meals " + ChatColor.WHITE + meals
+                + ChatColor.GRAY + " · Brews " + ChatColor.WHITE + brews);
     }
 
     private static List<String> worldLive(CerberusPlugin plugin, Player p) {

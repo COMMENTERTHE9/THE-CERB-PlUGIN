@@ -254,10 +254,25 @@ public final class GearItems {
      * tool does ("✦ Replanting: ripe crops it harvests are planted again"). Never styled as a vanilla enchantment.
      */
     private static Component upgradeLine(GatheringCatalog.UpgradeDef u) {
+        return text("§6✦ " + u.name() + "§7: " + upgradeText(u, false));
+    }
+
+    /**
+     * What an upgrade does, plainly: "ripe crops it harvests are planted again", "chopping speed while held"; with
+     * {@code amount}, the stat's amount too ("chopping speed +8% while held", for the Recipes screen, which is read live:
+     * the lore line is written once, so it leaves the amount to the Stats page).
+     */
+    static String upgradeText(GatheringCatalog.UpgradeDef u, boolean amount) {
         String does = GatheringCatalog.REPLANT.equals(u.ability()) ? "ripe crops it harvests are planted again" : null;
-        String stat = u.stat() == null ? null : u.stat().displayName.toLowerCase(Locale.ROOT) + " while held";
-        String what = does != null && stat != null ? does + "; " + stat : does != null ? does : stat;
-        return text("§6✦ " + u.name() + "§7: " + what);
+        String stat = u.stat() == null ? null : u.stat().displayName.toLowerCase(Locale.ROOT)
+                + (amount && u.amount() > 0 ? " +" + percent(u.amount()) : "") + " while held";
+        return does != null && stat != null ? does + "; " + stat : does != null ? does : stat;
+    }
+
+    /** 0.08 → "8%", 0.015 → "1.5%". */
+    static String percent(double share) {
+        double v = Math.round(share * 1000) / 10.0;
+        return (v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + "%";
     }
 
     /** What kind of item a material is, for upgrades: axe, pickaxe, shovel, hoe, sword, spear, bow, crossbow, trident, mace; or null. */
