@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), and section 19, Replant on the hoe (about 10 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), and section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -369,6 +369,16 @@ Your note after the Farming build: Replant now comes from the hoe, not from Farm
 | 8 | Put the charm and a hoe in a crafter (the block) and power it. | It makes nothing: a crafter never makes a Cerberus upgrade. |
 | 9 | Overall. | Is the charm's recipe fair, and does Replant on the hoe feel right? Its recipe and the upgrade are data in `resources.yml` (`items: sowers_charm`, `upgrades: replanting`, `recipes:`). |
 
-## 20. Afterwards
+## 20. Lifesteal (decision 6: nothing changed, yours to judge)
+
+Weapon Mastery's lifesteal is unchanged, as you ruled for this milestone. The review measured it and recommends a per-hit cap, after your playtest (`docs/design/LIFESTEAL_REVIEW.md`). This section is only for your judgement. Use a test copy of the server, never your live world.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | At Weapon Mastery 50 or more, in iron with a good sword, fight a crowd (four or five zombies or skeletons a few levels above you), then a boss or a mob that hits hard. | Note how low your health gets. The review's crowds never pushed a fighter below 97.7% with lifesteal, and down to 59–82% without it. |
+| 2 | On the test copy only: set `limits: lifesteal: 0.05` in `attributes.yml`, `/cerb reload`, and fight the same crowd. Then put the file back. | The same fight with almost no lifesteal: is it closer to how dangerous it should feel? |
+| 3 | Overall. | Too safe, right, or too harsh? Tell me which option of the review you want (B, a per-hit cap, is the recommendation), or to leave it as it is. Nothing changes until you say so. |
+
+## 21. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

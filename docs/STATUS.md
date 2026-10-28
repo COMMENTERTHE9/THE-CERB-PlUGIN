@@ -32,7 +32,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Your two XP reports (2026-10-27)**, Fishing XP and bow kills, are reproduced and fixed: what you saw is what creative mode gives, silently until now; the real defects found on the way are fixed, skills start at level 1, and an independent review's findings are fixed too (section "Done: your XP reports" below; checklist §14).
 - **Built since, each waiting for your playtest:** Fishing equipment, goals and collections (2026-10-27, checklist §15) and **Farming and Cooking** (2026-10-28, your milestone: crops, Replant, Wide Harvest, crop quality, Cooking XP and six meals; section "Done: Farming and Cooking" below; checklist §16).
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
-- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures.
+- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1240,6 +1240,31 @@ A ravager (knockback resistance 0.75) at 100 in full iron: 0.13–0.64 blocks in
 **Performance:** Wide Harvest and the farm load are measured together with Herbalism and Alchemy in one before/after pass at the end of this milestone (increment 6), on a sandbox with nothing else running.
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §19): the charm's recipe and cost, the lore line, whether Replant on the hoe feels right.
+
+## Done: lifesteal review (2026-10-28, your milestone, increment 3)
+
+**What it is for:** decision 6 kept Weapon Mastery's lifesteal "for now" and asked to look at it again once other healing exists. Cooking's meals heal now, and Alchemy's draughts come next. This increment measures and recommends. **Nothing about lifesteal changed**, as your rule for this milestone says. The full review, with every number: `docs/design/LIFESTEAL_REVIEW.md`.
+
+**What lifesteal is today** (read from the code): a share of the damage a player's melee hit or arrow really deals to a creature comes back to the Cerberus health pool, never past max health. The share comes from Weapon Mastery's level: 2.7% at 1, 13.4% at 25, 26.8% at 50, 40% (the cap) from 90. It works with any weapon, but never with spells. PvP is unchanged.
+
+**Measured** (`tools/playtest/lifesteal.js`, the sandbox). A fighter in full iron with a netherite sword, the combat skills at the level, fights for 40 s. The same fight is then run with lifesteal off: `limits.lifesteal: 0` is written into the sandbox's `attributes.yml` for that run and put back after.
+- **One zombie of the same level:** from Weapon Mastery 50, lifesteal heals a quarter to a third of the damage dealt: 295 of 1,229 at 50, 833 of 2,618 at 100. The fighter takes only 4–11 health either way, so lifesteal changes nothing that matters here.
+- **Four zombies at once, ten levels above the fighter:**
+  - Without lifesteal, the fighter drops to 59% (at 25 and at 50) or 82% (at 100).
+  - With it, the fighter never drops below 97.7%.
+  - What lifesteal offers in one fight grows from about one max health at 25 to nine at 100. Damage dealt grew five times from 25 to 100, while max health grew 1.8 times.
+  - Nobody died either way: these creatures can't kill a fighter in iron.
+
+**What it means:** lifesteal follows damage dealt, and under hyperscaling damage outgrows health. So the heal grows without limit, and against crowds it removes the danger. For melee and bow fighters it outclasses meals and draughts. For a mage (spells never lifesteal), meals and draughts are the only healing. The early game is not affected either way (2.7% at level 1).
+
+**Recommendation (yours to decide; nothing applied):**
+- **B first:** cap one hit's heal at a share of max health (for example 2%). Early heals sit below the cap and stay as they are. Set the number with harder content: creatures that can kill, and a boss.
+- **Then D:** lifesteal only with Weapon Mastery's own weapons (axes, maces, tridents, spears), as its Power and attack speed already work.
+- **Not now:** lowering the curve (C) only moves the same gap to higher realms. Halving lifesteal while a meal or draught heals (E) adds a hidden rule for a problem B already solves.
+
+**Checks:** 14 fights of 40 s each: the single zombie at Weapon Mastery 1, 25, 50 and 100, and the crowd at 25, 50 and 100, each once with lifesteal and once without. No deaths. The sandbox's `attributes.yml` was put back after every lifesteal-off run. Nothing in the code changed.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §20): a melee fighter at Weapon Mastery 50 or more, in a crowd or against a boss. Try it once as it is, and once with `limits.lifesteal` lowered in a copy of `attributes.yml` on a test server (never your live world). Does it feel too safe?
 
 ## Roadmap
 
