@@ -38,6 +38,11 @@
 //            (docs/design/FISHING_EQUIPMENT.md §9): it only casts, and casts again when the reel has caught (its bobber
 //            gone) or after 45 s without a bite. One delayed task per bite is the reel's whole cost; compare with
 //            fishing (the same ponds, a bot reeling by hand) on the build before and after (2026-10-27).
+//   farm   - each bot harvests a 5x5 field of ripe wheat on farmland in survival with an iron hoe, the nearest ripe crop
+//            first, about three a second; the field is refilled ripe when bare. Farming is set to 1 every run, so
+//            nothing replants and every build does the same work (the Farming baseline, 2026-10-28).
+//   widefarm - like farm, at Farming 50 with Sneak held: each cut is a wide harvest (builds with Farming only).
+//   cook   - each bot bakes bread at its own crafting table, about two a second (Cooking's crafting path).
 //   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
 //            again from real XP: many level-ups at once across the server (the progression feedback's workload).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
@@ -178,6 +183,68 @@ async function wood(b, deadline, controller, felling = false) {
 }
 
 /** A 7x7 pond, 3 deep, in front of bot i (+z side), with a stone edge to stand on. */
+/** A 5x5 field of ripe wheat on farmland in front of the bot, 2 to 6 blocks ahead (refilled when harvested). */
+function field(controller, x, y, z) {
+  controller.chat(`/fill ${x - 2} ${y - 1} ${z + 2} ${x + 2} ${y - 1} ${z + 6} farmland[moisture=7]`);
+  controller.chat(`/fill ${x - 2} ${y} ${z + 2} ${x + 2} ${y} ${z + 6} wheat[age=7]`);
+}
+
+/**
+ * Harvesting ripe wheat in survival with an iron hoe, the nearest ripe crop first, the field refilled ripe when it is bare
+ * and loose items cleared now and then. Farming is set to 1 every run (no replanting, no wide harvest), so every build
+ * does the same work. {@code wide}: Farming 50 and Sneak held, so each cut is a wide harvest (builds with Farming only).
+ */
+async function farm(b, deadline, controller, wide = false) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Farming level ${wide ? 50 : 1}`); await sleep(400);
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  b.chat('/give @s iron_hoe'); await sleep(700);
+  b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(400);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'iron_hoe' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  field(controller, home.x, home.y, home.z); await sleep(1000);
+  const vec3 = require('vec3');
+  if (wide) b.setControlState('sneak', true);
+  let lastClear = Date.now();
+  while (Date.now() < deadline) {
+    let target = null;
+    for (let dz = 2; dz <= 6 && !target; dz++) for (let dx = -2; dx <= 2 && !target; dx++) {
+      const bl = b.blockAt(new vec3(home.x + dx, home.y, home.z + dz));
+      if (bl && bl.name === 'wheat' && Number((bl.getProperties() || {}).age) === 7) target = bl;
+    }
+    if (!target) { field(controller, home.x, home.y, home.z); bump(n, 'refills'); await sleep(700); continue; }
+    try { await b.dig(target, true); bump(n, 'harvested'); } catch (e) { bump(n, 'digfail'); await sleep(200); }
+    if (Date.now() - lastClear > 10000) { controller.chat(`/execute at ${n} run kill @e[type=item,distance=..10]`); lastClear = Date.now(); }
+    if (b.inventory.emptySlotCount() < 4) { b.chat('/clear @s wheat'); b.chat('/clear @s wheat_seeds'); }
+    await sleep(wide ? 600 : 250);
+  }
+  if (wide) b.setControlState('sneak', false);
+  controller.chat(`/cerb skill ${n} Farming level 1`);
+}
+
+/** Baking bread at a crafting table as fast as a hurried player (3 wheat each), about two a second (Cooking's crafting path). */
+async function cook(b, deadline, controller) {
+  const n = b.username;
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  const p = b.entity.position.floored();
+  controller.chat(`/setblock ${p.x + 1} ${p.y} ${p.z} crafting_table`); await sleep(600);
+  const vec3 = require('vec3');
+  const table = b.blockAt(new vec3(p.x + 1, p.y, p.z));
+  const mcData = require('minecraft-data')(b.version);
+  const recipe = b.recipesAll(mcData.itemsByName.bread.id, null, table)[0];
+  if (!recipe) { console.log(n, 'cook: no recipe'); return; }
+  while (Date.now() < deadline) {
+    if (b.inventory.count(mcData.itemsByName.wheat.id) < 3) { b.chat('/give @s wheat 63'); await sleep(700); continue; }
+    try { await b.craft(recipe, 1, table); bump(n, 'baked'); } catch (e) { bump(n, 'craftfail'); await sleep(300); }
+    if (b.inventory.count(mcData.itemsByName.bread.id) > 32) { b.chat('/clear @s bread'); await sleep(200); }
+    await sleep(350);
+  }
+}
+
 function pond(controller, x, y, z) {
   controller.chat(`/fill ${x - 3} ${y - 4} ${z - 1} ${x + 3} ${y - 1} ${z + 9} stone`);
   controller.chat(`/fill ${x - 3} ${y} ${z - 1} ${x + 3} ${y + 3} ${z + 9} air`);
@@ -431,7 +498,7 @@ async function menuidle(b, deadline) {
       const b = await join(name);
       bots.push(b);
       // gather, levels, wood, felling: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
-      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish'].includes(MODE);
+      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish', 'farm', 'widefarm'].includes(MODE);
       const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
@@ -448,6 +515,8 @@ async function menuidle(b, deadline) {
         : m === 'wood' ? wood(b, deadline, controller) : m === 'felling' ? wood(b, deadline, controller, true)
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)
         : m === 'autofish' ? autofish(b, deadline, controller)
+        : m === 'farm' ? farm(b, deadline, controller) : m === 'widefarm' ? farm(b, deadline, controller, true)
+        : m === 'cook' ? cook(b, deadline, controller)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)
         : sleep(Math.max(0, deadline - Date.now()));
