@@ -30,7 +30,7 @@ commands:
     aliases: [levelups]
   fishing:
     description: Your fishing journal, banked encounters, the species you track and which creature a Sneak-cast calls.
-    usage: /<command> [journal [water] | encounters | track <species|off> | call <creature>]
+    usage: /<command> [journal [water] | encounters | track <species|off> | call <creature> | cue on|off]
     aliases: [fish]
   giveTestItem:
     description: Gives a test item to the player.

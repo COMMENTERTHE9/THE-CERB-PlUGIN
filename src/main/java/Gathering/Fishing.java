@@ -9,15 +9,21 @@ import Skills.SkillManager;
 import Skills.SkillNames;
 import cerberus.world.cerb.CerberusPlugin;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.AbstractSkeleton;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.FishHook;
@@ -26,6 +32,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -42,6 +49,9 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.Transformation;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -162,7 +172,7 @@ public final class Fishing implements Listener {
     private final LongAdder castCount = new LongAdder(), bites = new LongAdder(), catches = new LongAdder(), speciesCaught = new LongAdder(),
             treasureCaught = new LongAdder(), luresEarned = new LongAdder(), callsMade = new LongAdder(), won = new LongAdder(),
             refunds = new LongAdder(), refused = new LongAdder(), discoveries = new LongAdder(), extras = new LongAdder(),
-            autoReeled = new LongAdder();
+            autoReeled = new LongAdder(), cues = new LongAdder();
 
     public Fishing(CerberusPlugin plugin, GatheringService service, SkillManager skills) {
         this.plugin = plugin;
@@ -426,6 +436,66 @@ public final class Fishing implements Listener {
     /** The journal flag that turns the tracked species' cast feedback off. */
     public static final String QUIET_TRACKING = "quiet_tracking";
 
+    /** The journal flag that turns the bite cue off ({@code /fishing cue off}). */
+    public static final String QUIET_CUE = "quiet_cue";
+
+    /** The bite cue turns yellow, then red, this many ticks into a bite (vanilla's bite lasts 20-40); gone after the last. */
+    static final int CUE_YELLOW_TICKS = 8, CUE_RED_TICKS = 16, CUE_MAX_TICKS = 60;
+
+    /** The cue's colour {@code ageTicks} into a bite: green, then yellow, then red as the bite runs out. */
+    static NamedTextColor cueColor(int ageTicks) {
+        return ageTicks < CUE_YELLOW_TICKS ? NamedTextColor.GREEN : ageTicks < CUE_RED_TICKS ? NamedTextColor.YELLOW : NamedTextColor.RED;
+    }
+
+    private static Component cueText(NamedTextColor color) {
+        return Component.text("!", color, TextDecoration.BOLD);
+    }
+
+    /**
+     * The bite cue (owner's request, 2026-10-28): a bell in the owner's ear and a "!" over the bobber that only they see,
+     * green, then yellow, then red as the bite runs out, gone when the bite ends (a catch, a miss, a reel-in, the bobber
+     * lost). One display entity per bite, never saved, and one task every 2 ticks on its own scheduler. Off with
+     * {@code /fishing cue off}. The bobber's thread (the BITE event, once it stands).
+     */
+    private void cue(Player p, FishHook hook, Cast c) {
+        FishingJournal j = journals.get(p.getUniqueId());
+        if (j != null && j.flag(QUIET_CUE)) return;
+        boolean here = Bukkit.isOwnedByCurrentRegion(p);
+        if (here) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, SoundCategory.PLAYERS, 0.8f, 1.6f);
+        else p.getScheduler().run(plugin, t -> p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, SoundCategory.PLAYERS, 0.8f, 1.6f), null);
+        if (!here) return; // shown to the owner alone, so only when they are on this region (a bobber over a region border: the bell)
+        int seq = c.biteSeq;
+        UUID hid = hook.getUniqueId();
+        TextDisplay d = hook.getWorld().spawn(hook.getLocation().add(0, 0.75, 0), TextDisplay.class, x -> {
+            x.setPersistent(false);
+            x.setVisibleByDefault(false);
+            x.setBillboard(Display.Billboard.CENTER);
+            x.text(cueText(cueColor(0)));
+            x.setDefaultBackground(false);
+            x.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+            x.setShadowed(true);
+            x.setBrightness(new Display.Brightness(15, 15));
+            x.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(), new Vector3f(2.5f, 2.5f, 2.5f), new AxisAngle4f()));
+        });
+        p.showEntity(plugin, d);
+        cues.increment();
+        int[] age = {0};
+        NamedTextColor[] shown = {cueColor(0)};
+        d.getScheduler().runAtFixedRate(plugin, t -> {
+            age[0] += 2;
+            if (!d.isValid() || !hook.isValid() || casts.get(hid) != c || !c.biteLive || c.biteSeq != seq || age[0] > CUE_MAX_TICKS) {
+                d.remove();
+                t.cancel();
+                return;
+            }
+            NamedTextColor now = cueColor(age[0]);
+            if (now != shown[0]) {
+                d.text(cueText(now));
+                shown[0] = now;
+            }
+        }, null, 2L, 2L);
+    }
+
     /** Why a call can't be answered now (one creature per player, the server's limit), or null. */
     private String callBlocked(UUID player, FishingJournal j, FishingRules r) {
         if (j.active() != null || fightOf.containsKey(player)) return "§cFinish your fight first: one creature at a time.";
@@ -636,7 +706,11 @@ public final class Fishing implements Listener {
             // A missed bite keeps the cast (the bobber stays and the next bite rolls again); only the bite is over. A bite
             // another plugin cancelled after ours never reached the bobber: nothing for the reel to take.
             case FAILED_ATTEMPT -> { Cast c = casts.get(hook); if (c != null) c.biteLive = false; }
-            case BITE -> { if (e.isCancelled()) { Cast c = casts.get(hook); if (c != null) c.biteLive = false; } }
+            case BITE -> {
+                Cast c = casts.get(hook);
+                if (e.isCancelled()) { if (c != null) c.biteLive = false; }
+                else if (c != null && c.biteLive && c.call == null) cue(p, e.getHook(), c); // the bite stands: show it
+            }
             case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> {
                 if (e.isCancelled()) return; // another plugin kept the bobber out: the cast goes on, its bait too
                 casts.remove(hook);
@@ -1225,7 +1299,7 @@ public final class Fishing implements Listener {
         lines.add("encounters banked " + luresEarned.sum() + ", calls " + callsMade.sum() + ", won " + won.sum() + ", encounters given back " + refunds.sum()
                 + ", calls refused " + refused.sum());
         lines.add("creatures out now " + fights.size() + " (most " + rules().calls().server() + "), casts tracked " + casts.size()
-                + ", auto-reeled " + autoReeled.sum());
+                + ", auto-reeled " + autoReeled.sum() + ", bite cues " + cues.sum());
         Tackle tk = tackle;
         if (tk != null) lines.addAll(tk.stats());
         return lines;

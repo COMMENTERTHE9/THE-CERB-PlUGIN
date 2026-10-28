@@ -29,7 +29,7 @@ import java.util.Map;
  */
 public final class FishingCommand implements CommandExecutor, TabCompleter {
 
-    static final List<String> SUBS = List.of("journal", "encounters", "call", "track", "gear", "setup", "reel", "restock");
+    static final List<String> SUBS = List.of("journal", "encounters", "call", "track", "gear", "setup", "reel", "restock", "cue");
     static final List<String> ADMIN = List.of("info", "lure", "force", "journal", "stats", "part", "bait", "legacyrod", "gear", "summary");
 
     private final CerberusPlugin plugin;
@@ -55,6 +55,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             case "gear" -> plugin.getMenuManager().openRoot(p, new GUIs.player.FishingEquipmentMenu(plugin));
             case "setup" -> setup(p, args);
             case "reel", "restock" -> toggle(p, sub, args.length > 1 ? args[1] : "");
+            case "cue" -> cue(p, f, args.length > 1 ? args[1] : "");
             case "call" -> call(p, f, r, args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : null);
             default -> summary(p, f, r);
         }
@@ -136,6 +137,17 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
         p.sendMessage((res.ok() ? ChatColor.GREEN : ChatColor.RED) + res.message());
     }
 
+    /** {@code /fishing cue on|off}: the "!" over the bobber and the bell when a fish bites (on by default). */
+    private void cue(Player p, Fishing f, String value) {
+        boolean on = value.equalsIgnoreCase("on");
+        if (!on && !value.equalsIgnoreCase("off")) { p.sendMessage(ChatColor.YELLOW + "Use: /fishing cue on|off (a \"!\" over your bobber and a bell when a fish bites)"); return; }
+        FishingJournal j = f.journal(p);
+        if (on) j.clearFlag(Fishing.QUIET_CUE);
+        else j.setFlag(Fishing.QUIET_CUE);
+        f.saveJournal(p);
+        p.sendMessage(ChatColor.GREEN + "Bite cue " + (on ? "on: a \"!\" over your bobber and a bell when a fish bites." : "off."));
+    }
+
     static FishingRules.Species findSpecies(FishingRules r, String what) {
         String k = what.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
         FishingRules.Species s = r.speciesById(k);
@@ -215,7 +227,7 @@ public final class FishingCommand implements CommandExecutor, TabCompleter {
             return filter(new ArrayList<>(plugin.getFishing().journal(p).lures().keySet()), args[1]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("journal")) return filter(rules().waters().stream().map(FishingRules.Water::id).toList(), args[1]);
-        if (args.length == 2 && (args[0].equalsIgnoreCase("reel") || args[0].equalsIgnoreCase("restock"))) return filter(List.of("on", "off"), args[1]);
+        if (args.length == 2 && (args[0].equalsIgnoreCase("reel") || args[0].equalsIgnoreCase("restock") || args[0].equalsIgnoreCase("cue"))) return filter(List.of("on", "off"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("setup")) return filter(List.of("1", "2", "3", "rename"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("track")) {
             List<String> ids = new ArrayList<>(rules().allSpecies().keySet());

@@ -226,6 +226,10 @@ Each notable catch can become one trophy, and the weight always comes from that 
   - an open menu costs nothing extra;
   - the new screens cost about twice a skill-page click, because they open a fresh window for stale-click safety.
 
+## 13b. The bite cue (owner's request, 2026-10-28)
+
+When a fish bites, the owner hears a bell (note block, pitch 1.6), and a "!" appears over the bobber for them alone (a text display: never saved, hidden from everyone else). It is green, then yellow from 8 ticks, then red from 16, before the shortest bite (20 ticks) can end. It goes when the bite does: a catch, a miss, a reel-in or the bobber lost, at most 3 s. There is no cue for a Sneak-cast call, or for a bite another plugin cancels. It costs one display entity per bite, with one task every 2 ticks on that entity's own scheduler. `/fishing cue off|on` toggles it, saved in the journal (on by default). Checked by `fishgear.js cue`.
+
 ## 14. Commands
 
 | Command | Who | What |
@@ -237,7 +241,7 @@ Each notable catch can become one trophy, and the weight always comes from that 
 | `/fishing track <species\|off>` | players | track a species |
 | `/fishing gear` | players | open Equipment |
 | `/fishing setup <1-3>`, `/fishing setup rename <1-3> <name>` | players | switch or rename a preset |
-| `/fishing reel on\|off`, `/fishing restock on\|off` | players | switches |
+| `/fishing reel on\|off`, `/fishing restock on\|off`, `/fishing cue on\|off` | players | switches (the cue: the "!" and bell at a bite) |
 | `/cerb fish part <player> <id> [remove]` | admins | give or take a part |
 | `/cerb fish bait <player> <id> [n]` | admins | put bait into a player's bag |
 | `/cerb fish legacyrod <player> <upgrade,...>` | admins | make an old-style upgraded rod (migration tests) |

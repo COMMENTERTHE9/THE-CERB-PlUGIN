@@ -321,6 +321,15 @@ class FishingRulesTest {
     }
 
     @Test
+    void theBiteCueGoesGreenThenYellowThenRedAsTheBiteRunsOut() {
+        assertEquals(net.kyori.adventure.text.format.NamedTextColor.GREEN, Fishing.cueColor(0));
+        assertEquals(net.kyori.adventure.text.format.NamedTextColor.GREEN, Fishing.cueColor(7));
+        assertEquals(net.kyori.adventure.text.format.NamedTextColor.YELLOW, Fishing.cueColor(8));
+        assertEquals(net.kyori.adventure.text.format.NamedTextColor.RED, Fishing.cueColor(16));
+        assertTrue(Fishing.CUE_RED_TICKS < 20, "red before the shortest bite (20 ticks) can end");
+    }
+
+    @Test
     void theTrackingLineNeverSaysCanBiteWhereTheWaterIsUnknown() throws Exception {
         FishingRules r = shipped().fishing();
         FishingRules.Species trout = r.speciesById("brook_char");

@@ -50,7 +50,9 @@
 //              caller restarts the server on "READY"; STATE names the file passed between the two)
 //   crash-set / crash-check - the same mid-cast, but the player's data is written with the bait held (needs
 //              CerbTestProtect's /testsave) and the server is killed: the bait is back once at the next join, not twice
-//   all      - pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy
+//   cue      - the bite cue: a "!" over the bobber, green then yellow then red, gone when the fish gets away or is caught,
+//              a bell in the owner's ear, nothing for another player at the pond, nothing with /fishing cue off
+//   all      - pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, cue
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const fs = require('fs');
@@ -1370,6 +1372,66 @@ async function trophy() {
   await closeAny();
 }
 
+// ── the bite cue: a "!" over the bobber for its owner, green → yellow → red, and a bell ──
+async function cue() {
+  await arena(780, 'river');
+  await survival(10);
+  await cmd('/fishing cue on', 400);
+  const tdType = bot.registry.entitiesByName.text_display.id;
+  const cues = [], bells = [];
+  const onSpawn = p => { if (p.type === tdType) cues.push({ id: p.entityId, t: Date.now(), colors: [], gone: 0 }); };
+  const onMeta = p => {
+    const c = cues.find(x => x.id === p.entityId);
+    if (!c) return;
+    const str = JSON.stringify(p.metadata);
+    for (const col of ['green', 'yellow', 'red']) if (str.includes('"' + col + '"') && !c.colors.includes(col)) c.colors.push(col);
+  };
+  const onGone = p => { for (const c of cues) if (!c.gone && p.entityIds.includes(c.id)) c.gone = Date.now(); };
+  const onSound = p => { if (Math.abs((p.volume || 0) - 0.8) < 0.01 && Math.abs((p.pitch || 0) - 1.6) < 0.01) bells.push(Date.now()); };
+  bot._client.on('spawn_entity', onSpawn); bot._client.on('entity_metadata', onMeta);
+  bot._client.on('entity_destroy', onGone); bot._client.on('sound_effect', onSound);
+  // Another player at the pond: the "!" is only its owner's.
+  const watcher = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbWatch', version: '1.21.11', auth: 'offline' });
+  let watcherSaw = 0;
+  watcher._client.on('spawn_entity', p => { if (p.type === tdType) watcherSaw++; });
+  await new Promise(r => watcher.once('spawn', r));
+  await sleep(1500);
+  await cmd(`/tp CerbWatch ${X + 1.5} ${Y} ${Z + 0.5}`, 1500);
+  const castWait = async (n, ms = 45000) => { const t0 = Date.now(); while (cues.length === n && Date.now() - t0 < ms) await sleep(50); return cues[n]; };
+  try {
+    // A bite left alone: green, yellow, red, gone when the fish gets away.
+    await stand();
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    const first = await castWait(0);
+    await sleep(3500);
+    check('A bite: a "!" over the bobber, green, then yellow, then red', !!first && first.colors.join(',') === 'green,yellow,red', first ? first.colors.join(',') : 'no "!" in 45 s');
+    check('...gone when the fish gets away', !!first && first.gone > 0 && first.gone - first.t < 3000, first ? (first.gone ? `${first.gone - first.t} ms` : 'still there') : '');
+    check('...with a bell in the owner\'s ear', !!first && bells.some(t => Math.abs(t - first.t) < 800), `${bells.length} bell(s)`);
+    check('...and the other player at the pond sees no "!"', watcherSaw === 0, `${watcherSaw} seen`);
+    bot.activateItem(); await sleep(150); bot.deactivateItem(); await sleep(600); // reel the line in
+    // Reeling at the "!": a catch, and it goes at once.
+    const s0 = await summaryDump();
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    const second = await castWait(1);
+    const reelAt = Date.now();
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    await sleep(1200);
+    const s1 = await summaryDump();
+    check('Reeling at the "!": a catch, and the "!" goes at once', !!second && s1 && s0 && s1.catches === s0.catches + 1 && second.gone > 0 && second.gone - reelAt < 600,
+      second ? `catches ${s0 && s0.catches} -> ${s1 && s1.catches}; gone ${second.gone ? second.gone - reelAt + ' ms after the reel' : 'no'}` : 'no "!" in 45 s');
+    // Off: a bite and a catch, no "!" and no bell.
+    await cmd('/fishing cue off', 500);
+    const n = cues.length, b = bells.length;
+    const caught = await catchOne();
+    check('/fishing cue off: the bite and the catch as usual, no "!", no bell', caught && cues.length === n && bells.length === b, `caught ${caught}; ${cues.length - n} "!", ${bells.length - b} bell(s)`);
+    await cmd('/fishing cue on', 500);
+  } finally {
+    bot._client.removeListener('spawn_entity', onSpawn); bot._client.removeListener('entity_metadata', onMeta);
+    bot._client.removeListener('entity_destroy', onGone); bot._client.removeListener('sound_effect', onSound);
+    watcher.quit();
+  }
+}
+
 // ── restarts and crashes (the caller stops or kills the server on "READY", then runs the -check phase) ──
 const STATE = process.env.STATE || path.join(__dirname, '.fishgear-state.json');
 async function holdUntilServerGoes() {
@@ -1425,9 +1487,9 @@ async function crashCheck() {
   check('...and a second join gives nothing more', !g.held && baitIn(g, 1) === 5 && baitIn(g, 2) === 3, g.raw);
 }
 
-const PHASES = { pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, oldstate, legacy,
+const PHASES = { pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, cue, oldstate, legacy,
   'restart-set': restartSet, 'restart-check': restartCheck, 'crash-set': crashSet, 'crash-check': crashCheck };
-const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel', 'rewards', 'specialists', 'trophy'];
+const ALL = ['pages', 'track', 'summary', 'terms', 'equip', 'bait', 'reel', 'rewards', 'specialists', 'trophy', 'cue'];
 
 connect().then(async () => {
   await sleep(3500);
