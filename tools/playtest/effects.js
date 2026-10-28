@@ -20,7 +20,7 @@
 //              Stats & Attributes is still on its hub tile
 //   warn     - a two-minute stew written into the sandbox's resources.yml (put back after; needs SERVER_DIR): the heads-up
 //              about a minute before the end, once; the stew ending while the screen is open; a stew replaced before its
-//              heads-up never warns
+//              heads-up never warns; a heads-up said before a relog isn't said again, one not yet said comes after the join
 //   restart-set / restart-check - a meal and a potion across a clean stop and start with the bot online
 //   all      - none, meal, refresh, replace, death, relog, class, buff, potion, vanilla, combo, nav (warn and the restart pair
 //              apart: they take minutes or a restart)
@@ -217,8 +217,8 @@ async function mealPhase() {
   const t0 = tileOf(/Hearty Stew/);
   check('Its tile: name and time left', !!t0 && timeOf(t0.name) >= 590 && timeOf(t0.name) <= 600, t0 ? t0.name : 'no tile');
   check('...its source: a meal, its tier and role', !!t0 && /Meal · Common · Survival/.test(t0.lore), t0 ? t0.lore.slice(0, 80) : '');
-  const mh = t0 && t0.lore.match(/Vitality \+6 \|\s+max health ([\d,]+) → ([\d,]+)/);
-  check('...what it does now: Vitality +6, max health before → after, as the HUD shows', !!mh && Number(mh[1].replace(/,/g, '')) === base.max && Number(mh[2].replace(/,/g, '')) === fed.max,
+  const mh = t0 && t0.lore.match(/• Vitality \+6 \|[\s\S]*?Now: \|\s+max health ([\d,]+) → ([\d,]+)/);
+  check('...what it does: Vitality +6, and now max health before → after, as the HUD shows', !!mh && Number(mh[1].replace(/,/g, '')) === base.max && Number(mh[2].replace(/,/g, '')) === fed.max,
     mh ? `${mh[1]} → ${mh[2]} (HUD ${base.max} → ${fed.max})` : (t0 ? t0.lore : ''));
   const rs = t0 && t0.lore.match(/Restoration: (\d+)s left \|\s+25% of max health over 20 s, a heal a second/);
   check('...and its restoration apart, with its own short time (never the meal\'s ten minutes)', !!rs && Number(rs[1]) <= 20, t0 ? (t0.lore.match(/Restoration[^|]*\|[^|]*/) || [''])[0] : '');
@@ -278,13 +278,13 @@ async function replacePhase() {
   const names = tiles().map(t => t.name);
   check('A Trail Ration replaces the stew: only the ration shows', names.length === 1 && /Trail Ration/.test(names[0]), names.join(' / '));
   const t = tileOf(/Trail Ration/);
-  const m = t && t.lore.match(/Movement speed \+8% raw \|\s+\+([\d.]+)% now/);
-  // What the ration adds: the Stats page's movement speed before and after (one decimal each), and the server's walking speed
-  // (/attribute prints three decimals of 0.1: a coarse check, within one percent).
-  const gained = fedStat - plainStat, real = (speed - plainSpeed) / 0.1 * 100;
-  check('...its speed shown raw and as it counts after the cap: what the Stats page and the server\'s walking speed gained',
-    !!m && Math.abs(Number(m[1]) - gained) <= 0.15 && Math.abs(Number(m[1]) - real) <= 1.0,
-    m ? `+${m[1]}% shown; Stats ${plainStat}% → ${fedStat}%; attribute ${plainSpeed} → ${speed}` : (t ? t.lore : 'no tile'));
+  const m = t && t.lore.match(/• Movement speed \+8% \|[\s\S]*?Now: \|\s+movement speed ([+-][\d.]+)% → ([+-][\d.]+)%/);
+  // What the ration adds and what the total becomes after the curve: the Stats page's movement speed before and after (one
+  // decimal each), and the server's walking speed (/attribute prints three decimals of 0.1: a coarse check, within one percent).
+  const real = (speed - plainSpeed) / 0.1 * 100;
+  check('...its +8% shown, and the movement speed total before → after the curve: the Stats page\'s numbers and the server\'s walking speed',
+    !!m && Math.abs(Number(m[1]) - plainStat) <= 0.15 && Math.abs(Number(m[2]) - fedStat) <= 0.15 && Math.abs(Number(m[2]) - Number(m[1]) - real) <= 1.0,
+    m ? `${m[1]}% → ${m[2]}% shown; Stats ${plainStat}% → ${fedStat}%; attribute ${plainSpeed} → ${speed}` : (t ? t.lore : 'no tile'));
   check('...no restoration line for a meal without one', !!t && !/Restoration/.test(t.lore));
   closeAny();
 }
@@ -327,8 +327,9 @@ async function classPhase() {
   await effectsScreen();
   const t = tileOf(/War Cry/);
   check('War Cry cast: its tile with its time (8 s at most)', cast && !!t && timeOf(t.name) >= 1 && timeOf(t.name) <= 8, t ? t.name : `cast ${cast}; ${tiles().map(x => x.name).join(' / ')}`);
-  check('...its source and what it does: +15% damage, the weapon damage bonus before → after',
-    !!t && /Warrior ability/.test(t.lore) && /Damage \+15% \|\s+weapon damage bonus \+0\.0% → \+15\.0%/.test(t.lore), t ? t.lore : '');
+  const dm = t && t.lore.match(/• Damage \+15% \|[\s\S]*?Now: \|\s+(\w+) damage x([\d.]+) → x([\d.]+)/);
+  check('...its source and what it does: +15% damage, and now the weapon\'s damage multiplier before → after (x1.15 of it)',
+    !!t && /Warrior ability/.test(t.lore) && !!dm && Math.abs(Number(dm[3]) / Number(dm[2]) - 1.15) <= 0.01, t ? t.lore : '');
   await sleep(Math.max(0, (timeOf(t ? t.name : '8s') + 1.5)) * 1000);
   check('When it ends, the open screen redraws itself without it', !tileOf(/War Cry/) && /^No active effects$/.test(slotName(22)), tiles().map(x => x.name).join(' / ') || slotName(22));
   closeAny();
@@ -338,7 +339,7 @@ async function classPhase() {
   await click(4, 800);
   await waitTitle(/Active Effects/);
   const ao = slotName(47), aoLore = slotLore(47);
-  check('An equipped passive: an "Always on" tile apart, with what it adds', /^Always on \(1\)$/.test(ao) && /Battle-Hardened/.test(aoLore) && /Vitality \+8 \|\s+max health [\d,]+ → [\d,]+/.test(aoLore),
+  check('An equipped passive: an "Always on" tile apart, with what it adds', /^Always on \(1\)$/.test(ao) && /Battle-Hardened/.test(aoLore) && /• Vitality \+8 \|\s+max health [\d,]+ → [\d,]+/.test(aoLore),
     ao + ' | ' + aoLore.slice(0, 200));
   check('...never among the timed effects or on the head\'s list', tiles().length === 0 && !/Battle-Hardened/.test(lore), tiles().map(x => x.name).join(' / '));
   closeAny();
@@ -355,7 +356,7 @@ async function buffPhase() {
   await effectsScreen();
   const t = tileOf(/Dev buff \+100 Vitality/);
   check('Its tile: name and about five minutes left', !!t && timeOf(t.name) >= 280 && timeOf(t.name) <= 300, t ? t.name : tiles().map(x => x.name).join(' / '));
-  const mh = t && t.lore.match(/Vitality \+100 \|\s+max health ([\d,]+) → ([\d,]+)/);
+  const mh = t && t.lore.match(/• Vitality \+100 \|[\s\S]*?Now: \|\s+max health ([\d,]+) → ([\d,]+)/);
   check('...source "Admin test buff", and max health +100 as the HUD shows',
     !!t && /Admin test buff/.test(t.lore) && !!mh && Number(mh[1].replace(/,/g, '')) === base.max && Number(mh[2].replace(/,/g, '')) === buffed.max && buffed.max === base.max + 100,
     mh ? `${mh[1]} → ${mh[2]} (HUD ${base.max} → ${buffed.max})` : (t ? t.lore : ''));
@@ -529,6 +530,34 @@ async function warnPhase() {
     await eat('trail_ration');
     while (Date.now() - second < 75000) await sleep(500);
     check('A stew replaced (by a Trail Ration) before its heads-up: no stale warning', !hudSince(second).some(m => /Hearty Stew wears off/.test(m)), hudSince(second).filter(m => /wears off/.test(m)).join(' / '));
+    // A heads-up already said is not said again after a relog: the warned meal is recorded on the player.
+    await cmd(`/cerb cook clear ${NAME}`, 400);
+    await eat('hearty_stew');
+    const third = Date.now();
+    let said = null;
+    while (Date.now() - third < 75000 && !said) { await sleep(500); said = hudSince(third).find(m => /Hearty Stew wears off in/.test(m)); }
+    closeAny();
+    bot.quit();
+    await sleep(4000);
+    await connect();
+    const back = Date.now();
+    await sleep(8000);
+    check('A heads-up said before a relog is not said again after it', !!said && !hudSince(back).some(m => /Hearty Stew wears off/.test(m)),
+      said ? hudSince(back).filter(m => /wears off/.test(m)).join(' / ') || 'not again' : 'no heads-up before the relog');
+    // The control: a relog before the heads-up, back with under a minute left: said a moment after the join.
+    await cmd(`/cerb cook clear ${NAME}`, 400);
+    await eat('hearty_stew');
+    const fourth = Date.now();
+    while (Date.now() - fourth < 52000) await sleep(500);
+    const early = hudSince(fourth).some(m => /Hearty Stew wears off/.test(m));
+    bot.quit();
+    await sleep(12000);
+    await connect();
+    const rejoined = Date.now();
+    await sleep(6000);
+    const joinSaid = hudSince(rejoined).find(m => /Hearty Stew wears off in/.test(m));
+    check('...while a relog before the heads-up, back with under a minute left, says it a moment after the join', !early && !!joinSaid,
+      `before the relog: ${early ? 'said (too early)' : 'not yet'}; after: ${joinSaid || 'nothing'}`);
     await cmd(`/cerb cook clear ${NAME}`, 400);
   });
 }

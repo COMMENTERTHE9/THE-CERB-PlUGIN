@@ -734,14 +734,14 @@ public final class ClassService implements AttributeSource {
             AbilityDef a = catalog.ability(c.abilityId());
             out.add(new Effects.ActiveEffect("class:" + c.abilityId() + ":guard", Effects.ActiveEffect.Category.ABILITY,
                     (a != null ? a.displayName() : c.abilityId()) + " guard", source(a), icon(a), c.until(), null, List.of(),
-                    List.of("The next melee hit you take is", "negated and answered at x" + AbilityCaster.oneDecimal(c.coefficient()) + " a basic hit."), null));
+                    List.of("A creature's next melee hit on you is", "negated and answered at x" + AbilityCaster.oneDecimal(c.coefficient()) + " a basic hit."), null));
         }
         Empowered em = empowered.get(id);
         if (em != null && em.until() > now) {
             AbilityDef a = catalog.ability(em.abilityId());
             out.add(new Effects.ActiveEffect("class:" + em.abilityId() + ":empowered", Effects.ActiveEffect.Category.ABILITY,
                     a != null ? a.displayName() : em.abilityId(), source(a), icon(a), em.until(), null, List.of(),
-                    List.of("Your next weapon hit is a critical hit."), null));
+                    List.of("Your next weapon hit on a creature", "is a critical hit."), null));
         }
         // Always on, not timed: what the loadout in use adds whatever you do (the same contributions refreshContributions counts).
         List<String> passive = new ArrayList<>(l.passives());

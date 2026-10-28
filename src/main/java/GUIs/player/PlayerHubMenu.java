@@ -52,15 +52,15 @@ public final class PlayerHubMenu extends PlayerMenu {
         List<Effects.ActiveEffect> temp = effects == null ? List.of() : Effects.ActiveEffects.temporary(effects.of(p, now));
         v.button(MenuView.HEADER, Ui.head(p, ChatColor.GOLD + "" + ChatColor.BOLD + p.getName(), headLore(p, temp, now)),
                 c -> menus.open(c.player(), new ActiveEffectsMenu(plugin)));
-        if (!temp.isEmpty()) {
-            // Its times count down while the hub is open: the head's lines only, once a second, until nothing is left.
+        if (Effects.ActiveEffects.anyTimed(temp)) {
+            // Its times count down while the hub is open: the head's lines only, once a second, while anything is timed.
             v.every(20, () -> {
                 if (!p.isOnline() || !loaded(p)) return false;
                 long t = System.currentTimeMillis();
                 List<Effects.ActiveEffect> left = Effects.ActiveEffects.temporary(effects.of(p, t));
                 org.bukkit.inventory.ItemStack head = v.get(MenuView.HEADER);
                 if (head != null) v.set(MenuView.HEADER, ActiveEffectsMenu.withLore(head, headLore(p, left, t)));
-                return !left.isEmpty();
+                return Effects.ActiveEffects.anyTimed(left);
             });
         }
 

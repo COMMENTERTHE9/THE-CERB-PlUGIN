@@ -25,6 +25,8 @@ public class PlayerHUDManager {
         long flashUntil;    // System.nanoTime()
         String notice;      // a level-up or rank-up: the same place, below messages, above the XP line
         long noticeUntil;   // System.nanoTime()
+        String nextNotice;  // a notice waiting for the one showing to end (queueNotice), or null
+        long nextNoticeMs;
         String xp;          // the XP line: the same place, lowest priority (it waits while a message or notice shows)
         long xpUntil;       // System.nanoTime()
     }
@@ -102,6 +104,13 @@ public class PlayerHUDManager {
         long now = System.nanoTime(); // monotonic: a clock step back must not silence the bar
         if (last.flash != null && now - last.flashUntil >= 0) last.flash = null;
         if (last.notice != null && now - last.noticeUntil >= 0) last.notice = null;
+        if (last.notice == null && last.nextNotice != null) {
+            // A queued notice takes its turn once the one before it has ended (behind a message, as any notice).
+            long start = last.flash != null && last.flashUntil - now > 0 ? last.flashUntil : now;
+            last.notice = last.nextNotice;
+            last.noticeUntil = start + last.nextNoticeMs * 1_000_000L;
+            last.nextNotice = null;
+        }
         if (last.xp != null && now - last.xpUntil >= 0) last.xp = null;
         hudBuilder.append(healthColor).append(Numbers.hud(health)).append('/').append(Numbers.hud(maxHealth)).append("♥   ");
         if (last.flash != null) hudBuilder.append(last.flash).append("   ");
@@ -175,6 +184,25 @@ public class PlayerHUDManager {
         if (s != null && ((s.flash != null && s.flashUntil - now > 0) || (s.notice != null && s.noticeUntil - now > 0))) return false;
         notice(player, legacyText, ms);
         return true;
+    }
+
+    /**
+     * A {@link #notice} that never replaces one showing (a level-up): it waits for that one to end, then shows for
+     * {@code ms}. For a heads-up that has waited long enough for a free moment and must now be seen (a meal about to wear
+     * off, docs/design/ACTIVE_EFFECTS.md §4). One waits at a time: a later one replaces it. Player's thread.
+     */
+    public void queueNotice(Player player, String legacyText, long ms) {
+        Sent s = sent.computeIfAbsent(player.getUniqueId(), id -> new Sent());
+        long now = System.nanoTime();
+        if (s.notice == null || s.noticeUntil - now <= 0) {
+            notice(player, legacyText, ms);
+            return;
+        }
+        long wait = Math.max(0, ms) * 1_000_000L;
+        // An XP line waiting behind the notice waits behind this one too (a replaced waiting one gives its time back).
+        if (s.xp != null && s.xpUntil - s.noticeUntil > 0) s.xpUntil += wait - (s.nextNotice != null ? s.nextNoticeMs * 1_000_000L : 0);
+        s.nextNotice = legacyText;
+        s.nextNoticeMs = Math.max(0, ms);
     }
 
     /**

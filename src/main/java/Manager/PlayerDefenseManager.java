@@ -60,6 +60,20 @@ public class PlayerDefenseManager {
     }
 
     /**
+     * The armor reduction {@code player} gets with {@code fortArmor} as Fortitude's part: gear, Heavy Armor Training and it,
+     * within the caps, exactly as {@link #updateDefense} works it out (for the Active Effects screen's "armor a → b").
+     * Player's thread.
+     */
+    public double armorWith(Player player, double fortArmor) {
+        int heavyArmor = skillManager != null ? skillManager.getSkillLevel(player, "Heavy Armor Training") : 0;
+        double skillBonus = combatConfig != null ? heavyArmorBonus(combatConfig, heavyArmor) : 0.0;
+        double cap = combatConfig != null ? combatConfig.armorMaxReduction : 0.40;
+        Attributes.AttributeSnapshot fort = fortitude(player);
+        if (fort != null) cap = Math.min(cap, fort.rules().limits().armor());
+        return Math.min(cap, calculateArmorFromGear(player) + skillBonus + fortArmor);
+    }
+
+    /**
      * Recalculate armor reduction from equipped gear + skill bonuses.
      * Call on join, armor change, skill level up.
      */

@@ -48,8 +48,8 @@ public final class EffectsText {
             case "absorption" -> List.of("No effect: Cerberus health has no", "absorption hearts.");
             case "health_boost" -> List.of("No effect: your Cerberus maximum health", "comes from Vitality and your realm.");
             case "resistance" -> List.of("No effect: Cerberus applies its own", "defense, before vanilla's reductions.");
-            case "strength" -> List.of("Melee hits: +" + (3 * n) + " base damage, before", "Cerberus's Power and realm multiply it.");
-            case "weakness" -> List.of("Melee hits: -" + (4 * n) + " base damage, before", "Cerberus's multipliers.");
+            case "strength" -> List.of("Melee hits: +" + (3 * n) + " base damage (on a", "creature, Cerberus's Power and realm", "multiply it).");
+            case "weakness" -> List.of("Melee hits: -" + (4 * n) + " base damage (on a", "creature, before Cerberus's multipliers).");
             case "poison", "wither" -> List.of("Hurts your health over time.");
             case "instant_damage" -> List.of("Hurts your health once.");
             case "fire_resistance" -> List.of("No damage from fire and lava.");
@@ -74,7 +74,8 @@ public final class EffectsText {
             case "blindness", "darkness" -> List.of("Your view is limited.");
             case "bad_omen", "raid_omen", "trial_omen" -> List.of("Vanilla omen: a raid or ominous trial", "is coming.");
             case "hero_of_the_village" -> List.of("Villagers give discounts and gifts.");
-            case "wind_charged", "weaving", "oozing", "infested" -> List.of("Vanilla effect: something happens", "when you die.");
+            case "infested" -> List.of("When hit: a chance to release", "silverfish.");
+            case "wind_charged", "weaving", "oozing" -> List.of("Vanilla effect: something happens", "when you die.");
             default -> List.of("Vanilla effect.");
         };
     }

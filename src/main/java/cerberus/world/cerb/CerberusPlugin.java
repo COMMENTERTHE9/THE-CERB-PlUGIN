@@ -805,7 +805,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         pm.registerEvents(cooking, this);
         // A meal's one-minute heads-up waits for a free moment on the HUD (no ability, fight or level-up message showing).
         cooking.setHeadsUp((p, text, force) -> {
-            if (force) { playerHUDManager.notice(p, text, 4000); return true; }
+            if (force) { playerHUDManager.queueNotice(p, text, 4000); return true; }
             return playerHUDManager.noticeIfIdle(p, text, 4000);
         });
         registerEffectSources();

@@ -11,12 +11,14 @@ import Manager.Numbers;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.Predicate;
 
 /**
  * What an effect's attribute-engine contributions actually change (docs/design/ACTIVE_EFFECTS.md §1): the player's
- * snapshot with them against one without them, so caps and diminishing returns are in the numbers ("Vitality +6 · max
- * health 103 → 109", "Movement speed +8% raw · +7.0% now"). Pure: the menus pass the two snapshots.
+ * snapshot with them against one without them, so caps and diminishing returns are in the numbers. Every derived number
+ * the game uses is compared, and each one that moves is listed ("max health 103 → 109", "attack speed +2.0% → +7.0%"),
+ * so nothing an attribute does is left out. Pure: the menus pass the two snapshots.
  */
 public final class EffectBenefits {
 
@@ -24,78 +26,92 @@ public final class EffectBenefits {
 
     /**
      * What the lines need besides the snapshots: which attributes and stats this server applies, whether the player's
-     * speed and handling bonuses are paused for PvP right now, Fortune's rule, the health base and the weapon kind Power
-     * and damage are shown for.
+     * speed and handling bonuses are paused for PvP right now, Fortune's rule, the health base, the weapon kind damage is
+     * shown for, the weapon kind in hand (attack speed counts for it), and the armor rule ({@code armor}: Fortitude's
+     * armor bonus → the reduction the player really gets, gear and caps included; null: the bonus as it is).
      */
     public record Context(Predicate<Attribute> attributeOn, Predicate<Stat> statOn, boolean pvpPaused, double fortunePerPoint,
-                          double fortuneMax, double baseMaxHealth, WeaponClass weapon) {}
+                          double fortuneMax, double baseMaxHealth, WeaponClass weapon, WeaponClass held, DoubleUnaryOperator armor) {}
 
-    /** One line per contribution in {@code cs}: what it is, then what it changes now. */
-    public static List<String> lines(List<Contribution> cs, AttributeSnapshot with, AttributeSnapshot without, Context ctx) {
-        List<String> out = new ArrayList<>();
-        for (Contribution c : cs) {
-            String line = c.attribute() != null ? attribute(c, with, without, ctx) : stat(c, with, without, ctx);
-            if (line != null) out.add(line);
-        }
-        return out;
+    /** What an effect adds ({@code added}: "Vitality +6") and every number that moves because of it ({@code changes}). */
+    public record Lines(List<String> added, List<String> changes) {
+        public boolean isEmpty() { return added.isEmpty() && changes.isEmpty(); }
     }
 
-    private static String attribute(Contribution c, AttributeSnapshot with, AttributeSnapshot without, Context ctx) {
-        Attribute a = c.attribute();
-        String head = a.displayName + (c.yield() != null ? " (" + c.yield().id + ")" : "") + " " + signed(c.amount());
-        if (!ctx.attributeOn().test(a)) return head + " · switched off on this server";
-        WeaponClass w = c.weapon() != null ? c.weapon() : ctx.weapon();
-        return head + " · " + switch (a) {
-            case VITALITY -> "max health " + Numbers.hud(maxHealth(without, ctx)) + " → " + Numbers.hud(maxHealth(with, ctx));
-            case FORTITUDE -> "armor " + Fmt.signedPct(without.armorBonus()) + " → " + Fmt.signedPct(with.armorBonus())
-                    + ", defense bar " + Fmt.mult(without.defenseBarMultiplier()) + " → " + Fmt.mult(with.defenseBarMultiplier());
-            case POWER -> w.displayName.toLowerCase(java.util.Locale.ROOT) + " damage " + Fmt.mult(without.powerMultiplier(w))
-                    + " → " + Fmt.mult(with.powerMultiplier(w));
-            case AGILITY -> "crit chance " + Fmt.pct(without.critChance()) + " → " + Fmt.pct(with.critChance());
-            case ESSENCE -> "max Essence " + Fmt.mult(without.maxManaMultiplier()) + " → " + Fmt.mult(with.maxManaMultiplier())
-                    + ", spell damage " + Fmt.mult(without.spellDamageMultiplier()) + " → " + Fmt.mult(with.spellDamageMultiplier());
-            case FORTUNE -> fortune(c.yield(), with, without, ctx);
-        };
+    /** What {@code cs} add, and what they change: {@code with} them against {@code without} them. */
+    public static Lines lines(List<Contribution> cs, AttributeSnapshot with, AttributeSnapshot without, Context ctx) {
+        List<String> added = new ArrayList<>();
+        for (Contribution c : cs) added.add(added(c, ctx));
+        if (cs.isEmpty()) return new Lines(added, List.of());
+        List<String> ch = new ArrayList<>();
+        double h0 = maxHealth(without, ctx), h1 = maxHealth(with, ctx);
+        if (moved(h0, h1)) ch.add("max health " + Numbers.hud(h0) + " → " + Numbers.hud(h1));
+        WeaponClass w = ctx.weapon();
+        String wn = w.singular.toLowerCase(java.util.Locale.ROOT);
+        mult(ch, wn + " damage", without.offenseMultiplier(w, false), with.offenseMultiplier(w, false));
+        pct(ch, "crit chance", without.critChance(), with.critChance());
+        mult(ch, "crit damage", without.critMultiplier(), with.critMultiplier());
+        pct(ch, "lifesteal", without.lifesteal(), with.lifesteal());
+        double a0 = ctx.armor() != null ? ctx.armor().applyAsDouble(without.armorBonus()) : without.armorBonus();
+        double a1 = ctx.armor() != null ? ctx.armor().applyAsDouble(with.armorBonus()) : with.armorBonus();
+        if (moved(a0, a1)) ch.add("armor " + Fmt.pct(a0) + " → " + Fmt.pct(a1) + (ctx.armor() != null ? " (gear and caps included)" : ""));
+        mult(ch, "defense bar", without.defenseBarMultiplier(), with.defenseBarMultiplier());
+        if (moved(without.resist(), with.resist())) {
+            ch.add("fire, cold and drowning resistance " + Fmt.signedPct(without.resist()) + " → " + Fmt.signedPct(with.resist()));
+        }
+        mult(ch, "max Essence", without.maxManaMultiplier(), with.maxManaMultiplier());
+        mult(ch, "Essence regeneration", without.manaRegenMultiplier(), with.manaRegenMultiplier());
+        mult(ch, "spell damage", without.spellDamageMultiplier(), with.spellDamageMultiplier());
+        for (Stat s : Stat.SECONDARY) {
+            // Attack speed counts for the weapon in hand (its skill's part on the same curve), as the game applies it.
+            double v0 = s == Stat.ATTACK_SPEED ? without.attackSpeed(ctx.held()) : without.secondary(s);
+            double v1 = s == Stat.ATTACK_SPEED ? with.attackSpeed(ctx.held()) : with.secondary(s);
+            if (!moved(v0, v1)) continue;
+            String what = s == Stat.ATTACK_SPEED ? "attack speed (" + ctx.held().displayName.toLowerCase(java.util.Locale.ROOT) + ")"
+                    : s.displayName.toLowerCase(java.util.Locale.ROOT);
+            String line = what + " " + (s.isChance() ? Fmt.pct(v0) + " → " + Fmt.pct(v1) : Fmt.signedPct(v0) + " → " + Fmt.signedPct(v1));
+            if (!ctx.statOn().test(s)) line += " (switched off)";
+            else if (ctx.pvpPaused()) line += " (paused: PvP)";
+            ch.add(line);
+        }
+        for (Yield y : Yield.values()) {
+            double c0 = chance(without.fortune(y), ctx), c1 = chance(with.fortune(y), ctx);
+            if (moved(c0, c1)) ch.add(noun(y) + " chance " + Fmt.pct(c0) + " → " + Fmt.pct(c1));
+        }
+        return new Lines(added, ch);
     }
 
-    private static String fortune(Yield y, AttributeSnapshot with, AttributeSnapshot without, Context ctx) {
-        if (y == null) {
-            return "extra drop chance " + Fmt.pct(chance(without.get(Attribute.FORTUNE), ctx)) + " → "
-                    + Fmt.pct(chance(with.get(Attribute.FORTUNE), ctx)) + " (every kind)";
+    /** "Vitality +6", "Fortune (crops) +10", "Movement speed +8%", with "switched off" where this server doesn't apply it. */
+    static String added(Contribution c, Context ctx) {
+        if (c.attribute() != null) {
+            String s = c.attribute().displayName + (c.yield() != null ? " (" + c.yield().id + ")" : "") + " " + signed(c.amount());
+            return ctx.attributeOn().test(c.attribute()) ? s : s + " · switched off on this server";
         }
-        String what = switch (y) {
+        Stat st = c.stat();
+        if (st == null) return "?";
+        String s = st == Stat.CRIT_MULTIPLIER ? st.displayName + " " + signed(c.amount()) + "x" : st.displayName + " " + signedPctOf(c.amount());
+        if (c.weapon() != null) s += " (" + c.weapon().displayName.toLowerCase(java.util.Locale.ROOT) + ")";
+        return st.isSecondary() && !ctx.statOn().test(st) ? s + " · switched off on this server" : s;
+    }
+
+    private static boolean moved(double a, double b) {
+        return Math.abs(a - b) > 1e-9 * Math.max(1.0, Math.abs(a));
+    }
+
+    private static void mult(List<String> out, String what, double a, double b) {
+        if (moved(a, b)) out.add(what + " " + Fmt.mult(a) + " → " + Fmt.mult(b));
+    }
+
+    private static void pct(List<String> out, String what, double a, double b) {
+        if (moved(a, b)) out.add(what + " " + Fmt.pct(a) + " → " + Fmt.pct(b));
+    }
+
+    private static String noun(Yield y) {
+        return switch (y) {
             case ORE -> "extra ore";
             case WOOD -> "extra log";
             case FISH -> "extra fish";
             case CROP -> "extra crop";
-        };
-        return what + " chance " + Fmt.pct(chance(without.fortune(y), ctx)) + " → " + Fmt.pct(chance(with.fortune(y), ctx));
-    }
-
-    private static String stat(Contribution c, AttributeSnapshot with, AttributeSnapshot without, Context ctx) {
-        Stat s = c.stat();
-        if (s == null) return null;
-        String raw = s.displayName + " " + signedPctOf(c.amount());
-        if (s.isSecondary()) {
-            if (!ctx.statOn().test(s)) return raw + " · switched off on this server";
-            String now = raw + " raw · " + Fmt.signedPct(with.secondary(s) - without.secondary(s)) + " now";
-            return ctx.pvpPaused() ? now + " (paused: PvP)" : now;
-        }
-        WeaponClass w = c.weapon() != null ? c.weapon() : ctx.weapon();
-        return switch (s) {
-            case DAMAGE -> raw + " · " + (c.weapon() != null ? w.displayName.toLowerCase(java.util.Locale.ROOT) : "weapon") + " damage bonus "
-                    + Fmt.signedPct(without.damageBonus(w)) + " → " + Fmt.signedPct(with.damageBonus(w));
-            case CRIT_CHANCE -> raw + " · crit chance " + Fmt.pct(without.critChance()) + " → " + Fmt.pct(with.critChance());
-            case CRIT_MULTIPLIER -> s.displayName + " " + signed(c.amount()) + " · crits " + Fmt.mult(without.critMultiplier()) + " → " + Fmt.mult(with.critMultiplier());
-            case LIFESTEAL -> raw + " · lifesteal " + Fmt.pct(without.lifesteal()) + " → " + Fmt.pct(with.lifesteal());
-            case MAX_HP -> raw + " · max health " + Numbers.hud(maxHealth(without, ctx)) + " → " + Numbers.hud(maxHealth(with, ctx));
-            case ARMOR -> raw + " · armor " + Fmt.signedPct(without.armorBonus()) + " → " + Fmt.signedPct(with.armorBonus());
-            case DEFENSE_BAR -> raw + " · defense bar " + Fmt.mult(without.defenseBarMultiplier()) + " → " + Fmt.mult(with.defenseBarMultiplier());
-            case RESIST -> raw + " · resistances " + Fmt.signedPct(without.resist()) + " → " + Fmt.signedPct(with.resist());
-            case MAX_MANA -> raw + " · max Essence " + Fmt.mult(without.maxManaMultiplier()) + " → " + Fmt.mult(with.maxManaMultiplier());
-            case MANA_REGEN -> raw + " · Essence regeneration " + Fmt.mult(without.manaRegenMultiplier()) + " → " + Fmt.mult(with.manaRegenMultiplier());
-            case SPELL_DAMAGE -> raw + " · spell damage " + Fmt.mult(without.spellDamageMultiplier()) + " → " + Fmt.mult(with.spellDamageMultiplier());
-            default -> raw;
         };
     }
 

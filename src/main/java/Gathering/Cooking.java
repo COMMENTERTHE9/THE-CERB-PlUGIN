@@ -66,6 +66,8 @@ public final class Cooking implements Listener, AttributeSource {
     public static final NamespacedKey MEAL = new NamespacedKey("cerberus", "meal");
     /** The meals a player has cooked (their ids). */
     public static final NamespacedKey COOKED = new NamespacedKey("cerberus", "meals_cooked");
+    /** The end time of the meal whose one-minute heads-up was shown: a relog doesn't say it again. */
+    public static final NamespacedKey MEAL_WARNED = new NamespacedKey("cerberus", "meal_warned");
     static final String SOURCE_PREFIX = "meal:";
     /** How long a click's payment stays armed: the click and its batch are handled within the tick. */
     private static final long WINDOW_NS = 100_000_000L;
@@ -596,6 +598,9 @@ public final class Cooking implements Listener, AttributeSource {
 
     /** The one-minute heads-up for meal {@code a}: one delayed task; a replaced, refreshed or ended meal never warns. */
     private void scheduleWarning(Player p, Active a, boolean eatenNow) {
+        var pdc = p.getPersistentDataContainer();
+        if (eatenNow) pdc.remove(MEAL_WARNED);
+        else if (Long.valueOf(a.end()).equals(pdc.get(MEAL_WARNED, PersistentDataType.LONG))) return; // said before the relog
         long delay = warnDelayMs(System.currentTimeMillis(), a.end(), eatenNow);
         if (delay < 0) return;
         p.getScheduler().runDelayed(plugin, t -> warn(p, a, WARN_TRIES), null, Math.max(1, delay / 50));
@@ -609,6 +614,7 @@ public final class Cooking implements Listener, AttributeSource {
         String text = "§6" + (m == null ? "Your meal" : m.name()) + " §7wears off in " + duration(left);
         if (headsUp.show(p, text, tries <= 1)) {
             p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 0.45f, 1.4f);
+            p.getPersistentDataContainer().set(MEAL_WARNED, PersistentDataType.LONG, a.end());
             warnings.increment();
             return;
         }
@@ -625,6 +631,7 @@ public final class Cooking implements Listener, AttributeSource {
         Active a = active.remove(id);
         restoring.remove(id);
         p.getPersistentDataContainer().remove(MEAL);
+        p.getPersistentDataContainer().remove(MEAL_WARNED);
         if (a == null) return;
         attributes.markDirty(id);
         refresh.accept(p);

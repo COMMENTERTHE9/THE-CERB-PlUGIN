@@ -59,6 +59,14 @@ public final class Ui {
         return cached.clone();
     }
 
+    /**
+     * Item with a name and lore, built fresh and never cached: for a tile whose text changes by itself every second (a
+     * countdown), which would otherwise fill the item cache with one-off entries and clear everyone's cached items.
+     */
+    public static ItemStack fresh(Material material, String name, List<String> lore) {
+        return build(material, name, lore);
+    }
+
     /** An immutable copy, or null when a line is null. */
     private static List<String> copyWithoutNulls(List<String> lore) {
         for (String s : lore) if (s == null) return null;
