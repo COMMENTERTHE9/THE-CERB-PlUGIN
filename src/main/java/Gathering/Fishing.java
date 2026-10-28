@@ -451,21 +451,25 @@ public final class Fishing implements Listener {
         return Component.text("!", color, TextDecoration.BOLD);
     }
 
+    /** The bite each bobber has now (a token per bite, cleared when it ends): the cue lives while its token does. */
+    private final Map<UUID, Object> biting = new ConcurrentHashMap<>();
+
     /**
      * The bite cue (owner's request, 2026-10-28): a bell in the owner's ear and a "!" over the bobber that only they see,
      * green, then yellow, then red as the bite runs out, gone when the bite ends (a catch, a miss, a reel-in, the bobber
-     * lost). One display entity per bite, never saved, and one task every 2 ticks on its own scheduler. Off with
-     * {@code /fishing cue off}. The bobber's thread (the BITE event, once it stands).
+     * lost). Any game mode. One display entity per bite, never saved, and one task every 2 ticks on its own scheduler.
+     * Off with {@code /fishing cue off}. The bobber's thread (the BITE event, once it stands).
      */
-    private void cue(Player p, FishHook hook, Cast c) {
+    private void cue(Player p, FishHook hook) {
         FishingJournal j = journals.get(p.getUniqueId());
         if (j != null && j.flag(QUIET_CUE)) return;
         boolean here = Bukkit.isOwnedByCurrentRegion(p);
         if (here) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, SoundCategory.PLAYERS, 0.8f, 1.6f);
         else p.getScheduler().run(plugin, t -> p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, SoundCategory.PLAYERS, 0.8f, 1.6f), null);
         if (!here) return; // shown to the owner alone, so only when they are on this region (a bobber over a region border: the bell)
-        int seq = c.biteSeq;
         UUID hid = hook.getUniqueId();
+        Object bite = new Object();
+        biting.put(hid, bite);
         TextDisplay d = hook.getWorld().spawn(hook.getLocation().add(0, 0.75, 0), TextDisplay.class, x -> {
             x.setPersistent(false);
             x.setVisibleByDefault(false);
@@ -483,7 +487,8 @@ public final class Fishing implements Listener {
         NamedTextColor[] shown = {cueColor(0)};
         d.getScheduler().runAtFixedRate(plugin, t -> {
             age[0] += 2;
-            if (!d.isValid() || !hook.isValid() || casts.get(hid) != c || !c.biteLive || c.biteSeq != seq || age[0] > CUE_MAX_TICKS) {
+            if (!d.isValid() || !hook.isValid() || biting.get(hid) != bite || age[0] > CUE_MAX_TICKS) {
+                biting.remove(hid, bite);
                 d.remove();
                 t.cancel();
                 return;
@@ -685,6 +690,7 @@ public final class Fishing implements Listener {
                 // Cancelled by another plugin: no catch, the bobber stays in the water and the cast goes on (its bait too).
                 // (A bite that became a creature cancels its own catch, and that cast is over.)
                 if (e.isCancelled() && (was == null || !was.calledOut)) return;
+                biting.remove(hook);
                 Cast c = casts.remove(hook);
                 castOf.remove(who, hook);
                 if (c != null) c.biteLive = false;
@@ -705,14 +711,16 @@ public final class Fishing implements Listener {
             }
             // A missed bite keeps the cast (the bobber stays and the next bite rolls again); only the bite is over. A bite
             // another plugin cancelled after ours never reached the bobber: nothing for the reel to take.
-            case FAILED_ATTEMPT -> { Cast c = casts.get(hook); if (c != null) c.biteLive = false; }
+            case FAILED_ATTEMPT -> { Cast c = casts.get(hook); if (c != null) c.biteLive = false; biting.remove(hook); }
             case BITE -> {
                 Cast c = casts.get(hook);
                 if (e.isCancelled()) { if (c != null) c.biteLive = false; }
-                else if (c != null && c.biteLive && c.call == null) cue(p, e.getHook(), c); // the bite stands: show it
+                // The bite stands: show it, in any game mode (creative fishing is vanilla, but a bite is still a bite).
+                else if (c == null || (c.biteLive && c.call == null)) cue(p, e.getHook());
             }
             case REEL_IN, IN_GROUND, CAUGHT_ENTITY -> {
                 if (e.isCancelled()) return; // another plugin kept the bobber out: the cast goes on, its bait too
+                biting.remove(hook);
                 casts.remove(hook);
                 outcomes.remove(hook);
                 castOf.remove(who, hook);

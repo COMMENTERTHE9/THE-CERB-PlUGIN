@@ -228,7 +228,7 @@ Each notable catch can become one trophy, and the weight always comes from that 
 
 ## 13b. The bite cue (owner's request, 2026-10-28)
 
-When a fish bites, the owner hears a bell (note block, pitch 1.6), and a "!" appears over the bobber for them alone (a text display: never saved, hidden from everyone else). It is green, then yellow from 8 ticks, then red from 16, before the shortest bite (20 ticks) can end. It goes when the bite does: a catch, a miss, a reel-in or the bobber lost, at most 3 s. There is no cue for a Sneak-cast call, or for a bite another plugin cancels. It costs one display entity per bite, with one task every 2 ticks on that entity's own scheduler. `/fishing cue off|on` toggles it, saved in the journal (on by default). Checked by `fishgear.js cue`.
+When a fish bites, the owner hears a bell (note block, pitch 1.6), and a "!" appears over the bobber for them alone (a text display: never saved, hidden from everyone else). It is green, then yellow from 8 ticks, then red from 16, before the shortest bite (20 ticks) can end. It goes when the bite does: a catch, a miss, a reel-in or the bobber lost, at most 3 s. It shows in any game mode (creative fishing is vanilla, but a bite is still a bite). There is no cue for a Sneak-cast call, or for a bite another plugin cancels. It costs one display entity per bite, with one task every 2 ticks on that entity's own scheduler. `/fishing cue off|on` toggles it, saved in the journal (on by default). Checked by `fishgear.js cue`.
 
 ## 14. Commands
 

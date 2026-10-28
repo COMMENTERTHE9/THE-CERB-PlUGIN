@@ -51,7 +51,8 @@
 //   crash-set / crash-check - the same mid-cast, but the player's data is written with the bait held (needs
 //              CerbTestProtect's /testsave) and the server is killed: the bait is back once at the next join, not twice
 //   cue      - the bite cue: a "!" over the bobber, green then yellow then red, gone when the fish gets away or is caught,
-//              a bell in the owner's ear, nothing for another player at the pond, nothing with /fishing cue off
+//              a bell in the owner's ear, nothing for another player at the pond, nothing with /fishing cue off, and in
+//              creative too
 //   all      - pages, track, summary, terms, equip, bait, reel, rewards, specialists, trophy, cue
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
@@ -1425,6 +1426,17 @@ async function cue() {
     const caught = await catchOne();
     check('/fishing cue off: the bite and the catch as usual, no "!", no bell', caught && cues.length === n && bells.length === b, `caught ${caught}; ${cues.length - n} "!", ${bells.length - b} bell(s)`);
     await cmd('/fishing cue on', 500);
+    // Creative: vanilla fishing, but a bite is still shown.
+    await cmd('/gamemode creative', 500);
+    await stand();
+    const m = cues.length;
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    const inCreative = await castWait(m);
+    check('In creative too: a bite shows the "!"', !!inCreative, inCreative ? inCreative.colors.join(',') : 'no "!" in 45 s');
+    bot.activateItem(); await sleep(150); bot.deactivateItem();
+    await sleep(800);
+    check('...and it goes when you reel in', !!inCreative && inCreative.gone > 0, inCreative && inCreative.gone ? 'gone' : 'still there');
+    await cmd('/gamemode survival', 500);
   } finally {
     bot._client.removeListener('spawn_entity', onSpawn); bot._client.removeListener('entity_metadata', onMeta);
     bot._client.removeListener('entity_destroy', onGone); bot._client.removeListener('sound_effect', onSound);
