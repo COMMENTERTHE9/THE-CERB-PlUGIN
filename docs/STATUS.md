@@ -1096,6 +1096,62 @@ The way into the Mage was decided on 2026-10-27: Spell Weaving 5 (`docs/DECISION
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §16; every value is in `resources.yml` → `farming:` and `cooking:`): crop XP and levels, Replant at 10, Wide Harvest's squares, the quality odds, Cooking XP per food, each meal's level, recipe, effect and time, the tier steps; whether meals feel worth making; and **decision 6** (lifesteal 2.7% from Weapon Mastery level 1), which you said to revisit once healing exists: meals heal now.
 
+## Done: Active effects (2026-10-28, your request)
+
+**What it is for:** you asked to see the effects on you and how long they last ("I can't see how much longer I have it"). The Player Menu now shows what is affecting your character, what it does and when it ends. It is an interface change only: no meal, ability, buff, attribute, Cooking or PvP number changed. Design: `docs/design/ACTIVE_EFFECTS.md`.
+
+**What you see:**
+- **The hub's head** lists the effects on you after your attributes, meal first, as "Hearty Stew — 8m 42s remaining" (at most four, then "+N more"; "No active effects" when there are none). The times count down while the menu is open.
+- **Clicking the head opens Active Effects**, one tile per effect:
+  - its name and time left, and its source ("Meal · Common · Survival", "Warrior ability", "Admin test buff", "Potion effect (vanilla)");
+  - **What it does:** what it adds ("• Vitality +6", "• Movement speed +8%"), then under **Now:** every number that moves because of it, worked out by the attribute engine with and without it, caps and diminishing returns included: "max health 103 → 109", "movement speed +0.2% → +6.9%", "sword damage x1.00 → x1.15", crit, lifesteal, armor (through the game's own rule, gear and caps included), the defense bar, resistances, Essence, each speed stat (attack speed for the weapon in your hand), Fortune's extra-drop chances;
+  - a meal's restoration on its own line with its own seconds ("Restoration: 17s left"), then "not running now". It never claims to heal for the meal's whole time;
+  - no effects: a clear message pointing to Stats & Attributes for the permanent numbers.
+- **Always on** (equipped passives and keystone) has a tile of its own, labelled not timed. Permanent skill attributes stay on Stats & Attributes, which keeps its hub tile (and the Health and Essence tiles); the new screen has a shortcut to it.
+- **In a PvP fight** the header and tiles say that combat bonuses count against creatures only for now (PvP plays as before Attributes 2.0), that a meal's healing waits for the fight to end, and that speed and handling bonuses are paused.
+- **About a minute before a meal ends**, the HUD says so once ("Hearty Stew wears off in 1 min") with a soft chime. It waits for a free moment on the bar, behind ability and fight messages and level-ups, never replaces one, never comes for a meal you replaced or refreshed, and isn't said again after a relog.
+
+**Sources shown, each read from the system that runs it:**
+- the meal (`Gathering/Cooking`);
+- class abilities: War Cry's buff, a Riposte guard, a Feint (`Classes/ClassService`);
+- the admin's dev buffs (`Attributes/BuffSource`) and an admin test realm;
+- vanilla potion effects, described as they work under Cerberus: Regeneration, Instant Health, Absorption, Health Boost and Resistance say they do nothing to Cerberus health; Strength and Weakness change a melee hit's base damage; Fire Resistance stops fire and lava.
+
+Nothing planned (Alchemy, Herbalism) is shown yet. A later system offers its effects through one small interface (`Effects/EffectProvider`), and the menus need no change.
+
+**How it stays light:**
+- A screen that shows a countdown asks the menu framework for one update a second (`GUIs/menu/MenuTicker`): for that viewer, on their own thread, only while that screen is open and something on it is timed. It rewrites only the tiles with a time, built fresh (never in the shared item cache).
+- When an effect ends or another starts, or a PvP fight starts or ends, the screen is drawn again, so nothing that ended shows as running. An open menu with nothing timed on it runs nothing. There is no server-wide effect scanner.
+- The heads-up is one delayed task per meal.
+
+**Found by the independent review, and fixed** (a separate reviewer read the code against the design; each finding checked before it was fixed):
+1. *Medium:* in a PvP fight the screen said only speed bonuses were paused, as if the rest counted against players; it now says combat bonuses count against creatures only, and a meal's healing waits.
+2. *Medium:* "what it does" showed one number per attribute (Vitality's health, not its other effects; Fortitude's raw armor bonus, not what the armor caps let through); it now lists every number the effect moves, armor through the game's own rule and attack speed for the weapon in hand.
+3. *Medium:* the meal heads-up, after waiting for a free moment, could replace a level-up notice on the HUD; it now queues behind it.
+4. The countdown ran with only untimed effects on screen (an infinite potion), and with more than 28 effects a change among the hidden ones went unseen; it runs only while something is timed, and any change redraws the screen.
+5. The countdown's tiles went into the menus' shared item cache, one new entry a second, which flushed it; they are built uncached.
+6. Vanilla texts: Infested was described as acting on death; Strength and Weakness implied Cerberus's multipliers in PvP. Corrected. Riposte's and Feint's notes now say they work against creatures.
+7. A relog after the heads-up said it again; the meal it was said for is recorded on the player now.
+
+**Checks** (a sandbox Folia 1.21.11 server in the cloud container; your Windows world and database were never touched; `tools/playtest/effects.js`, survival):
+- **Every phase on the final build** (`effects.js` all 48/48): nothing running; a meal (its tile, "Vitality +6" and max health before → after as the HUD shows, the restoration's own seconds, then "not running"); a refresh; a replacement (only the ration, its movement speed total before → after equal to the Stats page and the server's walking speed); death; a relog (time run on in real time, restoration not running); War Cry (its tile, the sword damage multiplier x1.15 of itself, gone when it ends with the screen redrawn); an equipped passive on the Always on tile; a dev buff; vanilla potions (and in game: Fire Resistance stops lava, Resistance changes nothing); five effects together in order; the head's navigation and Stats still on its tile.
+- **The heads-up** (`effects.js warn` 6/6): about a minute before the end, once; the meal ending while the screen is open; none for a meal replaced before it; not again after a relog; one not yet said comes a moment after the join.
+- **A clean stop and start** with a meal and a potion running (`restart-set`/`restart-check` 1/1 and 2/2): the meal is there, its time having run on in real time (597 s before, 24 s away, 570 s after); the potion too (vanilla keeps it, its time paused while offline).
+- **Regression on the final build** (372 checks, all passing): `effects.js` all 48/48 and warn 6/6; smoke 14/14; `menu.js` nav 63/63, names 4/4, smithing 11/11, safety 18/18, motion 22/22; `admin.js` main 40/40, attributes 14/14; `progression.js` stats 14/14; `cooking.js` 33/33; `abilities.js` warrior 21/21, duelist 15/15; `levelup.js` 19/19 (the HUD queue leaves level-up notices as they were); `fishgear.js` pages 30/30. The build before the review fixes passed the same slices (46 + 4 effects checks then).
+- **Unit tests:** 378 (`EffectBenefitsTest` rewritten for the new lines: every moved number, armor through the game's rule, paused and switched-off marks; `ActiveEffectsTest`, `EffectsTextTest`).
+
+**Performance** (`docs/PERFORMANCE.md` → "Active effects"; 9 bots, two 60 s profiles per load, the build before against the final one):
+- a countdown costs about 40–70 µs a second per open screen that shows a timed effect (nine open hubs with a meal running: 0.032 ms per tick against 0.013; nine Active Effects screens: 0.037–0.047 against 0.008–0.013), and nothing when nothing on the screen is timed (an open menu: 0.005–0.013, as before);
+- clicking the head costs about 0.35 ms, about 0.09 ms more than opening Stats did, for working out every number each effect moves;
+- idle 0.013–0.015 (as before); TPS 20.0 in every run. The `menu` load ran higher on this build (0.209–0.313 against 0.162–0.186), in opening the window (the server's own work), not in the hub's drawing; it is measured again at the end of the milestone.
+
+**Limits:**
+- A new effect that starts while a screen with no timed effects is open (an admin's buff, a splash potion) shows when the screen is opened again.
+- Riposte's guard (0.6 s) is too short to catch in a menu; it is listed while it runs.
+- Vanilla effect times are counted in the player's ticks; a lagging region counts them slower than the clock.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §17): whether the head's list and the screen make it clear what you have, what it does and when it ends; the wording of the vanilla effects; the heads-up's timing and text.
+
 ## Roadmap
 
 `docs/ROADMAP.md`: performance first, then decisions A–E, Player Menu 2.1 animations, and the classes and abilities design and prototype. Earlier candidates still on the list: the gathering, crafting and Fortune loop; bestiary and zones as data; the first weapons and gear slice; Ascension (realms); the next speed stats (`ATTRIBUTE_EXPANSION.md`). Each milestone starts with a performance baseline and ends with in-game checks and new playtest checks.

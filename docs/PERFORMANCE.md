@@ -398,8 +398,40 @@ TPS was 20.0 in every run. In `farm` and `widefarm`, two of the nine bots refill
   - campfires in bulk: one record per slot a player filled, dropped when the food leaves;
   - a sweep across a region edge: it stops there by design.
 
+## Active effects (2026-10-28)
+
+**What it adds:**
+- **A countdown while a screen shows a timed effect** (the hub's head, the Active Effects screen): one update a second for that viewer, on their own thread, rewriting only the tiles with a time (`GUIs/menu/MenuTicker`). It stops when the screen closes or nothing on it is timed.
+- **Clicking the head** opens Active Effects instead of Stats: the screen works out what each shown effect moves, with the attribute engine with and without it.
+- **A meal's heads-up:** one delayed task per meal.
+- **Nothing else runs:** no server-wide effect scanner, nothing per tick while no such screen is open.
+
+**Method:** as above (9 bots, 80 s load, a warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), each set right after a restart. **Before:** cc82ef9, the build before Active Effects, measured before any code. **After:** b7a186e, the build with the review's fixes. Loads:
+- `mealidle` (new): each bot eats a Hearty Stew and has Speed I, then leaves the hub open (the head counts down on the new build);
+- `effectsmenu` (new): with the same meal and potion, open the menu, click the head, Back, close, as fast as a hurried player (Stats before, Active Effects after);
+- `effectsidle` (new): the same, leaving the head's screen open (Active Effects counts down on the new build);
+- `menu`, `menuidle`, `idle`.
+
+| Load | Before, ms per tick (two runs) | After | Region ms per tick, before → after | Work per bot in 80 s |
+|---|---|---|---|---|
+| `mealidle` | 0.013 / 0.014 | 0.032 / 0.033 | 1.9 / 1.7 → 1.5 / 1.8 | an open hub, a meal and a potion running |
+| `effectsidle` | 0.008 / 0.013 | 0.047 / 0.037 | 1.7 / 1.6 → 1.7 / 1.7 | the head's screen left open |
+| `effectsmenu` | 0.294 / 0.302 | 0.417 / 0.384 | 2.7 / 2.6 → 3.1 / 2.7 | 51 menus, 153 clicks |
+| `menu` | 0.186 / 0.162 | 0.313 / 0.209 | 3.8 / 2.8 → 4.1 / 2.7 | 25 menus, 225 clicks |
+| `menuidle` | 0.009 / 0.010 | 0.013 / 0.005 | 1.6 / 1.5 → 1.7 / 1.5 | one open menu |
+| `idle` | 0.013 / 0.012 | 0.013 / 0.015 | 1.6 / 1.4 → 1.6 / 1.6 | nothing |
+
+TPS was 20.0 in every run.
+
+- **A countdown costs about 40–70 µs a second per open screen.** Nine open hubs with a meal running: +0.019 ms per tick (about 42 µs per viewer per second); nine Active Effects screens open: +0.03 ms per tick (about 67 µs per viewer per second, every timed tile and the header). Under the ticker, `ActiveEffectsMenu.withLore` (copying a tile and setting its lore) is 21 of its 30 samples a minute. It runs only while a screen with a running countdown is open; an open menu with nothing timed (`menuidle`) costs what it did.
+- **The head's click costs about 0.09 ms more:** about 0.35 ms per click against 0.26 ms when it opened Stats, for working out every number each effect moves with the engine (`ActiveEffectsMenu.content`, `summary`, `benefits`: a few samples each).
+- **`menu`:** 0.209–0.313 against 0.162–0.186. The hub's own drawing didn't grow (`PlayerHubMenu.content`: 4–7 samples a minute on both builds); the difference is in opening the window (`MenuManager.show`, which is the server's own work: 132–169 samples against 78–101), which also varies most between runs on the same build. To be measured again at the end of the milestone (the integration pass).
+- **Allocations:** JFR's sampled allocations jump between runs of the same load (one run reports 150 MB/s under `withLore`, the next 0.5 MB/s), so they are not compared.
+- **Not measured:** many players with many effects at once; a screen shows at most 28 tiles, so the work per second is bounded.
+
 ## Budgets for the next milestones
 
+- **Active effects:** met. A countdown costs about 40–70 µs a second per open screen that shows a timed effect, and nothing otherwise; the head's click about 0.35 ms, about 0.09 ms more than Stats. If many players keep the screen open, the next step is to rewrite only the time line of each tile (not done: no measured problem).
 - **Farming and Cooking:** met. A paid harvest costs about 10 µs and a paid craft about 20 µs, mostly the XP path every skill shares. Wide Harvest is bounded at 16 crops a tick per sweep, and nine players sweeping cost what nine harvesting by hand do. Nothing runs per tick and nothing touches the database per harvest or meal. The XP display's HUD line is now the largest per-gain cost in every gathering loop; coalescing it per tick would be the next step if a loop ever needs it (not done: no measured problem).
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.

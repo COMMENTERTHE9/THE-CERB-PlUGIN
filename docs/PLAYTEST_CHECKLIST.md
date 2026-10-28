@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 16, Farming and Cooking (about an hour).** Section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -316,6 +316,27 @@ Farming grows ingredients; Cooking turns them into meals that make you stronger 
 | 13 | Player Menu → Skills → **Cooking** → **Cookbook**; Collections → Meals. | Each meal with its level, ingredients, effect and duration at the tier you cook at, and whether you have cooked it. |
 | 14 | Overall. | Values to judge (all in `resources.yml` → `farming:` and `cooking:`): crop XP and levels, Replant at 10, Wide Harvest's squares, the quality odds (fine 10/22, superior 2/8, masterwork 0/3 at 50/100), Cooking XP per food, each meal's level, recipe, effect and duration, the tier steps (×1.2/1.4/1.6 potency, ×1.25/1.5/2 duration). |
 
-## 17. Afterwards
+## 17. Active effects
+
+What is on your character, what it does, and how long it lasts (`docs/design/ACTIVE_EFFECTS.md`). Helpers: `/cerb cook give <you> <meal> [tier] [n]` and `/cerb cook clear <you>`; `/effect give @s <effect> <seconds> <level>`; Control Center → Attributes → you → Dev buffs.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Open the Player Menu with nothing running. Hover your head, then click it. | The head lists your attributes, then "Active effects: No active effects". Clicking opens **Active Effects**, which says there are none and that your permanent numbers are on Stats & Attributes. |
+| 2 | Eat a Hearty Stew (`/cerb cook give <you> hearty_stew common 1`). Open the menu and hover your head. | "Hearty Stew — 9m 5Xs remaining" comes first under Active effects. The time counts down while the menu stays open. |
+| 3 | Click your head and watch the stew's tile for half a minute. | The tile shows its name and time left, "Meal · Common · Survival", then **What it does:** "• Vitality +6", and under **Now:** your max health before → after (103 → 109 on a new character). Below: "Restoration: Ns left" for the first 20 s, then "not running now". The times count down without reopening. |
+| 4 | Eat a Trail Ration, then the same again. | The ration replaces the stew: only the ration shows, "• Movement speed +8%" and under Now: your movement speed total before → after (the same numbers as the Stats page). Eating it again resets its time. |
+| 5 | As a Warrior with War Cry in your loadout: cast it, then open the menu quickly and click your head. | War Cry with its seconds left, "Warrior ability", "• Damage +15%" and under Now: your weapon's damage multiplier before → after (x1.15 of it). When it ends, the screen redraws without it. |
+| 6 | Hold a sword, then eat a meal or get a buff that changes several numbers (a dev buff of +100 Agility or Fortitude). | Every number it moves is listed under Now: crit chance and damage, attack speed for the weapon in your hand, armor (with your gear and the caps), the defense bar, resistances... A number that doesn't move isn't listed. |
+| 7 | `/effect give` yourself Speed II, Regeneration and an infinite Luck. | Each shows its level and time ("until removed" for the infinite one), described as it works here: Speed "Walking speed +40%", Regeneration "No effect on Cerberus health…". Clear one while the screen is open: its tile goes. |
+| 8 | Give yourself an admin dev buff: Control Center → Attributes → you → Dev buffs → +100 Vitality. | "Dev buff +100 Vitality — 4m 5Xs remaining", "Admin test buff", "• Vitality +100" and max health before → after. Clearing it removes the tile. |
+| 9 | Put a passive or a keystone in the loadout you use. | An **Always on** tile (bottom row, next to Back) lists it apart from the timed effects, with what it adds and changes. |
+| 10 | Let a meal run down to its last minute. | About a minute before it ends, the HUD says "Hearty Stew wears off in 1 min" once, with a soft chime. It never covers an ability message or a level-up (it waits for them), and never comes for a meal you replaced. Relogging after it doesn't say it again. |
+| 11 | With a meal running: relog; restart the server; die. | After a relog or restart the meal is there, its time having run on in real time. After death it is gone. |
+| 12 | If you can, with a friend: be in a PvP fight with a meal running and open the screen. | The header says combat bonuses count against creatures only for now and a meal's healing waits for the fight to end; the restoration line says "paused: PvP". |
+| 13 | Look for Stats & Attributes. | Still on its hub tile (blaze powder) and behind the Health and Essence tiles. The Active Effects screen has a shortcut to it too. |
+| 14 | Overall. | Is it clear what you have, what it does and when it ends? Note wording, order, or anything missing. |
+
+## 18. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

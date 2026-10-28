@@ -72,14 +72,30 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
+## Combat Improvements, Replant Enchantment, Herbalism & Alchemy (owner, 2026-10-28, approved): in progress
+
+The owner's two-phase milestone, built in verified increments on the development branch (never merged into `master` without the owner's word; the owner's Windows server, world and database are never touched; experiments only on the sandbox):
+
+| # | Increment | State |
+|---|---|---|
+| 0 | **Preflight:** Active Effects' regression, persistence, performance and documentation confirmed; the independent review's findings fixed | Done (`docs/STATUS.md` → "Done: Active effects") |
+| 1 | **Martial Expertise +1.25 Agility per level** (Power on bare hands kept) and **Iron Reprisal** (Heavy Armor Mastery throws melee attackers back; no chance, no reflected damage, PvP switchable) | In progress (`docs/design/COMBAT_IMPROVEMENTS.md`) |
+| 2 | **Replant as a tool:** a registered enchantment if practical, otherwise a Cerberus hoe upgrade; the tool is the source, no Farming 10; Wide Harvest recognises it; seed accounting kept; a survival way to get it; a migration message | Next |
+| 3 | **Lifesteal review:** measured analysis and a recommendation, no change (decision 6 stays until the owner decides) | Planned |
+| 4 | **Herbalism:** herbs as data, XP, discoveries, +0.25 Essence and +0.5 Fortune on herbs per level, potency/quality, milestones (rare herbs at 25, reagent quality at 50), one bounded active technique, the journal through the skill page and Collections | Planned |
+| 5 | **Alchemy:** XP only for completed brews at the brewing stand, +0.5 Essence per level, potency and duration progression, potions as data with Western names, healing on the Cerberus pool, stacking and replacement rules with meals, shown through Active Effects, saved | Planned |
+| 6 | **Integration:** full regression, independent reviews, performance (MSPT, CPU samples, allocations, task counts), every document, the final report | Planned |
+
+Not in this milestone: reflected damage, any lifesteal change, the proposals in `docs/AUTOMATION_REVIEW.md`, the cultivation realm system, a Folia upgrade.
+
 ## Next: proposed order (2026-10-28, waiting for the owner)
 
 After playing the Farming and Cooking build ("everything seems to work"), the owner asked for the list of what comes next. A proposal: the order is the owner's to set, and nothing here is approved except item 1, the owner's own request.
 
 **Right away (small):**
-1. **Active effects in the Player Menu** (the owner's request, 2026-10-28: "it would help to see all the effects that you have on you… I can't see how much longer I have it"): every effect running on the player with its time left, the meal first (later potions and other timed buffs), in the menu head's tooltip with a click for details, and a HUD heads-up a minute before a meal ends. Until it is built, `/cooking` shows the running meal and its time left.
-2. **Replant as a tool enchantment** (the owner's note, 2026-10-28; `docs/DECISIONS.md`): settle how, then build it.
-3. **Decision 6 (lifesteal):** revisit now that meals heal.
+1. **Active effects in the Player Menu** (the owner's request, 2026-10-28): done (`docs/STATUS.md` → "Done: Active effects").
+2. **Replant as a tool enchantment** (the owner's note, 2026-10-28; `docs/DECISIONS.md`): taken up by the milestone above, increment 2.
+3. **Decision 6 (lifesteal):** reviewed by the milestone above, increment 3 (analysis only).
 4. **A reviewed pull request into `master`** when the owner is happy with the branch (never merged automatically).
 
 **Proposals waiting for a yes or no** (written, nothing built):
@@ -89,7 +105,7 @@ After playing the Farming and Cooking build ("everything seems to work"), the ow
 8. The Farm Ledger (`docs/design/FARMING_COOKING.md` §6): machines paying their owner.
 
 **The next skill loops** (10 of the 35 skills have a real loop now: Blade Mastery, Weapon Mastery, Ranged Precision, Pathfinding, Mining, Smithing, Woodcutting, Fishing, Farming, Cooking):
-9. **Herbalism and Alchemy** (recommended next): gather herbs, brew potions; timed buffs and healing on the same path meals use, with Farming's crops as ingredients.
+9. **Herbalism and Alchemy:** taken up by the milestone above (increments 4 and 5).
 10. **Field Medicine:** healing items on the Cerberus health pool.
 11. **Crafting, Enchanting and Repairing:** the item loop around Smithing.
 12. **Animal Taming and Riding:** pets and mounts.

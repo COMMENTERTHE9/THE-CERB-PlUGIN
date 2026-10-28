@@ -46,6 +46,17 @@ Cerberus is a deep, challenging and rewarding RPG. It does not copy Hypixel SkyB
   - **pacing that applies equally to active and passive play:** for example a mob's XP budget.
 - "The player wasn't pressing keys" is never a reason.
 
+## Combat Improvements, Replant Enchantment, Herbalism & Alchemy (owner, 2026-10-28)
+
+The two-phase milestone is approved for development and testing in the sandbox (`docs/ROADMAP.md`). The owner's rulings in it:
+- **Active Effects first:** its regression, persistence, performance and documents confirmed before Alchemy extends it; related unfinished work repaired without redesigning it. Approved, done (`docs/STATUS.md` → "Done: Active effects").
+- **Martial Expertise gives +1.25 Agility per level**, keeping Power (unarmed) +1.0 per level, through the shared engine, caps and PvP policy, with a migration for edited configs. Approved, in progress (`docs/design/COMBAT_IMPROVEMENTS.md` §1, which shows what it means at levels 1–100).
+- **Iron Reprisal:** Heavy Armor Mastery throws melee attackers back (mobs, and players when PvP is configured on), stronger with the level and the heavy pieces worn; a short cooldown is allowed; **no random chance and no reflected damage.** Approved, in progress (`docs/design/COMBAT_IMPROVEMENTS.md` §2).
+- **No reflected damage** unless the owner approves it separately. **No lifesteal change** (no rebalance, removal or reduction) without the owner's explicit approval: the lifesteal increment is a measured review and a recommendation only.
+- **Replant as a tool:** a real registered enchantment if practical, else the Cerberus item-upgrade system, never a lore line pretending to be a vanilla enchantment; the tool is the source (no Farming 10 requirement); Wide Harvest recognises it; seed accounting stays; a survival way to get it; a migration message. Approved, next.
+- **Herbalism and Alchemy** as specified (Essence growth, Fortune on herbs, potency and quality, milestones, a bounded active technique; brewing-stand XP only for completed brews, potions as data with Western names, healing on the Cerberus pool, stacking and replacement rules with meals, shown through Active Effects). Approved, planned.
+- **Not authorized here:** merging into `master`; touching the owner's Windows server, world, player data or production database; upgrading Folia; the proposals in `docs/AUTOMATION_REVIEW.md`; the cultivation realm system; a giant additional subsystem; spending money.
+
 ## Farming, Cooking and meaningful food (owner, 2026-10-28)
 
 The milestone is approved for development and testing in the sandbox (`docs/ROADMAP.md`, `docs/design/FARMING_COOKING.md`). The owner's rulings in it:
