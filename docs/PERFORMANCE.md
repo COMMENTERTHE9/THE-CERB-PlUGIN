@@ -354,8 +354,53 @@ TPS was 20.0 in every run.
 - **Crafting:** 0.077–0.080 ms per tick for 122 pickaxes per bot. There is no before sample in this session. The grid listener looks a recipe up only for a locked recipe's result, so it does less than before the review's fix.
 - **Not measured:** many players fishing with Surveyor's Float, bait and tracking all at once beyond the `fishing` load's nine; the journal's `n=` growth is bounded at 12.
 
+## Farming and Cooking (2026-10-28)
+
+**What it adds to frequent events:**
+- **A harvest** (a crop broken or picked): a crop lookup by material, a ripeness read, the placed-block memory only for melons, pumpkins, sugar cane and cactus, one roll each for Fortune and quality from the cached attribute snapshot, and the XP payment with its fraction carried. Replant sets one block in the same call.
+- **A wide harvest:** at most 16 crops a tick on the field's region thread, each offered to protection plugins and checked against the world border and spawn protection; one sweep per player; nothing runs while no sweep does.
+- **Cooking:**
+  - the crafted-items statistic path that already existed (furnace and smoker takes, crafting);
+  - in the crafting grid, a recipe lookup only when its shown result is a meal's base item;
+  - one record per campfire slot a player filled.
+- **A meal:** one snapshot rebuild when eaten and one when it ends, one task at its end, and a restoration task of up to its seconds (one heal a second).
+- **Nothing runs per tick** while nobody farms or cooks, and nothing is written to the database for any of it beyond the skill saves every XP gain already makes.
+
+**Method:** as above (9 bots, 80 s load, a warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), mobs cleared and spawning off, each set right after a restart. **Before:** 69e772d, the build before this milestone, measured before any code. **After:** the final build (a918e75's code; this commit changes only tests and docs). Loads:
+- `farm` (new): nine bots harvesting ripe wheat by hand in survival at Farming 1, the field refilled as they go;
+- `widefarm` (new, after only): the same at Farming 50 with Sneak held, so every cut is a 5×5 wide harvest;
+- `cook` (new): bread at a crafting table, about two a second each;
+- `menu`, `menuidle`, `idle`.
+
+| Load | Before, ms per tick (two runs) | After | Region ms per tick, before → after | Work per bot in 80 s |
+|---|---|---|---|---|
+| `farm` | 0.013 / 0.017 | 0.032 / 0.028 | 6.4 / 6.1 → 7.1 / 5.5 | 267–268 harvests |
+| `widefarm` | none (no Wide Harvest) | 0.028 / 0.038 | 5.3 / 5.2 | 111–112 sweeps over 14 fresh fields |
+| `cook` | 0.072 / 0.048 | 0.074 / 0.084 | 5.5 / 4.8 → 4.4 / 5.0 | 130–132 bread |
+| `menu` | 0.222 / 0.191 | 0.182 / 0.179 | 3.0 / 3.1 → 3.2 / 2.7 | 25 menus, 225 clicks |
+| `menuidle` | 0.012 / 0.013 | 0.006 / 0.007 | 1.8 / 1.8 → 1.7 / 1.8 | one open menu |
+| `idle` | 0.013 / 0.008 | 0.008 / 0.008 | 1.7 / 1.7 → 1.6 / 1.8 | nothing |
+
+TPS was 20.0 in every run. In `farm` and `widefarm`, two of the nine bots refill their field after every cut on both builds (the lanes' layout in `load.js`, as in the `fishing` load), so their counts are lower.
+
+- **Harvesting by hand pays now, for about 10 µs a harvest.** 0.028–0.032 ms per tick against 0.013–0.017 when wheat paid nothing, for about 2,400 harvests in 80 s. `Farming.onBreak` is 19 of about 2,080 region-thread samples a minute. Most of it is the XP path every skill shares (`SkillManager.applyAward`, `saveSkills`, the XP display's HUD line); the crop's own rules (`Farming.ripe`, the Fortune roll) are a sample or two. The region's own time per tick did not change.
+- **Wide Harvest stays in small steps.**
+  - Nine players sweeping 5×5 fields as fast as the load can: 0.028–0.038 ms per tick, the region at 5.2–5.3 ms, lower than nine players harvesting by hand.
+  - The sweep's steps (`Farming`'s step lambdas) are about 11 samples a minute.
+  - A sweep breaks at most 16 crops a tick, each paid through the same path, so even a 9×9 (81 crops) is six steps over six ticks, never one long tick.
+- **Cooking costs the XP it pays.**
+  - Bread now pays Cooking XP: 0.074–0.084 ms per tick against 0.048–0.072 when it paid nothing.
+  - `Cooking.onCrafted` is 18–20 samples a minute, about 20 µs per loaf. All of it is under `GatheringService.award`: the XP display's line (12) and the skill save (5).
+  - The grid listener's recipe lookup didn't fire once: there is no `Cooking.onPrepare` sample.
+- **Menus are the same or lower:** `menu` 0.179–0.182 against 0.191–0.222, an open menu 0.006–0.007 against 0.012–0.013, idle 0.008.
+- **Not measured:**
+  - many players eating meals at once: a meal is one snapshot rebuild per eat, as an equipment change is;
+  - campfires in bulk: one record per slot a player filled, dropped when the food leaves;
+  - a sweep across a region edge: it stops there by design.
+
 ## Budgets for the next milestones
 
+- **Farming and Cooking:** met. A paid harvest costs about 10 µs and a paid craft about 20 µs, mostly the XP path every skill shares. Wide Harvest is bounded at 16 crops a tick per sweep, and nine players sweeping cost what nine harvesting by hand do. Nothing runs per tick and nothing touches the database per harvest or meal. The XP display's HUD line is now the largest per-gain cost in every gathering loop; coalescing it per tick would be the next step if a loop ever needs it (not done: no measured problem).
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.

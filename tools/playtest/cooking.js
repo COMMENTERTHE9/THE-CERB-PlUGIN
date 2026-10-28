@@ -16,6 +16,9 @@
 //   expire   - a meal wears off at its time and its effect leaves (a one-minute Hearty Stew written into the sandbox's
 //              resources.yml for the phase and put back; needs SERVER_DIR)
 //   menu     - Player Menu → Skills → Cooking → Cookbook and Collections → Meals agree with /cooking
+//   restart-set / restart-check - a running Superior Hearty Stew and Replant switched off, the bot online when the server
+//              stops cleanly; after the start the meal runs on with its time and the switch is still off (run restart-set,
+//              stop and start the server, then restart-check with the same name)
 //   all      - furnace, campfire, craft, meals, eat, persist, menu (the default)
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
@@ -460,6 +463,29 @@ async function persistPhase() {
   check('Death ends it', !!saw(/No meal running/, a2), saw(/meal|Meal/, a2) || '');
 }
 
+/** A running meal and Farming's Replant switch, with the bot online when the server stops cleanly. */
+async function restartSetPhase() {
+  await kitchen();
+  await setLevel(10, 'Farming');
+  await cmd('/farming replant off', 500);
+  await cmd(`/cerb cook give ${NAME} hearty_stew superior 1`, 600);
+  const ate = await eatOne('Hearty Stew');
+  const line = saw(/Superior.*Hearty Stew.*left/, await cmd('/cooking', 800)) || '';
+  const f0 = await cmd('/farming', 800);
+  check('Before the stop: a Superior Hearty Stew running and Replant off (stop and start the server, then run restart-check)',
+    ate && !!line && !!saw(/Replant off/, f0), `${line.slice(-50)} | ${saw(/Replant/, f0) || ''}`);
+  console.log('READY');
+  await new Promise(res => { bot.once('end', res); setTimeout(res, 240000); });
+}
+async function restartCheckPhase() {
+  await sleep(1500);
+  const line = saw(/Superior.*Hearty Stew.*left|No meal running/, await cmd('/cooking', 800)) || '';
+  check('After a clean stop and start: the meal runs on with its time', /Superior.*Hearty Stew.*min.*left/.test(line), line.slice(-60));
+  const f1 = await cmd('/farming', 800);
+  check('...and Replant is still off', !!saw(/Replant off/, f1), saw(/Replant/, f1) || '');
+  await cmd('/farming replant on', 400);
+}
+
 async function withResources(edit, body) {
   const dir = process.env.SERVER_DIR;
   if (!dir) { check('this phase needs SERVER_DIR (the sandbox server folder)', false); return; }
@@ -534,12 +560,17 @@ async function menuPhase() {
 (async () => {
   await connect();
   await sleep(3000);
-  const phases = { furnace: furnacePhase, campfire: campfirePhase, craft: craftPhase, meals: mealsPhase, eat: eatPhase, persist: persistPhase, expire: expirePhase, menu: menuPhase };
+  const phases = { furnace: furnacePhase, campfire: campfirePhase, craft: craftPhase, meals: mealsPhase, eat: eatPhase, persist: persistPhase, expire: expirePhase, menu: menuPhase,
+    'restart-set': restartSetPhase, 'restart-check': restartCheckPhase };
   const run = phaseArg === 'all' ? ['furnace', 'campfire', 'craft', 'meals', 'eat', 'persist', 'menu'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);
     try { await phases[p](); } catch (e) { check(`${p} ran to the end`, false, e.stack.split('\n').slice(0, 2).join(' ')); }
+  }
+  if (phaseArg === 'restart-set') { // the server stopped with the bot on it: nothing to tidy
+    console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
+    process.exit(failed.length ? 1 : 0);
   }
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
   for (const s of ['Cooking', 'Farming']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 250);

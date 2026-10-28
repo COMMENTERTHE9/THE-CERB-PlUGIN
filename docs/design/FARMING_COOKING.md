@@ -238,6 +238,8 @@ Each meal is data in `resources.yml` → `cooking.meals`: a stable id, name, edi
 
 `widefarm` has no baseline: Wide Harvest doesn't exist before this milestone.
 
+**After** (the final build, `docs/PERFORMANCE.md` → "Farming and Cooking"): `farm` 0.032 / 0.028, `widefarm` 0.028 / 0.038, `cook` 0.074 / 0.084, `menu` 0.182 / 0.179, `menuidle` 0.006 / 0.007, `idle` 0.008 / 0.008, TPS 20.0 throughout. A paid harvest costs about 10 µs and a paid craft about 20 µs, mostly the XP path every skill shares; the region's own time per tick is unchanged.
+
 ## 8. Testing
 
 Two new harnesses, `tools/playtest/farming.js` and `cooking.js`, with positive and negative controls. Unit tests cover the crop rules, ripeness, the quality odds, meal tiers, the meal codec and the cooking allowlist. The existing regression slices also run.
@@ -266,3 +268,11 @@ Two new harnesses, `tools/playtest/farming.js` and `cooking.js`, with positive a
 - restoration bounds;
 - death, logout and restart;
 - creative earning nothing.
+
+**As tested** (`docs/STATUS.md` → "Done: Farming and Cooking"): all of the above in game on the sandbox, except four things checked in the code and unit tests only:
+- Wide Harvest across a Folia region edge: each crop is checked for its region before it is broken, and one sandbox player can't straddle two regions on purpose;
+- Replant falling back to the inventory when another plugin removed the drops: vanilla never does, so a ripe crop always replanted from its own drops in game;
+- quality items across a restart: they are ordinary items carrying their data; the restart check (`cooking.js restart-set`/`restart-check`) covers a running meal and Replant's switch;
+- Fortune's cap: the engine's, covered by its unit tests; Farming 100's 25.8% is below it.
+
+Spawn protection and the world border on Wide Harvest (added by the review) were checked in the code too: the test bots must be operators, who are exempt.

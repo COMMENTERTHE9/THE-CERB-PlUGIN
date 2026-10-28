@@ -1,6 +1,6 @@
 # Cerberus — Owner Decisions
 
-*The register of the owner's decisions, with the state of each. **Check it before asking the owner anything:** a question answered here is not asked again. New decisions are added when the owner makes them. Last updated 2026-10-27.*
+*The register of the owner's decisions, with the state of each. **Check it before asking the owner anything:** a question answered here is not asked again. New decisions are added when the owner makes them. Last updated 2026-10-28.*
 
 **States:**
 - **Approved, built:** decided and in the game.
@@ -45,6 +45,16 @@ Cerberus is a deep, challenging and rewarding RPG. It does not copy Hypixel SkyB
   - **server protection:** entity limits, bounded work per tick;
   - **pacing that applies equally to active and passive play:** for example a mob's XP budget.
 - "The player wasn't pressing keys" is never a reason.
+
+## Farming, Cooking and meaningful food (owner, 2026-10-28)
+
+The milestone is approved for development and testing in the sandbox (`docs/ROADMAP.md`, `docs/design/FARMING_COOKING.md`). The owner's rulings in it:
+- **Crops grown by players are legitimate renewable resources.** Mining's placed-block prohibition does not apply to farming, and bone-meal farming is not punished for being efficient. Approved, built: planted and bone-mealed crops pay in full; only a melon, pumpkin, cane or cactus placed by hand pays nothing, because nothing grew.
+- **No raw vanilla health bonuses** that bypass Cerberus's combat scaling. Approved, built: meals work through the attribute engine and heal the Cerberus health pool.
+- **Weapon Mastery's lifesteal is not rebalanced without approval** (decision 6). Approved, no change; meals now give healing, the trigger decision 6 named for a revisit.
+- **No invented ownership:** a machine's output is never credited to the nearest player. Approved, built: machines pay nobody; the Farm Ledger is a proposal only.
+- **The old unsafe `applyEffect`, crafting and item-buff code stays unwired.** Approved, built.
+- **Not authorized here:** merging into `master`, touching the owner's Windows server, world or database, upgrading Folia, and the proposals in `docs/AUTOMATION_REVIEW.md` (still waiting for the owner).
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27)
 
