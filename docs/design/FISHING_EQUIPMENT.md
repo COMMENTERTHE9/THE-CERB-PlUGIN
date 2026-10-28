@@ -43,6 +43,8 @@ Totals come from `resources.yml` (nothing says "31" or "11" in code). Browsing r
 - **Entries:** one item per species: found or not, rarity, personal-best weight, and its requirements (Fishing level, water, time, weather, biomes).
 - **"Available here"** means the species meets its real eligibility rules where you fish now. It uses `FishingRules.checks` — the same checks `FishingRules.eligible` uses when a fish bites — never a second interpretation. It does not promise the next catch.
 - **Where "here" is:** your bobber when a cast is out. Otherwise the water you were looking at when you opened the journal (within 30 blocks), labelled as a preview. Otherwise "not known yet: cast your line". Never your standing position.
+- **Treasure** is "available here" only with a bobber in open water: vanilla decides open water around the bobber, so a preview can't tell and says to cast. The place tile shows "Open water: yes/no" for a bobber.
+- **In creative or spectator** only vanilla fish bite: "Available here" lists nothing and says why, and the tracked species says the same.
 - `/fishing journal [water]` keeps working in chat.
 
 **Tracking one species.** Click a species to track it (saved on the player); click again to stop. The tracked view checks each requirement on its own line:
@@ -54,7 +56,7 @@ Totals come from `resources.yml` (nothing says "31" or "11" in code). Browsing r
   ✕ Night only (it is day)
 ```
 
-When the bobber settles, a short HUD line says "Tracked Goldfin Trout can bite here" or what is missing ("needs Rivers"). It shows only when the verdict changes (a new water, nightfall), only when no other message is on the bar, never in combat, and can be turned off in the journal. **Tracking never changes the odds.**
+When the bobber settles, a short HUD line says "Tracked Goldfin Trout can bite here" or what is missing ("needs Rivers"). It shows only when the verdict changes (a new water, nightfall; a level-up that still falls short doesn't count), only when no other message is on the bar, never in combat, and can be turned off in the journal. It never says "can bite" where the water can't be told. **Tracking never changes the odds.**
 
 ## 4. "Since your last visit" (increment A)
 
@@ -132,7 +134,7 @@ Removes: Specimen Hook (one specialist at a time)
 
 ## 7. Specialists (increment C)
 
-Two Lure parts; **one specialist at a time** per preset (installing one removes the other, and the preview says so). Legacy upgrades never become exclusive.
+Two Lure parts; **one specialist at a time** per preset (installing one removes the other, and the preview says so). A specialist a milestone grants goes into Discoveries only when Discoveries has none (the player's choice stays). Should a preset ever hold two, only the first counts and the Lure screen says the other isn't counting. Legacy upgrades never become exclusive.
 
 | Specialist | Effect | Starting value (`resources.yml tackle.parts`) |
 |---|---|---|
@@ -156,7 +158,8 @@ With Wayfarer's Bait (§8) the discovery factors multiply, at most ×2.0. Both s
 - **Situational bait is never wasted:** by day the Glowworm Bait stays in the bag, shown inactive, and the next slot (or none) is used. Ordinary fishing goes on.
 - **One per completed catch.** At the cast, the first bait that can apply is taken out of the bag and held on the line.
   - **Consumed** when a catch really completes and the bait applied to it (Fortune's extra fish, missed bites and duplicate events take nothing more).
-  - **Put back** when the cast ends any other way: reeling in nothing, hooking a mob, the bobber lost, a cancelled catch, logging out, dying, a restart (the hold is saved with the player).
+  - **Put back** when the cast ends any other way: reeling in nothing, hooking a mob, the bobber lost, a cancelled catch, logging out, dying, a restart (the hold is saved with the player). It goes back to its own slot, also when the hold took that slot's last bait.
+  - **Not taken** while stats are paused in PvP combat, for bait whose effect is a stat (Grub Bait, Chum): it would do nothing.
 - **No free effects.** Taking bait out, switching presets or disconnecting during a cast can't keep an effect: the held bait belongs to that cast.
 - **Sneak-cast calls** never use bait.
 - **Restocking is opt-in** (off by default): when a slot runs out, the same bait is moved in from your inventory, up to 64. It never buys, never searches chests, never substitutes.
@@ -201,7 +204,8 @@ Each notable catch can become one trophy, and the weight always comes from that 
 
 ## 12. Data and migration
 
-- **Journal** (`cerberus:fishing`, saved with the player as before) gains: the tracked species, the personal-best count, the rewards granted, the summary counters and the notable catches. An older journal reads as before, with all of these empty. Parts it doesn't know are kept when it is written back (forward compatible).
+- **Journal** (`cerberus:fishing`, saved with the player as before) gains: the tracked species, the personal-best count, the rewards granted, the summary counters and the notable catches. An older journal reads as before, with all of these empty. Parts it doesn't know are kept when it is written back (forward compatible), and a known part with more fields than this version reads still reads.
+  - A journal a newer version saved under another version marker is read as empty and never written over (a warning in the log). While it can't be saved, catches still pay their XP, but no discovery bonus (the XP display says why), no encounter and no milestone, because none could be kept; Wayfarer's Bait stays in the bag, with no record of what was caught to favour.
 - **Equipment** (`cerberus:fishing_gear`, new, saved with the player in the same file as the inventory): owned parts, the three presets, the active one, the bait bag, the held bait, and the reel and restock switches.
   - A player without it starts with an empty setup.
   - A string it can't read is kept as it is and never overwritten.
@@ -217,7 +221,10 @@ Each notable catch can become one trophy, and the weight always comes from that 
   - one short check while the bobber settles, when tracking hints are on (at most six, 0.5 s apart).
 - **A bite with the reel** adds one delayed task.
 - **A catch** adds a few counters to the journal.
-- Measured before and after for browsing, an idle open menu, ordinary fishing and automated reeling (`docs/PERFORMANCE.md`).
+- Measured before and after (`docs/PERFORMANCE.md` → "Fishing equipment, goals and collections"):
+  - fishing by hand and with the reel cost what fishing did;
+  - an open menu costs nothing extra;
+  - the new screens cost about twice a skill-page click, because they open a fresh window for stale-click safety.
 
 ## 14. Commands
 

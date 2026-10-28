@@ -48,7 +48,17 @@ Cerberus is a deep, challenging and rewarding RPG. It does not copy Hypixel SkyB
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27)
 
-**Approved, building** on the development branch in three increments (design and every number: `docs/design/FISHING_EQUIPMENT.md`). The goal is useful goals, meaningful equipment choices and fewer chores, not more menus.
+**Approved, built 2026-10-27, waiting for the owner's playtest** (three increments on the development branch; design and every number: `docs/design/FISHING_EQUIPMENT.md`; what was built and checked: `docs/STATUS.md` → "Done: Fishing equipment, goals and collections"; playtest: `docs/PLAYTEST_CHECKLIST.md` §15). The goal is useful goals, meaningful equipment choices and fewer chores, not more menus.
+
+**Implementation choices made while building** (routine, the owner's delegation; each is data or one line to change):
+- Bag slots at Fishing 20 and 40; bait 4 per craft; Grub Bait lure speed +8%, Chum sea-creature chance +1.5%, Glowworm Bait night-only species ×2, Wayfarer's Bait undiscovered ×1.5 (with Surveyor's Float at most ×2, `max-weight-factor`); the reel reels 8 ticks (0.4 s) after a bite starts; Surveyor's Float ×1.5, Specimen Hook strength 0.25 (exponent 2.5 → 2.0).
+- Milestones: 3 waters → the Wayfarer's Bait recipe, 8 species → Surveyor's Float, 10 personal bests → Specimen Hook, every species → the Master Angler emblem (the count is however many species the file lists).
+- Bait items use materials with no right-click use of their own (slime ball, clay ball, prismarine crystals, rabbit hide), so a bait can't dye sheep or signs; and every Cerberus item now also stays out of anvils and brewing stands (a Lurker Scale is a turtle scute).
+- Menu buttons that move items, and every confirmation's "Yes", answer mouse clicks only (a number key or a drop over them does nothing).
+- "Bait depleted" is said when a catch used the last bait the active preset takes (a preset that skips a full slot is not "depleted").
+- Surveyor's Float's "normal odds" line shows when the bobber settles (after the tracked species' line), once per water and session, only on a free HUD bar.
+- A trophy carries no species id (it never stacks with or counts as that species' fish); renaming one at an anvil is allowed, nothing reads its name.
+- From the independent reviews: treasure is "available here" only for a bobber in open water; a milestone's specialist never joins a preset that already has one, and only one specialist ever counts; a stat bait (Grub Bait, Chum) isn't taken while stats are paused in PvP; a held bait goes back to the slot it came from; the bait option `unlocked-by` was dropped (a milestone locks a bait's recipe, not the bait: a traded bait works for anyone), and a file that sets it gets a load warning; a journal saved by a newer version is never written over, and while it can't be saved it pays no discovery bonus and banks no encounter.
 
 - **The loop:** find a missing species → track it → understand its requirements → choose a setup → fish → discover or beat a record → unlock another option. Treasure and sea-creature encounters are alternative goals in the same skill: no new professions or XP bars. Manual, AFK and macro fishing keep their full normal rewards.
 - **Words:** *Lure* = reusable equipment; *Bait* = optional consumable; *Encounters* = banked sea-creature summons (the banked-lure tile becomes "Encounters: N"; saves and commands stay compatible).

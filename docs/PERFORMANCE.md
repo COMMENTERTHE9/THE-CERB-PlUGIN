@@ -301,12 +301,66 @@ Nothing else runs per tick, and nothing touches the database per catch.
 - **Fishing's own code** (`Gathering.Fishing`, `FishingRules`) is 3–4 of about 1,250 region-thread samples per 60 s run: the cast, the bite's roll, the catch, `moment`. The HUD redraw, which every load shares, is still the largest Cerberus frame. Database saves stay on async threads.
 - **Method note:** in this load four of the nine bots miss some casts ("Fishing cancelled") on both builds. It comes from the lanes' layout in `load.js`, not from either build, so compare a set's per-tick time and its catches together.
 
+## Fishing equipment, goals and collections (2026-10-27)
+
+**What it adds to frequent events:**
+- **A cast:**
+  - the setup's snapshot: the active parts from the player's cached view;
+  - one engine preview, only when a bait with a stat is held (its effect after caps);
+  - while tracking hints are on, one check a half-second on the bobber's own scheduler until it settles (at most six).
+- **A bite with the Auto-hook Reel:** one delayed task, 8 ticks later, on the bobber's region.
+- **A catch:**
+  - a few counters on the journal (the summary, notable catches);
+  - the bait's use;
+  - a milestone check, but only after a new species or a personal best.
+- **Crafting grids:** a recipe is looked up only when the grid shows a locked recipe's result (Wayfarer's Bait); every other grid change is one material check.
+- **Menus:**
+  - The Equipment and category screens compute their previews through the same engine (one preview per owned part's tile).
+  - Nothing is written to the database for browsing.
+  - Nothing runs while a screen stays open.
+
+**Method:** as above (9 bots, 80 s load, a warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), mobs cleared and spawning off, each set right after a restart. The before set was taken before building; the after set on the final build. A second before/after pair was cut to deliver sooner, so each build has one set of two runs. Loads:
+- `menu`: the hub and skill pages.
+- `fishmenu`: down to the Fishing page and two redraws, the same clicks on both builds.
+- `gearmenu` (new, after only): the new screens. Equipment, Rod, Lure, the Bait Bag, then the journal with two filters and the Treasure tab, at Fishing 50 with four parts owned so every tile computes its preview.
+- `menuidle`: one open menu per bot.
+- `fishing`: nine bots fishing by hand at Fishing 25 with a Lure III rod.
+- `autofish` (after only): nine bots at Fishing 50 with the Auto-hook Reel, only casting.
+- `craft`: iron pickaxes at a crafting table, for the grid listener.
+
+**Before:** the build before this milestone (4aaaf3b). **After:** the build committed with this section.
+
+| Load | Before, ms per tick (two runs) | After | Work per bot in 80 s |
+|---|---|---|---|
+| `menu` | 0.153 / 0.121 | 0.203 / 0.132 | 25 menus, 225 clicks |
+| `fishmenu` | 0.145 / 0.162 | 0.174 / 0.165 | 27 visits, 216 clicks |
+| `gearmenu` (new screens) | none (no such screens) | 0.389 / 0.315 | 14 rounds, 238 clicks |
+| `menuidle` | 0.007 / 0.005 | 0.008 / 0.007 | one open menu |
+| `fishing` (by hand) | 0.029 / 0.025 | 0.012 / 0.013 | 9–13 catches |
+| `autofish` (the reel) | none (no reel) | 0.022 / 0.021 | 8–10 reeled |
+| `craft` | not taken | 0.077 / 0.080 | 122 pickaxes |
+
+TPS was 20.0 in every run.
+
+- **Fishing costs what it did,** by hand and with the reel: 0.012–0.013 ms per tick against 0.025–0.029 before, with the setup, bait and tracking all in the path. The Auto-hook Reel's 0.021–0.022 is the same order: one delayed task per bite, nothing scanning players.
+- **An open menu costs nothing extra** (0.007–0.008 against 0.005–0.007).
+- **The skill pages are the same or slightly higher.** `fishmenu` 0.165–0.174 against 0.145–0.162, and `menu` 0.132–0.203 against 0.121–0.153; the first after-run of `menu` was the high one. Both are within or near the spread between two runs of one build. A second alternated pair would settle it; it was cut for time.
+- **The new screens cost about twice a skill-page click:**
+  - 0.315–0.389 ms per tick with nine players clicking through them three times a second without a pause, about 0.26 ms per click against about 0.13 for the skill pages.
+  - The profile says why: `MenuManager.show`, which opens a fresh window (vanilla's own per-window work, the cost Step 1 removed for ordinary pages), is 314 of 467 Cerberus samples.
+  - The Equipment, category, Bait Bag and new-discoveries screens open a fresh window on purpose: their buttons change things, and the project's rule (and the review's finding) is that stale clicks must not reach them.
+  - The engine previews on those screens are a few samples (`Tackle.contributions` 5, `TackleRules.countedUpgrades` 2).
+  - A real player opens these screens now and then, so this is a ceiling, not a running cost.
+- **Crafting:** 0.077–0.080 ms per tick for 122 pickaxes per bot. There is no before sample in this session. The grid listener looks a recipe up only for a locked recipe's result, so it does less than before the review's fix.
+- **Not measured:** many players fishing with Surveyor's Float, bait and tracking all at once beyond the `fishing` load's nine; the journal's `n=` growth is bounded at 12.
+
 ## Budgets for the next milestones
 
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.
 - **Phases 1–3 (controls, audit, polish):** met. Class logic per key press stays near 0.02 ms, and the feedback and bar don't show in the profile.
 - **Progression Depth, XP integrity and level-ups:** met; neither shows in the profile.
 - **Grown trees and wear resistance:** met; the new handlers don't show in the profile.
+- **Fishing equipment:** met for play: fishing by hand and with the reel cost what fishing did, and an open menu nothing. The new screens cost about twice a skill-page click because they open a fresh window for stale-click safety; if many players browse them at once, the next step is to keep the window and rely on the click guard alone.
 - **Fishing:** met. Fishing costs what the old build did per tick, and its handlers are a few samples a minute with nine players fishing non-stop. Creatures are bounded (one per player, 32 on the server) and run one check a second each. For Farming: add a `farming` load, measure on alternating builds, and keep crop handlers as light as the catch.
 - **Woodcutting:** met. Cutting wood costs what it did; Felling costs about what cutting the same logs by hand would. It runs 8 logs a tick, does nothing per tick when idle, and writes nothing to the database per block. For Farming or Fishing: add a load for the loop (`load.js`), measure before and after on freshly restarted servers, and look at the XP display's HUD line, which is now the largest per-gain cost.
 - **Gameplay Depth (gathering and crafting):** met after the fixes. A block broken costs about 10–20 µs and a craft click about 15–20 µs; nothing runs per tick and nothing touches the database per block. For each next skill loop (Woodcutting, Farming, Fishing), measure `gather` and `craft` (or a new load for that loop) before and after, and look at what runs under each new handler: an API call that looks cheap can build a whole object every time (`getRecipe`).

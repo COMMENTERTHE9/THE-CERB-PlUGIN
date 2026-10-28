@@ -57,10 +57,14 @@ const fs = require('fs');
 const path = require('path');
 const phaseArg = process.argv[2] || 'all';
 // A new name is a fresh character (op it first: the sandbox console's "op <name>"); oldstate and legacy share one name.
-// In a run of several phases, rewards, specialists and trophy each get a fresh character of their own (<name>rew...).
+// In a run of several phases, bait, rewards, specialists and trophy each get a fresh character of their own (<name>bai...).
 let NAME = process.argv[3] || 'CerbGear';
-/** Phases that need a character with nothing reached yet: in a run of several phases each gets its own (op'd by the bot). */
-const FRESH = ['rewards', 'specialists', 'trophy'];
+/**
+ * Phases that need a character with nothing reached yet (bait checks the Wayfarer's Bait recipe before its milestone,
+ * which a character can earn by the catches of earlier phases): in a run of several phases each gets its own (op'd by
+ * the bot).
+ */
+const FRESH = ['bait', 'rewards', 'specialists', 'trophy'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chat = [];
 const bars = [];

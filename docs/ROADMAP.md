@@ -72,6 +72,16 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
+## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27, approved): built, waiting for the owner's playtest
+
+**Why.** Give fishing goals and choices, not more menus: find a missing species, track it, choose a setup, fish, discover or beat a record, unlock the next option; treasure and sea-creature encounters as the other goals. Approved design: `docs/design/FISHING_EQUIPMENT.md`; decisions: `docs/DECISIONS.md`.
+
+1. **Increment A, navigation and guidance** (done): skill-page sections, the shared Collections index, "Encounters" wording, the journal's filters, one tracked species, "Since your last visit".
+2. **Increment B, equipment and convenience** (done): the setup on the character (Rod 1, Line 10, Lure 25, Reel 50), previews from the attribute engine, three presets, old rods kept and convertible, the Bait Bag, the Auto-hook Reel.
+3. **Increment C, fishing goals** (done): Surveyor's Float, the Specimen Hook, the collection milestones, Keep as trophy.
+4. **Verification** (done): fresh characters and the upgrade from the build before, a clean stop and a crash mid-cast, the regression slices, three independent reviews and their fixes, performance before and after (`docs/STATUS.md` → "Done: Fishing equipment, goals and collections"; `docs/PERFORMANCE.md`).
+5. **Next:** the owner's playtest (`docs/PLAYTEST_CHECKLIST.md` §15); not authorized here: Farming, Cooking, cultivation, Fluency, PvP or class expansion.
+
 ## Fishing, and respecting the player's time (owner, 2026-10-27, approved): built, waiting for the owner's playtest
 
 **Why.** The owner settled all 23 open decisions (`docs/DECISIONS.md`) and found Woodcutting's Felling "fantastic", the feeling every discipline should reach. Fishing is next, built to the same standard, under a new guiding philosophy.
@@ -392,7 +402,7 @@ Every PvP limit so far is **temporary**. None of it is a decision against PvP; t
 | Off for now | Where it is switched | To turn it on |
 |---|---|---|
 | Attributes on defense in PvP (Vitality, Fortitude, realm): PvP hits use the pre-Attributes-2.0 defense | `attributes.yml` → `integration.pvp-defense: false` | Set `true`, then tune |
-| Speed and handling bonuses in PvP (attack, movement, bow draw, spell cooldown, gathering and chopping speed, Smithing's wear resistance, Fishing's lure speed, treasure and sea-creature chances) and the faster-drawn arrow's extra damage (decision A) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
+| Speed and handling bonuses in PvP (attack, movement, bow draw, spell cooldown, gathering and chopping speed, Smithing's wear resistance, Fishing's lure speed, treasure and sea-creature chances, including the fishing setup's parts and bait) and the faster-drawn arrow's extra damage (decision A); while paused, a stat bait (Grub Bait, Chum) stays in the bag instead of being spent for nothing (`Gathering/Tackle.onCast`) | `attributes.yml` → `secondary.in-pvp: false` (tag length `pvp-tag-seconds: 15`) | Set `true` |
 | Attributes on offense in PvP (Power, crits, lifesteal): PvP hits still use the old per-skill bonuses, which count an untrained skill (level 1 since 2026-10-27, 0 before) as untrained, as before; so does the PvP defense baseline | Code: `Manager/PveOffense` runs only on player → mob hits; PvP goes through `Manager/CombatSkillProcessor` (`pvpLevel`; the baseline in `PlayerDefenseManager.updateDefense`) | A PvP offense path with PvP coefficients |
 | Abilities hitting players: every ability targets mobs only (Cleave, Fireball...), never another player's pet or a mount a player rides; Riposte only counters mobs that belong to no player; Feint's crit only on mob hits; a left-click on a player is a plain hit | Code: `Classes/AbilityCaster.valid` and `Manager/AbilityTargets`, the counter hook in `Listener/VirtualHealthListener`, `Manager/PveOffense.meleeHit`, `Spells/FireballSpell.castFromAbility`, `Classes/AbilityListener.onAttack` | `docs/design/CLASSES.md` §10 decision 5 (PvP coefficients), then one switch |
 | Class XP from fights with players | Code: `Listener/MobKillListener` gives no class share for player kills; casts never reach players; a self cast in a fight with no enemy in it (a PvP tag) earns nothing (`Classes/ClassService.fightFoeLevel`) | Together with abilities in PvP, with rules against farming each other |
