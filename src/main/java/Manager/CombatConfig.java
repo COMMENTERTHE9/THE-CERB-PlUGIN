@@ -102,6 +102,8 @@ public class CombatConfig {
 
     // ── Non-scaling skill values ─────────────────────────────────
     public int meDisarmDurationTicks;
+    /** Iron Reprisal, Heavy Armor Mastery's throw-back: combat.yml skills.heavy-armor-training.iron-reprisal. */
+    public volatile IronReprisalRules ironReprisal = IronReprisalRules.DEFAULTS;
 
     /**
      * All named scaling params for iteration (preview command, debug).
@@ -215,6 +217,8 @@ public class CombatConfig {
 
         // ── Non-scaling values ───────────────────────────────────
         meDisarmDurationTicks = config.getInt("skills.martial-expertise.disarm-duration-ticks", 100);
+        ironReprisal = IronReprisalRules.parse(config.getConfigurationSection("skills.heavy-armor-training.iron-reprisal"),
+                problem -> log.warning("[CombatConfig] " + problem));
 
         log.info("[CombatConfig] Loaded " + allScalingParams.size() + " scaling params + combat values.");
     }

@@ -151,6 +151,7 @@ public final class AttributesConfig {
                     }
                     list.add(new AttributeRules.SkillWeight(a, n.doubleValue(), w, y));
                 }
+                list = updated(skill, list, def.skillWeights().get(skill), problems);
                 if (!list.isEmpty()) weights.put(skill, List.copyOf(list));
             }
         }
@@ -270,6 +271,45 @@ public final class AttributesConfig {
             "Smithing",     // 2026-10-26, Smithing's Fortitude (Fishing's Fortune was in the first file: not here)
             "Farming",      // 2026-10-28, Farming's Vitality and Fortune on crops (docs/design/FARMING_COOKING.md)
             "Cooking");     // 2026-10-28, Cooking's Vitality
+
+    /**
+     * Skills whose shipped entry an update changed, with the entry every earlier version shipped and how to keep it. A
+     * server file that still holds the earlier entry word for word gets this version's (the owner never chose the old
+     * numbers, they came with the file; the file on disk is not rewritten, and the log says so); a file whose entry
+     * differs was edited on purpose and keeps it, and the log says what this version's would be.
+     */
+    record Changed(List<AttributeRules.SkillWeight> earlier, String keep) {}
+
+    static final Map<String, Changed> CHANGED_BY_UPDATES = Map.of(
+            // 2026-10-28: Agility 1.25 per level beside Power (unarmed) (docs/design/COMBAT_IMPROVEMENTS.md §1)
+            "Martial Expertise", new Changed(List.of(new AttributeRules.SkillWeight(Attribute.POWER, 1.0, WeaponClass.UNARMED)),
+                    "add { attribute: agility, per-level: 0 } to keep it without Agility"));
+
+    /** {@code skill}'s entry as read, or this version's {@code current} one where {@link #CHANGED_BY_UPDATES} says so. */
+    static List<AttributeRules.SkillWeight> updated(String skill, List<AttributeRules.SkillWeight> read,
+                                                    List<AttributeRules.SkillWeight> current, Consumer<String> note) {
+        Changed c = CHANGED_BY_UPDATES.get(skill);
+        if (c == null || current == null || current.equals(read)) return read;
+        if (read.equals(c.earlier())) {
+            note.accept("skills." + skill + ": still the entry earlier versions shipped, so this version's is used (" + describe(current)
+                    + "); " + c.keep());
+            return new ArrayList<>(current);
+        }
+        note.accept("skills." + skill + ": your own entry is kept (" + describe(read) + "); this version ships " + describe(current));
+        return read;
+    }
+
+    /** "power 1.0 (unarmed), agility 1.25" */
+    static String describe(List<AttributeRules.SkillWeight> ws) {
+        StringBuilder b = new StringBuilder();
+        for (AttributeRules.SkillWeight w : ws) {
+            if (!b.isEmpty()) b.append(", ");
+            b.append(w.attribute().name().toLowerCase(java.util.Locale.ROOT)).append(' ').append(w.perLevel());
+            if (w.weapon() != null) b.append(" (").append(w.weapon().name().toLowerCase(java.util.Locale.ROOT)).append(')');
+            if (w.yield() != null) b.append(" (").append(w.yield().id).append(')');
+        }
+        return b.isEmpty() ? "nothing" : b.toString();
+    }
 
     /** The same for {@code secondary.skills}, which came later: every gathering skill's entry there was added by an update. */
     static final java.util.Set<String> SECONDARY_ADDED_BY_UPDATES = java.util.Set.of(

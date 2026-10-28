@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), and section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -337,6 +337,22 @@ What is on your character, what it does, and how long it lasts (`docs/design/ACT
 | 13 | Look for Stats & Attributes. | Still on its hub tile (blaze powder) and behind the Health and Essence tiles. The Active Effects screen has a shortcut to it too. |
 | 14 | Overall. | Is it clear what you have, what it does and when it ends? Note wording, order, or anything missing. |
 
-## 18. Afterwards
+## 18. Combat improvements: Martial Expertise's Agility and Iron Reprisal
+
+Martial Expertise now gives Agility too, and Heavy Armor Mastery throws melee attackers back (`docs/design/COMBAT_IMPROVEMENTS.md`). Play in survival, at night or in a dark area. Helpers: `/cerb skill <you> Martial_Expertise level <n>` (and `Heavy_Armor_Training`); `/cerb reprisal <you>` (your level, heavy pieces and push); `/cerb reprisal` (how many attackers were thrown and why others weren't).
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | Note your Agility on the Stats page, then set Martial Expertise to 50 and look again. | Agility rises 1.25 per level gained (from Martial Expertise 1 to 50: +61.25), and the Agility tile lists "Martial Expertise +1.25". Crit chance and speeds rise with it, within their caps. Your fist's Power still grows 1 per level. |
+| 2 | Martial Expertise 11, then punch a zombie to death bare-handed. | The level-up line names the Agility it added (with the Power). |
+| 3 | Pick up a sword with Martial Expertise at 50. | Crit chance is the same as with fists: Agility counts with every weapon. Judge whether that is what you want. |
+| 4 | Heavy Armor Mastery 10, full iron armor: let a zombie hit you. | The zombie is thrown back a few blocks with a soft clang; no damage to it. The level-up from 9 to 10 announces "New technique: Iron Reprisal". |
+| 5 | Heavy Armor Mastery 100: let zombies hit you in one, two and four iron pieces. | The more heavy pieces, the farther they fly (a quarter of the push per piece); at 100 in full iron, much farther than at 10. |
+| 6 | In full iron at 100: let a skeleton shoot you; raise a shield against a zombie, facing it; wear leather instead. | The skeleton is never thrown (arrows never trigger it). Behind the raised shield the zombie's blows take **no health** from you (until this build they still did) and the shield wears a little, as in the vanilla game (which pushes nobody on a block); Iron Reprisal throws nothing. Leather throws nothing. |
+| 7 | A ravager or a hoglin hits you in full iron at 100. | They move much less (their knockback resistance counts); an iron golem or a warden doesn't move. |
+| 8 | If you can, with a friend: have them hit you in melee while you wear full iron at 100. | Nothing happens to them (PvP is off for now: `combat.yml` → `iron-reprisal.pvp: false`). |
+| 9 | Overall. | Values to judge (all in `combat.yml` → `skills.heavy-armor-training.iron-reprisal` and `attributes.yml` → Martial Expertise): the push at 10 and 100, the opening level, the cooldown; whether Martial Expertise's Agility makes unarmed and other weapons too strong. |
+
+## 19. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

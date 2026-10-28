@@ -56,7 +56,9 @@ attributes:
       - { attribute: power, per-level: 1.0, weapon: trident }
       - { attribute: power, per-level: 1.0, weapon: spear }
       - { attribute: power, per-level: 0.25 }
-    Martial Expertise:    [ { attribute: power, per-level: 1.0, weapon: unarmed } ]
+    Martial Expertise:                                                              # docs/design/COMBAT_IMPROVEMENTS.md
+      - { attribute: power, per-level: 1.0, weapon: unarmed }
+      - { attribute: agility, per-level: 1.25 }                                     # crit and speed, with every weapon
     Ranged Precision:     [ { attribute: power, per-level: 1.0, weapon: bow } ]
     Critical Strike:      [ { attribute: agility, per-level: 1.0 } ]
     Dual Wielding:        [ { attribute: agility, per-level: 0.5 } ]

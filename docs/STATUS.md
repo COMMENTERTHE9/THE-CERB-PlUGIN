@@ -32,6 +32,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Your two XP reports (2026-10-27)**, Fishing XP and bow kills, are reproduced and fixed: what you saw is what creative mode gives, silently until now; the real defects found on the way are fixed, skills start at level 1, and an independent review's findings are fixed too (section "Done: your XP reports" below; checklist §14).
 - **Built since, each waiting for your playtest:** Fishing equipment, goals and collections (2026-10-27, checklist §15) and **Farming and Cooking** (2026-10-28, your milestone: crops, Replant, Wide Harvest, crop quality, Cooking XP and six meals; section "Done: Farming and Cooking" below; checklist §16).
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
+- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1151,6 +1152,52 @@ Nothing planned (Alchemy, Herbalism) is shown yet. A later system offers its eff
 - Vanilla effect times are counted in the player's ticks; a lagging region counts them slower than the clock.
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §17): whether the head's list and the screen make it clear what you have, what it does and when it ends; the wording of the vanilla effects; the heads-up's timing and text.
+
+## Done: Combat improvements, Martial Expertise's Agility and Iron Reprisal (2026-10-28, your milestone, increment 1)
+
+**What it is for:** your two combat changes: an unarmed fighter grows Agility, and Heavy Armor Mastery answers melee attackers by throwing them back. Design and every number: `docs/design/COMBAT_IMPROVEMENTS.md`. No reflected damage, no chance rolls, no lifesteal change, PvP as before.
+
+**Martial Expertise: +1.25 Agility per level** (`attributes.yml`; Power on bare hands still 1 per level):
+- Through the shared engine: crit chance (at most 75%), crit damage (at most x3.5), the offense budget, and the speed stats' diminishing returns; PvP unchanged (attributes count against creatures only, speed paused in a PvP fight).
+- Agility is general: it raises crit and speeds with every weapon, as it does for Critical Strike. On a new character (every other skill at 1): Martial Expertise 25 gives crit 25.7% (13.8% before), 50 gives 51.5% and crit damage x2.57, 100 gives 74.3% and x3.19; the expected unarmed damage goes from x3.78 to x6.34 at 50 and from x6.47 to x15.81 at 100. **For you to judge:** that is a big step for fist fighters, and a sword wielder with Martial Expertise 100 crits as often. The lever is the one number in `attributes.yml`.
+- **Older servers:** an unedited `attributes.yml` is refreshed; an edited one that still has the old Martial Expertise line word for word gets the new one in memory (the log says so, and how to keep the old: `{ attribute: agility, per-level: 0 }`); an edited one with your own line keeps it (the log says what this version ships); `Martial Expertise: []` still turns it off. Your file on disk is never rewritten.
+- Shown on the Stats page ("Martial Expertise +1.25" under Agility), the skill page's next levels, level-up messages (the Agility it added), the admin inspector and simulator.
+
+**Iron Reprisal** (Heavy Armor Mastery 10; `combat.yml` → `skills.heavy-armor-training.iron-reprisal`):
+- A creature whose melee hit lands on you while you wear heavy armor (iron, diamond, netherite) is thrown back: the server's own knockback, strength 0.4 at 10 rising to 1.0 at 100 in full heavy armor (a plain hit's push is 0.4), a quarter per heavy piece. The attacker's knockback resistance counts (an iron golem or a warden doesn't move).
+- Never: projectiles (the shooter isn't in reach; sending the arrow back would be reflection), explosions, thorns, magic, fire, falls, your own animals, a hit that didn't land (the invulnerability window, Riposte's counter, a cancelled event), a lethal hit, a blow your shield took (it never landed). Each attacker at most every 0.5 s; the ender dragon and the wither are exempt.
+- **PvP off for now** (`pvp: false`): players and their animals aren't thrown. Listed in `docs/ROADMAP.md` → PvP.
+- **Folia:** the check runs on your region thread at MONITOR; the push on the attacker's own thread one tick later, after vanilla's knockback, re-checked there (still valid, same world, within 8 blocks). It deals no damage, so it can't start another hit.
+- The skill page shows the push at your level (x1.00 of a plain hit at 10, x2.50 at 100); the level-up to 10 announces "New technique: Iron Reprisal". Admin: `/cerb reprisal [player|reset]`.
+
+**Measured** (`tools/playtest/reprisal.js distances`: a husk strikes a bot in iron on flat ground; how far it lands beyond where it struck, in blocks, in two runs):
+
+| Heavy Armor Mastery | 1 iron piece | 2 pieces | 4 pieces |
+|---|---|---|---|
+| 10 | 0.0 | 0.0 | 0.9–1.1 |
+| 55 | 0.1–0.2 | 0.6–0.8 | 2.4 |
+| 100 | 0.1–0.4 | 1.4–1.6 | 3.9 |
+
+A ravager (knockback resistance 0.75) at 100 in full iron: 0.13–0.64 blocks in three runs, against 4.07–4.22 for a husk. With one or two pieces at 10 the push (0.1–0.2, a quarter or half of a plain hit's) can't move a husk out of reach: it is thrown, steps back in and strikes again after the cooldown.
+
+**Found while checking it, and fixed: shields did nothing against creatures** (from before this milestone). Behind a raised shield a creature's blow still came off the Cerberus health pool in full: the game showed the block, but the damage pipeline took the blow's size before the shield's share, and resolving the hit then erased that share, so the shield didn't even wear. In the sandbox a husk took a player with a raised shield from 102.75 to 97.10 over a few blows, more than one blow costs without the shield (101.66). Now a blow a raised shield takes whole (the server's own rules: up long enough, from in front) leaves the pool alone, and the game's blocking runs: the sound and the shield's wear (five husk blows: the pool full, the shield worn by 20, as in the vanilla game, which pushes nobody on a block). A blocked blow never landed, so Iron Reprisal throws nothing. A blow from behind lands as before. **Players' blows are unchanged** (PvP plays as before): behind a shield they still reach the pool, listed in `docs/ROADMAP.md` → PvP for the PvP pass. Details: `docs/design/COMBAT_IMPROVEMENTS.md` → Shields.
+
+**Checks** (a sandbox Folia 1.21.11 server in the cloud container; your Windows world and database were never touched; `tools/playtest/reprisal.js`, survival, a husk or other creature summoned to strike the bot; the counters from `/cerb reprisal`):
+- **Every phase on the final build:** `all` 17/17, `pvp` 2/2, `cooldown` 1/1, no errors in the server log:
+  - **throw:** a husk's landed blow on the bot in full iron at Heavy Armor Mastery 100 throws it once, 4.07 blocks back from where it struck;
+  - **controls:** nobody thrown at Heavy Armor Mastery 9, in leather, by a skeleton's arrows (in full iron at 100), or by blows a raised shield takes (the pool stays full, the counter says the shield took them; the same husk with the shield lowered lands and is thrown); a ravager lands much nearer than a husk (0.64 against 4.07);
+  - **distances:** the table above; more pieces and a higher level always throw farther;
+  - **technique:** a real blow lifting Heavy Armor Mastery 9 → 10 announces "✦ New technique: Iron Reprisal", and it is on at once (push 0.400);
+  - **Agility:** the Stats page counts Martial Expertise's +1.25 per level (Agility 64.5 at Martial Expertise 50, crit 51.5%, ×2.57); a fist kill lifting it 11 → 12 names "Agility 15.8 → 17, Power (unarmed) 11.3 → 12.3";
+  - **PvP:** off (the default), a player's blow throws nobody and the counter says "PvP off"; with `pvp: true` (written into the sandbox's `combat.yml` for the check) the attacking player is sent a 1.00 blocks/tick push and flies 5.17 blocks;
+  - **cooldown:** with 4 s, a husk left in reach is thrown once and its next blows inside the 4 s are refused (the counter says "cooldown").
+- **Controls on the builds before the fixes:** the build before the shield fix lost health behind a raised shield (153.25 → 148.77, the shield up, no hurt shown); the build before the player-push fix threw the attacking player on the server but sent their game nothing (0.00 blocks/tick).
+- **Harness slips found and fixed on the way** (none was the plugin's): this Folia build has no `/item` command (armor now goes on by a click into its slot); a summoned skeleton has no bow unless given one; mineflayer 4.39 reads 1.21.9+'s velocity packets 8000× too small, so a pushed bot never moved (the bots now apply the packet's own value, after mineflayer's handler); after several armor swaps mineflayer's own view of the off hand could show a shield the server never placed there (the shield check now runs first on an emptied inventory).
+- **Unit tests:** 393 (`MartialExpertiseTest`: Agility per level with unarmed Power kept, crit and speed through the shared caps, Agility with every weapon, edited files old and own; `IronReprisalRulesTest`: the opening level and even growth, a quarter per piece, no chance, off means nothing, the technique announced once, bosses exempt, the shipped file equal to the code defaults, bad values refused; `ShieldBlockTest`; the shipped-config tests updated).
+
+**Performance** (`docs/PERFORMANCE.md`; 9 bots, a warm-up and two runs per load, before (2044c68) and after, each on a fresh restart; TPS 20.0 in every run): nine bots in full iron at Heavy Armor Mastery 100 attacked by zombies cost Cerberus 0.059–0.068 ms per tick against 0.084–0.092 before: every landed blow throws its zombie, which has to walk back, so they took about a third of the blows. Without armor (nobody thrown) 0.085–0.114 against 0.090–0.095, within the runs' spread. Iron Reprisal itself shows in one CPU sample a minute.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §18): Martial Expertise's Agility with fists and with other weapons; Iron Reprisal's push at 10 and 100, its opening level and cooldown.
 
 ## Roadmap
 

@@ -52,7 +52,8 @@ public final class ShippedConfig {
                     "694fa4e289d731d8e1fd1332e678d74347092d48e66fa5ef23af42753910c373",  // XP integrity
                     "37d1d9e68d88a05114f3a6c67ffded6160f7f66cfd39cd225b4608aafdabda8f",  // Woodcutting
                     "b4dc2bf1a58dfb99945197a71b82a61563a634eae742e8b3d571cc61b39b935c",  // grown trees, Smithing's growth
-                    "16678dabec664b4062cd75540ea6eab49cebbc22387769f0f7e287c6fdcf6015"), // Fishing
+                    "16678dabec664b4062cd75540ea6eab49cebbc22387769f0f7e287c6fdcf6015",  // Fishing
+                    "52415b1ff49ae9315316408b1d42aa63b1197532f26e49f1da7a8f867ab678cf"), // Farming and Cooking
             "resources.yml", Set.of(
                     "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9",  // the gathering loop, first cut
                     "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942",  // the gathering loop, as shipped

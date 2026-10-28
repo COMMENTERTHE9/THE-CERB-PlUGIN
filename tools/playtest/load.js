@@ -4,6 +4,9 @@
 //            attributes, Power, crits, mob HP pool, labels, damage numbers, kill XP, saves)
 //   hurt   - each bot stands in survival next to an AI level-30 zombie (mob -> player path: defense,
 //            bar, HUD, defender XP); healed every 8 s so nobody stays dead
+//   hurtheavy - like hurt, but each bot wears full iron at Heavy Armor Mastery 100: on builds with Iron Reprisal
+//            (2026-10-28) each landed hit throws its zombie back, and it walks back to strike again. Compare with the
+//            build before (the same armor, no throw); armor and level are put back at the end
 //   menu   - each bot browses the Player Menu as fast as a hurried player: hub -> Skills -> Combat ->
 //            Blade Mastery -> next -> back -> home -> Stats -> back -> close
 //   mixed  - the bots split across the three
@@ -418,9 +421,19 @@ async function craft(b, deadline, controller) {
   }
 }
 
-async function hurt(b, deadline, controller) {
+const IRON = [['head', 'helmet'], ['torso', 'chestplate'], ['legs', 'leggings'], ['feet', 'boots']];
+
+async function hurt(b, deadline, controller, heavy = false) {
   b.on('entityHurt', e => { if (e === b.entity) bump(b.username, 'hurt'); });
   b.chat('/gamemode survival'); await sleep(400);
+  if (heavy) { // no /item command on the sandbox's Folia build: each piece is given and put on by a click into its slot
+    controller.chat(`/cerb skill ${b.username} Heavy_Armor_Training level 100`); await sleep(250);
+    for (const [dest, piece] of IRON) {
+      b.chat(`/give @s iron_${piece}`); await sleep(400);
+      const it = b.inventory.items().find(x => x.name === `iron_${piece}`);
+      if (it) { try { await b.equip(it, dest); bump(b.username, 'armor'); } catch (e) { bump(b.username, 'armorfail'); } }
+    }
+  }
   controller.chat(`/execute at ${b.username} run summon zombie ~1 ~ ~ {PersistenceRequired:1b}`); await sleep(600);
   let nextHeal = Date.now() + 8000;
   while (Date.now() < deadline) {
@@ -428,6 +441,10 @@ async function hurt(b, deadline, controller) {
     const near = Object.values(b.entities).some(e => e.name === 'zombie' && e.position.distanceTo(b.entity.position) < 6);
     if (!near) { controller.chat(`/execute at ${b.username} run summon zombie ~1 ~ ~ {PersistenceRequired:1b}`); bump(b.username, 'summons'); }
     await sleep(1000);
+  }
+  if (heavy) { // the same bots run other modes later: no armor, Heavy Armor Mastery back to 1
+    for (const [, piece] of IRON) { b.chat(`/clear @s iron_${piece}`); await sleep(100); }
+    controller.chat(`/cerb skill ${b.username} Heavy_Armor_Training level 1`);
   }
 }
 
@@ -568,6 +585,7 @@ async function menuidle(b, deadline, keepMode = false) {
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
     const run = m === 'combat' ? combat(b, deadline) : m === 'abilities' ? abilities(b, deadline, controller) : m === 'hurt' ? hurt(b, deadline, controller)
+        : m === 'hurtheavy' ? hurt(b, deadline, controller, true)
         : m === 'gather' ? gather(b, deadline, controller) : m === 'craft' ? craft(b, deadline, controller)
         : m === 'wood' ? wood(b, deadline, controller) : m === 'felling' ? wood(b, deadline, controller, true)
         : m === 'levels' ? levels(b, deadline, controller) : m === 'fishing' ? fishing(b, deadline, controller)

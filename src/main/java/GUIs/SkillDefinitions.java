@@ -264,6 +264,12 @@ public final class SkillDefinitions {
         return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
     }
 
+    /** Iron Reprisal's push with four heavy pieces at {@code level}, against a plain hit's (Listener/IronReprisal). */
+    static double ironReprisal(CombatConfig config, int level) {
+        Manager.IronReprisalRules r = config != null ? config.ironReprisal : Manager.IronReprisalRules.DEFAULTS;
+        return r.strength(level, Manager.IronReprisalRules.PIECES) / Manager.IronReprisalRules.PLAIN_HIT;
+    }
+
     static List<SkillDef> defaults() {
         SkillCategory C = SkillCategory.COMBAT, M = SkillCategory.MAGIC, U = SkillCategory.UTILITY;
         Unit PCT = Unit.PERCENT;
@@ -292,7 +298,9 @@ public final class SkillDefinitions {
                         "Kill mobs with a weapon that no other skill trains (tools...) while wearing such armor."),
                 Material.NETHERITE_CHESTPLATE, C, List.of(
                 SkillEffect.live("Extra armor (damage reduction)", PlayerDefenseManager::heavyArmorBonus, PCT),
-                SkillEffect.live("Extra defense bar points", PlayerDefenseManager::heavyArmorBarBonus, Unit.REALM_POINTS))));
+                SkillEffect.live("Extra defense bar points", PlayerDefenseManager::heavyArmorBarBonus, Unit.REALM_POINTS),
+                SkillEffect.live("Iron Reprisal: melee attackers thrown back, in full heavy armor (a plain hit's push = x1)",
+                        SkillDefinitions::ironReprisal, Unit.MULTIPLIER))));
         d.add(new SkillDef("Dual Wielding", "Fighting with a weapon in each hand.",
                 List.of(), Material.IRON_AXE, C, List.of(
                 SkillEffect.planned("Off-hand attacks"))));

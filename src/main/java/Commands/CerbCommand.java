@@ -26,7 +26,7 @@ public class CerbCommand implements CommandExecutor {
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
-                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|labels|gather|fish|farm|cook>";
+                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|labels|gather|fish|farm|cook|reprisal>";
     private final CerberusPlugin plugin;
 
     public CerbCommand(CerberusPlugin plugin) {
@@ -231,6 +231,10 @@ public class CerbCommand implements CommandExecutor {
 
             case "cook":
                 if (plugin.getCookingCommand() != null) plugin.getCookingCommand().admin(sender, args);
+                break;
+
+            case "reprisal":
+                if (plugin.getIronReprisal() != null) plugin.getIronReprisal().admin(sender, args); // /cerb reprisal [player|reset]
                 break;
 
             default:

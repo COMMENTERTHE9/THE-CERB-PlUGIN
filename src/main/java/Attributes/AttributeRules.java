@@ -111,7 +111,7 @@ public record AttributeRules(Map<String, List<SkillWeight>> skillWeights,
                 new SkillWeight(P, 1.0, WeaponClass.AXE), new SkillWeight(P, 1.0, WeaponClass.MACE),
                 new SkillWeight(P, 1.0, WeaponClass.TRIDENT), new SkillWeight(P, 1.0, WeaponClass.SPEAR),
                 new SkillWeight(P, 0.25, null)));
-        m.put("Martial Expertise", List.of(new SkillWeight(P, 1.0, WeaponClass.UNARMED)));
+        m.put("Martial Expertise", List.of(new SkillWeight(P, 1.0, WeaponClass.UNARMED), new SkillWeight(A, 1.25, null)));
         m.put("Ranged Precision", List.of(new SkillWeight(P, 1.0, WeaponClass.BOW)));
         m.put("Critical Strike", List.of(new SkillWeight(A, 1.0, null)));
         m.put("Dual Wielding", List.of(new SkillWeight(A, 0.5, null)));

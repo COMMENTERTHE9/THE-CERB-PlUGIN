@@ -429,8 +429,31 @@ TPS was 20.0 in every run.
 - **Allocations:** JFR's sampled allocations jump between runs of the same load (one run reports 150 MB/s under `withLore`, the next 0.5 MB/s), so they are not compared.
 - **Not measured:** many players with many effects at once; a screen shows at most 28 tiles, so the work per second is bounded.
 
+## Combat improvements: Martial Expertise's Agility and Iron Reprisal (2026-10-28)
+
+**What it adds:**
+- **Martial Expertise's Agility** is one more weight in the attribute engine's per-player snapshot, rebuilt only when a level or equipment changes: nothing per hit.
+- **Iron Reprisal:** on each melee hit that lands on a player, a few comparisons and an armor count at MONITOR; when it throws, one delayed task on the attacker's own thread a tick later. The cooldown map is swept only when it reaches 512 entries.
+- **The shield check** (found while checking Iron Reprisal): two reads of the damage event's modifiers per hit on a player.
+
+**Method:** as above (9 bots, 80 s load, a warm-up per load, two 60 s JFR runs), each set right after a restart. **Before:** 2044c68, the committed build this increment started from. **After:** the build with Iron Reprisal (before the shield check, which adds two field reads per hit). Loads:
+- `hurtheavy` (new): like `hurt` (each bot is attacked by zombies it summons, healed when low), with each bot in full iron at Heavy Armor Mastery 100, so on the new build every landed blow throws its zombie;
+- `hurt`: the same without armor (nobody thrown on either build).
+
+| Load | Before, ms per tick (two runs) | After | Region ms per tick, before → after | Blows taken by the nine bots in 80 s, before → after |
+|---|---|---|---|---|
+| `hurtheavy` | 0.092 / 0.084 | 0.068 / 0.059 | 1.6 / 1.6 → 1.5 / 1.6 | 416 / 403 → 121 / 172 |
+| `hurt` | 0.095 / 0.090 | 0.085 / 0.114 | 1.7 / 1.7 → 1.8 / 1.9 | 415 / 454 → 504 / 589 |
+
+TPS was 20.0 in every run.
+
+- **Iron Reprisal costs nothing measurable.** With every landed blow throwing its zombie, Cerberus's share went down: a thrown zombie has to walk back before it strikes again, so the armored bots took about a third of the blows (121–172 against 403–416). `IronReprisal.onHit` shows in one sample a minute in each run, `push` in none. One bot of the nine (the one that gives the others their orders) wore no armor in either run.
+- **`hurt`** (no armor, nobody thrown) stays within the two builds' run-to-run spread (0.085–0.114 against 0.090–0.095, with 10–30% more blows taken on the new build's runs).
+- **The shield check** was added after these runs: two reads of the event per hit on a player, too small to separate from this spread; it is part of the final measurement at the end of the milestone.
+
 ## Budgets for the next milestones
 
+- **Combat improvements (Martial Expertise, Iron Reprisal):** met. Nothing per hit beyond a few comparisons; a throw is one delayed task on the attacker's thread.
 - **Active effects:** met. A countdown costs about 40–70 µs a second per open screen that shows a timed effect, and nothing otherwise; the head's click about 0.35 ms, about 0.09 ms more than Stats. If many players keep the screen open, the next step is to rewrite only the time line of each tile (not done: no measured problem).
 - **Farming and Cooking:** met. A paid harvest costs about 10 µs and a paid craft about 20 µs, mostly the XP path every skill shares. Wide Harvest is bounded at 16 crops a tick per sweep, and nine players sweeping cost what nine harvesting by hand do. Nothing runs per tick and nothing touches the database per harvest or meal. The XP display's HUD line is now the largest per-gain cost in every gathering loop; coalescing it per tick would be the next step if a loop ever needs it (not done: no measured problem).
 - **Step 4–5 (classes and abilities):** met. Plain combat is unchanged with classes in the plugin, a cast costs about what its hits cost, and snapshots rebuild only on joins, loadout changes and passive equips, never per cast.

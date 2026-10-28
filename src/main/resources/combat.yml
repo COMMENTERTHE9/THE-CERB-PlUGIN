@@ -221,3 +221,17 @@ skills:
       base: 0.0
       hard-cap: 200.0
       late-game-bonus: 100.0
+    # Iron Reprisal (docs/design/COMBAT_IMPROVEMENTS.md §2): a creature that hits you in melee while you wear heavy armor
+    # (iron, diamond, netherite) is thrown back. No chance roll and no damage; projectiles never trigger it. A missing key
+    # uses the value shown here.
+    iron-reprisal:
+      enabled: true
+      unlock-level: 10          # the Heavy Armor Mastery level it opens at
+      strength-at-unlock: 0.4   # the server's knockback strength with four heavy pieces (a plain hit's is 0.4); each piece is a quarter
+      max-strength-level: 100   # it grows evenly up to this level...
+      max-strength: 1.0         # ...to this (a Knockback I sword hit is about 0.9), then stays
+      cooldown-ms: 500          # an attacker is thrown at most this often
+      pvp: false                # true: players, and animals a player owns, are thrown too. Off for now, not permanently
+                                # (docs/ROADMAP.md -> PvP)
+      sound: true               # a soft clang where the attacker is thrown
+      exempt: [ ender_dragon, wither ]

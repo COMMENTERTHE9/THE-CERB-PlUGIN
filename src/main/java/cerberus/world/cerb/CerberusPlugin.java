@@ -1,5 +1,6 @@
 package cerberus.world.cerb;
 
+import Listener.IronReprisal;
 import Listener.CombatListener;
 import Commands.CerbCommand;
 import org.bukkit.event.EventPriority;
@@ -307,6 +308,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Fishing fishing;
     private Gathering.Farming farming;
     private Gathering.Cooking cooking;
+    private IronReprisal ironReprisal;
     /** Every effect on a player right now, for the menus (docs/design/ACTIVE_EFFECTS.md). */
     private Effects.ActiveEffects activeEffects;
     private Gathering.Tackle tackle;
@@ -320,6 +322,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public Gathering.Farming getFarming() { return farming; }
     /** Cooking's XP, meals and the running meal (docs/design/FARMING_COOKING.md §4); null until gathering is up. */
     public Gathering.Cooking getCooking() { return cooking; }
+    public IronReprisal getIronReprisal() { return ironReprisal; }
     public Effects.ActiveEffects getActiveEffects() { return activeEffects; }
 
     /**
@@ -575,8 +578,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             classService.setCelebrations(celebrations);
             celebrations.setAbilityUnlocks(classService::unlockedBy);
         }
-        // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy).
+        // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy), Fishing's, and Iron Reprisal.
         celebrations.setTechniques((skill, from, to) -> {
+            if (skill.equals(IronReprisal.SKILL)) {
+                return combatConfig == null ? List.of() : combatConfig.ironReprisal.openedBetween(from, to);
+            }
             Gathering.GatheringCatalog c = gatheringService == null ? null : gatheringService.catalog();
             if (c == null) return List.of();
             if (skill.equals(c.fishing().skill())) return c.fishing().openedBetween(from, to);
@@ -809,6 +815,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             return playerHUDManager.noticeIfIdle(p, text, 4000);
         });
         registerEffectSources();
+        // Heavy Armor Mastery's Iron Reprisal: a creature's landed melee hit throws it back (docs/design/COMBAT_IMPROVEMENTS.md §2).
+        ironReprisal = new IronReprisal(this, skillManager,
+                () -> combatConfig != null ? combatConfig.ironReprisal : Manager.IronReprisalRules.DEFAULTS);
+        pm.registerEvents(ironReprisal, this);
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
         pm.registerEvents(celebrations, this);

@@ -122,6 +122,35 @@ public class VirtualHealthListener implements Listener {
     // ------------------------------------------------------------
     // Main damage handler
     // ------------------------------------------------------------
+    /**
+     * The last hit on a player this thread resolved into real damage: not skipped (invulnerability, dying, respawning), not
+     * countered, not lethal. Set at LOWEST; a MONITOR listener that sees the same event knows nothing cancelled it since.
+     * Held weakly: it never keeps an old event (and the entities it names) alive.
+     */
+    private static final ThreadLocal<java.lang.ref.WeakReference<EntityDamageEvent>> LANDED = new ThreadLocal<>();
+
+    /** True when {@code event} is a hit on a player that really landed (see {@link #LANDED}). Same thread, same event. */
+    public static boolean landed(EntityDamageEvent event) {
+        java.lang.ref.WeakReference<EntityDamageEvent> r = LANDED.get();
+        return event != null && r != null && r.get() == event;
+    }
+
+    /**
+     * True when a raised shield takes the whole of {@code event}'s hit. The server decides a block by its own rules (the
+     * shield up long enough, the blow from in front) and reports it as the event's blocking share, the hit's full size for a
+     * shield. A hit this listener resolved no longer shows one: it sets the hit to 0.
+     */
+    @SuppressWarnings("deprecation") // the damage modifiers are deprecated, yet they are the server's only report of a block
+    public static boolean shieldTookAll(EntityDamageEvent event) {
+        return event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING)
+                && wholeBlocked(event.getDamage(), event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING));
+    }
+
+    /** Pure: a hit of {@code base} whose blocking share is {@code blocking} (0 or less) is blocked whole. */
+    static boolean wholeBlocked(double base, double blocking) {
+        return base > 0 && -blocking >= base - 1e-9;
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageEvent event) {
         if (event.getDamage() <= 0) return;
@@ -148,6 +177,12 @@ public class VirtualHealthListener implements Listener {
             virtualHealthManager.enforceHealthInvariant(p, "PRE_DAMAGE");
             if (p.isDead() || p.getHealth() <= 0) {
                 event.setCancelled(true);
+                return;
+            }
+            // A raised shield took the whole hit of a creature (its blow, arrow, fangs or blast): the pool takes nothing, and
+            // the game's own blocking runs after this event (the block sound, the shield's wear).
+            // A player's hit stays as it was: PvP plays as before (docs/ROADMAP.md → PvP).
+            if (shieldTookAll(event) && !causedByAnotherPlayer(event, event instanceof EntityDamageByEntityEvent by ? by.getDamager() : null, p)) {
                 return;
             }
         }
@@ -244,6 +279,7 @@ public class VirtualHealthListener implements Listener {
                 if (combatSkillProcessor != null && attackerPlayer != null) {
                     combatSkillProcessor.applyPostDamageEffects(ctx);
                 }
+                if (!resolution.lethal()) LANDED.set(new java.lang.ref.WeakReference<>(event)); // Iron Reprisal reads it at MONITOR
 
                 // Defender XP: award for taking damage (HAT, Survival). PvP as before attributes
                 // scales the hit to the defender's health; XP counts it in the old terms.
