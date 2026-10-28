@@ -72,7 +72,37 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
-## Farming, Cooking and meaningful food (owner, 2026-10-28, approved): built, waiting for the owner's playtest
+## Next: proposed order (2026-10-28, waiting for the owner)
+
+After playing the Farming and Cooking build ("everything seems to work"), the owner asked for the list of what comes next. A proposal: the order is the owner's to set, and nothing here is approved except item 1, the owner's own request.
+
+**Right away (small):**
+1. **Active effects in the Player Menu** (the owner's request, 2026-10-28: "it would help to see all the effects that you have on you… I can't see how much longer I have it"): every effect running on the player with its time left, the meal first (later potions and other timed buffs), in the menu head's tooltip with a click for details, and a HUD heads-up a minute before a meal ends. Until it is built, `/cooking` shows the running meal and its time left.
+2. **Replant as a tool enchantment** (the owner's note, 2026-10-28; `docs/DECISIONS.md`): settle how, then build it.
+3. **Decision 6 (lifesteal):** revisit now that meals heal.
+4. **A reviewed pull request into `master`** when the owner is happy with the branch (never merged automatically).
+
+**Proposals waiting for a yes or no** (written, nothing built):
+5. `docs/AUTOMATION_REVIEW.md`: the older anti-farming rules against "respect the player's time".
+6. `docs/design/ENVIRONMENTAL_DAMAGE.md`: hazards that stay meaningful at high levels.
+7. `docs/design/XP_EFFICIENCY.md`: Fluency, faster XP in a skill you're already good at.
+8. The Farm Ledger (`docs/design/FARMING_COOKING.md` §6): machines paying their owner.
+
+**The next skill loops** (10 of the 35 skills have a real loop now: Blade Mastery, Weapon Mastery, Ranged Precision, Pathfinding, Mining, Smithing, Woodcutting, Fishing, Farming, Cooking):
+9. **Herbalism and Alchemy** (recommended next): gather herbs, brew potions; timed buffs and healing on the same path meals use, with Farming's crops as ingredients.
+10. **Field Medicine:** healing items on the Cerberus health pool.
+11. **Crafting, Enchanting and Repairing:** the item loop around Smithing.
+12. **Animal Taming and Riding:** pets and mounts.
+13. **Scavenging, Lockpicking and Trading:** with loot rooms, structures and trades (the world systems).
+14. **The partial combat and magic skills** (Heavy Armor, Survival, Critical Strike, Martial Expertise, the magic skills, Stealth, Dual Wielding, Summoning, Trap Mastery): finished with the classes that use them.
+
+**The big phases after** (on the roadmap already):
+15. **The next six classes, one at a time:** Knight, Ranger, Cleric, Assassin, Elementalist, Summoner (Phase 4 above).
+16. **Mastery 100 → 150,** Heavy Armor first (Phase 6).
+17. **The skeletal systems:** weapons and gear, realms (Ascension), Bestiary and zones, quests, structures, mounts, the living world (Phase 7).
+18. **The PvP pass:** every PvP limit turned on together ("PvP" below).
+
+## Farming, Cooking and meaningful food (owner, 2026-10-28, approved): built; the owner played it (2026-10-28)
 
 **Why.** Farming and Cooking as disciplines worth mastering, at the standard of Felling and Fishing: Farming grows better ingredients, Cooking turns them into meals that make the character stronger, and each stands on its own. Design: `docs/design/FARMING_COOKING.md`; the owner's rulings: `docs/DECISIONS.md`.
 
@@ -80,7 +110,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 2. **Increment A, Farming** (done): ripe harvests broken or picked, 12 crops as data, discoveries, Vitality and Fortune on crops, Replant (10), Wide Harvest (25, bounded and protection-aware), crop quality (50), the Crops screen and Collections.
 3. **Increment B, Cooking** (done): Cooking XP for food really made (furnace, smoker, campfire, crafting), six meals with tiers from level and ingredient quality, one timed effect at a time through the attribute engine, restoration on the Cerberus health pool, the Cookbook and Collections.
 4. **Verification** (done): `farming.js`, `cooking.js`, the regression slices, an independent review and its fixes, performance before and after (`docs/STATUS.md` → "Done: Farming and Cooking"; `docs/PERFORMANCE.md`).
-5. **Next:** the owner's playtest (`docs/PLAYTEST_CHECKLIST.md` §16), including decision 6 (lifesteal) now that meals heal. Proposed, not built: the Farm Ledger (machine attribution), scythes, irrigation, custom crops for Herbalism and Alchemy.
+5. **The owner's playtest (2026-10-28):** "everything seems to work". One request: show the effects running on you (a meal and its time left) in the Player Menu, item 1 of "Next: proposed order" above. Still open: decision 6 (lifesteal) now that meals heal. Proposed, not built: the Farm Ledger (machine attribution), scythes, irrigation, custom crops for Herbalism and Alchemy.
 6. **Later, the owner's note (2026-10-28):** Replant moves from a Farming level unlock to a tool enchantment (`docs/DECISIONS.md` → Farming, Cooking and meaningful food). Design it when taken up: a real enchantment or a Cerberus hoe upgrade, which tools, how it is obtained, whether a level still gates it.
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27, approved): built, waiting for the owner's playtest
