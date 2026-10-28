@@ -1,0 +1,9 @@
+
+── bonemealtop ──
+PASS  Bone meal on the top half of a wild small dripleaf: a big dripleaf  (big_dripleaf_stem … head at 2)
+PASS  ...its leaf broken: it pays (a wild plant bone meal grew)  (+45)
+PASS  The bot placed a small dripleaf by hand  (small_dripleaf / small_dripleaf)
+PASS  ...bone meal on its top half: a big dripleaf  (big_dripleaf_stem … head at 4)
+PASS  ...its leaf broken: no XP (bone meal grew a plant placed by hand: still placed)  (+0)
+
+5/5 passed

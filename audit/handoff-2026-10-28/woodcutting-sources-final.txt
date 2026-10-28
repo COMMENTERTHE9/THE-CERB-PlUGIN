@@ -1,0 +1,12 @@
+
+── sources ──
+PASS  A tree the world grew: Felling takes it, every log pays in full (4 XP)  ({"logs":5,"left":0,"xp":20,"hud":["308/308⛨  106/106♥   ✦ Discovered: Birch · +20 XP   1,043/1,043✎"]})
+PASS  A tree grown with bone meal: Felling takes it, and it pays half (2 XP a log)  ({"logs":7,"left":0,"xp":14,"hud":["308/308⛨  106/106♥   Trees grown with bone meal pay 50% of a wild tree's XP and no heartwood; left to grow, 80%.   1,043/1,043✎"]})
+PASS  ...and the HUD says why it pays less  (["308/308⛨  106/106♥   Trees grown with bone meal pay 50% of a wild tree's XP and no heartwood; left to grow, 80%.   1,043/1,043✎"])
+PASS  A tree a player planted that grew on its own: Felling takes it, and it pays 80% (3.2 XP a log)  ({"logs":7,"left":0,"xp":22,"hud":["308/308⛨  106/106♥   Trees grown from saplings pay 80% of a wild tree's Woodcutting XP.   1,043/1,043✎"]})
+PASS  A log placed by hand: no XP, and the HUD says so  (placed=true, +0; ["308/308⛨  106/106♥   Logs placed by hand pay no Woodcutting XP; trees grown from saplings do.   1,043/1,043✎"])
+PASS  A log placed by hand, hit by a wind charge first (the trapdoor on it opened): still no XP  (placed=true, burst reached=true, +0)
+PASS  A grown tree a build touches: one log (2 XP), the rest stands, and the HUD says why  ({"logs":6,"left":5,"xp":2,"hud":["308/308⛨  106/106♥   This tree touches a build: Felling leaves it standing. Cut it log by log.   1,043/1,043✎"]})
+PASS  A tree grown by a dispenser's bone meal: Felling takes it, and it pays half (2 XP a log)  (grew=true; {"logs":6,"left":0,"xp":12,"hud":[]})
+
+8/8 passed

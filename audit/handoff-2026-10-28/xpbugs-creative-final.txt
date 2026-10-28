@@ -1,0 +1,23 @@
+── creative ──
+      gamemode now creative
+      after catch 1: Fishing level 1, 0 XP
+      after catch 2: Fishing level 1, 0 XP
+      HUD while fishing in creative: 308/308⛨ 103/103♥ 4.42%★ 1,043/1,043✎ | 308/308⛨ 103/103♥ No Fishing XP in creative mode · survival and adventure train skills 1,043/1,043✎
+PASS  Creative: catches pay no Fishing XP (XP integrity: creative earns nothing, unchanged)  (2 catches; level 1, 0 XP -> level 1, 0 XP)
+PASS  Creative: the HUD says why the catch paid nothing  (308/308⛨ 103/103♥ 4.42%★ 1,043/1,043✎ | 308/308⛨ 103/103♥ No Fishing XP in creative mode · survival and adventure train skills 1,043/1,043✎)
+      creative bow kill: dead after 8; Ranged Precision +0, Blade Mastery +0, Weapon Mastery +0; no [KillXp] line
+PASS  Creative: a bow kill pays no Ranged Precision  (+0)
+PASS  Creative: the HUD says why the kill paid nothing  (308/308⛨ 103/103♥ 4.42%★ 1,043/1,043✎ | 308/308⛨ 103/103♥ No Ranged Precision XP in creative mode · survival and adventure train skills 1,043/1,043✎)
+PASS  Creative: a log cut pays no Woodcutting XP  (level 1, 0 XP -> level 1, 0 XP)
+      HUD after the creative log cut: 308/308⛨ 103/103♥ No Woodcutting XP in creative mode · survival and adventure train skills 1,043/1,043✎
+      creative, new chunks: Pathfinding level 1, 0 XP -> level 1, 0 XP; HUD 308/308⛨ 103/103♥ No Pathfinding XP in creative mode · survival and adventure train skills 1,043/1,043✎
+PASS  Creative: walking into new chunks pays no Pathfinding XP, and the HUD says why  (+0; 308/308⛨ 103/103♥ No Pathfinding XP in creative mode · survival and adventure train skills 1,043/1,043✎)
+      survival, new chunks: Pathfinding level 1, 0 XP -> level 1, 10 XP; HUD 308/308⛨ 103/103♥ +5 Pathfinding 1,043/1,043✎ | 308/308⛨ 103/103♥ +10 Pathfinding 1,043/1,043✎
+PASS  Control, survival: new chunks pay Pathfinding XP  (+10)
+      after catch 1: Fishing level 1, 10 XP
+      after catch 2: Fishing level 1, 20 XP
+PASS  Control, survival: the same pond pays Fishing XP  (level 1, 0 XP -> level 1, 20 XP)
+      survival bow kill: dead after 7; Ranged Precision +58, Blade Mastery +0, Weapon Mastery +0; [KillXp] Ranged Precision, origin COMMAND x1.0 -> 58.0
+PASS  Control, survival: the same bow kill pays Ranged Precision  (+58)
+
+9/9 passed

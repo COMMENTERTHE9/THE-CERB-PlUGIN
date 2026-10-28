@@ -1,0 +1,18 @@
+PASS  The hub opens  (✦ Player Menu)
+PASS  The Recipes tile is available and counts the recipes  (How to make Cerberus items: crafting, meals and brews. Crafting 9 · Meals 6 · Brews 8 ✔ Available ▸ Click to open)
+PASS  Recipes opens  (✦ Recipes)
+PASS  Sower's Charm: its six ingredients, at a crafting table  (Ingredients: • wheat seeds • beetroot seeds • melon seeds or pumpkin seeds • bone meal • string • gold nugget Where: a crafting table Craft it with a hoe: ripe crops that hoe harvests are planted again. Also in your recipe book)
+PASS  Replanting: the charm and any hoe, any grid, what it gives, not in the recipe book  (Tool upgrade Ingredients: • Sower's Charm • any hoe Where: any crafting grid Gives the tool: ripe crops it harvests are planted again. Once per item; its enchantments, damage and name stay. Not in the recipe book)
+PASS  Heartwood grip says what it gives  (Tool upgrade Ingredients: • Heartwood • any axe Where: any crafting grid Gives the tool: chopping speed +8% while held. Once per item; its enchantments, damage and name stay. Not in the recipe book)
+PASS  No rod part is listed as a crafting recipe (fitted in Fishing → Equipment)
+PASS  Wayfarer's Bait is locked until its milestone and says which  (✕ Locked: the Wayfarer milestone species found in 3 waters (Fishing) Ingredients: • dried kelp • sweet berries Makes: 4 Where: any crafting grid Bait: species you haven't caught bite more. Put it in your Bait Bag (Fishing → Equipment). In your recipe book once unlocked)
+PASS  Grub Bait makes 4 in any grid  (Ingredients: • rotten flesh • wheat seeds Makes: 4 Where: any crafting grid Bait: bites come sooner. Put it in your Bait Bag (Fishing → Equipment). Also in your recipe book)
+PASS  Meals opens the Cookbook  (✦ Cookbook)
+PASS  Back returns to Recipes  (✦ Recipes)
+PASS  Brews opens the Brews list  (✦ Brews)
+PASS  Back returns to Recipes again  (✦ Recipes)
+PASS  Rod parts opens Fishing Equipment  (✦ Fishing Equipment)
+PASS  A recipe tile is information: clicking it stays on Recipes  (✦ Recipes)
+PASS  Home returns to the hub  (✦ Player Menu)
+
+16/16 passed

@@ -1,5 +1,9 @@
 # Claude Code Memory — Cerberus Plugin
 
+## Codex handoff (2026-10-28)
+
+Continuing work is on `codex/milestone-verification`, including Claude's milestone commit `7c3037f` and the later Recipes commit `e9ba925`, fetched during the handoff. Claude's branch was not rewritten. Read `docs/HANDOFF_CODEX.md` for the current evidence boundary. The combat/Replant/Herbalism/Alchemy implementation is built, but the final performance results were not committed. Historical "done" statements below do not close that gap or replace the owner's playtest. Keep the existing owner rules and scope; finish verification before proposing another expansion.
+
 ## Project
 Minecraft RPG plugin — cultivation / xianxia-flavored but **Western-named** — with a deep skill / combat / progression system. Currently mid-build: the full design is complete (`docs/design/`) and Step-0 foundation code is underway.
 

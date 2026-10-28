@@ -476,6 +476,12 @@ TPS was 20.0 in every run.
 
 **Results:** to follow in a separate commit (the pass was still running when the integration was committed).
 
+**Handoff audit, 2026-10-28:** the initial fetch ended at `7c3037f`; a later fetch found `e9ba925` (the Recipes screen), which has been preserved on the Codex branch. Neither commit contains the final performance results. No final recording, per-run summary or counter transcript was found in the tracked repository or its local `perf-out` location. The method above is a plan, not a measured result. This milestone's final performance verification remains open. Earlier measurements in this document apply to their stated builds and workloads; they do not establish the final Herbalism/Alchemy cost or resolve the Active Effects `menu` comparison. A replacement comparison must identify its actual after-build; the newer Recipes screen also changes the hub's recipe summary, so results for `7c3037f` alone would not measure that later UI change.
+
+To close this item, recover the original recordings and logs if available. Otherwise make a deliberate replacement run on an isolated, quiet test host using the existing loads and profiler. Preserve each build id, runtime, recording, summary, load output, actual work completed, before/after plugin counters, TPS and region MSPT. Report CPU samples, allocations and task counts with the two measured runs per load. The three-way `standidle` comparison also needs the intermediate Alchemy build `ceed424`, before the brewing-mix optimization. Do not mark the budgets for the complete milestone met until these results exist. See [HANDOFF_CODEX.md](HANDOFF_CODEX.md).
+
+`tools/perf/profile.sh` selects the first Folia/Paper JVM it finds. Use it only where that is the isolated test JVM; it was not run on this shared Windows host with the owner's other Folia process present.
+
 ## Budgets for the next milestones
 
 - **Combat improvements (Martial Expertise, Iron Reprisal):** met. Nothing per hit beyond a few comparisons; a throw is one delayed task on the attacker's thread.

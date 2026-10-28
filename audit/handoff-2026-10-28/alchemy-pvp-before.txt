@@ -1,0 +1,9 @@
+
+── pvp ──
+PASS  The draught is drunk in a fight (a player keeps hitting the bot for at least 24 s)  (drank true, hits 7/7, deaths 0)
+PASS  ...while the fight lasts it heals nothing (paused)  (47.16 → 46.86 of 102.75 over 29 s; healing ticks +0)
+PASS  ...before healing resumes there is room for its full quarter of max health  (59.56/102.75)
+FAIL  ...once the tag ends all five heals run and the pool gains at least its full quarter  (no draught running; 59.56 → 75.66 of 102.75; healing ticks +0, deaths 0)
+
+3/4 passed
+FAILED: ...once the tag ends all five heals run and the pool gains at least its full quarter

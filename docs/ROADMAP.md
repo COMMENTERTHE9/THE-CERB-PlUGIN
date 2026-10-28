@@ -84,7 +84,7 @@ The owner's two-phase milestone, built in verified increments on the development
 | 3 | **Lifesteal review:** measured analysis and a recommendation, no change (decision 6 stays until the owner decides) | Done (`docs/design/LIFESTEAL_REVIEW.md`, `docs/STATUS.md` → "Done: lifesteal review"): nothing changed; the recommendation (a per-hit cap, then Weapon Mastery's own weapons) waits for the owner |
 | 4 | **Herbalism:** herbs as data, XP, discoveries, +0.25 Essence and +0.5 Fortune on herbs per level, potency/quality, milestones (rare herbs at 25, reagent quality at 50), one bounded active technique, the journal through the skill page and Collections | Done (`docs/STATUS.md` → "Done: Herbalism", `docs/design/HERBALISM.md`): 35 herbs, four rare reagents, reagent quality, Wildcrafting, the Herbarium |
 | 5 | **Alchemy:** XP only for completed brews at the brewing stand, +0.5 Essence per level, potency and duration progression, potions as data with Western names, healing on the Cerberus pool, stacking and replacement rules with meals, shown through Active Effects, saved | Done (`docs/STATUS.md` → "Done: Alchemy", `docs/design/ALCHEMY.md`): completed brews pay their starter, eight draughts and elixirs as data, tiers from the level, Essence; an independent review's six Alchemy findings fixed |
-| 6 | **Integration:** full regression, independent reviews, performance (MSPT, CPU samples, allocations, task counts), every document, the final report | Done (`docs/STATUS.md` → "Done: integration"): the full regression on three sandboxes, an independent review's six findings fixed and shown in game, the before/after (`docs/PERFORMANCE.md`, numbers to follow) |
+| 6 | **Integration:** full regression, independent reviews, performance (MSPT, CPU samples, allocations, task counts), every document, the final report | **Verification open.** Regression and the review's six fixes are recorded (`docs/STATUS.md` → "Done: integration"). Codex closed the two deferred gameplay checks on the final build; the final performance results remain missing. Evidence and remaining limitations: `docs/HANDOFF_CODEX.md`. |
 
 Not in this milestone: reflected damage, any lifesteal change, the proposals in `docs/AUTOMATION_REVIEW.md`, the cultivation realm system, a Folia upgrade.
 
@@ -104,7 +104,7 @@ After playing the Farming and Cooking build ("everything seems to work"), the ow
 7. `docs/design/XP_EFFICIENCY.md`: Fluency, faster XP in a skill you're already good at.
 8. The Farm Ledger (`docs/design/FARMING_COOKING.md` §6): machines paying their owner.
 
-**The next skill loops** (10 of the 35 skills have a real loop now: Blade Mastery, Weapon Mastery, Ranged Precision, Pathfinding, Mining, Smithing, Woodcutting, Fishing, Farming, Cooking):
+**The next skill loops** (12 of the 35 skills have a real loop now: Blade Mastery, Weapon Mastery, Ranged Precision, Pathfinding, Mining, Smithing, Woodcutting, Fishing, Farming, Cooking, Herbalism, Alchemy):
 9. **Herbalism and Alchemy:** taken up by the milestone above (increments 4 and 5).
 10. **Field Medicine:** healing items on the Cerberus health pool.
 11. **Crafting, Enchanting and Repairing:** the item loop around Smithing.

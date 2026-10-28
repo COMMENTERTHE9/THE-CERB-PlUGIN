@@ -14,8 +14,8 @@
 //   restart1, restart2 - a brew a restart interrupts (the caller restarts the server between the two; RESTART_FILE names
 //              a file for the stand's place): started by the bot, it completes after the restart as the bot's brew, paid
 //   persist  - the elixir survives a relog with its time, and ends at death
-//   pvp      - a draught drunk in a fight (PvP-tagged: CerbTarget, op, hits the bot for 24 s) waits, paused, not lost: its
-//              healing comes once the tag ends (it used to give up within about one tag's length, its healing lost)
+//   pvp      - a draught drunk in a fight (PvP-tagged: CerbTarget, op, hits the bot for at least 24 s) waits, paused, not
+//              lost: zero healing ticks during the fight, all five after; authoritative health and safe headroom checks
 //   reload   - /cerb reload with the same brews leaves the server's brewing mixes alone; a brew still brews after it
 //   menu     - Player Menu → Skills → Alchemy → Brews, and Collections → Brews, count what /alchemy counts
 //   all      - every phase above but restart1 and restart2 (the default)
@@ -402,48 +402,87 @@ async function drinkPhase() {
 async function pvpPhase() {
   await lab();
   await cmd(`/cerb alchemy give ${NAME} mending common 1`, 600);
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
-  await new Promise((res, rej) => { other.once('spawn', res); setTimeout(() => rej(new Error('CerbTarget did not spawn')), 30000); });
-  await sleep(1500);
-  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 2.5} 180 0`, 800);
-  await cmd('/gamemode survival CerbTarget', 400);
-  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 600);
-  await cmd('/effect clear @s resistance', 300); // the lab's Resistance would take the hits
-  await cmd('/damage @s 30 minecraft:generic', 1000);
-  const punch = async () => {
-    const e = other.players[NAME] && other.players[NAME].entity;
-    if (!e) return false;
-    await other.lookAt(e.position.offset(0, 1.5, 0), true);
-    other.attack(e);
-    await sleep(300);
-    return true;
+  const health = async () => {
+    const at = await cmd(`/cerb healthstate ${NAME}`, 250);
+    const m = (saw(/Custom HP:/, at) || '').match(/Custom HP: ([\d.]+)\/([\d.]+)/);
+    if (!m) throw new Error('No authoritative health snapshot (check sandbox operator permissions)');
+    return { hp: Number(m[1]), max: Number(m[2]) };
   };
-  const tags = [];
-  const t0 = Date.now();
-  tags.push(await punch());
-  const drank = await drink('Draught of Mending');
-  const start = hud();
-  for (let i = 0; i < 6; i++) { await sleep(4000); tags.push(await punch()); }
-  const lastHit = Date.now();
-  const endFight = hud();
-  check('The draught is drunk in a fight (a player keeps hitting the bot for 24 s)', drank && tags.every(Boolean), `drank ${drank}, hits ${tags.filter(Boolean).length}/7`);
-  check('...while the fight lasts it heals nothing (paused)', endFight.hp <= start.hp + 2, `${start.hp} → ${endFight.hp} of ${endFight.max} over ${Math.round((lastHit - t0) / 1000)} s`);
-  // Room for the heal to show: natural regeneration refills part of the pool meanwhile, so 40 more damage just before the
-  // tag ends (not from a player: the tag isn't renewed). Then the draught's own state and the pool over the next seconds.
-  await sleep(Math.max(0, lastHit + 13000 - Date.now()));
-  await cmd('/damage @s 40 minecraft:generic', 300);
-  await sleep(Math.max(0, lastHit + 15500 - Date.now())); // the tag ends 15 s after the last hit
-  const tagEnd = hud();
-  const at = await cmd('/alchemy', 900);
-  const healing = chat.slice(at).some(m => /A draught is healing/.test(m));
-  await sleep(5600);
-  const after = hud();
-  check('...once the tag ends, it heals: "A draught is healing", and its quarter of max health on top of regeneration',
-    healing && after.hp - tagEnd.hp >= 0.3 * after.max,
-    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%; regeneration alone gave +12% in the control)`);
-  other.quit();
-  await cmd('/effect give @s resistance infinite 4 true', 300);
-  await cmd(`/cerb heal ${NAME}`, 400);
+  const heals = async () => {
+    const at = await cmd('/cerb alchemy stats', 250);
+    const m = (saw(/\[Alchemy\]/, at) || '').match(/healing ticks (\d+)/);
+    if (!m) throw new Error('No Alchemy healing counter');
+    return Number(m[1]);
+  };
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  let deaths = 0;
+  const onDeath = () => { deaths++; };
+  bot.on('death', onDeath);
+  try {
+    await new Promise((res, rej) => { other.once('spawn', res); setTimeout(() => rej(new Error('CerbTarget did not spawn')), 30000); });
+    await sleep(1500);
+    await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 2.5} 180 0`, 800);
+    await cmd('/gamemode survival CerbTarget', 400);
+    await cmd('/clear CerbTarget', 300);
+    // Keep the real melee hits nonlethal, so a death cannot silently end the effect being measured.
+    await cmd('/attribute CerbTarget minecraft:attack_damage base set 0.1', 300);
+    await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 600);
+    await cmd('/effect clear @s resistance', 300); // the lab's Resistance would take the hits
+    await cmd(`/cerb heal ${NAME}`, 500);
+    let prepared = await health();
+    // Generic damage can be scaled by Cerberus: a fixed 30/40 damage killed the character in the old harness.
+    // Approach the target in small steps and read the pool after each, leaving room for a complete draught.
+    for (let i = 0; i < 80 && prepared.hp > prepared.max * 0.46; i++) {
+      const damage = Math.min(5, Math.max(0.5, (prepared.hp - prepared.max * 0.45) / 4));
+      await cmd(`/damage @s ${damage.toFixed(2)} minecraft:generic`, 350);
+      prepared = await health();
+    }
+    if (deaths || prepared.hp < prepared.max * 0.3 || prepared.hp > prepared.max * 0.46) {
+      throw new Error(`Unsafe healing-test setup: ${prepared.hp}/${prepared.max}, deaths ${deaths}`);
+    }
+    const h0 = await heals();
+    const punch = async () => {
+      const e = other.players[NAME] && other.players[NAME].entity;
+      if (!e) return false;
+      await other.lookAt(e.position.offset(0, 1.5, 0), true);
+      other.attack(e);
+      await sleep(300);
+      return true;
+    };
+    const tags = [];
+    const t0 = Date.now();
+    tags.push(await punch());
+    const drank = await drink('Draught of Mending');
+    const start = await health();
+    for (let i = 0; i < 6; i++) { await sleep(4000); tags.push(await punch()); }
+    const lastHit = Date.now();
+    const endFight = await health();
+    const hFight = await heals();
+    check('The draught is drunk in a fight (a player keeps hitting the bot for at least 24 s)', drank && tags.every(Boolean)
+      && lastHit - t0 >= 24000 && deaths === 0, `drank ${drank}, hits ${tags.filter(Boolean).length}/7, deaths ${deaths}`);
+    check('...while the fight lasts it heals nothing (paused)', hFight === h0 && endFight.hp <= start.hp + 2,
+      `${start.hp} → ${endFight.hp} of ${endFight.max} over ${Math.round((lastHit - t0) / 1000)} s; healing ticks +${hFight - h0}`);
+    // Measure before the 15-second tag expires; no fixed extra damage and no assumed natural-regeneration rate.
+    await sleep(Math.max(0, lastHit + 14000 - Date.now()));
+    const tagEnd = await health();
+    check('...before healing resumes there is room for its full quarter of max health', tagEnd.hp <= tagEnd.max * 0.7
+      && deaths === 0, `${tagEnd.hp}/${tagEnd.max}`);
+    await sleep(Math.max(0, lastHit + 15500 - Date.now()));
+    const at = await cmd('/alchemy', 900);
+    const healing = chat.slice(at).some(m => /A draught is healing/.test(m));
+    await sleep(5600);
+    const after = await health();
+    const hAfter = await heals();
+    check('...once the tag ends all five heals run and the pool gains at least its full quarter',
+      healing && hAfter - hFight === 5 && after.hp - tagEnd.hp >= 0.25 * after.max - 1 && deaths === 0,
+      `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max}; healing ticks +${hAfter - hFight}, deaths ${deaths}`);
+  } finally {
+    await cmd('/attribute CerbTarget minecraft:attack_damage base set 1', 250);
+    other.quit();
+    bot.removeListener('death', onDeath);
+    await cmd('/effect give @s resistance infinite 4 true', 300);
+    await cmd(`/cerb heal ${NAME}`, 400);
+  }
 }
 
 async function persistPhase() {
