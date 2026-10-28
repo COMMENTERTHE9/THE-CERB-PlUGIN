@@ -118,6 +118,7 @@ public final class GatheringCatalog {
     private final FishingRules fishing;
     private final TackleRules tackle;
     private final FarmingRules farming;
+    private final CookingRules cooking;
     private final List<String> problems;
 
     private GatheringCatalog(Map<Material, ResourceDef> byBlock, Map<String, ResourceDef> resources, Map<String, ToolDef> tools,
@@ -125,7 +126,7 @@ public final class GatheringCatalog {
                              Map<String, Double> perUnit, Map<Material, Double> forgeOverrides, double netheriteUpgrade,
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
-                             FishingRules fishing, TackleRules tackle, FarmingRules farming, List<String> problems) {
+                             FishingRules fishing, TackleRules tackle, FarmingRules farming, CookingRules cooking, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -148,6 +149,7 @@ public final class GatheringCatalog {
         this.fishing = fishing;
         this.tackle = tackle;
         this.farming = farming;
+        this.cooking = cooking;
         this.problems = List.copyOf(problems);
     }
 
@@ -207,6 +209,8 @@ public final class GatheringCatalog {
     public TackleRules tackle() { return tackle; }
     /** Farming's crops and techniques (docs/design/FARMING_COOKING.md §3). */
     public FarmingRules farming() { return farming; }
+    /** Cooking's XP tables and meals (docs/design/FARMING_COOKING.md §4). */
+    public CookingRules cooking() { return cooking; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -351,6 +355,16 @@ public final class GatheringCatalog {
                     + "Machines and water keep their drops and pay nobody. The first harvest of each crop is a discovery.");
             if (weakGap > 0) lines.add("Each crop has a level; " + weakGap + "+ levels above it you get " + Math.round(weakFactor * 100) + "% of its XP.");
         }
+        if (cooking.enabled()) {
+            List<String> lines = out.computeIfAbsent(cooking.skill(), k -> new ArrayList<>());
+            List<String> fur = new ArrayList<>(), cra = new ArrayList<>();
+            cooking.furnace().forEach((m, xp) -> fur.add(m.name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " + number(xp)));
+            cooking.crafting().forEach((m, xp) -> cra.add(m.name().toLowerCase(Locale.ROOT).replace('_', ' ') + " " + number(xp)));
+            if (!fur.isEmpty()) lines.add("Take food out of a furnace or smoker: " + String.join(", ", fur) + " XP each (hoppers pay nobody).");
+            if (!cra.isEmpty()) lines.add("Craft food: " + String.join(", ", cra) + " XP each; storage recipes give nothing.");
+            if (!cooking.meals().isEmpty()) lines.add("Meals open from Cooking " + cooking.meals().stream().mapToInt(CookingRules.Meal::level).min().orElse(0)
+                    + " and pay their own XP (the Cookbook). Nothing in creative.");
+        }
         return out;
     }
 
@@ -462,6 +476,11 @@ public final class GatheringCatalog {
         if (!server.contains("farming") && shipped.get("farming") instanceof ConfigurationSection fa) {
             server.createSection("farming", values(fa));
             notes.add("farming: not in this file (an update added it), so the plugin's own section is used; write \"farming: off\" to turn farming's rules off");
+        }
+        // Cooking (2026-10-28) likewise: "cooking: off" turns Cooking's XP and meals off.
+        if (!server.contains("cooking") && shipped.get("cooking") instanceof ConfigurationSection co) {
+            server.createSection("cooking", values(co));
+            notes.add("cooking: not in this file (an update added it), so the plugin's own section is used; write \"cooking: off\" to turn cooking's rules off");
         }
         return notes;
     }
@@ -685,6 +704,7 @@ public final class GatheringCatalog {
         TackleRules tackle = fishing.enabled() ? TackleRules.from(root == null ? null : root.getConfigurationSection("tackle"), items, upgrades, problems)
                 : TackleRules.NONE;
         FarmingRules farming = FarmingRules.from(root == null ? null : root.getConfigurationSection("farming"), skills, problems);
+        CookingRules cooking = CookingRules.from(root == null ? null : root.getConfigurationSection("cooking"), skills, problems);
         for (FarmingRules.Crop c : farming.crops()) for (Material m : c.blocks()) {
             ResourceDef clash = byBlock.remove(m); // one block, one set of rules: a harvest never pays twice
             if (clash != null) problems.add("farming crop " + c.id() + ": " + m + " is also resource " + clash.id() + " (the crop's rules win)");
@@ -694,7 +714,7 @@ public final class GatheringCatalog {
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, problems);
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking, problems);
     }
 
     /** Fortune a resource's skill counts by default ({@code fortune: true}): Mining's ore, Woodcutting's wood; else the general part. */

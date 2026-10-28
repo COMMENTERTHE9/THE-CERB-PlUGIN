@@ -29,7 +29,7 @@ public class CerbTabCompleter implements TabCompleter {
             "panel", "heal", "mana", "skill", "class", "resetdata",
             "worldgen", "repairchunk", "quest", "event",
             "timings", "profiler", "listentities", "showqueues",
-            "speed", "spawn", "mobs", "labels", "gather", "fish", "farm"
+            "speed", "spawn", "mobs", "labels", "gather", "fish", "farm", "cook"
     );
 
     private static final List<String> ON_OFF = List.of("on", "off");
@@ -84,6 +84,10 @@ public class CerbTabCompleter implements TabCompleter {
             case "spawn" -> args.length == 2 ? filterMobIds(args[1]) : List.of();
             case "gather" -> completeGather(args);
             case "fish" -> completeFish(args);
+            case "cook" -> args.length == 2 ? filter(CookingCommand.ADMIN, args[1])
+                    : args.length == 3 ? filterPlayers(args[2])
+                    : args.length == 4 && args[1].equalsIgnoreCase("give") ? filter(Gathering.GatheringCatalog.current().cooking().meals().stream().map(Gathering.CookingRules.Meal::id).toList(), args[3])
+                    : args.length == 5 && args[1].equalsIgnoreCase("give") ? filter(List.of("common", "fine", "superior", "masterwork"), args[4]) : List.of();
             case "farm" -> args.length == 2 ? filter(FarmingCommand.ADMIN, args[1])
                     : args.length == 3 && args[1].equalsIgnoreCase("crops") ? filterPlayers(args[2])
                     : args.length == 4 && args[1].equalsIgnoreCase("crops") ? filter(List.of("reset"), args[3]) : List.of();

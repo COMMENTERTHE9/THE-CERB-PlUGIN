@@ -546,6 +546,84 @@ farming:
     glow_berries:  { blocks: [CAVE_VINES, CAVE_VINES_PLANT], ripe: berries, pick: true, produce: GLOW_BERRIES, level: 35, xp: 4, discovery-xp: 80 }
     nether_wart:   { blocks: [NETHER_WART], ripe: max-age, produce: NETHER_WART, seed: NETHER_WART, level: 40, xp: 4, discovery-xp: 100, wide: true, quality: true }
 
+# Cooking (docs/design/FARMING_COOKING.md §4). Rules the code keeps whatever this file says: only food a player really
+# makes pays (taken out of a furnace or smoker, or crafted at a grid; the game's crafted-items statistic counts it, so a
+# shift-click pays every item and a click that makes nothing pays nothing); hoppers, crafters and campfires pay nobody;
+# creative earns nothing. Meals give one effect at a time, through the attribute engine and its caps.
+cooking:
+  skill: Cooking
+  # XP each when a player takes this food out of a furnace or smoker.
+  furnace: { COOKED_BEEF: 3, COOKED_PORKCHOP: 3, COOKED_MUTTON: 3, COOKED_CHICKEN: 3, COOKED_RABBIT: 3, COOKED_COD: 3, COOKED_SALMON: 4, BAKED_POTATO: 2, DRIED_KELP: 0.25 }
+  # XP each for food crafted by a vanilla recipe (reversible storage recipes, such as dried kelp blocks, never pay).
+  crafting: { BREAD: 4, COOKIE: 1, PUMPKIN_PIE: 6, MUSHROOM_STEW: 6, BEETROOT_SOUP: 6, RABBIT_STEW: 12, CAKE: 20, GOLDEN_CARROT: 5 }
+  # A meal's tier is the cook's Cooking level (from these levels), one higher when at least half of its crop ingredients
+  # have a quality (Farming). Each tier multiplies every number of the effect (potency) and how long it lasts (duration).
+  tiers: { fine: 25, superior: 50, masterwork: 75 }
+  potency:  { common: 1.0, fine: 1.2, superior: 1.4, masterwork: 1.6 }
+  duration: { common: 1.0, fine: 1.25, superior: 1.5, masterwork: 2.0 }
+  # Meals: crafted (shapeless) at a crafting table from the level they open at; "item" is the edible vanilla item it is
+  # made on (its food points stay vanilla; meals can be eaten at full hunger). "#cooked_meat" is any cooked meat,
+  # "#cooked_fish" cod or salmon. Effects: { attribute: vitality|power|fortitude|..., amount } (fortune may add a yield:
+  # ore, wood, fish, crops), or { stat: movement-speed|lure-speed|..., amount } as a fraction (0.08 = +8%);
+  # restore: a share of max health healed over its seconds (paused in PvP). Eating one replaces the running meal.
+  meals:
+    hearty_stew:
+      name: Hearty Stew
+      role: Survival
+      item: RABBIT_STEW
+      level: 10
+      xp: 20
+      recipe: [BOWL, "#cooked_meat", CARROT, POTATO, BEETROOT]
+      minutes: 10
+      effects: [ { attribute: vitality, amount: 6 } ]
+      restore: { share: 0.25, seconds: 20 }
+    farmers_breakfast:
+      name: Farmer's Breakfast
+      role: Harvesting
+      item: BAKED_POTATO
+      level: 15
+      xp: 30
+      recipe: [BREAD, EGG, COOKED_PORKCHOP, SWEET_BERRIES]
+      minutes: 15
+      effects: [ { attribute: fortune, amount: 10, yield: crops } ]
+    trail_ration:
+      name: Trail Ration
+      role: Exploration
+      item: COOKED_RABBIT
+      level: 20
+      xp: 40
+      recipe: [BREAD, DRIED_KELP, SWEET_BERRIES, COCOA_BEANS]
+      minutes: 15
+      effects: [ { stat: movement-speed, amount: 0.08 } ]
+    anglers_platter:
+      name: Angler's Platter
+      role: Fishing
+      item: COOKED_SALMON
+      level: 25
+      xp: 50
+      recipe: [COOKED_SALMON, COOKED_COD, BEETROOT, WHEAT]
+      minutes: 15
+      effects: [ { stat: lure-speed, amount: 0.06 }, { stat: sea-creature-chance, amount: 0.01 } ]
+    miners_pasty:
+      name: Miner's Pasty
+      role: Gathering
+      item: PUMPKIN_PIE
+      level: 35
+      xp: 60
+      recipe: [PUMPKIN_PIE, COOKED_BEEF, CARROT, WHEAT]
+      minutes: 15
+      effects: [ { stat: gather-speed, amount: 0.08 }, { stat: chop-speed, amount: 0.08 } ]
+    warriors_feast:
+      name: Warrior's Feast
+      role: A hard fight
+      item: BEETROOT_SOUP
+      level: 50
+      xp: 80
+      recipe: [BOWL, COOKED_BEEF, GOLDEN_CARROT, BAKED_POTATO, NETHER_WART]
+      minutes: 10
+      effects: [ { attribute: power, amount: 3 }, { attribute: fortitude, amount: 4 } ]
+      restore: { share: 0.15, seconds: 10 }
+
 # XP when a player takes these out of a furnace or blast furnace (hoppers pay nobody).
 smelting:
   skill: Smithing

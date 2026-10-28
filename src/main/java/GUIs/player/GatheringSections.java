@@ -39,6 +39,8 @@ public final class GatheringSections {
                 (pl, p) -> new WoodsMenu(pl)));
         sections.register(new SkillSections.Section("farming.crops", "Farming", 10, GatheringSections::cropsTile,
                 (pl, p) -> new CropsMenu(pl)));
+        sections.register(new SkillSections.Section("cooking.cookbook", "Cooking", 10, GatheringSections::cookbookTile,
+                (pl, p) -> new CookbookMenu(pl)));
 
         collections.register(new CollectionIndex.Entry("fish", "Fish species", Material.TROPICAL_FISH, 10, "Fishing",
                 List.of("Every water's species, with your", "heaviest catch of each."),
@@ -86,6 +88,15 @@ public final class GatheringSections {
                     Set<String> found = fa.discovered(p);
                     return new CollectionIndex.Progress(r.crops().stream().filter(c -> found.contains(c.id())).count(), r.crops().size(), true);
                 }, (pl, p) -> new CropsMenu(pl)));
+        collections.register(new CollectionIndex.Entry("meals", "Meals", Material.CAKE, 60, "Cooking",
+                List.of("Every meal you cooked."),
+                (pl, p) -> {
+                    Gathering.Cooking ck = pl.getCooking();
+                    Gathering.CookingRules r = GatheringCatalog.current().cooking();
+                    if (ck == null || !r.enabled() || r.meals().isEmpty()) return CollectionIndex.Progress.OFF;
+                    Set<String> made = ck.cooked(p);
+                    return new CollectionIndex.Progress(r.meals().stream().filter(m -> made.contains(m.id())).count(), r.meals().size(), true);
+                }, (pl, p) -> new CookbookMenu(pl)));
     }
 
     /**
@@ -195,6 +206,20 @@ public final class GatheringSections {
         l.raw(ChatColor.DARK_GRAY + "Defeated: " + r.creatures().keySet().stream().filter(j::defeated).count() + " of " + r.creatures().size());
         l.hint("Click to see them");
         return Ui.item(Material.HEART_OF_THE_SEA, ChatColor.AQUA + "Encounters: " + j.totalLures(), l.build());
+    }
+
+    static ItemStack cookbookTile(CerberusPlugin plugin, Player p) {
+        Gathering.Cooking ck = plugin.getCooking();
+        Gathering.CookingRules r = GatheringCatalog.current().cooking();
+        if (ck == null || !r.enabled() || r.meals().isEmpty()) return null;
+        Set<String> made = ck.cooked(p);
+        long have = r.meals().stream().filter(m -> made.contains(m.id())).count();
+        return Ui.item(Material.CAKE, ChatColor.GOLD + "Cookbook: " + have + " of " + r.meals().size() + " cooked", Ui.lore()
+                .raw(PlayerTheme.bar(have, Math.max(1, r.meals().size()), 20, ChatColor.GOLD))
+                .text("Each meal, the level it opens at,")
+                .text("its ingredients, and what it does")
+                .text("at the tier you cook at.")
+                .hint("Click to open the cookbook").build());
     }
 
     static ItemStack cropsTile(CerberusPlugin plugin, Player p) {

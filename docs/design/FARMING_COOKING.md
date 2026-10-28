@@ -149,7 +149,8 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
   | golden carrot | 5 |
 
 - **Cerberus meals** (§4.2) pay their own XP per meal made.
-- **Never:** creative or spectator (the XP display says why), a crafter block (no player), a campfire (it cooks without anyone taking the food; §6), or a click that made nothing.
+- **Food a player puts on a campfire** pays that player, at the furnace table's rate, when the campfire finishes it: the slot they filled is remembered (in memory, for two minutes) and paid when that slot's food is done. Food put on in creative, food whose player left before it was done, and food another plugin put there pay nobody. (In Java Edition only a player puts food on a campfire: hoppers and dispensers can't.)
+- **Never:** creative or spectator (the XP display says why), a crafter block (no player), or a click that made nothing.
 - **Cooking gives Vitality 0.25 per level** (`attributes.yml`).
 
 ### 4.2 Meals
@@ -201,7 +202,7 @@ Each meal is data in `resources.yml` → `cooking.meals`: a stable id, name, edi
 ## 6. Automation and attribution
 
 - **Same rewards for the same actions:** a player harvesting or cooking by hand, with an auto-clicker or a macro, gets the same XP and drops.
-- **World automation keeps its vanilla output and pays nobody:** water and piston harvesters, villagers, observer farms, hoppers, crafters and campfires.
+- **World automation keeps its vanilla output and pays nobody:** water and piston harvesters, villagers, observer farms, hoppers and crafters.
   - Nothing in the codebase records who owns a machine.
   - Inventing an owner, such as the nearest player, would be wrong.
 - **Proposal for the owner (not built):** a *Farm Ledger*.

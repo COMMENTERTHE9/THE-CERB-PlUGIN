@@ -240,6 +240,16 @@ public final class SkillDefinitions {
         return r == null || r.tree() == null ? 0 : c.wood().heartwoodChance(r.tree().heartwood(), level);
     }
 
+    private static double mealPotency(int level) {
+        Gathering.CookingRules r = Gathering.GatheringCatalog.current().cooking();
+        return r.potency(r.tierAt(level));
+    }
+
+    private static double mealDuration(int level) {
+        Gathering.CookingRules r = Gathering.GatheringCatalog.current().cooking();
+        return r.durationFactor(r.tierAt(level));
+    }
+
     private static double cropQuality(int level) {
         Gathering.FarmingRules r = Gathering.GatheringCatalog.current().farming();
         return 1 - r.chance(Gathering.Quality.COMMON, level);
@@ -346,8 +356,10 @@ public final class SkillDefinitions {
                 List.of(SkillEffect.planned("Better enchantments"))));
         d.add(new SkillDef("Herbalism", "Gathering herbs, flowers and plants.", List.of(), Material.FERN, U,
                 List.of(SkillEffect.planned("Better herb yields"))));
-        d.add(new SkillDef("Cooking", "Preparing food.", List.of(), Material.CAMPFIRE, U,
-                List.of(SkillEffect.planned("Better food"))));
+        // Cooking trains through resources.yml's cooking: section (docs/design/FARMING_COOKING.md §4): its food and meals.
+        d.add(new SkillDef("Cooking", "Preparing food and meals that make you stronger for a while.", List.of(), Material.CAMPFIRE, U, List.of(
+                SkillEffect.live("Meal effects at the tier you cook at", (cfg, lvl) -> mealPotency(lvl), Unit.MULTIPLIER),
+                SkillEffect.live("How long your meals last", (cfg, lvl) -> mealDuration(lvl), Unit.MULTIPLIER))));
         d.add(new SkillDef("First Aid", "Treating wounds and recovering faster.", List.of(), Material.GOLDEN_APPLE, U,
                 List.of(SkillEffect.planned("Stronger healing and faster recovery"))));
         d.add(new SkillDef("Stealth", "Moving unseen.", List.of(), Material.LEATHER_BOOTS, U,

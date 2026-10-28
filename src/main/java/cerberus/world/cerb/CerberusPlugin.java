@@ -306,6 +306,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Woodcutting woodcutting;
     private Gathering.Fishing fishing;
     private Gathering.Farming farming;
+    private Gathering.Cooking cooking;
     private Gathering.Tackle tackle;
     private Commands.FishingCommand fishingCommand;
     private Gathering.Upgrades upgrades;
@@ -315,6 +316,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public Gathering.Fishing getFishing() { return fishing; }
     /** Farming's harvests and techniques (docs/design/FARMING_COOKING.md §3); null until gathering is up. */
     public Gathering.Farming getFarming() { return farming; }
+    /** Cooking's XP, meals and the running meal (docs/design/FARMING_COOKING.md §4); null until gathering is up. */
+    public Gathering.Cooking getCooking() { return cooking; }
     /** Fishing equipment (docs/design/FISHING_EQUIPMENT.md): the setup, bait and the reel. */
     public Gathering.Tackle getTackle() { return tackle; }
     public Celebrations getCelebrations() { return celebrations; }
@@ -531,7 +534,11 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         skillManager.setXpListener(xpDisplay);
         // Level-ups and rank-ups (docs/design/LEVEL_UP.md): real progress only, shown once per moment
         celebrations = new Celebrations(this, playerHUDManager, attributeService);
-        skillManager.setLevelUpListener(celebrations::skillLevels);
+        skillManager.setLevelUpListener((p, skill, from, to) -> {
+            celebrations.skillLevels(p, skill, from, to);
+            Gathering.Cooking ck = cooking;
+            if (ck != null) ck.leveledUp(p, skill, from, to); // the meals a Cooking level opens
+        });
         if (classService != null) {
             classService.setCelebrations(celebrations);
             celebrations.setAbilityUnlocks(classService::unlockedBy);
@@ -594,6 +601,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var fishCmd = Objects.requireNonNull(getCommand("fishing"));
         fishCmd.setExecutor(fishingCommand);
         fishCmd.setTabCompleter(fishingCommand);
+        cookingCommand = new Commands.CookingCommand(this);
+        var cookCmd = Objects.requireNonNull(getCommand("cooking"));
+        cookCmd.setExecutor(cookingCommand);
+        cookCmd.setTabCompleter(cookingCommand);
         farmingCommand = new Commands.FarmingCommand(this);
         var farmCmd = Objects.requireNonNull(getCommand("farming"));
         farmCmd.setExecutor(farmingCommand);
@@ -601,6 +612,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     }
 
     private Commands.FarmingCommand farmingCommand;
+    private Commands.CookingCommand cookingCommand;
+
+    /** /cooking, and the admin /cerb cook subcommand. */
+    public Commands.CookingCommand getCookingCommand() { return cookingCommand; }
 
     /** /farming, and the admin /cerb farm subcommand. */
     public Commands.FarmingCommand getFarmingCommand() { return farmingCommand; }
@@ -747,6 +762,15 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         forgeListener.setNotice((p, msg) -> playerHUDManager.flash(p, msg, 2500));
         forgeListener.setNotForging(upgrades::isUpgrade); // an upgrade keeps the item's quality and pays no forging XP
         pm.registerEvents(forgeListener, this);
+        // Cooking (docs/design/FARMING_COOKING.md §4): XP for food really made, meals as one more attribute source.
+        cooking = new Gathering.Cooking(this, gatheringService, skillManager, attributeService, (p, msg) -> playerHUDManager.flash(p, msg, 2500),
+                p -> attributeEffects.refresh(p));
+        cooking.setHealth((p, amount) -> playerVirtualHealthManager.heal(p, amount), p -> playerVirtualHealthManager.getMaxHealth(p));
+        cooking.setPvpTagged(id -> pvpTag != null && pvpTag.isTagged(id));
+        attributeService.addSource(cooking);
+        cooking.registerRecipes(gatheringService.catalog());
+        forgeListener.setCooking(cooking);
+        pm.registerEvents(cooking, this);
         pm.registerEvents(equipmentSource, this);
         pm.registerEvents(xpDisplay, this);
         pm.registerEvents(celebrations, this);
@@ -789,6 +813,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                 gatheringService.setCatalog(next);
                 if (upgrades != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> upgrades.register(next)); // recipes: global thread
                 if (tackle != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> tackle.registerRecipes(next));
+                if (cooking != null) Bukkit.getGlobalRegionScheduler().execute(this, () -> cooking.registerRecipes(next));
                 if (fishing != null) fishing.registerCreatures(mobRegistry); // its sea creatures by id
                 if (attributeService != null) attributeService.markAllDirty(); // forged gear's numbers may have changed
                 if (attributeEffects != null) attributeEffects.refreshAll();

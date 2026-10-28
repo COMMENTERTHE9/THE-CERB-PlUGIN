@@ -32,6 +32,10 @@ commands:
     description: Your fishing journal, banked encounters, the species you track and which creature a Sneak-cast calls.
     usage: /<command> [journal [water] | encounters | track <species|off> | call <creature> | cue on|off]
     aliases: [fish]
+  cooking:
+    description: The tier you cook meals at, your running meal and the cookbook.
+    usage: /<command> [book]
+    aliases: [cook]
   farming:
     description: Your crops, Farming's techniques and Replant's switch.
     usage: /<command> [crops | replant on|off]

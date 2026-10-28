@@ -152,8 +152,15 @@ public final class ForgeListener implements Listener {
                 && top.getHolder(false) instanceof Furnace;
     }
 
+    /** Cooking (docs/design/FARMING_COOKING.md §4.1): food taken out of a furnace or smoker pays it through this path. */
+    private volatile Cooking cooking;
+
+    public void setCooking(Cooking c) { this.cooking = c; }
+
     /** Pay for {@code count} of {@code item} taken out of a furnace, and cover that much forging. */
     private void paySmelt(Player p, Material item, int count) {
+        Cooking ck = cooking;
+        if (ck != null) ck.taken(p, item, count); // food: Cooking's own rules (XP, creative)
         GatheringCatalog c = service.catalog();
         double each = c.smeltXp(item);
         if (count > 0 && each > 0 && creative(p)) service.withheld(p, c.smeltingSkill(), Manager.XpIntegrity.whyNot(p));
