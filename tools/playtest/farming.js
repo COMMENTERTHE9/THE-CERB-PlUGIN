@@ -526,11 +526,18 @@ async function harvestMany(n, level) {
   await setLevel(level);
   await cmd('/farming replant off', 300);
   const st = await cmd('/cerb farm stats', 500);
+  const fortuneOf = out => +(((saw(/Fortune \+/, out) || '').match(/Fortune \+(\d+)/) || [0, 0])[1]);
+  const f0 = fortuneOf(st);
   note('server before: ' + (saw(/quality fine/, st) || '').replace(/.*quality /, ''));
   let wheat = 0, extra = 0, quality = 0;
   const lore = [];
   for (let i = 0; i < n; i += 7) {
     await fill(-3, 0, 2, 3, 0, 2, 'wheat[age=7]', 400);
+    if (i === 0) {
+      await bot.lookAt(at(0, 0, 2).offset(0.5, 0.5, 0.5), true);
+      const fi = await cmd('/cerb farm info', 700);
+      note('the server: ' + ((saw(/Fortune chance/, fi) || '').match(/at Farming \d+.*/) || [''])[0]);
+    }
     for (let dx = -3; dx <= 3; dx++) await brk(dx, 0, 2, { ms: 40 });
     const d = await dropsNear(0, 0, 2, 5);
     for (const it of d.filter(x => x.name === 'wheat')) {
@@ -540,8 +547,9 @@ async function harvestMany(n, level) {
   }
   extra = wheat - Math.ceil(n / 7) * 7;
   const st2 = await cmd('/cerb farm stats', 500);
-  note('server after: ' + (saw(/quality fine/, st2) || '').replace(/.*quality /, '') + '; ground: ' + wheat + ' wheat, ' + quality + ' with a quality');
-  return { wheat, extra, quality, lore };
+  const rolled = fortuneOf(st2) - f0; // the server's own count of Fortune extras: tells a real roll from a miscount on the ground
+  note('server after: ' + (saw(/quality fine/, st2) || '').replace(/.*quality /, '') + '; Fortune +' + rolled + '; ground: ' + wheat + ' wheat, ' + quality + ' with a quality');
+  return { wheat, extra, quality, lore, rolled };
 }
 
 async function fortunePhase() {
@@ -549,9 +557,13 @@ async function fortunePhase() {
   await give('iron_hoe'); await hold('iron_hoe');
   await stand(0, -1, 0);
   const low = await harvestMany(42, 1);
-  check('Farming 1: a ripe wheat drops one wheat (Fortune 0.5: a 0.25% chance)', low.extra <= 1, `${low.extra} extra of 42`);
+  // Fortune 2 at Farming 1 (Farming 0.5 and the three luck skills' 0.5 each at level 1): a 1% chance, so at most 3
+  // extra of 42 (more than 3: about 1 run in 1,200).
+  check('Farming 1: a ripe wheat drops one wheat (Fortune 2: a 1% chance; at most 3 extra of 42)', low.extra <= 3 && low.rolled <= 3,
+    `${low.extra} extra of 42 on the ground, server Fortune +${low.rolled}`);
   const high = await harvestMany(84, 100);
-  check('Farming 100: Fortune (crops) 50, a 25% chance of a second wheat (84 harvests: 9-35 extra)', high.extra >= 9 && high.extra <= 35, `${high.extra} extra of 84`);
+  check('Farming 100: Fortune (crops) 50, a 25% chance of a second wheat (84 harvests: 9-35 extra)', high.extra >= 9 && high.extra <= 35,
+    `${high.extra} extra of 84 on the ground, server Fortune +${high.rolled}`);
   await setLevel(1);
 }
 
