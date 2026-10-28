@@ -540,13 +540,13 @@ async function restartSet() {
   await effectsScreen();
   const t = tileOf(/Hearty Stew/), s = tileOf(/^Speed/);
   closeAny();
-  fs.writeFileSync(path.join(__dirname, '.effects-restart.json'), JSON.stringify({ stew: timeOf(t ? t.name : ''), speed: timeOf(s ? s.name : ''), at: Date.now() }));
+  fs.writeFileSync(path.join(__dirname, '.effects-state.json'), JSON.stringify({ stew: timeOf(t ? t.name : ''), speed: timeOf(s ? s.name : ''), at: Date.now() }));
   check('Before the stop: a Hearty Stew and Speed running (stop and start the server, then run restart-check)', !!t && !!s, tiles().map(x => x.name).join(' / '));
   console.log('READY');
   await new Promise(res => { bot.once('end', res); setTimeout(res, 240000); });
 }
 async function restartCheck() {
-  const st = JSON.parse(fs.readFileSync(path.join(__dirname, '.effects-restart.json'), 'utf8'));
+  const st = JSON.parse(fs.readFileSync(path.join(__dirname, '.effects-state.json'), 'utf8'));
   const away = (Date.now() - st.at) / 1000;
   await sleep(1500);
   await effectsScreen();
