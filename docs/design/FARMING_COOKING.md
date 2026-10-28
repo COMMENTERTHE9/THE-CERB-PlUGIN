@@ -83,7 +83,7 @@ Not in this milestone: bamboo and kelp (building and underwater materials, not f
 
 ### 3.4 Techniques
 
-- **10, Replant.** A ripe crop of a replanting kind, broken by hand, is planted again at once (age 0).
+- **10, Replant.** A ripe crop of a replanting kind, broken by hand, is planted again at once (age 0). *Owner's note, 2026-10-28: Replant is to become a tool enchantment instead of a level unlock, later (`docs/DECISIONS.md`).*
   - The seed comes from that harvest's own drops first, else from the player's inventory.
   - With neither, the spot stays empty, and the HUD says so once a minute.
   - Never a free seed, never a second harvest.

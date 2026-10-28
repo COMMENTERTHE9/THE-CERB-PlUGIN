@@ -81,6 +81,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 3. **Increment B, Cooking** (done): Cooking XP for food really made (furnace, smoker, campfire, crafting), six meals with tiers from level and ingredient quality, one timed effect at a time through the attribute engine, restoration on the Cerberus health pool, the Cookbook and Collections.
 4. **Verification** (done): `farming.js`, `cooking.js`, the regression slices, an independent review and its fixes, performance before and after (`docs/STATUS.md` → "Done: Farming and Cooking"; `docs/PERFORMANCE.md`).
 5. **Next:** the owner's playtest (`docs/PLAYTEST_CHECKLIST.md` §16), including decision 6 (lifesteal) now that meals heal. Proposed, not built: the Farm Ledger (machine attribution), scythes, irrigation, custom crops for Herbalism and Alchemy.
+6. **Later, the owner's note (2026-10-28):** Replant moves from a Farming level unlock to a tool enchantment (`docs/DECISIONS.md` → Farming, Cooking and meaningful food). Design it when taken up: a real enchantment or a Cerberus hoe upgrade, which tools, how it is obtained, whether a level still gates it.
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27, approved): built, waiting for the owner's playtest
 

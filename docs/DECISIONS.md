@@ -55,6 +55,7 @@ The milestone is approved for development and testing in the sandbox (`docs/ROAD
 - **No invented ownership:** a machine's output is never credited to the nearest player. Approved, built: machines pay nobody; the Farm Ledger is a proposal only.
 - **The old unsafe `applyEffect`, crafting and item-buff code stays unwired.** Approved, built.
 - **Not authorized here:** merging into `master`, touching the owner's Windows server, world or database, upgrading Folia, and the proposals in `docs/AUTOMATION_REVIEW.md` (still waiting for the owner).
+- **Replant should come from a tool enchantment, not a Farming level** (owner, 2026-10-28, after the build: "why is replanting a level upgrade and not a tool enchant… fix it later"). Requested for later, not built: today Replant opens at Farming 10 with any tool, as the milestone listed it. Open when it is taken up: a real enchantment (registered through Paper's registry at startup; the plugin has no custom enchantments yet) or a Cerberus hoe upgrade stored on the item (as heartwood upgrades and fishing parts are); which tools carry it; how it is obtained; and whether a Farming level still gates it.
 
 ## Fishing Equipment, Guided Discovery and Collections (owner, 2026-10-27)
 
