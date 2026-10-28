@@ -438,9 +438,11 @@ async function pvpPhase() {
   const healing = chat.slice(at).some(m => /A draught is healing/.test(m));
   await sleep(5600);
   const after = hud();
-  check('...once the tag ends, it heals: "A draught is healing", and its quarter of max health on top of regeneration',
-    healing && after.hp - tagEnd.hp >= 0.3 * after.max,
-    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%; regeneration alone gave +12% in the control)`);
+  // The draught's own quarter must show in full; natural regeneration only adds to it, and how much varies from run to run
+  // (+1% to +12% over these 6.5 s on the build before the fix, where the draught heals nothing), so it is not counted on.
+  check('...once the tag ends, it heals: "A draught is healing", and its full quarter of max health',
+    healing && after.hp - tagEnd.hp >= Math.floor(0.25 * after.max),
+    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%)`);
   other.quit();
   await cmd('/effect give @s resistance infinite 4 true', 300);
   await cmd(`/cerb heal ${NAME}`, 400);

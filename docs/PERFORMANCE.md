@@ -463,7 +463,7 @@ TPS was 20.0 in every run.
 - **A drink:** an elixir is one snapshot rebuild, a write to the player's data and two delayed tasks (its end and its heads-up; the tasks of an elixir that was replaced run once and do nothing); a draught is one task a second for its seconds.
 - **Nothing per tick** otherwise, and nothing written to the database beyond the skill saves every XP gain already makes.
 
-**Method:** as above (9 bots, 80 s load, a 30 s warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), each build right after a restart, mobs cleared, **the other two sandboxes stopped** so nothing else used the CPU. **Before:** 2044c68, the build this milestone started from. **After:** the final build (this commit). The plugin's own counters were read before and after each load, outside the recording (`load.js` prints them: the work done and the tasks it ran). Loads:
+**Method:** 9 bots and one 80 s run per load, with a 60 s JFR recording from 10 s after "LOAD START" and Folia's `/tps` 30 s into it. Every load was warmed up first (a 30 s run each, all before the first recording). Each build ran right after a restart with mobs cleared, and **the other two sandboxes were stopped** so nothing else used the CPU. **Before:** 2044c68, the build this milestone started from. **After:** the final build (7c3037f). The plugin's own counters were read before and after each load, outside the recording (`load.js` prints them: the work done and the tasks it ran). Loads:
 - `combat`, `hurt`: melee and defensive combat, unchanged loads;
 - `hurtheavy`: each bot in full iron at Heavy Armor Mastery 100, so every landed blow throws its zombie on the new build;
 - `farm`, `widefarm`: harvesting wheat by hand at Farming 1, and Wide Harvest at Farming 50 with Sneak (a Replanting hoe on the new build, Farming's own Replant before);
@@ -471,12 +471,49 @@ TPS was 20.0 in every run.
 - `brew` (new): water bottles and nether wart brewed at each bot's own stand, a brew every 21 s;
 - `drink` (new): a potion every 3 s: an Elixir of Vigor, a Tonic of Swiftness that replaces it and a Draught of Mending after 5 damage; before Alchemy, Mundane Potions at the same pace and with the same damage;
 - `standidle` (new): twelve brewing stands per bot, each left with a finished potion and nether wart and no fuel;
-- `gather`, `felling`: mining, and Felling at Woodcutting 25 (the shared break listeners, the sweep marker);
-- `menu`, `effectsmenu`, `effectsidle`, `idle`: browsing, the Active Effects screen, its countdown left open, and players doing nothing.
+- `menu`, `effectsidle`, `idle`: browsing, the Active Effects countdown left open, and players doing nothing.
 
-**Results:** to follow in a separate commit (the pass was still running when the integration was committed).
+Not in this pass: `gather` and `felling` (mining and Felling share the break listeners, which only gained the sweep marker, a lookup per break) and `effectsmenu`.
+
+**Results** (Cerberus's time on the region threads from the JFR samples; Folia's region MSPT mid-run; the first bot's own work, which every bot repeats). TPS was 20.0 in every run.
+
+| Load | Cerberus ms per tick, before → after | Region MSPT, before → after | Work (bot 1), before → after | The milestone's own code, after (samples of about 1,200–2,000) |
+|---|---|---|---|---|
+| `combat` | 0.083 → 0.085 | 3.35 → 3.65 | 110 → 109 hits | none |
+| `hurt` | 0.093 → 0.077 | 3.18 → 3.11 | hit 71 → 80 times | none |
+| `hurtheavy` | 0.081 → **0.043** | 2.84 → 2.88 | hit 73 → **48** times | Iron Reprisal 1 (125 creatures thrown in 80 s) |
+| `farm` | 0.045 → 0.043 | 6.20 → 5.81 | 265 → 265 harvests | Farming as before |
+| `widefarm` | 0.048 → 0.037 | 5.82 → 5.23 | 109 → 110 | Farming as before |
+| `herb` | 0.017 → 0.025 | 3.81 → 3.74 | 268 → 268 gathered | Herbalism 14 (about 2,370 gathers in 80 s) |
+| `wildcraft` | 0.015 → 0.035 | 2.72 → 3.26 | 121 → 99 gathered, 5 → 24 refills | Herbalism 32 (888 sweeps, 4,656 plants in 80 s) |
+| `brew` | 0.018 → 0.036 | 2.75 → 2.45 | 4 → 4 brews | Alchemy 2 |
+| `drink` | 0.029 → 0.041 | 2.70 → 2.23 | 25 → 25 drinks | Alchemy 6 (153 elixirs, 72 draughts in 80 s) |
+| `standidle` | 0.022 → **0.007** | 2.34 → 1.89 | 12 stands | none |
+| `menu` | 0.183 → 0.177 | 3.22 → 2.75 | 225 clicks | none |
+| `effectsidle` | 0.058 → 0.050 | 2.28 → 1.50 | | none |
+| `idle` | 0.008 → 0.011 | 1.88 → 1.61 | | none |
+
+- **What the milestone's own code costs:**
+  - **A herb gathered:** about 8 µs, paid at the drop event.
+  - **Wildcrafting:** about 9 µs a plant, or 50 µs a sweep. In the `wildcraft` load the sweeps empty the meadow faster than one bot can gather by hand, so the bots spend more of the run refilling it.
+  - **Alchemy:** 2–6 samples a minute with nine players brewing or drinking non-stop.
+  - **Iron Reprisal:** 1 sample a minute with every landed blow throwing.
+- **Fewer blows taken in `hurtheavy`** (48 against 73): a thrown zombie walks back before it strikes again, so the armored bots took a third fewer blows, and Cerberus's share fell with them.
+- **`brew` and `drink` rose by 0.012–0.018 ms per tick,** but not in Alchemy's code. The difference is the plugin's usual work for players who take damage. In the after run's `brew` load the bots were being hit (`VirtualHealthListener.onEntityDamage` 16 samples, none before), and `drink` deals 5 damage before each draught.
+- **The review's brewing-stand fix (F3), measured on three builds** (the same `standidle` load: 108 stands, each left with a potion and nether wart, no fuel):
+
+  | Build | Cerberus ms per tick | Allocated | Notes |
+  |---|---|---|---|
+  | Before (no Alchemy) | 0.022 | 0.00 MB/s | |
+  | Without the fix | **0.363** (28% of the samples) | **46.7 MB/s** | `Alchemy.plainAwkward` 415 samples, 2.8 GB a minute, reached from every brewing mix's predicate test |
+  | Final | 0.007 | 0.07 MB/s | nothing of Alchemy's |
+
+  The server tests every brewing mix for every bottle of every loaded stand that holds an ingredient, every tick; a predicate that copies an item costs that much. Native choices (an exact base potion, herbs by material) cost Cerberus nothing. The fix stays.
+- **The `idle` load on the final build** was measured on a freshly restarted server, after the other 12 loads. A container restart had stopped the server in the middle of the first attempt.
 
 ## Budgets for the next milestones
+
+- **Combat Improvements, Replant, Herbalism and Alchemy:** met. A herb gathered costs about 8 µs and a Wildcrafting sweep about 50 µs (bounded at 16 plants a tick). Alchemy's handlers show in a few samples a minute with nine players brewing or drinking non-stop, and idle brewing stands cost nothing (0.36 ms a tick before the review's fix). Iron Reprisal shows in about one sample a minute with every landed blow throwing. For the next milestone: keep anything the server runs every tick (brewing stands, hoppers, block ticks) on native matching rather than plugin predicates, give each such path an idle load, and put `gather` and `felling` back in the pass if the break listeners change.
 
 - **Combat improvements (Martial Expertise, Iron Reprisal):** met. Nothing per hit beyond a few comparisons; a throw is one delayed task on the attacker's thread.
 - **Active effects:** met. A countdown costs about 40–70 µs a second per open screen that shows a timed effect, and nothing otherwise; the head's click about 0.35 ms, about 0.09 ms more than Stats. If many players keep the screen open, the next step is to rewrite only the time line of each tile (not done: no measured problem).

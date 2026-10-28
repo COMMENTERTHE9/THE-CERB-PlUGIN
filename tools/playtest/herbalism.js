@@ -453,28 +453,53 @@ async function bonemealTopPhase() {
   await arena();
   await setLevel(30);
   await stand(0, -2, 0);
-  await give('bone_meal', 4);
-  const head = dx => { for (let dy = 5; dy >= 0; dy--) if (blockName(dx, dy, 0) === 'big_dripleaf') return dy; return -1; };
-  const grown = async dx => { for (let i = 0; i < 20 && head(dx) < 0; i++) await sleep(250); return head(dx); };
+  await give('bone_meal', 8);
+  const head = dx => { for (let dy = 10; dy >= 0; dy--) if (blockName(dx, dy, 0) === 'big_dripleaf') return dy; return -1; };
+  const column = dx => [0, 1, 2, 3, 4, 5, 6, 7].map(dy => blockName(dx, dy, 0)).join(',');
+  // Bone meal on the top half until the lower half has grown: a use the server missed is tried again, but never one more
+  // on a plant that grew (bone meal makes a big dripleaf a block taller each time). Then the head, wherever it ended up.
+  const grow = async dx => {
+    for (let i = 0; i < 3 && blockName(dx, 0, 0) === 'small_dripleaf'; i++) {
+      await use(dx, 1, 0);
+      for (let w = 0; w < 20 && blockName(dx, 0, 0) === 'small_dripleaf'; w++) await sleep(250);
+    }
+    for (let w = 0; w < 20 && head(dx) < 0; w++) await sleep(250);
+    return head(dx);
+  };
+  // A small dripleaf that bone meal would grow two blocks tall becomes a lone stem on this server, with or without
+  // Cerberus (16 bone-mealed without the plugin: 7 lone stems, every whole one 3-5 tall): there is no leaf to break, so
+  // that plant is set up again (at most three tries) and the count is shown.
+  let lone = 0;
   await setblock(2, -1, 0, 'clay');
-  await setblock(2, 0, 0, 'small_dripleaf[half=lower]');
-  await setblock(2, 1, 0, 'small_dripleaf[half=upper]');
-  for (let i = 0; i < 20 && blockName(2, 1, 0) !== 'small_dripleaf'; i++) await sleep(250);
-  await hold('bone_meal');
   let top = -1;
-  for (let i = 0; i < 3 && top < 0; i++) { await use(2, 1, 0); top = await grown(2); } // a use the server missed is tried again
-  check('Bone meal on the top half of a wild small dripleaf: a big dripleaf', top > 0, `${blockName(2, 0, 0)} … head at ${top}`);
+  for (let a = 0; a < 3 && top < 0; a++) {
+    await setblock(2, 1, 0, 'air');
+    await setblock(2, 0, 0, 'small_dripleaf[half=lower]');
+    await setblock(2, 1, 0, 'small_dripleaf[half=upper]');
+    for (let i = 0; i < 20 && blockName(2, 1, 0) !== 'small_dripleaf'; i++) await sleep(250);
+    await hold('bone_meal');
+    top = await grow(2);
+    if (top < 0 && blockName(2, 0, 0) === 'big_dripleaf_stem') lone++;
+  }
+  check('Bone meal on the top half of a wild small dripleaf: a big dripleaf', top > 0, `${blockName(2, 0, 0)} … head at ${top}` + (top > 0 ? '' : ` [${column(2)}]`) + (lone ? `; ${lone} lone stem(s) set up again` : ''));
   let g = top > 0 ? await brkXp(2, top, 0) : 0;
   check('...its leaf broken: it pays (a wild plant bone meal grew)', g >= 5, `+${g}`);
   await setblock(0, -1, 0, 'clay');
-  await give('small_dripleaf', 1); await hold('small_dripleaf');
-  await placeOn(0, 0, 0);
-  check('The bot placed a small dripleaf by hand', blockName(0, 0, 0) === 'small_dripleaf' && blockName(0, 1, 0) === 'small_dripleaf',
-    `${blockName(0, 0, 0)} / ${blockName(0, 1, 0)}`);
-  await hold('bone_meal');
-  top = -1;
-  for (let i = 0; i < 3 && top < 0; i++) { await use(0, 1, 0); top = await grown(0); }
-  check('...bone meal on its top half: a big dripleaf', top > 0, `${blockName(0, 0, 0)} … head at ${top}`);
+  let placed = false, placedSeen = '';
+  top = -1; lone = 0;
+  for (let a = 0; a < 3 && top < 0; a++) {
+    await setblock(0, 1, 0, 'air'); await setblock(0, 0, 0, 'air');
+    await give('small_dripleaf', 1); await hold('small_dripleaf');
+    await placeOn(0, 0, 0);
+    placed = blockName(0, 0, 0) === 'small_dripleaf' && blockName(0, 1, 0) === 'small_dripleaf';
+    placedSeen = `${blockName(0, 0, 0)} / ${blockName(0, 1, 0)}`;
+    if (!placed) continue;
+    await hold('bone_meal');
+    top = await grow(0);
+    if (top < 0 && blockName(0, 0, 0) === 'big_dripleaf_stem') lone++;
+  }
+  check('The bot placed a small dripleaf by hand', placed, placedSeen);
+  check('...bone meal on its top half: a big dripleaf', top > 0, `${blockName(0, 0, 0)} … head at ${top}` + (top > 0 ? '' : ` [${column(0)}]`) + (lone ? `; ${lone} lone stem(s) set up again` : ''));
   g = top > 0 ? await brkXp(0, top, 0) : -1;
   check('...its leaf broken: no XP (bone meal grew a plant placed by hand: still placed)', g === 0, `+${g}`);
   await holdNothing();
