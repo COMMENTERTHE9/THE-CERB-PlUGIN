@@ -296,6 +296,32 @@ items:
     lore:
       - "Craft it with a hoe: ripe crops that"
       - "hoe harvests are planted again."
+  # Herbalism's rare reagents (docs/design/HERBALISM.md §4): gathered herbs sometimes give one from Herbalism 25. Alchemy's
+  # strongest brews need them; like every custom item they are never placed, burnt or used in a vanilla recipe or brew.
+  bloodroot:
+    material: NETHER_BRICK
+    name: Bloodroot
+    lore:
+      - "A red root from poppies and rose bushes."
+      - "A rare reagent for Alchemy."
+  moonpetal:
+    material: PRISMARINE_CRYSTALS
+    name: Moonpetal
+    lore:
+      - "A pale petal that glows in the dark."
+      - "A rare reagent for Alchemy."
+  sunpetal:
+    material: RESIN_CLUMP
+    name: Sunpetal
+    lore:
+      - "A warm golden petal from sunny flowers."
+      - "A rare reagent for Alchemy."
+  emberbloom:
+    material: BLAZE_ROD
+    name: Emberbloom
+    lore:
+      - "A smouldering bloom from the Nether."
+      - "A rare reagent for Alchemy."
   heartwood:
     material: STRIPPED_DARK_OAK_WOOD
     name: Heartwood
@@ -560,6 +586,71 @@ farming:
     cocoa:         { blocks: [COCOA], ripe: max-age, produce: COCOA_BEANS, seed: COCOA_BEANS, level: 30, xp: 4, discovery-xp: 60, quality: true }
     glow_berries:  { blocks: [CAVE_VINES, CAVE_VINES_PLANT], ripe: berries, pick: true, produce: GLOW_BERRIES, level: 35, xp: 4, discovery-xp: 80 }
     nether_wart:   { blocks: [NETHER_WART], ripe: max-age, produce: NETHER_WART, seed: NETHER_WART, level: 40, xp: 4, discovery-xp: 100, wide: true, quality: true }
+
+# Herbalism (docs/design/HERBALISM.md): wild plants as reagents. Rules the code keeps whatever this file says: a herb pays
+# when a player in survival gathers it and the break drops the herb itself (a fern without shears drops nothing of it); a
+# plant placed by hand pays nothing (a tall flower is judged by its lower half); water, pistons and machines pay nobody.
+# Wild plants and those bone meal grew on grass pay in full. "herbalism: off" turns it off.
+#   blocks:  the blocks that are the herb; produce: the items that count as gathering it (default: its blocks that are items)
+#   level, xp, discovery-xp: as crops have them (weak-resources: far above a herb's level it pays a share)
+#   grows:   where it grows (the Herbarium shows it); shears: only shears make it drop itself (a hint says so)
+#   rare:    the rare reagent (rare-reagents:) it can give from rare.at
+herbalism:
+  skill: Herbalism
+  rare-reagents:
+    bloodroot:  { item: bloodroot }
+    moonpetal:  { item: moonpetal }
+    sunpetal:   { item: sunpetal }
+    emberbloom: { item: emberbloom }
+  # From this level a gathered herb that has a rare reagent rolls for it; the chance rises evenly to its value at 100.
+  rare: { at: 25, chance-at-start: 0.02, chance-at-100: 0.06 }
+  # Wildcrafting: Sneak and gather a wild plant with shears, and every wild plant of that herb in a square this wide (on
+  # its level or one up or down) is gathered too, per-tick plants a tick, one point of shears wear each.
+  wildcrafting:
+    reach: { 10: 3, 40: 5, 70: 7 }
+    per-tick: 16
+  # Reagent quality from this level (the crop odds, in percent; Common is the rest), on herbs and rare reagents alike.
+  quality:
+    at: 50
+    odds:
+      at-level-50:  { fine: 10, superior: 2, masterwork: 0 }
+      at-level-100: { fine: 22, superior: 8, masterwork: 3 }
+  herbs:
+    dandelion:          { name: Dandelion, blocks: [DANDELION], level: 1, xp: 3, discovery-xp: 15, grows: "plains, forests, meadows", rare: sunpetal }
+    poppy:              { name: Poppy, blocks: [POPPY], level: 1, xp: 3, discovery-xp: 15, grows: "plains, forests", rare: bloodroot }
+    oxeye_daisy:        { name: Oxeye Daisy, blocks: [OXEYE_DAISY], level: 1, xp: 3, discovery-xp: 15, grows: "plains, meadows" }
+    cornflower:         { name: Cornflower, blocks: [CORNFLOWER], level: 1, xp: 3, discovery-xp: 15, grows: "plains, meadows, flower forests" }
+    azure_bluet:        { name: Azure Bluet, blocks: [AZURE_BLUET], level: 1, xp: 3, discovery-xp: 15, grows: "plains, flower forests", rare: moonpetal }
+    fern:               { name: Fern, blocks: [FERN, LARGE_FERN], level: 1, xp: 2, discovery-xp: 15, grows: "taigas, jungles", shears: true }
+    tulip:              { name: Tulip, blocks: [RED_TULIP, ORANGE_TULIP, WHITE_TULIP, PINK_TULIP], level: 5, xp: 4, discovery-xp: 20, grows: "plains, flower forests" }
+    allium:             { name: Allium, blocks: [ALLIUM], level: 5, xp: 4, discovery-xp: 20, grows: "flower forests, meadows" }
+    lily_pad:           { name: Lily Pad, blocks: [LILY_PAD], level: 5, xp: 3, discovery-xp: 20, grows: "swamps" }
+    mushroom:           { name: Mushroom, blocks: [RED_MUSHROOM, BROWN_MUSHROOM], level: 10, xp: 4, discovery-xp: 25, grows: "dark places: caves, swamps, dark forests" }
+    blue_orchid:        { name: Blue Orchid, blocks: [BLUE_ORCHID], level: 10, xp: 5, discovery-xp: 25, grows: "swamps" }
+    lily_of_the_valley: { name: Lily of the Valley, blocks: [LILY_OF_THE_VALLEY], level: 10, xp: 5, discovery-xp: 25, grows: "flower forests", rare: moonpetal }
+    seagrass:           { name: Seagrass, blocks: [SEAGRASS, TALL_SEAGRASS], produce: [SEAGRASS], level: 10, xp: 2, discovery-xp: 25, grows: "oceans, rivers", shears: true }
+    kelp:               { name: Kelp, blocks: [KELP, KELP_PLANT], produce: [KELP], level: 10, xp: 2, discovery-xp: 25, grows: "oceans" }
+    sunflower:          { name: Sunflower, blocks: [SUNFLOWER], level: 15, xp: 6, discovery-xp: 30, grows: "sunflower plains", rare: sunpetal }
+    lilac:              { name: Lilac, blocks: [LILAC], level: 15, xp: 6, discovery-xp: 30, grows: "forests, flower forests" }
+    rose_bush:          { name: Rose Bush, blocks: [ROSE_BUSH], level: 15, xp: 6, discovery-xp: 30, grows: "forests, flower forests", rare: bloodroot }
+    peony:              { name: Peony, blocks: [PEONY], level: 15, xp: 6, discovery-xp: 30, grows: "forests, flower forests" }
+    pink_petals:        { name: Pink Petals, blocks: [PINK_PETALS], level: 15, xp: 4, discovery-xp: 30, grows: "cherry groves" }
+    wildflowers:        { name: Wildflowers, blocks: [WILDFLOWERS], level: 15, xp: 4, discovery-xp: 30, grows: "birch forests, meadows" }
+    glow_lichen:        { name: Glow Lichen, blocks: [GLOW_LICHEN], level: 20, xp: 4, discovery-xp: 40, grows: "caves", shears: true }
+    hanging_roots:      { name: Hanging Roots, blocks: [HANGING_ROOTS], level: 20, xp: 4, discovery-xp: 40, grows: "lush caves", shears: true }
+    small_dripleaf:     { name: Small Dripleaf, blocks: [SMALL_DRIPLEAF], level: 20, xp: 5, discovery-xp: 40, grows: "lush caves", shears: true }
+    big_dripleaf:       { name: Big Dripleaf, blocks: [BIG_DRIPLEAF, BIG_DRIPLEAF_STEM], produce: [BIG_DRIPLEAF], level: 20, xp: 5, discovery-xp: 40, grows: "lush caves" }
+    cactus_flower:      { name: Cactus Flower, blocks: [CACTUS_FLOWER], level: 20, xp: 6, discovery-xp: 40, grows: "deserts, badlands", rare: sunpetal }
+    firefly_bush:       { name: Firefly Bush, blocks: [FIREFLY_BUSH], level: 20, xp: 5, discovery-xp: 40, grows: "swamps, rivers, badlands" }
+    spore_blossom:      { name: Spore Blossom, blocks: [SPORE_BLOSSOM], level: 25, xp: 10, discovery-xp: 60, grows: "lush caves" }
+    sea_pickle:         { name: Sea Pickle, blocks: [SEA_PICKLE], level: 25, xp: 6, discovery-xp: 60, grows: "warm oceans" }
+    eyeblossom:         { name: Eyeblossom, blocks: [OPEN_EYEBLOSSOM, CLOSED_EYEBLOSSOM], level: 25, xp: 8, discovery-xp: 60, grows: "pale gardens", rare: moonpetal }
+    crimson_fungus:     { name: Crimson Fungus, blocks: [CRIMSON_FUNGUS, CRIMSON_ROOTS], level: 30, xp: 6, discovery-xp: 80, grows: "the Nether: crimson forests", rare: emberbloom }
+    warped_fungus:      { name: Warped Fungus, blocks: [WARPED_FUNGUS, WARPED_ROOTS], level: 30, xp: 6, discovery-xp: 80, grows: "the Nether: warped forests" }
+    nether_sprouts:     { name: Nether Sprouts, blocks: [NETHER_SPROUTS], level: 30, xp: 4, discovery-xp: 80, grows: "the Nether: warped forests", shears: true }
+    nether_vines:       { name: Nether Vines, blocks: [WEEPING_VINES, WEEPING_VINES_PLANT, TWISTING_VINES, TWISTING_VINES_PLANT], produce: [WEEPING_VINES, TWISTING_VINES], level: 35, xp: 5, discovery-xp: 80, grows: "the Nether", rare: emberbloom }
+    wither_rose:        { name: Wither Rose, blocks: [WITHER_ROSE], level: 40, xp: 12, discovery-xp: 100, grows: "where the wither or its victims fell" }
+    chorus_flower:      { name: Chorus Flower, blocks: [CHORUS_FLOWER], level: 40, xp: 10, discovery-xp: 100, grows: "the End" }
 
 # Cooking (docs/design/FARMING_COOKING.md §4). Rules the code keeps whatever this file says: only food a player really
 # makes pays (taken out of a furnace or smoker, or crafted at a grid; the game's crafted-items statistic counts it, so a

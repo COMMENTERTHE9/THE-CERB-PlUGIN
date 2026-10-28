@@ -62,13 +62,15 @@ class GatheringTest {
         YamlConfiguration server = new YamlConfiguration();
         server.loadFromString(older);
         List<String> notes = GatheringCatalog.addUpdates(server, shipped);
-        assertEquals(8, notes.size(), notes.toString());
+        assertEquals(9, notes.size(), notes.toString());
         assertTrue(notes.get(0).startsWith("resources: oak, birch,") && notes.get(0).contains("write \"<id>: off\""), notes.get(0));
         assertTrue(notes.get(3).startsWith("recipes: sowers_charm"), "the Sower's Charm's recipe (Replant on the hoe, 2026-10-28): " + notes.get(3));
         assertTrue(notes.get(4).startsWith("fishing: not in this file"), "Fishing (2026-10-27) comes as a whole section: " + notes.get(4));
         assertTrue(notes.get(5).startsWith("tackle: not in this file"), "so does its equipment: " + notes.get(5));
         assertTrue(notes.get(6).startsWith("farming: not in this file"), "and Farming (2026-10-28): " + notes.get(6));
         assertTrue(notes.get(7).startsWith("cooking: not in this file"), "and Cooking: " + notes.get(7));
+        assertTrue(notes.get(8).startsWith("herbalism: not in this file"), "and Herbalism: " + notes.get(8));
+        assertTrue(notes.get(1).contains("bloodroot") && notes.get(1).contains("emberbloom"), "with its rare reagents: " + notes.get(1));
         GatheringCatalog c = GatheringCatalog.from(server);
         assertEquals(List.of(), c.problems());
         assertEquals(2, c.resource(Material.STONE).xp(), "the owner's own numbers stay");

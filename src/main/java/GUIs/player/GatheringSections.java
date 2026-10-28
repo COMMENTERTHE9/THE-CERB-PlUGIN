@@ -41,6 +41,10 @@ public final class GatheringSections {
                 (pl, p) -> new CropsMenu(pl)));
         sections.register(new SkillSections.Section("cooking.cookbook", "Cooking", 10, GatheringSections::cookbookTile,
                 (pl, p) -> new CookbookMenu(pl)));
+        sections.register(new SkillSections.Section("herbalism.herbarium", "Herbalism", 10, GatheringSections::herbariumTile,
+                (pl, p) -> new HerbariumMenu(pl)));
+        sections.register(new SkillSections.Section("herbalism.rare", "Herbalism", 20, GatheringSections::rareReagentsTile,
+                (pl, p) -> HerbariumMenu.rare(pl)));
 
         collections.register(new CollectionIndex.Entry("fish", "Fish species", Material.TROPICAL_FISH, 10, "Fishing",
                 List.of("Every water's species, with your", "heaviest catch of each."),
@@ -97,6 +101,24 @@ public final class GatheringSections {
                     Set<String> made = ck.cooked(p);
                     return new CollectionIndex.Progress(r.meals().stream().filter(m -> made.contains(m.id())).count(), r.meals().size(), true);
                 }, (pl, p) -> new CookbookMenu(pl)));
+        collections.register(new CollectionIndex.Entry("herbs", "Herbs", Material.POPPY, 70, "Herbalism",
+                List.of("Every wild plant you gathered."),
+                (pl, p) -> {
+                    Gathering.Herbalism h = pl.getHerbalism();
+                    Gathering.HerbalismRules r = GatheringCatalog.current().herbalism();
+                    if (h == null || !r.enabled() || r.herbs().isEmpty()) return CollectionIndex.Progress.OFF;
+                    Set<String> found = h.discovered(p);
+                    return new CollectionIndex.Progress(r.herbs().stream().filter(x -> found.contains(x.id())).count(), r.herbs().size(), true);
+                }, (pl, p) -> new HerbariumMenu(pl)));
+        collections.register(new CollectionIndex.Entry("rare_reagents", "Rare reagents", Material.AMETHYST_SHARD, 80, "Herbalism",
+                List.of("The rare plant parts gathered", "herbs sometimes give."),
+                (pl, p) -> {
+                    Gathering.Herbalism h = pl.getHerbalism();
+                    Gathering.HerbalismRules r = GatheringCatalog.current().herbalism();
+                    if (h == null || !r.enabled() || r.rares().isEmpty()) return CollectionIndex.Progress.OFF;
+                    java.util.Map<String, Integer> found = h.rareFound(p);
+                    return new CollectionIndex.Progress(r.rares().stream().filter(x -> found.containsKey(x.id())).count(), r.rares().size(), true);
+                }, (pl, p) -> HerbariumMenu.rare(pl)));
     }
 
     /**
@@ -220,6 +242,34 @@ public final class GatheringSections {
                 .text("its ingredients, and what it does")
                 .text("at the tier you cook at.")
                 .hint("Click to open the cookbook").build());
+    }
+
+    static ItemStack herbariumTile(CerberusPlugin plugin, Player p) {
+        Gathering.Herbalism h = plugin.getHerbalism();
+        Gathering.HerbalismRules r = GatheringCatalog.current().herbalism();
+        if (h == null || !r.enabled() || r.herbs().isEmpty()) return null;
+        Set<String> found = h.discovered(p);
+        long have = r.herbs().stream().filter(x -> found.contains(x.id())).count();
+        return Ui.item(Material.POPPY, ChatColor.GOLD + "Herbarium: " + have + " of " + r.herbs().size() + " discovered", Ui.lore()
+                .raw(PlayerTheme.bar(have, Math.max(1, r.herbs().size()), 20, ChatColor.GREEN))
+                .text("Each herb, where it grows, its")
+                .text("level and XP, and the rare reagent")
+                .text("it can give.")
+                .hint("Click to open the Herbarium").build());
+    }
+
+    static ItemStack rareReagentsTile(CerberusPlugin plugin, Player p) {
+        Gathering.Herbalism h = plugin.getHerbalism();
+        Gathering.HerbalismRules r = GatheringCatalog.current().herbalism();
+        if (h == null || !r.enabled() || r.rares().isEmpty()) return null;
+        java.util.Map<String, Integer> found = h.rareFound(p);
+        long have = r.rares().stream().filter(x -> found.containsKey(x.id())).count();
+        return Ui.item(Material.AMETHYST_SHARD, ChatColor.GOLD + "Rare reagents: " + have + " of " + r.rares().size() + " found", Ui.lore()
+                .raw(PlayerTheme.bar(have, Math.max(1, r.rares().size()), 20, ChatColor.LIGHT_PURPLE))
+                .text("The rare plant parts herbs give")
+                .text("from Herbalism " + r.rareAt() + ", and which")
+                .text("herbs give each.")
+                .hint("Click to see them").build());
     }
 
     static ItemStack cropsTile(CerberusPlugin plugin, Player p) {

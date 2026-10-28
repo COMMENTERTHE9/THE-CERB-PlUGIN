@@ -307,6 +307,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     private Gathering.Woodcutting woodcutting;
     private Gathering.Fishing fishing;
     private Gathering.Farming farming;
+    private Gathering.Herbalism herbalism;
     private Gathering.Cooking cooking;
     private IronReprisal ironReprisal;
     /** Every effect on a player right now, for the menus (docs/design/ACTIVE_EFFECTS.md). */
@@ -321,6 +322,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     public Gathering.Fishing getFishing() { return fishing; }
     /** Farming's harvests and techniques (docs/design/FARMING_COOKING.md §3); null until gathering is up. */
     public Gathering.Farming getFarming() { return farming; }
+
+    /** Herbalism's gathering, rare reagents and Wildcrafting (docs/design/HERBALISM.md); null until gathering is set up. */
+    public Gathering.Herbalism getHerbalism() { return herbalism; }
     /** Cooking's XP, meals and the running meal (docs/design/FARMING_COOKING.md §4); null until gathering is up. */
     public Gathering.Cooking getCooking() { return cooking; }
     public IronReprisal getIronReprisal() { return ironReprisal; }
@@ -579,7 +583,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             classService.setCelebrations(celebrations);
             celebrations.setAbilityUnlocks(classService::unlockedBy);
         }
-        // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy), Fishing's, and Iron Reprisal.
+        // The techniques the woods' skill opens at its milestones (Felling I-IV, the canopy), Fishing's, Herbalism's and Iron Reprisal.
         celebrations.setTechniques((skill, from, to) -> {
             if (skill.equals(IronReprisal.SKILL)) {
                 return combatConfig == null ? List.of() : combatConfig.ironReprisal.openedBetween(from, to);
@@ -587,6 +591,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
             Gathering.GatheringCatalog c = gatheringService == null ? null : gatheringService.catalog();
             if (c == null) return List.of();
             if (skill.equals(c.fishing().skill())) return c.fishing().openedBetween(from, to);
+            if (skill.equals(c.herbalism().skill())) return c.herbalism().openedBetween(from, to);
             return !skill.equals(c.woodSkill()) ? List.of() : c.wood().openedBetween(from, to);
         });
     }
@@ -648,9 +653,17 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         var farmCmd = Objects.requireNonNull(getCommand("farming"));
         farmCmd.setExecutor(farmingCommand);
         farmCmd.setTabCompleter(farmingCommand);
+        herbalismCommand = new Commands.HerbalismCommand(this);
+        var herbCmd = Objects.requireNonNull(getCommand("herbalism"));
+        herbCmd.setExecutor(herbalismCommand);
+        herbCmd.setTabCompleter(herbalismCommand);
     }
 
     private Commands.FarmingCommand farmingCommand;
+    private Commands.HerbalismCommand herbalismCommand;
+
+    /** /herbalism, and the admin /cerb herb subcommand. */
+    public Commands.HerbalismCommand getHerbalismCommand() { return herbalismCommand; }
     private Commands.CookingCommand cookingCommand;
 
     /** /cooking, and the admin /cerb cook subcommand. */
@@ -782,6 +795,21 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
                             + (gain != null ? ", +" + gain + " " + SkillNames.display(gatheringService.catalog().farming().skill()) + " XP" : "") + ")"), -1));
         });
         pm.registerEvents(farming, this);
+        // Herbalism (docs/design/HERBALISM.md): wild plants as reagents, discoveries, rare reagents (25), quality (50), Wildcrafting.
+        herbalism = new Gathering.Herbalism(this, gatheringService, skillManager, (p, msg) -> playerHUDManager.flash(p, msg, 1800));
+        herbalism.setAnnouncer((p, name, xp, rare) -> {
+            Gathering.HerbalismRules hr = gatheringService.catalog().herbalism();
+            int found = rare ? herbalism.rareFound(p).size() : herbalism.discovered(p).size();
+            int all = rare ? hr.rares().size() : hr.herbs().size();
+            String gain = xp > 0 ? (xp == Math.rint(xp) ? String.valueOf((long) xp) : String.valueOf(xp)) : null;
+            String what = rare ? " rare reagents" : " herbs";
+            celebrations.celebrate(p, new Celebration(Celebration.Kind.DISCOVERY, Celebration.Tier.ORDINARY,
+                    (rare ? "§d✦ §fRare reagent: " : "§a✦ §fDiscovered: ") + name + (gain != null ? " §7· §a+" + gain + " XP" : ""),
+                    (rare ? "§d✦ §f" : "§a✦ §f") + name, null, null,
+                    List.of((rare ? "§d✦ Rare reagent: §f" : "§a✦ Discovered: §f") + name + " §7(" + found + " of " + all + what
+                            + (gain != null ? ", +" + gain + " " + SkillNames.display(hr.skill()) + " XP" : "") + ")"), -1));
+        });
+        pm.registerEvents(herbalism, this);
         // Fishing (docs/design/FISHING.md): species, lures, called sea creatures (only their owner can hurt them).
         fishing = new Gathering.Fishing(this, gatheringService, skillManager);
         fishing.registerCreatures(mobRegistry);

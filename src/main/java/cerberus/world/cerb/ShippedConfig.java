@@ -53,7 +53,8 @@ public final class ShippedConfig {
                     "37d1d9e68d88a05114f3a6c67ffded6160f7f66cfd39cd225b4608aafdabda8f",  // Woodcutting
                     "b4dc2bf1a58dfb99945197a71b82a61563a634eae742e8b3d571cc61b39b935c",  // grown trees, Smithing's growth
                     "16678dabec664b4062cd75540ea6eab49cebbc22387769f0f7e287c6fdcf6015",  // Fishing
-                    "52415b1ff49ae9315316408b1d42aa63b1197532f26e49f1da7a8f867ab678cf"), // Farming and Cooking
+                    "52415b1ff49ae9315316408b1d42aa63b1197532f26e49f1da7a8f867ab678cf",  // Farming and Cooking
+                    "bc60fbe8a94a7ca4f6b2b92b677b53aad5e52cd4392684022c656841bdedf8ce"), // Martial Expertise's Agility
             "resources.yml", Set.of(
                     "994d99e195a284ffcd94a66de46f7ac631c90837aa517423d6ce8528fcf55fd9",  // the gathering loop, first cut
                     "2c2e3135edd9c620ad124edbeaa4be107a9fae3150457b087d49524fcdc8a942",  // the gathering loop, as shipped
@@ -62,7 +63,8 @@ public final class ShippedConfig {
                     "6958e4f1d44e18c8665afc45aac456f1ec3f567a357e638989757737e8e9565d",  // Fishing
                     "e2513b9df28f2557c1e9de8115136b1b90088a60005ce80b331a55153dcac313",  // Fishing equipment
                     "3c9d3ef0c83cb9ba30546d7972c8e08c91dd43403fe1358aff1d30285230fc14",  // Farming
-                    "d64023d247a21a773aa3358ece0687c3820442e341442297847a0822f8cc7595")); // Farming and Cooking
+                    "d64023d247a21a773aa3358ece0687c3820442e341442297847a0822f8cc7595",  // Farming and Cooking
+                    "7f9ae3e2beb63048ba563ebf9c23a56f8dc928720a4b2903c0d30c19f7069ac2")); // Replant on the hoe
 
     /** What {@link #refresh} did. */
     public enum Result { MISSING, CURRENT, REFRESHED, EDITED }

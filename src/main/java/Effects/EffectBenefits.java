@@ -112,6 +112,7 @@ public final class EffectBenefits {
             case WOOD -> "extra log";
             case FISH -> "extra fish";
             case CROP -> "extra crop";
+            case HERB -> "extra herb";
         };
     }
 

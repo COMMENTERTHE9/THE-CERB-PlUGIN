@@ -132,6 +132,7 @@ public final class GatheringCatalog {
     private final TackleRules tackle;
     private final FarmingRules farming;
     private final CookingRules cooking;
+    private final HerbalismRules herbalism;
     private final Map<String, TackleRules.Recipe> recipes;
     private final List<String> problems;
 
@@ -141,7 +142,7 @@ public final class GatheringCatalog {
                              Set<String> needsSmelted, QualityRules quality, double fortunePerPoint, double fortuneMax, int weakGap,
                              double weakFactor, WoodRules wood, double weakToolFactor, Map<String, UpgradeDef> upgrades,
                              FishingRules fishing, TackleRules tackle, FarmingRules farming, CookingRules cooking,
-                             Map<String, TackleRules.Recipe> recipes, List<String> problems) {
+                             HerbalismRules herbalism, Map<String, TackleRules.Recipe> recipes, List<String> problems) {
         this.byBlock = byBlock;
         this.resources = resources;
         this.tools = tools;
@@ -165,6 +166,7 @@ public final class GatheringCatalog {
         this.tackle = tackle;
         this.farming = farming;
         this.cooking = cooking;
+        this.herbalism = herbalism;
         this.recipes = recipes;
         this.problems = List.copyOf(problems);
     }
@@ -186,8 +188,10 @@ public final class GatheringCatalog {
     public Map<String, ToolDef> tools() { return tools; }
     public ItemDef item(String id) { return id == null ? null : items.get(id); }
     public Map<String, ItemDef> items() { return items; }
-    /** True when placing a block of {@code m} must be remembered (it is some resource's block). */
-    /** Blocks the placed-block memory keeps: resources, and crops a player can also place by hand (melons, cane...). */
+    /**
+     * Blocks the placed-block memory keeps: resources, and crops a player can also place by hand (melons, cane...). Herbs
+     * are kept only when a player places one ({@link PlacedBlocks}): a mushroom that spreads or a wither rose grew there.
+     */
     public boolean tracked(Material m) { return m != null && (byBlock.containsKey(m) || farming.placeable(m)); }
 
     public String smeltingSkill() { return smeltingSkill; }
@@ -245,6 +249,8 @@ public final class GatheringCatalog {
     public FarmingRules farming() { return farming; }
     /** Cooking's XP tables and meals (docs/design/FARMING_COOKING.md §4). */
     public CookingRules cooking() { return cooking; }
+    /** Herbalism's herbs, rare reagents and techniques (docs/design/HERBALISM.md); {@link HerbalismRules#NONE} when off. */
+    public HerbalismRules herbalism() { return herbalism; }
     public List<String> problems() { return problems; }
 
     /** The skill the woods train (Woodcutting): its levels open the techniques; null when no wood is defined. */
@@ -406,6 +412,17 @@ public final class GatheringCatalog {
             if (!cooking.meals().isEmpty()) lines.add("Meals open from Cooking " + cooking.meals().stream().mapToInt(CookingRules.Meal::level).min().orElse(0)
                     + " and pay their own XP (the Cookbook). Nothing in creative.");
         }
+        if (herbalism.enabled() && !herbalism.herbs().isEmpty()) {
+            List<String> lines = out.computeIfAbsent(herbalism.skill(), k -> new ArrayList<>());
+            double low = herbalism.herbs().stream().mapToDouble(HerbalismRules.Herb::xp).min().orElse(0);
+            double high = herbalism.herbs().stream().mapToDouble(HerbalismRules.Herb::xp).max().orElse(0);
+            lines.add("Gather wild plants in survival, by hand or with a macro: flowers, ferns, mushrooms, cave, sea and Nether plants ("
+                    + herbalism.herbs().size() + " herbs, " + number(low) + " to " + number(high) + " XP each). A gather pays when it drops the herb itself; "
+                    + "some only drop to shears.");
+            lines.add("Plants that grew on their own or from bone meal pay in full; one placed by hand pays nothing. Water, pistons and "
+                    + "machines pay nobody. The first gather of each herb is a discovery.");
+            if (weakGap > 0) lines.add("Each herb has a level; " + weakGap + "+ levels above it you get " + Math.round(weakFactor * 100) + "% of its XP.");
+        }
         return out;
     }
 
@@ -477,6 +494,10 @@ public final class GatheringCatalog {
         replanting.add("replanting");
         m.put("upgrades", List.copyOf(replanting));
         m.put("recipes", List.of("sowers_charm"));
+        // 2026-10-28, Herbalism's rare reagents (its own "herbalism:" section comes whole when a file has none: addUpdates)
+        List<String> rares = new ArrayList<>(m.get("items"));
+        rares.addAll(List.of("bloodroot", "moonpetal", "sunpetal", "emberbloom"));
+        m.put("items", List.copyOf(rares));
         return Collections.unmodifiableMap(m);
     }
 
@@ -533,6 +554,11 @@ public final class GatheringCatalog {
         if (!server.contains("cooking") && shipped.get("cooking") instanceof ConfigurationSection co) {
             server.createSection("cooking", values(co));
             notes.add("cooking: not in this file (an update added it), so the plugin's own section is used; write \"cooking: off\" to turn cooking's rules off");
+        }
+        // Herbalism (2026-10-28, docs/design/HERBALISM.md) likewise: "herbalism: off" turns its gathering rules off.
+        if (!server.contains("herbalism") && shipped.get("herbalism") instanceof ConfigurationSection he) {
+            server.createSection("herbalism", values(he));
+            notes.add("herbalism: not in this file (an update added it), so the plugin's own section is used; write \"herbalism: off\" to turn herbalism's rules off");
         }
         return notes;
     }
@@ -779,12 +805,17 @@ public final class GatheringCatalog {
             ResourceDef clash = byBlock.remove(m); // one block, one set of rules: a harvest never pays twice
             if (clash != null) problems.add("farming crop " + c.id() + ": " + m + " is also resource " + clash.id() + " (the crop's rules win)");
         }
+        // Herbs never claim a block that is a crop or a resource: one break, one set of rules.
+        Map<Material, String> taken = new java.util.EnumMap<>(Material.class);
+        for (ResourceDef r : byBlock.values()) for (Material m : r.blocks()) taken.put(m, "resource " + r.id());
+        for (FarmingRules.Crop c : farming.crops()) for (Material m : c.blocks()) taken.put(m, "crop " + c.id());
+        HerbalismRules herbalism = HerbalismRules.from(root == null ? null : root.getConfigurationSection("herbalism"), items, skills, taken, problems);
 
         return new GatheringCatalog(Collections.unmodifiableMap(byBlock), Collections.unmodifiableMap(resources),
                 Collections.unmodifiableMap(tools), Collections.unmodifiableMap(items), smeltingSkill,
                 Collections.unmodifiableMap(smelting), forgingSkill, Collections.unmodifiableMap(perUnit),
                 Collections.unmodifiableMap(overrides), netherite, Collections.unmodifiableSet(needsSmelted), quality, perPoint, max, gap,
-                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking,
+                factor, wood, weakTool, Collections.unmodifiableMap(upgrades), fishing, tackle, farming, cooking, herbalism,
                 Collections.unmodifiableMap(recipes), problems);
     }
 

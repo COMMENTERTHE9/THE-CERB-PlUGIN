@@ -3,6 +3,7 @@ package Gathering;
 import org.bukkit.Bukkit;
 import org.bukkit.ExplosionResult;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -156,6 +157,16 @@ public final class PlacedBlocks implements Listener {
         return catalog.get().tracked(b.getType());
     }
 
+    /** A herb's block (docs/design/HERBALISM.md §2): remembered when a player places it, forgotten when one grows there. */
+    private boolean herb(Material m) {
+        return catalog.get().herbalism().tracked(m);
+    }
+
+    /** A herb grew at {@code b} (spread, bone meal, a death's wither rose): a mark left from one placed there before is forgotten. */
+    private void grewHerb(Block b, Material now) {
+        if (herb(now) && isPlaced(b)) unmark(b);
+    }
+
     // ── Diagnostics ──────────────────────────────────────────────
 
     /** Chunks whose set is cached now. */
@@ -173,7 +184,8 @@ public final class PlacedBlocks implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent e) {
-        if (tracked(e.getBlockPlaced())) mark(e.getBlockPlaced());
+        Block b = e.getBlockPlaced();
+        if (tracked(b) || herb(b.getType())) mark(b); // a tall flower is remembered by its lower half, where it is placed
     }
 
     /**
@@ -196,6 +208,7 @@ public final class PlacedBlocks implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSpread(BlockSpreadEvent e) {
         if (catalog.get().tracked(e.getNewState().getType())) mark(e.getBlock());
+        else grewHerb(e.getBlock(), e.getNewState().getType()); // a mushroom spreading, kelp or vines growing
     }
 
     /** A block that fades into a resource block (covered nylium becomes netherrack): not grown there either. */
@@ -209,6 +222,7 @@ public final class PlacedBlocks implements Listener {
     public void onEntityChange(EntityChangeBlockEvent e) {
         if (catalog.get().tracked(e.getTo())) mark(e.getBlock());
         else if (tracked(e.getBlock())) unmark(e.getBlock());
+        else grewHerb(e.getBlock(), e.getTo()); // the wither rose a wither's victim leaves
     }
 
     /**
@@ -240,7 +254,19 @@ public final class PlacedBlocks implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onFertilize(BlockFertilizeEvent e) {
         unsettled.remove(GrowthAt.of(e.getBlock().getLocation()));
-        if (!e.isCancelled()) record(e.getBlocks(), Origin.BONEMEAL, false);
+        if (e.isCancelled()) return;
+        record(e.getBlocks(), Origin.BONEMEAL, false);
+        // Flowers bone meal grows on grass are grown, not placed. A herb placed by hand stays placed when bone meal grows it
+        // where it stands (a fern into a large fern, one more petal), and so does what it spreads to: nothing wild came of it.
+        Block fertilized = e.getBlock();
+        boolean fromPlaced = herb(fertilized.getType()) && isPlaced(fertilized);
+        for (org.bukkit.block.BlockState st : e.getBlocks()) {
+            if (!herb(st.getType())) continue;
+            Block b = st.getBlock();
+            if (!b.getWorld().isChunkLoaded(b.getX() >> 4, b.getZ() >> 4) || !Bukkit.isOwnedByCurrentRegion(b)) continue;
+            if (fromPlaced) mark(b);
+            else grewHerb(b, st.getType());
+        }
     }
 
     /**

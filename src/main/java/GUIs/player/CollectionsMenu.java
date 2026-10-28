@@ -16,7 +16,8 @@ import java.util.List;
  */
 public final class CollectionsMenu extends PlayerMenu {
 
-    private static final int[] SLOTS = {20, 22, 24, 30, 32, 38, 42};
+    /** Fishing's three on the first row, then the gathering skills' in order (Woods, Crops, Meals, Herbs...). */
+    private static final int[] SLOTS = {20, 22, 24, 28, 30, 32, 34, 38, 42};
     /** Milestones and other extra tiles (CollectionIndex.Extra). */
     private static final int[] EXTRA_SLOTS = {40, 39, 41};
 

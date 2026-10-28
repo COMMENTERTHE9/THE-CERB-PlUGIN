@@ -277,10 +277,10 @@ async function pages() {
   check('The hub\'s Collections tile is available', /Collections/.test(slotName(32)) && /Available/.test(flat(32)), flat(32));
   await click(32);
   check('Collections opens', await waitTitle(SCREEN('Collections')), title());
-  const names = [20, 22, 24, 30].map(slotName);
+  const names = [20, 22, 24, 28].map(slotName);
   check('Four collections: fish species, fishing treasure, sea creatures defeated, woods', names.join('|') === 'Fish species|Fishing treasure|Sea creatures defeated|Woods', names.join(' | '));
   const fishC = (flat(20).match(/Collected: (\d+) of (\d+)/) || []).slice(1).map(Number);
-  const woodC = (flat(30).match(/Collected: (\d+) of (\d+)/) || []).slice(1).map(Number);
+  const woodC = (flat(28).match(/Collected: (\d+) of (\d+)/) || []).slice(1).map(Number);
   check('The same counts as the skill pages (from the definitions)', fishC.join('/') === jn.join('/') && woodC.join('/') === wn.join('/'),
     `fish ${fishC} vs ${jn}, woods ${woodC} vs ${wn}`);
   await click(20);
@@ -293,7 +293,7 @@ async function pages() {
   await click(24);
   check('Sea creatures defeated opens Encounters', await waitTitle(SCREEN('Encounters')), title());
   await click(45); await waitTitle(SCREEN('Collections'));
-  await click(30);
+  await click(28);
   check('Woods opens the Woods screen', await waitTitle(SCREEN('Woods')), title());
   await closeAny();
 }

@@ -48,6 +48,11 @@
 //            is planted again after each sweep on every build: from Farming 10 before Replant moved to the hoe, from the
 //            hoe after it (the bot gets a Replanting hoe through /cerb farm hoe where that exists, 2026-10-28).
 //   cook   - each bot bakes bread at its own crafting table, about two a second (Cooking's crafting path).
+//   herb   - each bot gathers a 5x5 meadow of poppies and dandelions on grass in survival by hand, the nearest first, about
+//            three a second; the meadow is refilled when bare. Herbalism is set to 1 every run (no Wildcrafting, rare
+//            reagents or quality), so every build does the same work (the Herbalism baseline, 2026-10-28).
+//   wildcraft - like herb, at Herbalism 40 with shears and Sneak held: each gather is a Wildcrafting sweep of up to 5x5
+//            (builds with Herbalism only).
 //   mealidle - like menuidle, but each bot first eats a Hearty Stew and has Speed I for 10 minutes: an open hub while
 //            timed effects run (the Active Effects milestone, 2026-10-28: the head's summary counts down on later builds).
 //   effectsmenu - each bot, with the same meal and potion, opens the menu and clicks its head, then Back, then closes, as
@@ -236,6 +241,48 @@ async function farm(b, deadline, controller, wide = false) {
   }
   if (wide) b.setControlState('sneak', false);
   controller.chat(`/cerb skill ${n} Farming level 1`);
+}
+
+function meadow(controller, x, y, z) {
+  controller.chat(`/fill ${x - 2} ${y - 1} ${z + 2} ${x + 2} ${y - 1} ${z + 6} grass_block`);
+  controller.chat(`/fill ${x - 2} ${y} ${z + 2} ${x + 2} ${y} ${z + 3} poppy`);
+  controller.chat(`/fill ${x - 2} ${y} ${z + 4} ${x + 2} ${y} ${z + 6} dandelion`);
+}
+
+/**
+ * Gathering wild flowers in survival, the nearest first, the meadow refilled when it is bare and loose items cleared now
+ * and then. Herbalism is set to 1 every run, so every build does the same work. {@code wild}: Herbalism 40, shears and Sneak
+ * held, so each gather is a Wildcrafting sweep (builds with Herbalism only).
+ */
+async function herb(b, deadline, controller, wild = false) {
+  const n = b.username;
+  controller.chat(`/cerb skill ${n} Herbalism level ${wild ? 40 : 1}`); await sleep(400);
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  if (wild) { b.chat('/give @s shears[unbreakable={}]'); await sleep(700); }
+  b.chat('/effect give @s saturation infinite 1 true'); b.chat('/effect give @s resistance infinite 4 true');
+  await sleep(400);
+  const slot = b.inventory.slots.findIndex((it, i) => it && it.name === 'shears' && i >= 36 && i <= 44);
+  if (slot >= 0) b.setQuickBarSlot(slot - 36);
+  const home = b.entity.position.floored();
+  meadow(controller, home.x, home.y, home.z); await sleep(1000);
+  const vec3 = require('vec3');
+  if (wild) b.setControlState('sneak', true);
+  let lastClear = Date.now();
+  while (Date.now() < deadline) {
+    let target = null;
+    for (let dz = 2; dz <= 6 && !target; dz++) for (let dx = -2; dx <= 2 && !target; dx++) {
+      const bl = b.blockAt(new vec3(home.x + dx, home.y, home.z + dz));
+      if (bl && (bl.name === 'poppy' || bl.name === 'dandelion')) target = bl;
+    }
+    if (!target) { meadow(controller, home.x, home.y, home.z); bump(n, 'refills'); await sleep(700); continue; }
+    try { await b.dig(target, true); bump(n, 'gathered'); } catch (e) { bump(n, 'digfail'); await sleep(200); }
+    if (Date.now() - lastClear > 10000) { controller.chat(`/execute at ${n} run kill @e[type=item,distance=..10]`); lastClear = Date.now(); }
+    if (b.inventory.emptySlotCount() < 4) { b.chat('/clear @s poppy'); b.chat('/clear @s dandelion'); }
+    await sleep(wild ? 600 : 250);
+  }
+  if (wild) b.setControlState('sneak', false);
+  controller.chat(`/cerb skill ${n} Herbalism level 1`);
 }
 
 /** Baking bread at a crafting table as fast as a hurried player (3 wheat each), about two a second (Cooking's crafting path). */
@@ -575,7 +622,7 @@ async function menuidle(b, deadline, keepMode = false) {
       const b = await join(name);
       bots.push(b);
       // gather, levels, wood, felling: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
-      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish', 'farm', 'widefarm'].includes(MODE);
+      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish', 'farm', 'widefarm', 'herb', 'wildcraft'].includes(MODE);
       const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
@@ -595,6 +642,7 @@ async function menuidle(b, deadline, keepMode = false) {
         : m === 'autofish' ? autofish(b, deadline, controller)
         : m === 'farm' ? farm(b, deadline, controller) : m === 'widefarm' ? farm(b, deadline, controller, true)
         : m === 'cook' ? cook(b, deadline, controller)
+        : m === 'herb' ? herb(b, deadline, controller) : m === 'wildcraft' ? herb(b, deadline, controller, true)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)
         : m === 'mealidle' ? mealidle(b, deadline, controller) : m === 'effectsmenu' ? effectsmenu(b, deadline, controller)

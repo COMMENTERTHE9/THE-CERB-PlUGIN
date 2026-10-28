@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal, Herbalism
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), and section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes), and section 21, Herbalism (about 20 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -379,6 +379,22 @@ Weapon Mastery's lifesteal is unchanged, as you ruled for this milestone. The re
 | 2 | On the test copy only: set `limits: lifesteal: 0.05` in `attributes.yml`, `/cerb reload`, and fight the same crowd. Then put the file back. | The same fight with almost no lifesteal: is it closer to how dangerous it should feel? |
 | 3 | Overall. | Too safe, right, or too harsh? Tell me which option of the review you want (B, a per-hit cap, is the recommendation), or to leave it as it is. Nothing changes until you say so. |
 
-## 21. Afterwards
+## 21. Herbalism
+
+Gathering wild plants (`docs/design/HERBALISM.md`): 35 herbs as data, Essence and Fortune on herbs from the level, rare reagents from 25, reagent quality from 50, and Wildcrafting from 10. Its reagents are Alchemy's.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | In survival, pick flowers in the wild (a poppy, a dandelion, a cornflower), then the same kind again. | Herbalism XP for each (3 for a poppy), and a discovery bonus the first time only; the XP display shows it. |
+| 2 | Break a fern by hand, then with shears. | By hand: nothing of the fern drops, no XP, and the HUD says it wants shears. With shears: the fern drops and pays. |
+| 3 | Place a poppy from your inventory and break it. Then bone-meal grass and pick a flower it grew. | The placed poppy pays nothing (the HUD says why); the bone-meal flower pays in full. |
+| 4 | Place a pink petal, bone-meal it to two petals, break it. | Nothing: bone meal grew a plant you placed, so it stays placed. A wild pink petal bone-mealed the same way pays. |
+| 5 | Set Herbalism to 25, then 100, and gather a few dozen poppies (`/herbalism` shows your chances). | At 100 about a quarter drop a second poppy, and now and then a **Bloodroot** (a rare reagent, a discovery the first time). Rare reagents can't be placed, burned or used in vanilla recipes. |
+| 6 | At 50 or more, look at gathered herbs and rare reagents. | Some carry a quality ("✦ Fine quality"…): Alchemy reads it. |
+| 7 | At 10 or more, hold shears, Sneak and gather one wild poppy in a patch (also try underwater seagrass). | Every wild plant of that kind in a 3×3 is gathered (5×5 at 40, 7×7 at 70), each paid, the drops in one pile, one point of shears wear each; placed plants and other herbs stay. Underwater, water stays where they stood. |
+| 8 | Player Menu → Skills → Herbalism → Herbarium; Collections → Herbs and Rare reagents; `/herbalism`. | The same counts everywhere ("Herbarium: N of 35", "Rare reagents: N of 4"). |
+| 9 | Overall. | Do the herbs' XP, levels and rare odds feel worth gathering? Every number is data in `resources.yml` (`herbalism:`). |
+
+## 22. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

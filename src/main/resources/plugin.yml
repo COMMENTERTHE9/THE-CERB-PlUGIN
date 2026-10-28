@@ -40,6 +40,10 @@ commands:
     description: Your crops, Farming's techniques and Replant's switch.
     usage: /<command> [crops | replant on|off]
     aliases: [farm]
+  herbalism:
+    description: Your herbs, rare reagents and Herbalism's techniques; the Herbarium.
+    usage: /<command> [herbs | rare]
+    aliases: [herbs]
   giveTestItem:
     description: Gives a test item to the player.
     usage: /<command>

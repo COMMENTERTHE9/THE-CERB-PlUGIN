@@ -62,7 +62,7 @@ public final class Farming implements Listener {
     static final int COLUMN_MAX = 64;
 
     /** A break this class makes for a Wide Harvest: protection plugins see it as the player's own; the harvest listeners ignore it. */
-    public static final class HarvestBreak extends BlockBreakEvent {
+    public static final class HarvestBreak extends BlockBreakEvent implements SweepBreak {
         public HarvestBreak(Block block, Player player) { super(block, player); }
     }
 
@@ -132,7 +132,7 @@ public final class Farming implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent e) {
-        if (e instanceof HarvestBreak || e instanceof Woodcutting.FellingBreak) return; // a sweep or a felling pays its own
+        if (e instanceof SweepBreak) return; // a sweep or a felling pays its own
         Player p = e.getPlayer();
         pending.remove(p.getUniqueId()); // a new break: an earlier one's drops never get this one's changes
         FarmingRules f = rules();

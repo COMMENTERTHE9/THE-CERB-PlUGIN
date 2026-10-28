@@ -32,7 +32,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Your two XP reports (2026-10-27)**, Fishing XP and bow kills, are reproduced and fixed: what you saw is what creative mode gives, silently until now; the real defects found on the way are fixed, skills start at level 1, and an independent review's findings are fixed too (section "Done: your XP reports" below; checklist §14).
 - **Built since, each waiting for your playtest:** Fishing equipment, goals and collections (2026-10-27, checklist §15) and **Farming and Cooking** (2026-10-28, your milestone: crops, Replant, Wide Harvest, crop quality, Cooking XP and six meals; section "Done: Farming and Cooking" below; checklist §16).
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
-- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed.
+- **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1265,6 +1265,44 @@ A ravager (knockback resistance 0.75) at 100 in full iron: 0.13–0.64 blocks in
 **Checks:** 14 fights of 40 s each: the single zombie at Weapon Mastery 1, 25, 50 and 100, and the crowd at 25, 50 and 100, each once with lifesteal and once without. No deaths. The sandbox's `attributes.yml` was put back after every lifesteal-off run. Nothing in the code changed.
 
 **For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §20): a melee fighter at Weapon Mastery 50 or more, in a crowd or against a boss. Try it once as it is, and once with `limits.lifesteal` lowered in a copy of `attributes.yml` on a test server (never your live world). Does it feel too safe?
+
+## Done: Herbalism (2026-10-28, your milestone, increment 4)
+
+**What it is for:** the wild side of gathering, and Alchemy's ingredients. A herbalist gathers flowers, ferns, mushrooms, cave, sea and Nether plants and earns Herbalism XP for each, by hand or with a macro; each plant is a reagent for Alchemy. Design and every number: `docs/design/HERBALISM.md`. Built on the same pipeline as Farming (the drop event, the placed-block memory, the attribute engine, the menus, the shipped-config rules); the old `Skills/HerbalismSkill` stays unwired.
+
+**What pays** (`Gathering/Herbalism`, `HerbalismRules`; `resources.yml herbalism:`):
+- **35 herbs as data**, each with its blocks, level, XP and discovery XP, where it grows, whether it needs shears, and the rare reagent it can give. Wild plants pay in full, so do plants bone meal grew on grass (it cost bone meal, like a crop). A break pays when its drops hold the herb itself, read at the drop event (what really happened).
+- **Pays nothing:** a plant placed by hand (the placed-block memory keeps herb blocks; a tall flower is judged by its lower half), a break that drops nothing of the herb (ferns, seagrass, glow lichen, hanging roots, small dripleaf and Nether sprouts drop themselves only to shears; the HUD says so), creative (the XP display says why), and machines (water, pistons). 20 levels above a herb it pays a quarter.
+- **The character:** Essence 0.25 and Fortune on herbs 0.5 per level (a new yield, like ore, wood, fish and crops: one more of the herb, never of a rare reagent).
+- **Rare reagents from 25:** a herb that has one rolls for it, 2% at 25 rising to 6% at 100: **Bloodroot** (poppy, rose bush), **Moonpetal** (azure bluet, lily of the valley, eyeblossom), **Sunpetal** (dandelion, sunflower, cactus flower), **Emberbloom** (crimson fungus, Nether vines). Cerberus items: never placed, burned, used in a vanilla recipe or brewed by vanilla; Alchemy's brews use them. The first of each is a discovery.
+- **Reagent quality from 50:** gathered herbs and rare reagents roll a quality (Fine 10%, Superior 2% at 50, up to Fine 22%, Superior 8%, Masterwork 3% at 100), the same quality crops carry, so Alchemy and Cooking read one rule.
+- **Wildcrafting from 10** (Sneak + shears): every wild plant of the same herb in a 3×3 (5×5 at 40, 7×7 at 70), one block up or down, in steps of 16 plants a tick on the region thread that owns them; each plant offered to protection plugins as your own break (the sweep stops at the first refusal); each paid as if gathered by hand; one point of shears wear each, stopping before the shears would break.
+- **The Herbarium:** the Herbalism skill page's **Herbarium: N of 35** and **Rare reagents: N of 4**; Collections → Herbs and Rare reagents; `/herbalism [herbs|rare]`; admin `/cerb herb info|stats|herbs|rare`.
+- **Saved on the player** (no database): herbs discovered, rare reagents found with their counts. Nothing is reset; Herbalism levels were already saved (it was one of the 35 skills, earning nothing until now).
+- **Older servers:** an unedited `resources.yml`/`attributes.yml` is refreshed; an edited one gets the `herbalism:` section, the rare reagent items and Herbalism's skill line from the plugin's own file (logged; `herbalism: off` turns it off).
+- **Felling, Wide Harvest and Wildcrafting** now share one marker (`Gathering/SweepBreak`): a sweep's own breaks are never counted twice by the other gathering listeners.
+
+**An independent review** of Herbalism and Alchemy found eight defects. The two in Herbalism, each run against the build before the fix:
+- **Bone meal turned a herb placed by hand into a wild one:** one bone meal on a placed pink petal (two petals) made it pay as wild. On the build before the fix, a placed petal bone-mealed to two paid +4. Now it pays nothing, and a wild petal bone-mealed the same way still pays. Bone meal that grows a placed herb where it stands, or spreads it, leaves what grows placed.
+- **Air pockets under water after Wildcrafting** (the method set a water plant's other half to air): **not reproduced in game.** On the build before the fix, water stood in all 18 positions in three layouts: a pool open to the air, a basin three deep with tall seagrass, and one with waterlogged small dripleaf. The game fills the gap itself. The change stays because it costs nothing: the method now writes the water itself.
+
+**Checks** (a sandbox Folia 1.21.11 server in the cloud container; your Windows world and database were never touched; `tools/playtest/herbalism.js`):
+- **Unit tests:** 403 (`HerbalismRulesTest`: the herbs, rare reagents, techniques and quality odds, bad entries refused one by one).
+- **Every phase on the final build:** 54/54, protection 2/2, waterlogged small dripleaf 3/3, no plugin errors in the log. The phases: gather, placed, bone meal, shears, creative, machines, Fortune, rare reagents, quality, Wildcrafting, water, the Herbarium and Collections, a relog, and the technique level-up.
+- **An owner's edited files from increment 2** (`resources.yml` and `attributes.yml`): never rewritten on disk. Herbalism's section, its four rare reagents and its skill line came from the plugin's own files, each logged.
+  - The first run gave 15/20: the first poppies and a dandelion, in the 40 s after the bot joined, paid nothing, while everything later paid.
+  - The same files again: 11/11 on the main sandbox and 11/11 on a second one. Not reproduced.
+  - The likeliest cause, unproven: that player's skills loaded late. Gathering XP earned before a player's skills load is dropped, by design from before this milestone; see "Open" in the final report.
+- **Code shared with other skills:** Farming's harvest, placed crops, replant, Wide Harvest and Fortune 43/43. Woodcutting's sources and Felling 26/27, then 19/19 twice: one Felling wore the axe 4 points for 5 logs, which matches Smithing's wear resistance (0.3% at level 1) skipping a point. Fishing's Collections pages 30/30, custom resources 9/9, the smoke test 14/14, skill names in the menus 4/4.
+- **Harness slips found and fixed on the way** (none was the plugin's):
+  - Arenas now skip terrain overhead, as Farming's do.
+  - The placed-poppy hint is checked before bone meal shows the same once-a-minute hint.
+  - The water check uses a basin, so its water stays put.
+  - Each phase waits until the bot's own copy of a fresh arena shows what the server just placed.
+
+**Performance:** gathering, Wildcrafting and the farm loads are measured with Alchemy in one before/after pass at the end of this milestone (increment 6), on a sandbox with nothing else running.
+
+**For you to judge in the playtest** (`docs/PLAYTEST_CHECKLIST.md` §21): the herbs' XP and levels, the rare reagent odds, Wildcrafting's reach, whether gathering flowers feels worth doing.
 
 ## Roadmap
 

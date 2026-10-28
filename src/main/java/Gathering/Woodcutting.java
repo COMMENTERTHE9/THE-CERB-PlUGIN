@@ -77,7 +77,7 @@ public final class Woodcutting implements Listener {
     }
 
     /** A break this class makes for a felling or the canopy: protection plugins see it as the player's; the gathering listener ignores it. */
-    public static final class FellingBreak extends BlockBreakEvent {
+    public static final class FellingBreak extends BlockBreakEvent implements SweepBreak {
         public FellingBreak(Block block, Player player) { super(block, player); }
     }
 
