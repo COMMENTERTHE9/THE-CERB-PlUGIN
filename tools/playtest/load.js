@@ -56,6 +56,13 @@
 //   brew   - each bot brews at its own brewing stand in survival: three water bottles, blaze powder and nether wart
 //            shift-clicked in, the finished bottles taken out, again when the 20 s brew is done (vanilla's own brew, so
 //            every build does the same work; with Alchemy it arms the stand, binds the brew and pays 2 XP a bottle).
+//   drink  - each bot drinks in survival, one potion every ~3 s (Alchemy's drinking path): where Alchemy exists, an Elixir
+//            of Vigor, a Tonic of Swiftness that replaces it, and a Draught of Mending after 5 damage (it heals over 5 s);
+//            before Alchemy, Mundane Potions at the same pace and with the same damage (the same drink with no effect:
+//            the equal vanilla workload). Every bot is healed every 30 s on every build; elixirs are cleared at the end.
+//   standidle - each bot stands by twelve brewing stands, each left with a finished potion and nether wart and no fuel
+//            (as players leave them): the game asks every such stand every tick whether it could start a brew, with every
+//            brewing mix the server has (Alchemy's on builds with it). Nothing else happens; the stands go at the end.
 //   mealidle - like menuidle, but each bot first eats a Hearty Stew and has Speed I for 10 minutes: an open hub while
 //            timed effects run (the Active Effects milestone, 2026-10-28: the head's summary counts down on later builds).
 //   effectsmenu - each bot, with the same meal and potion, opens the menu and clicks its head, then Back, then closes, as
@@ -73,7 +80,7 @@ const mineflayer = require('mineflayer');
 const BOTS = Number(process.argv[2] || 6);
 const SECONDS = Number(process.argv[3] || 60);
 const MODE = process.argv[4] || 'mixed';
-const HOST = { host: '127.0.0.1', port: 25565, version: '1.21.11', auth: 'offline' };
+const HOST = { host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), version: '1.21.11', auth: 'offline' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const plain = v => {
   if (v == null) return '';
@@ -335,6 +342,56 @@ async function cook(b, deadline, controller) {
     if (b.inventory.count(mcData.itemsByName.bread.id) > 32) { b.chat('/clear @s bread'); await sleep(200); }
     await sleep(350);
   }
+}
+
+/** Drinking potions in survival, one every ~3 s: Cerberus brews where Alchemy exists, else Mundane Potions (see the header). */
+async function drink(b, deadline, controller) {
+  const n = b.username;
+  b.chat('/gamemode survival'); await sleep(400);
+  b.chat('/clear @s'); await sleep(300);
+  const nameOf = it => { try { return it && it.customName ? require('prismarine-chat')(b.registry).fromNotch(it.customName).toString() : ''; } catch (e) { return ''; } };
+  const order = [['vigor', 'Elixir of Vigor'], ['swiftness', 'Tonic of Swiftness'], ['mending', 'Draught of Mending']];
+  let brews = null; // whether this build has Alchemy: found at the first restock
+  const restock = async () => {
+    b.chat('/clear @s glass_bottle'); await sleep(200);
+    if (brews !== false) { for (const [id] of order) controller.chat(`/cerb alchemy give ${n} ${id} common 8`); await sleep(1200); }
+    if (brews === null) brews = b.inventory.items().some(i => i.name === 'potion');
+    if (!brews) { b.chat('/give @s potion[potion_contents={potion:"minecraft:mundane"}] 24'); await sleep(800); }
+  };
+  const find = want => b.inventory.items().find(x => x.name === 'potion' && (!brews || nameOf(x) === want));
+  let i = 0, nextHeal = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    const want = order[i % 3][1];
+    if (i % 3 === 2) { b.chat('/damage @s 5 minecraft:generic'); await sleep(300); } // the draught has something to heal (every build)
+    if (Date.now() > nextHeal) { controller.chat(`/cerb heal ${n}`); nextHeal = Date.now() + 30000; }
+    let it = brews === null ? null : find(want);
+    if (!it) { await restock(); it = find(want); }
+    if (!it) { bump(n, 'nopotion'); await sleep(1000); continue; }
+    try {
+      await b.equip(it, 'hand');
+      b.activateItem(); await sleep(2000); b.deactivateItem();
+      bump(n, 'drinks');
+    } catch (e) { bump(n, 'drinkfail'); }
+    i++;
+    await sleep(1000);
+  }
+  if (brews) controller.chat(`/cerb alchemy clear ${n}`);
+  b.chat('/clear @s');
+}
+
+/** Twelve idle brewing stands in front of the bot, holding a finished potion and nether wart, no fuel (see the header). */
+async function standidle(b, deadline, controller) {
+  const p = b.entity.position.floored();
+  const stands = [];
+  for (let i = 0; i < 12; i++) {
+    const x = p.x - 2 + (i % 6), z = p.z + 2 + Math.floor(i / 6);
+    stands.push([x, p.y, z]);
+    controller.chat(`/setblock ${x} ${p.y} ${z} brewing_stand{Items:[{Slot:0b,id:"potion",components:{potion_contents:{potion:"mundane"}}},{Slot:3b,id:"nether_wart",count:8}]}`);
+    bump(b.username, 'stands');
+    await sleep(150);
+  }
+  await sleep(Math.max(0, deadline - Date.now()));
+  for (const [x, y, z] of stands) controller.chat(`/setblock ${x} ${y} ${z} air`);
 }
 
 function pond(controller, x, y, z) {
@@ -654,7 +711,7 @@ async function menuidle(b, deadline, keepMode = false) {
       const b = await join(name);
       bots.push(b);
       // gather, levels, wood, felling: one lane each, 7 blocks apart (an ore block or a grove reaches 6 ahead); else a 4-block grid
-      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish', 'farm', 'widefarm', 'herb', 'wildcraft'].includes(MODE);
+      const lanes = ['gather', 'levels', 'wood', 'felling', 'fishing', 'autofish', 'farm', 'widefarm', 'herb', 'wildcraft', 'standidle'].includes(MODE);
       const x = lanes ? s.x + 3 + i * 7 : s.x + 3 + (i % 4) * 4, z = lanes ? s.z + 3 : s.z + 3 + Math.floor(i / 4) * 4;
       controller.chat(`/tp ${name} ${x + 0.5} ${s.y} ${z + 0.5}`);
     } catch (e) { console.log(e.message); }
@@ -663,6 +720,21 @@ async function menuidle(b, deadline, keepMode = false) {
   const modes = ['combat', 'hurt', 'menu'];
   const pick = i => MODE === 'mixed' ? modes[i % 3] : MODE;
   const deadline = Date.now() + SECONDS * 1000;
+  // The plugin's own counters for the work a load does (cumulative since the server started; where a build has them), read
+  // before and after the load, outside the measured window: the work done and the tasks it ran (a draught's healing
+  // ticks, a sweep's steps, a throw).
+  const STAT_CMDS = { farm: ['/cerb farm stats'], widefarm: ['/cerb farm stats'], herb: ['/cerb herb stats'], wildcraft: ['/cerb herb stats'],
+    brew: ['/cerb alchemy stats'], drink: ['/cerb alchemy stats'], hurtheavy: ['/cerb reprisal'], hurt: ['/cerb reprisal'] }[MODE] || [];
+  const readStats = async label => {
+    if (!STAT_CMDS.length) return;
+    const got = [];
+    const onMsg = m => { const t = m.toString(); if (/^\[(Farming|Herbalism|Alchemy)\]|Thrown|Iron Reprisal/.test(t)) got.push(t); };
+    controller.on('message', onMsg);
+    for (const c of STAT_CMDS) { controller.chat(c); await sleep(900); }
+    controller.removeListener('message', onMsg);
+    for (const t of got) console.log(`  STATS ${label} ${t}`);
+  };
+  await readStats('before');
   console.log(`LOAD START ${new Date().toISOString()} bots=${bots.length} seconds=${SECONDS} mode=${MODE}`);
   await Promise.all(bots.map((b, i) => {
     const m = pick(i);
@@ -674,6 +746,8 @@ async function menuidle(b, deadline, keepMode = false) {
         : m === 'autofish' ? autofish(b, deadline, controller)
         : m === 'farm' ? farm(b, deadline, controller) : m === 'widefarm' ? farm(b, deadline, controller, true)
         : m === 'cook' ? cook(b, deadline, controller) : m === 'brew' ? brew(b, deadline, controller)
+        : m === 'drink' ? drink(b, deadline, controller)
+        : m === 'standidle' ? standidle(b, deadline, controller)
         : m === 'herb' ? herb(b, deadline, controller) : m === 'wildcraft' ? herb(b, deadline, controller, true)
         : m === 'menu' ? menu(b, deadline) : m === 'fishmenu' ? fishmenu(b, deadline) : m === 'menuidle' ? menuidle(b, deadline)
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)
@@ -683,6 +757,7 @@ async function menuidle(b, deadline, keepMode = false) {
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);
+  await readStats('after');
   for (const [name, c] of Object.entries(counts)) console.log(`  ${name}: ${JSON.stringify(c)}`);
   controller.chat('/kill @e[type=zombie,distance=..60]'); if (MODE === 'fishing' || MODE === 'autofish') controller.chat('/kill @e[type=guardian,distance=..80]'); await sleep(600);
   for (const b of bots) { controller.chat('/deop ' + b.username); b.chat('/gamemode creative'); }

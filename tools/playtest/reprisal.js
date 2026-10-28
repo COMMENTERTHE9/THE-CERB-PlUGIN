@@ -35,7 +35,7 @@ const note = s => console.log('      ' + s);
 let bot;
 
 function connect(name = NAME) {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: name, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push({ t: Date.now(), m }); });
   b.on('kicked', r => { console.log('KICKED', name, r); process.exit(2); });
   // mineflayer 4.39 reads 1.21.9+'s velocity packet (already in blocks per tick) as the old 1/8000 units, so a bot the
@@ -64,14 +64,28 @@ const saw = (re, since) => (chat.slice(since).find(x => re.test(x.m)) || {}).m;
 /** A clean patch of superflat ground (grass at y -61, a player stands at -60); the bot in its middle, facing north. */
 async function arena(cx, cz) {
   await cmd(`/tp @s ${cx + 0.5} -60 ${cz + 0.5}`, 2000);
-  await cmd(`/fill ${cx - 14} -60 ${cz - 18} ${cx + 14} -40 ${cz + 14} air`, 1200);
-  await cmd(`/fill ${cx - 14} -61 ${cz - 18} ${cx + 14} -61 ${cz + 14} grass_block`, 900);
-  await cmd(`/fill ${cx - 14} -63 ${cz - 18} ${cx + 14} -62 ${cz + 14} dirt`, 900);
+  // On a world with real terrain (not superflat) the chunks may still be generating: a fill on a chunk that isn't ready
+  // fills nothing, and the bot would stand in rock. The fills are repeated until the arena reads clear.
+  for (let pass = 0; pass < 4; pass++) {
+    await cmd(`/fill ${cx - 14} -60 ${cz - 18} ${cx + 14} -40 ${cz + 14} air`, 1200);
+    await cmd(`/fill ${cx - 14} -61 ${cz - 18} ${cx + 14} -61 ${cz + 14} grass_block`, 900);
+    await cmd(`/fill ${cx - 14} -63 ${cz - 18} ${cx + 14} -62 ${cz + 14} dirt`, 900);
+    await sleep(800);
+    if (arenaClear(cx, cz)) break;
+    console.log(`      arena ${cx},${cz}: not clear yet, filling again`);
+  }
   await clear();
   await cmd(`/tp @s ${cx + 0.5} -60 ${cz + 0.5} 180 0`, 800);
   return { X: cx, Y: -60, Z: cz };
 }
 async function clear() { await cmd('/kill @e[type=!player,distance=..64]', 700); }
+/** Air where the bot and the attackers stand (the bot's own copy of the world; it may lag, which only costs a pass). */
+function arenaClear(cx, cz) {
+  return [[0, 0], [0, -3], [0, -4], [0, -8]].every(([dx, dz]) => [-60, -59].every(y => {
+    const b = bot.blockAt(new Vec3(cx + dx, y, cz + dz));
+    return b && b.name === 'air';
+  }));
+}
 
 const SLOTS = ['chest', 'legs', 'head', 'feet'];
 const PIECE = { chest: 'chestplate', legs: 'leggings', head: 'helmet', feet: 'boots' };

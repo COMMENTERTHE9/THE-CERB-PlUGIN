@@ -14,6 +14,8 @@
 //   restart1, restart2 - a brew a restart interrupts (the caller restarts the server between the two; RESTART_FILE names
 //              a file for the stand's place): started by the bot, it completes after the restart as the bot's brew, paid
 //   persist  - the elixir survives a relog with its time, and ends at death
+//   pvp      - a draught drunk in a fight (PvP-tagged: CerbTarget, op, hits the bot for 24 s) waits, paused, not lost: its
+//              healing comes once the tag ends (it used to give up within about one tag's length, its healing lost)
 //   reload   - /cerb reload with the same brews leaves the server's brewing mixes alone; a brew still brews after it
 //   menu     - Player Menu → Skills → Alchemy → Brews, and Collections → Brews, count what /alchemy counts
 //   all      - every phase above but restart1 and restart2 (the default)
@@ -397,6 +399,53 @@ async function drinkPhase() {
   check('...and the bottle kept then can be drunk now', await drink('Draught of Mending'));
 }
 
+async function pvpPhase() {
+  await lab();
+  await cmd(`/cerb alchemy give ${NAME} mending common 1`, 600);
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  await new Promise((res, rej) => { other.once('spawn', res); setTimeout(() => rej(new Error('CerbTarget did not spawn')), 30000); });
+  await sleep(1500);
+  await cmd(`/tp CerbTarget ${X + 0.5} ${Y} ${Z + 2.5} 180 0`, 800);
+  await cmd('/gamemode survival CerbTarget', 400);
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 0`, 600);
+  await cmd('/effect clear @s resistance', 300); // the lab's Resistance would take the hits
+  await cmd('/damage @s 30 minecraft:generic', 1000);
+  const punch = async () => {
+    const e = other.players[NAME] && other.players[NAME].entity;
+    if (!e) return false;
+    await other.lookAt(e.position.offset(0, 1.5, 0), true);
+    other.attack(e);
+    await sleep(300);
+    return true;
+  };
+  const tags = [];
+  const t0 = Date.now();
+  tags.push(await punch());
+  const drank = await drink('Draught of Mending');
+  const start = hud();
+  for (let i = 0; i < 6; i++) { await sleep(4000); tags.push(await punch()); }
+  const lastHit = Date.now();
+  const endFight = hud();
+  check('The draught is drunk in a fight (a player keeps hitting the bot for 24 s)', drank && tags.every(Boolean), `drank ${drank}, hits ${tags.filter(Boolean).length}/7`);
+  check('...while the fight lasts it heals nothing (paused)', endFight.hp <= start.hp + 2, `${start.hp} → ${endFight.hp} of ${endFight.max} over ${Math.round((lastHit - t0) / 1000)} s`);
+  // Room for the heal to show: natural regeneration refills part of the pool meanwhile, so 40 more damage just before the
+  // tag ends (not from a player: the tag isn't renewed). Then the draught's own state and the pool over the next seconds.
+  await sleep(Math.max(0, lastHit + 13000 - Date.now()));
+  await cmd('/damage @s 40 minecraft:generic', 300);
+  await sleep(Math.max(0, lastHit + 15500 - Date.now())); // the tag ends 15 s after the last hit
+  const tagEnd = hud();
+  const at = await cmd('/alchemy', 900);
+  const healing = chat.slice(at).some(m => /A draught is healing/.test(m));
+  await sleep(5600);
+  const after = hud();
+  check('...once the tag ends, it heals: "A draught is healing", and its quarter of max health on top of regeneration',
+    healing && after.hp - tagEnd.hp >= 0.3 * after.max,
+    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%; regeneration alone gave +12% in the control)`);
+  other.quit();
+  await cmd('/effect give @s resistance infinite 4 true', 300);
+  await cmd(`/cerb heal ${NAME}`, 400);
+}
+
 async function persistPhase() {
   await lab();
   await cmd(`/cerb alchemy give ${NAME} insight superior 1`, 600);
@@ -460,9 +509,9 @@ async function menuPhase() {
 (async () => {
   await connect();
   await sleep(3000);
-  const phases = { vanilla: vanillaPhase, brews: brewsPhase, drink: drinkPhase, persist: persistPhase, menu: menuPhase, claim: claimPhase,
+  const phases = { vanilla: vanillaPhase, brews: brewsPhase, drink: drinkPhase, persist: persistPhase, menu: menuPhase, claim: claimPhase, pvp: pvpPhase,
     restart1: restart1Phase, restart2: restart2Phase, reload: reloadPhase };
-  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'brews', 'drink', 'persist', 'menu', 'reload'] : phaseArg.split(',');
+  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'brews', 'drink', 'pvp', 'persist', 'menu', 'reload'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);

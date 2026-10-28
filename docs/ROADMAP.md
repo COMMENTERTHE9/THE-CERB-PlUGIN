@@ -72,7 +72,7 @@ Skill depth (5) and mastery (6) may share infrastructure and be coordinated; cla
 
 **Phase 2 is complete only when:** every ability has an individually documented result; activation works reliably through the intended scheme; effects match their descriptions and config; mixed-class abilities work together; persistence and exploit protections pass; the earlier regression suite is green; an independent reviewer has checked the important changes; and the owner has clear instructions to try the new controls. **Usability is not called verified until the owner has played the revised controls.**
 
-## Combat Improvements, Replant Enchantment, Herbalism & Alchemy (owner, 2026-10-28, approved): in progress
+## Combat Improvements, Replant Enchantment, Herbalism & Alchemy (owner, 2026-10-28, approved): built, waiting for the owner's playtest
 
 The owner's two-phase milestone, built in verified increments on the development branch (never merged into `master` without the owner's word; the owner's Windows server, world and database are never touched; experiments only on the sandbox):
 
@@ -84,7 +84,7 @@ The owner's two-phase milestone, built in verified increments on the development
 | 3 | **Lifesteal review:** measured analysis and a recommendation, no change (decision 6 stays until the owner decides) | Done (`docs/design/LIFESTEAL_REVIEW.md`, `docs/STATUS.md` → "Done: lifesteal review"): nothing changed; the recommendation (a per-hit cap, then Weapon Mastery's own weapons) waits for the owner |
 | 4 | **Herbalism:** herbs as data, XP, discoveries, +0.25 Essence and +0.5 Fortune on herbs per level, potency/quality, milestones (rare herbs at 25, reagent quality at 50), one bounded active technique, the journal through the skill page and Collections | Done (`docs/STATUS.md` → "Done: Herbalism", `docs/design/HERBALISM.md`): 35 herbs, four rare reagents, reagent quality, Wildcrafting, the Herbarium |
 | 5 | **Alchemy:** XP only for completed brews at the brewing stand, +0.5 Essence per level, potency and duration progression, potions as data with Western names, healing on the Cerberus pool, stacking and replacement rules with meals, shown through Active Effects, saved | Done (`docs/STATUS.md` → "Done: Alchemy", `docs/design/ALCHEMY.md`): completed brews pay their starter, eight draughts and elixirs as data, tiers from the level, Essence; an independent review's six Alchemy findings fixed |
-| 6 | **Integration:** full regression, independent reviews, performance (MSPT, CPU samples, allocations, task counts), every document, the final report | Planned |
+| 6 | **Integration:** full regression, independent reviews, performance (MSPT, CPU samples, allocations, task counts), every document, the final report | Done (`docs/STATUS.md` → "Done: integration"): the full regression on three sandboxes, an independent review's six findings fixed and shown in game, the before/after (`docs/PERFORMANCE.md`, numbers to follow) |
 
 Not in this milestone: reflected damage, any lifesteal change, the proposals in `docs/AUTOMATION_REVIEW.md`, the cultivation realm system, a Folia upgrade.
 

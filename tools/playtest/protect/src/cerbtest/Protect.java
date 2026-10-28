@@ -6,6 +6,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -21,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code /testnocatch <player>|off} refuses that player's catches (PlayerFishEvent CAUGHT_FISH, cancelled after Cerberus
  * decides), the way a minigame or claim plugin may (fishgear.js bait: a refused catch uses no bait).
  * {@code /testnoreel <player>|off} refuses that player's empty reel-ins (REEL_IN): the bobber stays out (fishgear.js bait).
+ * {@code /testnodrops <player>|off} cancels the drops of that player's block breaks (BlockDropItemEvent, after Cerberus
+ * at HIGH has seen them), the way a "no drops" plugin may: nothing drops, and nothing may pay (herbalism.js nodrops).
  */
 public final class Protect extends JavaPlugin implements Listener {
 
@@ -28,6 +31,7 @@ public final class Protect extends JavaPlugin implements Listener {
     private volatile int refused;
     private final Set<UUID> noCatch = ConcurrentHashMap.newKeySet();
     private final Set<UUID> noReel = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> noDrops = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -52,6 +56,15 @@ public final class Protect extends JavaPlugin implements Listener {
             if (p == null) return false;
             noReel.add(p.getUniqueId());
             sender.sendMessage("testnoreel: refusing " + p.getName() + "'s reel-ins");
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("testnodrops")) {
+            if (args.length != 1) return false;
+            if (args[0].equalsIgnoreCase("off")) { noDrops.clear(); sender.sendMessage("testnodrops: off"); return true; }
+            org.bukkit.entity.Player p = getServer().getPlayerExact(args[0]);
+            if (p == null) return false;
+            noDrops.add(p.getUniqueId());
+            sender.sendMessage("testnodrops: cancelling " + p.getName() + "'s block drops");
             return true;
         }
         if (command.getName().equalsIgnoreCase("testsave")) {
@@ -87,6 +100,11 @@ public final class Protect extends JavaPlugin implements Listener {
             e.setCancelled(true);
             refused++;
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onDrops(BlockDropItemEvent e) {
+        if (noDrops.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

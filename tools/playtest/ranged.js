@@ -17,7 +17,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chat = [];
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+const bot = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
 async function cmd(c, wait = 700) { const at = chat.length; bot.chat(c); await sleep(wait); return at; }

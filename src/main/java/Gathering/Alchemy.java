@@ -180,41 +180,58 @@ public final class Alchemy implements Listener, AttributeSource {
     // ── the brews as brewing mixes ───────────────────────────────
 
     /**
-     * (Re)register {@code c}'s brews as brewing mixes (the global region thread). Only a reload that adds or removes a brew
-     * touches the server's list of mixes (which brewing stands read on their own threads): each mix asks the catalog of the
-     * moment whether its brew still exists and what it takes, and the bottle it makes is rebuilt when the brew completes.
+     * (Re)register {@code c}'s brews as brewing mixes (the global region thread). Only a reload that changes a brew (one
+     * added or removed, or what it takes) touches the server's list of mixes, which brewing stands read on their own
+     * threads; the bottle a mix makes is rebuilt when the brew completes.
+     * <p>
+     * Every tick, each loaded stand that holds an ingredient asks every mix whether it could start a brew, for each bottle
+     * (the server tests custom mixes first). So the base, a plain Awkward Potion, is matched exactly and the herb by its
+     * material, both tested without copying anything; only a Cerberus reagent (a rare one, or the brew's lift) needs a
+     * test of its own, reached once a bottle is an Awkward Potion. A test of our own would copy the item each time.
      */
     public void registerMixes(GatheringCatalog c) {
         AlchemyRules r = c.alchemy();
         StringBuilder sig = new StringBuilder();
-        if (r.enabled()) for (AlchemyRules.Brew b : r.brews()) sig.append(b.id()).append(';');
+        if (r.enabled()) for (AlchemyRules.Brew b : r.brews())
+            sig.append(b.id()).append(':').append(b.reagent()).append(':').append(b.rare()).append(':').append(b.lift()).append(';');
         if (sig.toString().equals(registered)) return;
         mixRegistrations.increment();
         for (NamespacedKey k : mixes) Bukkit.getPotionBrewer().removePotionMix(k);
         mixes.clear();
         if (r.enabled()) for (AlchemyRules.Brew b : r.brews()) {
-            NamespacedKey key = new NamespacedKey(plugin, "brew_" + b.id());
-            RecipeChoice input = PotionMix.createPredicateChoice(Alchemy::plainAwkward);
-            String id = b.id();
-            RecipeChoice ingredient = PotionMix.createPredicateChoice(it -> {
-                GatheringCatalog now = gathering.catalog();
-                AlchemyRules.Brew brew = now.alchemy().enabled() ? now.alchemy().brew(id) : null;
-                return brew != null && reagentFor(now, brew, it) != null;
-            });
-            try {
-                Bukkit.getPotionBrewer().addPotionMix(new PotionMix(key, makeBrew(b, Quality.COMMON, r), input, ingredient));
-                mixes.add(key);
-            } catch (RuntimeException e) {
-                plugin.getLogger().warning("[Alchemy] brew " + b.id() + ": the server refused its brewing mix - left out (" + e.getMessage() + ")");
+            ItemStack result = makeBrew(b, Quality.COMMON, r);
+            RecipeChoice input = new RecipeChoice.ExactChoice(awkward());
+            if (b.reagent() != null) addMix("brew_" + b.id(), b, result, input, new RecipeChoice.MaterialChoice(b.reagent()));
+            if (b.rare() != null || b.lift() != null) {
+                String id = b.id();
+                addMix("brew_" + b.id() + "_reagent", b, result, input, PotionMix.createPredicateChoice(it -> {
+                    if (GearItems.itemId(it) == null) return false;
+                    GatheringCatalog now = gathering.catalog();
+                    AlchemyRules.Brew brew = now.alchemy().enabled() ? now.alchemy().brew(id) : null;
+                    return brew != null && reagentFor(now, brew, it) != null;
+                }));
             }
         }
         registered = sig.toString();
     }
 
-    /** An Awkward Potion that is no Cerberus brew: the base every Cerberus brew starts from. */
-    static boolean plainAwkward(ItemStack it) {
-        if (it == null || it.getType() != Material.POTION || !(it.getItemMeta() instanceof PotionMeta m)) return false;
-        return m.getBasePotionType() == PotionType.AWKWARD && !m.getPersistentDataContainer().has(BREW, PersistentDataType.STRING);
+    private void addMix(String name, AlchemyRules.Brew b, ItemStack result, RecipeChoice input, RecipeChoice ingredient) {
+        NamespacedKey key = new NamespacedKey(plugin, name);
+        try {
+            Bukkit.getPotionBrewer().addPotionMix(new PotionMix(key, result, input, ingredient));
+            mixes.add(key);
+        } catch (RuntimeException e) {
+            plugin.getLogger().warning("[Alchemy] brew " + b.id() + ": the server refused its brewing mix - left out (" + e.getMessage() + ")");
+        }
+    }
+
+    /** A plain Awkward Potion, as vanilla brews it: the base every Cerberus brew starts from (never a Cerberus brew). */
+    static ItemStack awkward() {
+        ItemStack it = new ItemStack(Material.POTION);
+        PotionMeta m = (PotionMeta) it.getItemMeta();
+        m.setBasePotionType(PotionType.AWKWARD);
+        it.setItemMeta(m);
+        return it;
     }
 
     /**
@@ -378,13 +395,19 @@ public final class Alchemy implements Listener, AttributeSource {
 
     // ── the brew completes ───────────────────────────────────────
 
+    /** A brew's outcome, set while its results can still change (HIGHEST), counted and paid once it is final (MONITOR). */
+    private record Brewed(BrewEvent event, Binding starter, int vanilla, int ours, int mundaneMade, double xp,
+                          AlchemyRules.Brew brew, Quality tier, AlchemyRules.Brew below) {}
+
+    private final ThreadLocal<Brewed> brewedNow = new ThreadLocal<>();
+
     /**
-     * The brew is done: Cerberus brews become the brew at the starter's tier (or a Mundane Potion), a Cerberus brew already
-     * in the stand is left as it is, and the starter is paid per bottle. The stand's region thread; the payment on the
-     * player's own.
+     * The brew is done: Cerberus brews become the brew at the starter's tier (or a Mundane Potion), and a Cerberus brew
+     * already in the stand is left as it is. The stand's region thread. {@link #onBrewed} counts and pays it.
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBrew(BrewEvent e) {
+        brewedNow.remove();
         Stand s = Stand.of(e.getBlock());
         Binding who = bound.remove(s);
         if (who == null) who = kept(e.getBlock()); // started before a restart
@@ -394,7 +417,7 @@ public final class Alchemy implements Listener, AttributeSource {
         List<ItemStack> results = e.getResults();
         GatheringCatalog c = gathering.catalog();
         ItemStack ingredient = inv.getIngredient();
-        int vanilla = 0, ours = 0;
+        int vanilla = 0, ours = 0, mundaneMade = 0;
         double xp = 0;
         AlchemyRules.Brew brewed = null, refusedBrew = null;
         Quality tierMade = null;
@@ -406,7 +429,7 @@ public final class Alchemy implements Listener, AttributeSource {
                 AlchemyRules.Brew b = r.enabled() ? r.brew(made[0]) : null;
                 if (b == null || who == null || who.level() < b.level()) {
                     results.set(i, mundane());
-                    mundane.increment();
+                    mundaneMade++;
                     if (b != null) refusedBrew = b;
                     continue;
                 }
@@ -423,16 +446,30 @@ public final class Alchemy implements Listener, AttributeSource {
                 if (r.enabled()) xp += r.vanillaXp();
             }
         }
-        vanillaBottles.add(vanilla);
-        brewBottles.add(ours);
-        if (who == null) { if (vanilla + ours > 0) unbound.increment(); return; } // a hopper's brew: vanilla's output, nobody paid
-        Binding starter = who;
+        brewedNow.set(new Brewed(e, who, vanilla, ours, mundaneMade, xp, brewed, tierMade, refusedBrew));
+    }
+
+    /**
+     * The brew completed: no plugin cancelled it (XP counts what really happened). Counted, and its starter paid per
+     * bottle on their own thread.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBrewed(BrewEvent e) {
+        Brewed d = brewedNow.get();
+        if (d == null || d.event() != e) return;
+        brewedNow.remove();
+        vanillaBottles.add(d.vanilla());
+        brewBottles.add(d.ours());
+        mundane.add(d.mundaneMade());
+        if (d.starter() == null) { if (d.vanilla() + d.ours() > 0) unbound.increment(); return; } // a hopper's brew: vanilla's output, nobody paid
+        AlchemyRules r = rules();
+        Binding starter = d.starter();
         Player p = Bukkit.getPlayer(starter.player());
         if (p == null || !r.enabled()) return; // the starter has left: the brew still finished
-        double pay = xp;
-        AlchemyRules.Brew b = brewed, below = refusedBrew;
-        Quality q = tierMade;
-        int bottles = ours;
+        double pay = d.xp();
+        AlchemyRules.Brew b = d.brew(), below = d.below();
+        Quality q = d.tier();
+        int bottles = d.ours();
         p.getScheduler().run(plugin, t -> {
             if (below != null) notice.accept(p, "§7" + below.name() + " needs Alchemy " + below.level() + ": the stand brewed a Mundane Potion.");
             if (starter.creative()) { if (pay > 0) gathering.withheld(p, r.skill(), Manager.XpIntegrity.whyNot(p)); return; }
@@ -546,15 +583,17 @@ public final class Alchemy implements Listener, AttributeSource {
         int seconds = b.restore().seconds();
         Draught token = new Draught(b.id(), q, seconds);
         draughts.put(id, token);
-        int[] waited = {0};
+        int[] paused = {0};
         p.getScheduler().runAtFixedRate(plugin, task -> {
-            if (draughts.get(id) != token || !p.isOnline() || p.isDead() || token.done >= seconds || waited[0] > seconds * 3) {
+            Cooking.RestoreStep step = draughts.get(id) != token || !p.isOnline() || p.isDead() ? Cooking.RestoreStep.STOP
+                    : Cooking.restoreStep(token.done, seconds, paused[0], pvpTagged.test(id));
+            if (step == Cooking.RestoreStep.STOP) {
                 draughts.remove(id, token);
                 task.cancel();
                 return;
             }
-            waited[0]++;
-            if (pvpTagged.test(id)) { token.paused = true; return; } // paused, not lost: the rest comes after the fight
+            // Paused, not lost: the rest comes after the fight (a draught drunk in a fight used to give up within its tag).
+            if (step == Cooking.RestoreStep.WAIT) { token.paused = true; paused[0]++; return; }
             token.paused = false;
             heal.accept(p, maxHealth.applyAsDouble(p) * share / seconds);
             token.done++;

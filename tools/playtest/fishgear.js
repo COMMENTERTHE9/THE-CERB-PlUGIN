@@ -83,7 +83,7 @@ let bot, pchat;
 /** True once a phase waits for the server to stop: the kick that follows is expected. */
 let serverGoing = false;
 function connect(name = NAME) {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: name, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   b._client.on('action_bar', p => {
     try { pchat = pchat || require('prismarine-chat')(b.registry); bars.push({ t: Date.now(), m: pchat.fromNotch(p.text).toString() }); } catch (e) { /* ignore */ }
@@ -1392,7 +1392,7 @@ async function cue() {
   bot._client.on('spawn_entity', onSpawn); bot._client.on('entity_metadata', onMeta);
   bot._client.on('entity_destroy', onGone); bot._client.on('sound_effect', onSound);
   // Another player at the pond: the "!" is only its owner's.
-  const watcher = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbWatch', version: '1.21.11', auth: 'offline' });
+  const watcher = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbWatch', version: '1.21.11', auth: 'offline' });
   let watcherSaw = 0;
   watcher._client.on('spawn_entity', p => { if (p.type === tdType) watcherSaw++; });
   await new Promise(r => watcher.once('spawn', r));

@@ -39,7 +39,7 @@ const note = s => console.log('      ' + s);
 
 let bot, other = null;
 function connect(name) {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: name, version: '1.21.11', auth: 'offline' });
   if (name === NAME) b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   b.on('kicked', r => { console.log('KICKED', name, r); process.exit(2); });
   return new Promise(r => b.once('spawn', () => r(b)));

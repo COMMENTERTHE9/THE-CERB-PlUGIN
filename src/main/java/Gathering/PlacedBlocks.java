@@ -258,7 +258,8 @@ public final class PlacedBlocks implements Listener {
         record(e.getBlocks(), Origin.BONEMEAL, false);
         // Flowers bone meal grows on grass are grown, not placed. A herb placed by hand stays placed when bone meal grows it
         // where it stands (a fern into a large fern, one more petal), and so does what it spreads to: nothing wild came of it.
-        Block fertilized = e.getBlock();
+        // A two-block herb is judged by its lower half, where its mark is (a small dripleaf bone-mealed on its top half).
+        Block fertilized = Herbalism.base(e.getBlock());
         boolean fromPlaced = herb(fertilized.getType()) && isPlaced(fertilized);
         for (org.bukkit.block.BlockState st : e.getBlocks()) {
             if (!herb(st.getType())) continue;

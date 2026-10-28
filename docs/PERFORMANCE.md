@@ -451,6 +451,31 @@ TPS was 20.0 in every run.
 - **`hurt`** (no armor, nobody thrown) stays within the two builds' run-to-run spread (0.085–0.114 against 0.090–0.095, with 10–30% more blows taken on the new build's runs).
 - **The shield check** was added after these runs: two reads of the event per hit on a player, too small to separate from this spread; it is part of the final measurement at the end of the milestone.
 
+## The milestone's before/after: combat, Replant, Herbalism and Alchemy (2026-10-28)
+
+**What the milestone adds to frequent events:**
+- **A melee blow on a player:** Iron Reprisal's checks (a few comparisons and an armor count) and, when it throws, one delayed task on the attacker's thread; the shield check (two reads of the event's modifiers).
+- **A crop harvest:** the Replanting check on the hoe (an item id), the Fortune bonus added before the replant's seed is taken.
+- **A herb gathered:** a lookup by material, the placed-block memory for that block, one roll each for Fortune, quality and the rare reagent, and the XP payment once the drops are final.
+- **Wildcrafting:** at most 16 plants a tick per sweep, on the region thread that owns them.
+- **A brew:** a click that puts something into a stand is remembered for 1.5 s; the start writes the starter on the stand; the end sets the results and pays.
+- **Every tick, each loaded brewing stand that holds an ingredient:** the server asks every brewing mix whether that stand could start a brew, for each bottle (custom mixes first).
+- **A drink:** an elixir is one snapshot rebuild, a write to the player's data and two delayed tasks (its end and its heads-up; the tasks of an elixir that was replaced run once and do nothing); a draught is one task a second for its seconds.
+- **Nothing per tick** otherwise, and nothing written to the database beyond the skill saves every XP gain already makes.
+
+**Method:** as above (9 bots, 80 s load, a 30 s warm-up per load, two 60 s JFR runs from 10 s after "LOAD START"), each build right after a restart, mobs cleared, **the other two sandboxes stopped** so nothing else used the CPU. **Before:** 2044c68, the build this milestone started from. **After:** the final build (this commit). The plugin's own counters were read before and after each load, outside the recording (`load.js` prints them: the work done and the tasks it ran). Loads:
+- `combat`, `hurt`: melee and defensive combat, unchanged loads;
+- `hurtheavy`: each bot in full iron at Heavy Armor Mastery 100, so every landed blow throws its zombie on the new build;
+- `farm`, `widefarm`: harvesting wheat by hand at Farming 1, and Wide Harvest at Farming 50 with Sneak (a Replanting hoe on the new build, Farming's own Replant before);
+- `herb` (new), `wildcraft` (new): gathering a meadow of poppies and dandelions by hand at Herbalism 1, and Wildcrafting at 40 with shears and Sneak;
+- `brew` (new): water bottles and nether wart brewed at each bot's own stand, a brew every 21 s;
+- `drink` (new): a potion every 3 s: an Elixir of Vigor, a Tonic of Swiftness that replaces it and a Draught of Mending after 5 damage; before Alchemy, Mundane Potions at the same pace and with the same damage;
+- `standidle` (new): twelve brewing stands per bot, each left with a finished potion and nether wart and no fuel;
+- `gather`, `felling`: mining, and Felling at Woodcutting 25 (the shared break listeners, the sweep marker);
+- `menu`, `effectsmenu`, `effectsidle`, `idle`: browsing, the Active Effects screen, its countdown left open, and players doing nothing.
+
+**Results:** to follow in a separate commit (the pass was still running when the integration was committed).
+
 ## Budgets for the next milestones
 
 - **Combat improvements (Martial Expertise, Iron Reprisal):** met. Nothing per hit beyond a few comparisons; a throw is one delayed task on the attacker's thread.

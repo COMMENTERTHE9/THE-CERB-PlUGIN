@@ -1,10 +1,10 @@
 // Headless in-game smoke test for Cerberus. For a LOCAL SANDBOX server only:
 // it needs online-mode=false and the bot made operator from the server console:
 //   op CerbSmoke
-// Usage: node smoke.js [host] [port]      (defaults 127.0.0.1 25565)
+// Usage: node smoke.js [host] [port]      (defaults 127.0.0.1, and MC_PORT or 25565)
 // Prints PASS/FAIL per check and exits non-zero if any check fails.
 const mineflayer = require('mineflayer');
-const [host = '127.0.0.1', port = '25565'] = process.argv.slice(2);
+const [host = '127.0.0.1', port = process.env.MC_PORT || '25565'] = process.argv.slice(2);
 const NAME = 'CerbSmoke';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const text = v => v ? [...JSON.stringify(v).matchAll(/"text":\{"type":"string","value":"([^"]*)"/g)].map(m => m[1]).join('') : '';

@@ -447,6 +447,62 @@ async function bonemealPhase() {
   await setLevel(1);
 }
 
+async function bonemealTopPhase() {
+  // Bone meal on the TOP half of a small dripleaf grows a big dripleaf from its lower half, the half that carries the
+  // "placed" mark: one placed by hand stays placed and pays nothing. The control: the same on a wild one pays.
+  await arena();
+  await setLevel(30);
+  await stand(0, -2, 0);
+  await give('bone_meal', 4);
+  const head = dx => { for (let dy = 5; dy >= 0; dy--) if (blockName(dx, dy, 0) === 'big_dripleaf') return dy; return -1; };
+  const grown = async dx => { for (let i = 0; i < 20 && head(dx) < 0; i++) await sleep(250); return head(dx); };
+  await setblock(2, -1, 0, 'clay');
+  await setblock(2, 0, 0, 'small_dripleaf[half=lower]');
+  await setblock(2, 1, 0, 'small_dripleaf[half=upper]');
+  for (let i = 0; i < 20 && blockName(2, 1, 0) !== 'small_dripleaf'; i++) await sleep(250);
+  await hold('bone_meal');
+  let top = -1;
+  for (let i = 0; i < 3 && top < 0; i++) { await use(2, 1, 0); top = await grown(2); } // a use the server missed is tried again
+  check('Bone meal on the top half of a wild small dripleaf: a big dripleaf', top > 0, `${blockName(2, 0, 0)} … head at ${top}`);
+  let g = top > 0 ? await brkXp(2, top, 0) : 0;
+  check('...its leaf broken: it pays (a wild plant bone meal grew)', g >= 5, `+${g}`);
+  await setblock(0, -1, 0, 'clay');
+  await give('small_dripleaf', 1); await hold('small_dripleaf');
+  await placeOn(0, 0, 0);
+  check('The bot placed a small dripleaf by hand', blockName(0, 0, 0) === 'small_dripleaf' && blockName(0, 1, 0) === 'small_dripleaf',
+    `${blockName(0, 0, 0)} / ${blockName(0, 1, 0)}`);
+  await hold('bone_meal');
+  top = -1;
+  for (let i = 0; i < 3 && top < 0; i++) { await use(0, 1, 0); top = await grown(0); }
+  check('...bone meal on its top half: a big dripleaf', top > 0, `${blockName(0, 0, 0)} … head at ${top}`);
+  g = top > 0 ? await brkXp(0, top, 0) : -1;
+  check('...its leaf broken: no XP (bone meal grew a plant placed by hand: still placed)', g === 0, `+${g}`);
+  await holdNothing();
+  await cmd('/kill @e[type=item,distance=..20]', 300);
+  await setLevel(1);
+}
+
+async function nodropsPhase() {
+  // Another plugin cancels a gather's drops after Herbalism has seen them (a "no drops" rule; the sandbox's
+  // /testnodrops): nothing dropped, so nothing pays. The control: the same with the rule off pays.
+  await arena();
+  await setLevel(1);
+  await stand(0, -2, 0);
+  await setblock(1, 0, 0, 'poppy');
+  await setblock(-1, 0, 0, 'poppy');
+  for (let i = 0; i < 20 && (blockName(1, 0, 0) !== 'poppy' || blockName(-1, 0, 0) !== 'poppy'); i++) await sleep(250);
+  const at = chat.length;
+  await cmd(`/testnodrops ${NAME}`, 600);
+  const on = chat.slice(at).some(m => /testnodrops: cancelling/.test(m));
+  let g = await brkXp(1, 0, 0);
+  await sleep(400);
+  check('A plugin cancels the drops of a wild poppy: no Herbalism XP', on && g === 0, on ? `+${g}` : 'the sandbox plugin has no /testnodrops');
+  await cmd('/testnodrops off', 500);
+  g = await brkXp(-1, 0, 0);
+  check('...the rule off: the next poppy pays', g > 0, `+${g}`);
+  await cmd('/kill @e[type=item,distance=..20]', 300);
+}
+
 async function waterPhase() {
   // Wildcrafting tall seagrass under water: both halves of every plant it takes become water again, never an air pocket
   // (an air pocket under water stays: the water above it is never told to fall in). A stone basin three blocks deep under
@@ -675,9 +731,10 @@ async function techniquePhase() {
   await connect();
   await sleep(3000);
   const phases = { gather: gatherPhase, placed: placedPhase, shears: shearsPhase, creative: creativePhase, machines: machinesPhase,
+    bonemealtop: bonemealTopPhase, nodrops: nodropsPhase,
     fortune: fortunePhase, rare: rarePhase, quality: qualityPhase, wild: wildPhase, protect: protectPhase, menu: menuPhase,
     relog: relogPhase, technique: techniquePhase, bonemeal: bonemealPhase, water: waterPhase };
-  const run = phaseArg === 'all' ? ['gather', 'placed', 'bonemeal', 'shears', 'creative', 'machines', 'fortune', 'rare', 'quality', 'wild', 'water', 'menu', 'relog', 'technique']
+  const run = phaseArg === 'all' ? ['gather', 'placed', 'bonemeal', 'bonemealtop', 'nodrops', 'shears', 'creative', 'machines', 'fortune', 'rare', 'quality', 'wild', 'water', 'menu', 'relog', 'technique']
     : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }

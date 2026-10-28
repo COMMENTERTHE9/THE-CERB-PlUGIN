@@ -146,4 +146,28 @@ class CookingRulesTest {
         assertFalse(GatheringCatalog.from(y).cooking().enabled());
         assertFalse(GatheringCatalog.from(new YamlConfiguration()).cooking().enabled());
     }
+
+    @Test
+    void aHealOverSecondsWaitsOutAFightAndStillHealsInFull() {
+        // A five-second draught drunk at the start of a 30 s fight (a PvP tag renewed blow by blow): all five heals after.
+        assertEquals(5, heals(5, 30));
+        // A meal's 20 s restoration through a two-minute fight: all 20 heals come after it.
+        assertEquals(20, heals(20, 120));
+        // No fight: one heal a second, then it stops.
+        assertEquals(5, heals(5, 0));
+        // A fight longer than ten minutes drops what is still due, so the task always ends.
+        assertEquals(0, heals(5, Cooking.MAX_RESTORE_PAUSE_SECONDS + 60));
+    }
+
+    /** The heals a heal over seconds gives when its first {@code tagged} seconds are a fight; fails if it never stops. */
+    private static int heals(int due, int tagged) {
+        int done = 0, paused = 0;
+        for (int second = 0; second < 100_000; second++) {
+            Cooking.RestoreStep step = Cooking.restoreStep(done, due, paused, second < tagged);
+            if (step == Cooking.RestoreStep.STOP) return done;
+            if (step == Cooking.RestoreStep.WAIT) paused++;
+            else done++;
+        }
+        throw new AssertionError("never stopped");
+    }
 }

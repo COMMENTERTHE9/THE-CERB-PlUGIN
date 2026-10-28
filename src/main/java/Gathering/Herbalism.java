@@ -152,9 +152,15 @@ public final class Herbalism implements Listener {
         if (p.isSneaking()) startSweep(p, h, b, level);
     }
 
-    /** A gather's drops: it pays when they hold the herb; Fortune's one more, the quality, the rare reagent. */
+    /** A gather found while its drops could still change (HIGH), paid once they are final (MONITOR). */
+    private record Gathered(BlockDropItemEvent event, Player player, HerbalismRules.Herb herb, int level, boolean bonus, Quality quality) {}
+
+    private final ThreadLocal<Gathered> gathered = new ThreadLocal<>();
+
+    /** A gather's drops: it pays when they hold the herb. Fortune's one more and the quality go into the drops here. */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDrop(BlockDropItemEvent e) {
+        gathered.remove();
         Player p = e.getPlayer();
         Pending g = pending.remove(p.getUniqueId());
         if (g == null || !g.block().equals(e.getBlock())) return;
@@ -165,16 +171,13 @@ public final class Herbalism implements Listener {
         Item first = null;
         for (Item it : items) if (h.produce().contains(it.getItemStack().getType())) { first = it; break; }
         if (first == null) { withoutHerb.increment(); return; } // nothing of the herb dropped: nothing was gathered
-        gathers.increment();
-        gathering.award(p, r.skill(), xp(h, g.level()));
-        discover(p, h);
+        boolean bonus = false;
         if (rollBonus(p.getUniqueId())) {
             ItemStack s = first.getItemStack();
             if (s.getAmount() < s.getMaxStackSize()) {
                 s.setAmount(s.getAmount() + 1);
                 first.setItemStack(s);
-                bonuses.increment();
-                p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.8f);
+                bonus = true;
             }
         }
         Quality q = roll(r, g.level());
@@ -185,9 +188,30 @@ public final class Herbalism implements Listener {
                 GearItems.setCropQuality(s, q);
                 it.setItemStack(s);
             }
-            announceQuality(p, h.name(), q);
         }
-        ItemStack rare = rollRare(p, r, h, g.level());
+        gathered.set(new Gathered(e, p, h, g.level(), bonus, q));
+    }
+
+    /**
+     * The drops are final: no plugin cancelled them (XP counts what really happened). The gather pays, counts and may
+     * find a rare reagent.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDropped(BlockDropItemEvent e) {
+        Gathered g = gathered.get();
+        if (g == null || g.event() != e) return;
+        gathered.remove();
+        HerbalismRules r = rules();
+        Player p = g.player();
+        gathers.increment();
+        gathering.award(p, r.skill(), xp(g.herb(), g.level()));
+        discover(p, g.herb());
+        if (g.bonus()) {
+            bonuses.increment();
+            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.8f);
+        }
+        if (g.quality() != Quality.COMMON) announceQuality(p, g.herb().name(), g.quality());
+        ItemStack rare = rollRare(p, r, g.herb(), g.level());
         if (rare != null) e.getBlock().getWorld().dropItemNaturally(e.getBlock().getLocation().add(0.5, 0.5, 0.5), rare);
     }
 
@@ -298,7 +322,7 @@ public final class Herbalism implements Listener {
     /** One step of Wildcrafting: up to per-tick plants, their drops at the first plant and their XP to the player. */
     private void step(Sweep s) {
         HerbalismRules r = rules();
-        boolean go = r.enabled() && s.p.isOnline() && !s.p.isDead() && Bukkit.isOwnedByCurrentRegion(s.p)
+        boolean go = r.enabled() && s.p.isOnline() && Bukkit.isOwnedByCurrentRegion(s.p) && !s.p.isDead()
                 && s.p.getGameMode() == GameMode.SURVIVAL && s.p.getInventory().getItemInMainHand().getType() == Material.SHEARS;
         List<ItemStack> drops = new ArrayList<>();
         int took = 0, paid = 0, bonus = 0;

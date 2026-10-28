@@ -39,7 +39,7 @@ const chat = [];
 let actionBar = '';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+const bot = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos === 'game_info') actionBar = m; else chat.push(m); });
 bot._client.on('action_bar', p => { try { actionBar = require('prismarine-chat')(bot.registry).fromNotch(p.text).toString(); } catch (e) { /* keep last */ } });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
@@ -868,7 +868,7 @@ async function smithingGrowth() {
   // Paused in PvP combat like the other secondary stats: hit by a player now and then, the wear lands in full; once the
   // tag ends it is avoided again (30 blocks with none avoided at 20% would happen 1 time in 800).
   await cmd('/effect clear @s resistance', 300);
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
   other.on('messagestr', () => {});
   other.on('kicked', () => {});
   await new Promise(r => other.once('spawn', r));

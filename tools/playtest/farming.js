@@ -13,6 +13,7 @@
 //              and a hoe make the Replanting hoe (an upgrade line, no enchantment); with it a ripe crop is planted again at
 //              its first stage, its seed from the drops (a ripe crop always drops one), never a second harvest; cocoa on the
 //              same side of its log; /farming replant off; a plain hoe again plants nothing
+//   trade    - a cleric that buys rabbit's feet takes no Sower's Charm (a Cerberus item is never traded); plain feet trade
 //   migrate  - a character at Farming 10 is told once, at its first join on this build, that Replant moved to the hoe (with
 //              the recipe); not again; nothing below 10 (/cerb farm notice ... reset re-arms it for the test)
 //   wide     - Farming 25: Sneak + a hoe takes every ripe crop of that kind in 3x3 (5x5 at 50), each paid once with 1 hoe
@@ -44,7 +45,7 @@ const check = (name, ok, detail = '') => {
 const note = s => console.log('      ' + s);
 let bot, pchat;
 function connect() {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   b._client.on('action_bar', p => {
     try { pchat = pchat || require('prismarine-chat')(b.registry); bars.push({ t: Date.now(), m: pchat.fromNotch(p.text).toString() }); } catch (e) { /* ignore */ }
@@ -500,6 +501,39 @@ async function replantPhase() {
 }
 
 /** Players who had Replant from Farming 10 are told once, at their next join, that it moved to the hoe. */
+async function tradePhase() {
+  // A Sower's Charm is a rabbit's foot, which clerics buy: a villager trade never takes one (a Cerberus item is never used
+  // the vanilla way). The control: plain rabbit's feet trade as usual.
+  await arena();
+  await cmd(`/summon villager ${X + 0.5} ${Y} ${Z + 2.5} {NoAI:1b,VillagerData:{profession:"minecraft:cleric",level:3,type:"minecraft:plains"},Offers:{Recipes:[{buy:{id:"minecraft:rabbit_foot",count:2},sell:{id:"minecraft:emerald",count:1},maxUses:99}]}}`, 1200);
+  const emeralds = () => bot.inventory.items().filter(i => i.name === 'emerald').reduce((n, i) => n + i.count, 0);
+  const trade = async () => {
+    const v = Object.values(bot.entities).find(e => e.name === 'villager' && e.position.distanceTo(bot.entity.position) < 6);
+    if (!v) return 'no villager';
+    let w = null;
+    try {
+      w = await bot.openVillager(v);
+      await sleep(600);
+      await Promise.race([bot.trade(w, 0, 1), sleep(4000).then(() => { throw new Error('the trade did not complete'); })]);
+      return 'traded';
+    } catch (e) { return e.message; } finally { await sleep(400); if (bot.currentWindow) bot.closeWindow(bot.currentWindow); await sleep(500); }
+  };
+  await cmd('/clear @s', 400);
+  await cmd(`/cerb gather item sowers_charm 2`, 800);
+  const charms = bot.inventory.items().filter(i => i.name === 'rabbit_foot').reduce((n, i) => n + i.count, 0);
+  let at = chat.length;
+  let r = await trade();
+  check('Two Sower\'s Charms offered to a cleric that buys rabbit\'s feet: no emerald, both charms kept',
+    charms === 2 && emeralds() === 0 && bot.inventory.items().filter(i => i.name === 'rabbit_foot').reduce((n, i) => n + i.count, 0) === 2,
+    `${r}; emeralds ${emeralds()}; ${chat.slice(at).filter(m => /traded/.test(m)).join(' / ')}`);
+  await cmd('/clear @s', 400);
+  await give('rabbit_foot', 2);
+  r = await trade();
+  check('...plain rabbit\'s feet trade as usual (the control)', emeralds() === 1, `${r}; emeralds ${emeralds()}`);
+  await cmd(`/kill @e[type=villager,distance=..10]`, 400);
+  await cmd('/clear @s', 400);
+}
+
 async function migratePhase() {
   // The level Replant opened at before it moved: the server file's old replant-at (REPLANT_MOVED_FROM for an edited file
   // that set one; 0 when it turned Replant off), else 10.
@@ -862,7 +896,7 @@ async function relogPhase() {
 (async () => {
   await connect();
   await sleep(3000);
-  const phases = { harvest: harvestPhase, placed: placedPhase, pick: pickPhase, creative: creativePhase, machines: machinesPhase,
+  const phases = { harvest: harvestPhase, placed: placedPhase, pick: pickPhase, creative: creativePhase, machines: machinesPhase, trade: tradePhase,
     replant: replantPhase, migrate: migratePhase, wide: widePhase, protect: protectPhase, fortune: fortunePhase, quality: qualityPhase, menu: menuPhase, relog: relogPhase,
     fortunerate: fortuneRatePhase };
   const run = phaseArg === 'all' ? ['harvest', 'placed', 'pick', 'creative', 'machines', 'replant', 'migrate', 'wide', 'fortune', 'quality', 'menu', 'relog'] : phaseArg.split(',');

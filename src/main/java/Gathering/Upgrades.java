@@ -1,6 +1,7 @@
 package Gathering;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Keyed;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -13,11 +14,13 @@ import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceBurnEvent;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.MerchantInventory;
 import org.bukkit.inventory.Recipe;
 import org.bukkit.inventory.RecipeChoice;
 import org.bukkit.inventory.ShapelessRecipe;
@@ -223,6 +226,18 @@ public final class Upgrades implements Listener {
     public void onBrew(BrewEvent e) {
         ItemStack ingredient = e.getContents().getIngredient();
         if (guarded(ingredient) && !ownBrew.test(ingredient)) e.setCancelled(true);
+    }
+
+    /**
+     * ...nor sold to a villager or a wandering trader (a Sower's Charm is a rabbit's foot and a Lurker Scale a turtle scute,
+     * which clerics buy): a trade's result can't be taken while one sits in the window's input.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onTrade(InventoryClickEvent e) {
+        if (e.getRawSlot() != 2 || !(e.getView().getTopInventory() instanceof MerchantInventory m)) return;
+        if (!guarded(m.getItem(0)) && !guarded(m.getItem(1))) return;
+        e.setCancelled(true);
+        e.getWhoClicked().sendMessage(ChatColor.GRAY + "Cerberus items can't be traded to villagers.");
     }
 
     /** ...nor smelted (heartwood would make charcoal): it stays in the furnace. */

@@ -37,7 +37,7 @@ let bot;
 const dead = new Set();
 
 function connect(name = NAME) {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: name, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); else bars.push({ t: Date.now(), m }); });
   b.on('kicked', r => { console.log('KICKED', name, r); process.exit(2); });
   b.on('entityDead', e => dead.add(e.id));
@@ -490,7 +490,7 @@ async function convert() {
 /** PvP as before (docs/ROADMAP.md → PvP): an untrained attacker's hit on a player carries no old per-skill bonus. */
 async function pvp() {
   const o = await arena(800, 300);
-  const t = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const t = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
   t.on('kicked', r => console.log('CerbTarget kicked', r));
   await new Promise(r => t.once('spawn', r)); await sleep(2500);
   t.chat('/gamemode survival'); await sleep(400);

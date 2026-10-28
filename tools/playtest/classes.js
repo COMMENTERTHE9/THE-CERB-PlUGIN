@@ -33,7 +33,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 
 let bot;
 function connect(name = NAME) {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: name, version: '1.21.11', auth: 'offline' });
   if (name === NAME) {
     bot = b;
     b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });

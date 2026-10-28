@@ -12,7 +12,7 @@
 
 ## 2. What pays (exactly)
 
-- **A completed brew** (the game's brew event, not cancelled) pays the player who **started** it: the one whose click put something into the stand (a bottle, the reagent, its fuel) that made it brewable, in that same moment. A click that puts nothing in (an empty slot, taking something out, a click outside the window) starts nothing. Per bottle brewed: a vanilla brew 2 XP, a Cerberus brew its own XP (data).
+- **A completed brew** (the game's brew event, not cancelled: the results are set at HIGHEST, the payment made at MONITOR once no plugin has cancelled it) pays the player who **started** it: the one whose click put something into the stand (a bottle, the reagent, its fuel) that made it brewable, in that same moment. A click that puts nothing in (an empty slot, taking something out, a click outside the window) starts nothing. Per bottle brewed: a vanilla brew 2 XP, a Cerberus brew its own XP (data).
 - **Pays nobody:** a stand that hoppers feed (no player started it: automation keeps vanilla's output and pays nobody, the Farm Ledger rule), however often someone clicks in its open window; a brew whose starter has left (the brew still finishes).
 - **A restart mid-brew** changes nothing: the stand keeps who started its brew (in its own block data, saved with the chunk), so the brew completes as theirs after the restart and pays them.
 - **Creative:** brews, pays nothing (the XP display says why).
@@ -46,7 +46,7 @@
 - **Draughts** heal the Cerberus health pool, a share each second for their seconds, never past max:
   - **one draught at a time:** while one is still healing, another can't be drunk (the HUD says how long; the bottle is kept);
   - a draught heals beside a meal's restoration (both are short: 4–5 s and the meal's first 20 s);
-  - paused while PvP-tagged, as a meal's restoration is (the rest comes after the fight); death ends it; not saved across a relog (it lasts seconds).
+  - paused while PvP-tagged, as a meal's restoration is: the rest comes after the fight, however long it lasts, up to ten minutes of waiting in all (`Cooking.restoreStep`, shared with meals); death ends it; not saved across a relog (it lasts seconds). Until the integration review a draught drunk in a fight gave up after about as long as one tag lasts, its healing lost.
 - **Vanilla potions** keep working as they do (Active Effects describes them as they act under Cerberus); a Cerberus brew never adds a vanilla effect.
 - **PvP:** as for every attribute: elixirs count against creatures only for now (PvP plays as before Attributes 2.0); listed in `docs/ROADMAP.md` → PvP.
 

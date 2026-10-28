@@ -3,7 +3,7 @@ version: 1.0
 main: cerbtest.Protect
 api-version: '1.21'
 folia-supported: true
-description: Sandbox-only test helpers (woodcutting.js protect, fishing.js crash-set, fishgear.js bait). Never ship it.
+description: Sandbox-only test helpers (woodcutting.js protect, fishing.js crash-set, fishgear.js bait, herbalism.js nodrops). Never ship it.
 commands:
   testprotect:
     description: Refuse block breaks inside a box (x1 y1 z1 x2 y2 z2), or "off".
@@ -20,6 +20,10 @@ commands:
   testnoreel:
     description: Refuse a player's empty reel-ins (the bobber stays out), or "off".
     usage: /testnoreel <player> | off
+    permission: cerbtest.protect
+  testnodrops:
+    description: Cancel a player's block drops (as another plugin may), or "off".
+    usage: /testnodrops <player> | off
     permission: cerbtest.protect
 permissions:
   cerbtest.protect:

@@ -549,6 +549,21 @@ public final class Cooking implements Listener, AttributeSource {
         restore(p, m, q);
     }
 
+    /** A fight can hold a heal over seconds this long in all (ten minutes); after that the heals still due are dropped. */
+    static final int MAX_RESTORE_PAUSE_SECONDS = 600;
+
+    enum RestoreStep { HEAL, WAIT, STOP }
+
+    /**
+     * What a heal over seconds does this second (a meal's restoration, Alchemy's draught): {@code done} of {@code heals}
+     * so far, {@code paused} seconds already waited. While PvP-tagged it waits, paused, not lost: the rest comes after the
+     * fight, however long the tag lasts, up to {@link #MAX_RESTORE_PAUSE_SECONDS} in all, so the task always ends. Pure.
+     */
+    static RestoreStep restoreStep(int done, int heals, int paused, boolean tagged) {
+        if (done >= heals || paused >= MAX_RESTORE_PAUSE_SECONDS) return RestoreStep.STOP;
+        return tagged ? RestoreStep.WAIT : RestoreStep.HEAL;
+    }
+
     /** Heal {@code m}'s share over its seconds, a second at a time: paused while PvP-tagged, ended by a new meal or death. */
     private void restore(Player p, CookingRules.Meal m, Quality q) {
         UUID id = p.getUniqueId();
@@ -557,15 +572,16 @@ public final class Cooking implements Listener, AttributeSource {
         int ticks = m.restore().seconds();
         Restoration token = new Restoration(m.id(), ticks);
         restoring.put(id, token);
-        int[] waited = {0};
+        int[] paused = {0};
         p.getScheduler().runAtFixedRate(plugin, task -> {
-            if (restoring.get(id) != token || !p.isOnline() || p.isDead() || token.done >= ticks || waited[0] > ticks * 3) {
+            RestoreStep step = restoring.get(id) != token || !p.isOnline() || p.isDead() ? RestoreStep.STOP
+                    : restoreStep(token.done, ticks, paused[0], pvpTagged.test(id));
+            if (step == RestoreStep.STOP) {
                 restoring.remove(id, token);
                 task.cancel();
                 return;
             }
-            waited[0]++;
-            if (pvpTagged.test(id)) { token.paused = true; return; } // paused, not lost: the rest comes after the fight
+            if (step == RestoreStep.WAIT) { token.paused = true; paused[0]++; return; } // paused, not lost: the rest comes after the fight
             token.paused = false;
             heal.accept(p, maxHealth.applyAsDouble(p) * share / ticks);
             token.done++;

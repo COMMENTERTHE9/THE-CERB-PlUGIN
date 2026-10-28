@@ -25,7 +25,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 
 let bot;
 function connect() {
-  bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+  bot = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
   bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
   return new Promise(r => bot.once('spawn', r));
@@ -229,18 +229,26 @@ async function names() {
   // A real level-up shows the new name (an admin's XP grant celebrates nothing, docs/design/LEVEL_UP.md): Heavy Armor
   // Mastery from a zombie's hit while wearing a netherite chestplate, 1 XP short of level 4.
   const xpFor = l => Math.round(75 * Math.pow(l, 1.85) + 40 * l);
+  // A hit pays less than 1 XP, and how much less depends on the defence (Survival adds Fortitude): Survival starts at 1
+  // here, so the hits pay the same whatever ran before.
+  await cmd(`/cerb skill ${NAME} Survival level 1`, 400);
   await cmd(`/cerb skill ${NAME} Heavy_Armor_Training level 3`, 500);
   await cmd(`/cerb skill ${NAME} Heavy_Armor_Training xp ${xpFor(3) - 1}`, 500);
   await cmd('/gamemode survival', 400);
   await cmd('/effect clear @s resistance', 300); // another harness's leftover Resistance V would block the hit
   await cmd('/clear @s netherite_chestplate', 300);
   await cmd('/give @s netherite_chestplate', 800);
-  const cp = bot.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_chestplate' && i >= 36 && i <= 44);
-  if (cp >= 0) { bot.setQuickBarSlot(cp - 36); await sleep(300); await bot.look(bot.entity.yaw, Math.PI / 2, true); bot.activateItem(); await sleep(250); bot.deactivateItem(); await sleep(600); }
+  // Put on with a click into the armor slot, and checked (a right-click from the hotbar could race the slot change on a
+  // busy server and leave the chestplate in the inventory: no heavy armor, no Heavy Armor XP).
+  for (let i = 0; i < 3 && !(bot.inventory.slots[6] && bot.inventory.slots[6].name === 'netherite_chestplate'); i++) {
+    const cp = bot.inventory.items().find(it => it.name === 'netherite_chestplate');
+    if (cp) { try { await bot.equip(cp, 'torso'); } catch (e) { /* checked */ } }
+    await sleep(500);
+  }
   await cmd('/summon zombie ~2 ~ ~ {NoAI:1b}', 900);
   // The defense bar takes most of a hit: one is worth less than 1 XP, and the fraction waits for the next (XpIntegrity).
   at = chat.length;
-  for (let i = 0; i < 4 && !saw(/▲ Heavy Armor Mastery reached level 4/, at); i++) {
+  for (let i = 0; i < 6 && !saw(/▲ Heavy Armor Mastery reached level 4/, at); i++) {
     await cmd(`/damage ${NAME} 6 minecraft:mob_attack by @e[type=zombie,limit=1,sort=nearest]`, 1200);
   }
   check('Level-up message uses the new name', !!saw(/▲ Heavy Armor Mastery reached level 4/, at), chat.slice(at).join(' / '));

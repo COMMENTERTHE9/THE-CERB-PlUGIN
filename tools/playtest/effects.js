@@ -43,7 +43,7 @@ const check = (name, ok, detail = '') => {
 const note = s => console.log('      ' + s);
 let bot, pchat;
 function connect() {
-  const b = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+  const b = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
   b.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
   b._client.on('action_bar', p => {
     try { pchat = pchat || require('prismarine-chat')(b.registry); bars.push({ t: Date.now(), m: pchat.fromNotch(p.text).toString() }); } catch (e) { /* ignore */ }
@@ -152,7 +152,9 @@ async function warrior() {
   for (const s of ['a1', 'a2', 'a3', 'a4', 'a5', 'p1', 'p2', 'p3', 'k']) await cmd(`/class equip 1 ${s} ${s === 'a3' ? 'war_cry' : 'none'}`, 250);
   await cmd('/class loadout 1', 900);
   await cmd('/give @s iron_sword 1', 400);
-  const sword = bot.inventory.items().find(i => i.name === 'iron_sword');
+  // The sword reaches the bot's inventory when the server sends it, which a busy server can delay: wait for it.
+  let sword = null;
+  for (let i = 0; i < 30 && !(sword = bot.inventory.items().find(it => it.name === 'iron_sword')); i++) await sleep(100);
   if (sword) await bot.equip(sword, 'hand');
   await sleep(300);
 }
@@ -161,7 +163,8 @@ async function warCry() {
   if (sword) { await bot.equip(sword, 'hand'); await sleep(250); } // eating leaves a bowl in hand: War Cry wants a weapon
   const t = Date.now();
   keyQ();
-  await sleep(500);
+  // The cast's HUD line, within two seconds (a busy server can take longer than half a second to send it).
+  for (let i = 0; i < 20 && !hudSince(t).some(h => /War Cry/.test(h)); i++) await sleep(100);
   return hudSince(t).some(h => /War Cry/.test(h));
 }
 async function neutralClass() {

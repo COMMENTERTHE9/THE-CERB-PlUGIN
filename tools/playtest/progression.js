@@ -37,7 +37,7 @@ const chat = [];
 let actionBar = '';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+const bot = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos === 'game_info') actionBar = m; else chat.push(m); });
 // The HUD comes as the dedicated action-bar packet (Paper's sendActionBar), which this mineflayer
 // version doesn't turn into a message event: read it directly.
@@ -572,7 +572,7 @@ async function speed() {
   await equip('netherite_sword');
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 100`, 1200);
   check('Before PvP: the attack-speed bonus is on', await hasModifier('attack_speed', 'cerberus:attack_speed'));
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
   other.on('messagestr', () => {});
   await new Promise(r => other.once('spawn', r));
   await sleep(2500);
@@ -690,7 +690,7 @@ async function defense() {
 async function pvp() {
   const T = 'CerbTarget';
   const SK = ['Survival', 'Heavy_Armor_Training', 'First_Aid', 'Defensive_Magic'];
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: T, version: '1.21.11', auth: 'offline' });
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: T, version: '1.21.11', auth: 'offline' });
   other.on('messagestr', () => {});
   await new Promise(r => other.once('spawn', r));
   await sleep(2500);

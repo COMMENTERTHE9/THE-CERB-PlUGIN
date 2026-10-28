@@ -24,7 +24,7 @@ const plain = v => {
 const chat = [];
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); };
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: NAME, version: '1.21.11', auth: 'offline' });
+const bot = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: NAME, version: '1.21.11', auth: 'offline' });
 bot.on('messagestr', (m, pos) => { if (pos !== 'game_info') chat.push(m); });
 bot.on('kicked', r => { console.log('KICKED', r); process.exit(2); });
 
@@ -216,7 +216,7 @@ async function dupe() {
 
 async function cross() {
   // A second client joins; the admin edits that player's skill and restores them from the panel.
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
   const otherChat = [];
   other.on('messagestr', (m, pos) => { if (pos !== 'game_info') otherChat.push(m); });
   await new Promise(r => other.once('spawn', r));
@@ -245,7 +245,7 @@ async function cross() {
 async function owners() {
   // Two admins: "Clean up my test mobs" removes only the clicker's own test spawns.
   // The harness must op CerbTarget first.
-  const other = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
+  const other = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbTarget', version: '1.21.11', auth: 'offline' });
   other.on('messagestr', () => {});
   await new Promise(r => other.once('spawn', r));
   await sleep(3000);

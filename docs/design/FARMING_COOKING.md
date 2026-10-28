@@ -176,7 +176,7 @@ Each meal is data in `resources.yml` → `cooking.meals`: a stable id, name, edi
 - **Eating** (the consume event, once it stands):
   - **One meal effect at a time.** A new meal replaces the running one and says so; the same meal refreshes its time. Nothing stacks.
   - **Effects:** attributes and speed stats go through the engine. Caps and the offense budget apply. Attributes don't act in PvP and speed stats pause there, as for every source while PvP is off.
-  - **Restoration** heals the Cerberus health pool over its seconds, starting when eaten. It pauses while PvP-tagged, never goes past max health, and a new meal ends the old restoration. Healing is therefore bounded by one meal at a time.
+  - **Restoration** heals the Cerberus health pool over its seconds, starting when eaten. It pauses while PvP-tagged (and resumes after the fight, however long, up to ten minutes of waiting in all; until the integration review a fight of more than about 40 s ended it), never goes past max health, and a new meal ends the old restoration. Healing is therefore bounded by one meal at a time.
   - **Persistence:** the effect runs in real time and is saved on the player with its end time. It survives a relog or restart if still running. Death ends it. Restoration does not survive a relog.
 - **Weapon Mastery's lifesteal** (decision 6) is unchanged. Meals make healing exist; whether lifesteal changes is still the owner's call.
 
@@ -295,7 +295,7 @@ Spawn protection and the world border on Wide Harvest (added by the review) were
 - **Cocoa** is replanted on the same side of the same log, as before, when broken with the hoe.
 
 **Getting it in survival:**
-1. **A Sower's Charm**, crafted (shapeless, any crafting table) from wheat seeds, beetroot seeds, melon or pumpkin seeds, bone meal, string and a gold nugget. It is a Cerberus item: it can't be placed, brewed, smelted or used in a vanilla recipe.
+1. **A Sower's Charm**, crafted (shapeless, any crafting table) from wheat seeds, beetroot seeds, melon or pumpkin seeds, bone meal, string and a gold nugget. It is a Cerberus item: it can't be placed, brewed, smelted, used in a vanilla recipe or sold to a villager (clerics buy rabbit's feet; since the integration review a trade's result can't be taken while one sits in its input).
 2. **A hoe and the charm in a crafting grid** make the same hoe with the Replanting upgrade, keeping its enchantments, damage, quality and name (the heartwood upgrade's rules: checked when the result is taken; a crafter block never makes it; once per hoe).
 Every number and the recipe are data in `resources.yml` (`items: sowers_charm`, `upgrades: replanting`, `recipes:`). A recipe naming a block that is no item (carrots, water) is left out with a line in the log; it never stops the plugin's startup or a reload. To turn Replant off on a server: `replanting: off` under `upgrades:`.
 
