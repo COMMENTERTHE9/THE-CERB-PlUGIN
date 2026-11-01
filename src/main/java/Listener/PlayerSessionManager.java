@@ -29,9 +29,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 
@@ -46,7 +43,6 @@ public class PlayerSessionManager implements Listener {
     private final CerberusGameMode gameMode;
     private final Map<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
     private final AtomicLong generationCounter = new AtomicLong(0);
-    private final ExecutorService dbExecutor;
 
     private record SkillSnapshot(String customId, Map<String, Integer> levels, Map<String, Integer> xp,
                                      java.util.Set<Manager.ChunkKey> visitedChunks) {}
@@ -55,11 +51,6 @@ public class PlayerSessionManager implements Listener {
         this.plugin = plugin;
         this.svc = services;
         this.gameMode = new CerberusGameMode(services.virtualHealth(), plugin);
-        this.dbExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "Cerb-DB-Session");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -97,18 +88,31 @@ public class PlayerSessionManager implements Listener {
         }
 
         session.setState(PlayerSession.State.LOADING_DATA);
+        svc.skills().beginLoading(uuid, generation); // XP earned before the load completes is kept for this session
 
+        // On the skill store's writer thread: after every save handed in before it (a quick rejoin reads what the quit
+        // wrote), and with the progress the store still holds in memory when a save failed (newer than the stored rows).
+        Skills.SkillStore store = svc.skills().store();
         CompletableFuture.supplyAsync(() -> {
-            svc.database().getOrCreateCustomId(uuid, player.getName());
             cerberus.world.cerb.DatabaseManager.StrictSkills loaded;
             try {
+                svc.database().getOrCreateCustomIdStrict(uuid, player.getName()); // a failed read fails the load
                 loaded = svc.database().loadPlayerSkillsStrict(uuid);
             } catch (java.sql.SQLException e) {
                 throw new java.util.concurrent.CompletionException(e);
             }
+            store.knowCustomId(uuid, loaded.customId());
+            Map<String, Integer> levels = loaded.levels(), xp = loaded.xp();
+            Skills.SkillStore.Snapshot kept = store.newerUnsaved(uuid, loaded.savedSeq());
+            if (kept != null) {
+                levels = new java.util.HashMap<>(kept.levels());
+                xp = new java.util.HashMap<>(kept.xp());
+                log.warning("[PlayerSession] " + player.getName() + " continues from progress kept in memory (its last save"
+                        + " failed; newer than the stored rows). It is saved when the database answers.");
+            }
             java.util.Set<Manager.ChunkKey> chunks = svc.database().loadVisitedChunks(uuid);
-            return new SkillSnapshot(loaded.customId(), loaded.levels(), loaded.xp(), chunks);
-        }, dbExecutor).handle((data, ex) -> {
+            return new SkillSnapshot(loaded.customId(), levels, xp, chunks);
+        }, store.executor()).handle((data, ex) -> {
             player.getScheduler().run(plugin, task -> {
                 PlayerSession current = sessions.get(uuid);
                 if (current == null || current.getGeneration() != generation) {
@@ -117,6 +121,7 @@ public class PlayerSessionManager implements Listener {
                 }
 
                 if (ex != null) {
+                    svc.skills().abandonLoading(uuid, generation);
                     // Never play on empty defaults after a failed load: the first XP save would
                     // overwrite the player's real stored levels. Disconnect instead; the stored
                     // data is untouched and a rejoin retries the load.
@@ -130,7 +135,7 @@ public class PlayerSessionManager implements Listener {
                 }
 
                 session.setCustomId(data.customId());
-                svc.skills().setPlayerSkills(player, data.levels(), data.xp());
+                svc.skills().setPlayerSkills(player, data.levels(), data.xp(), generation);
                 svc.chunkDiscovery().acceptLoadedChunks(uuid, data.visitedChunks());
                 session.setState(PlayerSession.State.ACTIVE);
                 completeJoinSetup(player);
@@ -200,17 +205,12 @@ public class PlayerSessionManager implements Listener {
             log.warning("[PlayerSession] Cleanup(effects) failed for " + player.getName() + ": " + e.getMessage());
         }
 
-        Map<String, Integer> levels = svc.skills().getPlayerSkillLevels(player);
-        Map<String, Integer> xp = svc.skills().getPlayerSkillXP(player);
-        String customId = session.getCustomId();
-        if (customId != null && levels != null && xp != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    svc.database().saveSkillsByCustomId(customId, levels, xp);
-                } catch (Exception e) {
-                    log.severe("[PlayerSession] Async save failed for " + player.getName() + ": " + e.getMessage());
-                }
-            }, dbExecutor);
+        // The quit's save: a snapshot now, written in order with every other save of this player's (Skills/SkillStore).
+        // Nothing when their skills never loaded.
+        try {
+            svc.skills().saveNow(player);
+        } catch (Exception e) {
+            log.severe("[PlayerSession] Quit save failed for " + player.getName() + ": " + e.getMessage());
         }
 
         try {
@@ -368,18 +368,10 @@ public class PlayerSessionManager implements Listener {
         // Kept as a stub in case Paper/Folia starts firing this event in the future.
     }
 
+    /** Every online player's session ends, each handing in their final skill snapshot (the plugin then drains the store). */
     public void shutdown() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             cleanupPlayer(player);
-        }
-        dbExecutor.shutdown();
-        try {
-            if (!dbExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                log.warning("[PlayerSession] DB executor did not drain in 5s - forcing shutdown");
-                dbExecutor.shutdownNow();
-            }
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
         }
     }
 

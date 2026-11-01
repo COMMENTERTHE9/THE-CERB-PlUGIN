@@ -1,0 +1,141 @@
+package Classes;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.File;
+import java.nio.file.Path;
+import java.sql.SQLException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/** Class documents whose write fails: tried again, kept, used by a rejoin, written later or kept in recovery files. */
+class ClassDocStoreTest {
+
+    @TempDir Path dir;
+
+    static class HandRun extends AbstractExecutorService {
+        final Deque<Runnable> queue = new ArrayDeque<>();
+        boolean shut;
+        @Override public void execute(Runnable r) { if (shut) throw new RejectedExecutionException(); queue.add(r); }
+        void runAll() { while (!queue.isEmpty()) queue.poll().run(); }
+        @Override public void shutdown() { shut = true; }
+        @Override public List<Runnable> shutdownNow() { shut = true; List<Runnable> l = new ArrayList<>(queue); queue.clear(); return l; }
+        @Override public boolean isShutdown() { return shut; }
+        @Override public boolean isTerminated() { return shut && queue.isEmpty(); }
+        @Override public boolean awaitTermination(long t, TimeUnit u) { runAll(); return true; }
+    }
+
+    /** The database's rule for class documents: a newer stored stamp is kept. */
+    static final class FakeDb implements ClassDocStore.Db {
+        final Map<UUID, Object[]> rows = new HashMap<>();
+        boolean failAll;
+        int attempts;
+        @Override public void write(UUID p, int version, String data, long stamp) throws SQLException {
+            attempts++;
+            if (failAll) throw new SQLException("[SQLITE_BUSY] database is locked");
+            Object[] cur = rows.get(p);
+            if (cur == null || stamp >= (long) cur[1]) rows.put(p, new Object[]{data, stamp});
+        }
+        String data(UUID p) { Object[] r = rows.get(p); return r == null ? null : (String) r[0]; }
+    }
+
+    private final List<LogRecord> records = new ArrayList<>();
+    private final Logger log = Logger.getAnonymousLogger();
+    {
+        log.setUseParentHandlers(false);
+        log.addHandler(new Handler() {
+            @Override public void publish(LogRecord r) { records.add(r); }
+            @Override public void flush() { }
+            @Override public void close() { }
+        });
+    }
+    private final UUID ann = new UUID(0, 1);
+
+    @Test
+    void aFailedWriteIsTriedAgainKeptUsedByARejoinAndWrittenWhenTheDatabaseAnswers() {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        HandRun w = new HandRun();
+        long[] now = {1_000_000};
+        ClassDocStore s = new ClassDocStore(db, log, dir.resolve("cr").toFile(), w, () -> now[0], ms -> now[0] += ms);
+        s.save(ann, "Ann", 3, () -> "warrior: rank 7", 100);
+        w.runAll();
+        assertEquals(3, db.attempts);
+        assertEquals(1, s.unsavedCount());
+        assertEquals(1, records.stream().filter(r -> r.getLevel() == Level.SEVERE).count());
+        assertEquals("warrior: rank 7", s.newerUnsaved(ann, 90).data(), "a rejoin continues from the kept document");
+        assertNull(s.newerUnsaved(ann, 100), "not when the stored one is as new");
+        db.failAll = false;
+        s.retryUnsaved();
+        w.runAll();
+        assertEquals("warrior: rank 7", db.data(ann));
+        assertEquals(0, s.unsavedCount());
+    }
+
+    @Test
+    void aDocumentOlderThanTheStoredOneIsNotWrittenAgain() {
+        FakeDb db = new FakeDb();
+        HandRun w = new HandRun();
+        ClassDocStore s = new ClassDocStore(db, log, dir.resolve("cr").toFile(), w, () -> 0, ms -> { });
+        s.save(ann, "Ann", 3, () -> "new", 200);
+        s.save(ann, "Ann", 3, () -> "old", 150); // a delayed save handed in later
+        w.runAll();
+        assertEquals("new", db.data(ann));
+        assertEquals(1, db.attempts, "skipped without touching the database");
+    }
+
+    @Test
+    void aDocumentHandedInButNeverRunBeforeTheWriterStopsGoesToARecoveryFile() {
+        FakeDb db = new FakeDb();
+        HandRun w = new HandRun() {
+            @Override public boolean awaitTermination(long t, TimeUnit u) { return false; } // the writer is stuck
+        };
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore s = new ClassDocStore(db, log, recovery, w, () -> 0, ms -> { });
+        s.shuttingDown();
+        s.save(ann, "Ann", 3, () -> "ann: warrior 4", 400); // queued behind a write that never ends
+        assertEquals(1, s.finish(10));
+        assertEquals(0, db.attempts, "never written");
+        FakeDb next = new FakeDb();
+        new ClassDocStore(next, log, recovery, new HandRun(), () -> 0, ms -> { }).applyRecovery();
+        assertEquals("ann: warrior 4", next.data(ann));
+    }
+
+    @Test
+    void shutdownKeepsWhatItCannotWriteInRecoveryFilesAndTheNextStartWritesThemOnlyWhereNewer() {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        HandRun w = new HandRun();
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore s = new ClassDocStore(db, log, recovery, w, () -> 0, ms -> { });
+        UUID bob = new UUID(0, 2);
+        s.shuttingDown();
+        s.save(ann, "Ann", 3, () -> "ann: mage 4", 300);
+        s.save(bob, "Bob", 3, () -> "bob: duelist 2", 50);
+        assertEquals(2, s.finish(1000));
+        assertEquals(2, recovery.listFiles().length);
+
+        FakeDb next = new FakeDb();
+        next.rows.put(bob, new Object[]{"bob: duelist 5", 80L}); // Bob's stored document is newer than his file
+        ClassDocStore later = new ClassDocStore(next, log, recovery, new HandRun(), () -> 0, ms -> { });
+        assertEquals(2, later.applyRecovery());
+        assertEquals("ann: mage 4", next.data(ann));
+        assertEquals("bob: duelist 5", next.data(bob));
+        assertEquals(0, recovery.listFiles().length);
+    }
+}

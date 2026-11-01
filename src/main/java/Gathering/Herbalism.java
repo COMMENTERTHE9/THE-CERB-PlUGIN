@@ -415,7 +415,7 @@ public final class Herbalism implements Listener {
     }
 
     private void discover(Player p, HerbalismRules.Herb h) {
-        if (!skills.hasLoadedSkills(p.getUniqueId())) return; // its XP would be lost: the next gather discovers it instead
+        if (!skills.canEarnXp(p.getUniqueId())) return; // its XP would be lost: the next gather discovers it instead
         Set<String> have = discovered(p);
         if (!have.add(h.id())) return;
         p.getPersistentDataContainer().set(HERBS, PersistentDataType.STRING, String.join(",", new LinkedHashSet<>(have)));

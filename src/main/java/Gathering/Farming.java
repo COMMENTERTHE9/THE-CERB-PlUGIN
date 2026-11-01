@@ -377,7 +377,7 @@ public final class Farming implements Listener {
     }
 
     private void discover(Player p, FarmingRules.Crop c) {
-        if (!skills.hasLoadedSkills(p.getUniqueId())) return; // its XP would be lost: the next harvest discovers it instead
+        if (!skills.canEarnXp(p.getUniqueId())) return; // its XP would be lost: the next harvest discovers it instead
         Set<String> have = discovered(p);
         if (!have.add(c.id())) return;
         p.getPersistentDataContainer().set(CROPS, PersistentDataType.STRING, String.join(",", new LinkedHashSet<>(have)));

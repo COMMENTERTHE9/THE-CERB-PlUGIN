@@ -41,6 +41,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.io.File;
+import Skills.SkillStore;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -97,12 +98,10 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
     /** Players with combat debug mode enabled — see /cerb combatdebug */
     private final Set<UUID> combatDebugPlayers = ConcurrentHashMap.newKeySet();
 
-    private record PlayerSkillSnapshot(
-            UUID playerUUID,
-            String playerName,
-            Map<String, Integer> levels,
-            Map<String, Integer> xp
-    ) {}
+    /** Where skills are stored, in order (Skills/SkillStore; docs/STATUS.md → reliability audit). */
+    private SkillStore skillStore;
+
+    public SkillStore getSkillStore() { return skillStore; }
 
 
     @Override
@@ -148,24 +147,17 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         });
     }
 
+    /**
+     * /cerb backup: every online player's skills saved now, each a snapshot taken on the player's own thread and written
+     * in order with their other saves (Skills/SkillStore), so a backup can never put back older progress.
+     */
     public void saveAllPlayers() {
-        List<PlayerSkillSnapshot> snapshots = new ArrayList<>();
+        int n = 0;
         for (Player player : getServer().getOnlinePlayers()) {
-            snapshots.add(new PlayerSkillSnapshot(
-                    player.getUniqueId(),
-                    player.getName(),
-                    new HashMap<>(skillManager.getPlayerSkillLevels(player)),
-                    new HashMap<>(skillManager.getPlayerSkillXP(player))
-            ));
+            player.getScheduler().run(this, task -> skillManager.saveNow(player), null);
+            n++;
         }
-
-        Bukkit.getAsyncScheduler().runNow(this, task -> {
-            for (PlayerSkillSnapshot snapshot : snapshots) {
-                String customId = databaseManager.getOrCreateCustomId(snapshot.playerUUID(), snapshot.playerName());
-                databaseManager.saveSkillsByCustomId(customId, snapshot.levels(), snapshot.xp());
-            }
-            getLogger().info("All players' skills saved to the database.");
-        });
+        getLogger().info("Saving " + n + " online player(s)' skills now (failures, if any, are logged).");
     }
 
     @Override
@@ -176,6 +168,8 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Centralized player cleanup + async skill save
         if (playerSessionManager != null) playerSessionManager.shutdown();
         if (classService != null) classService.shutdown(); // writes every loaded class profile now
+        // Every player's final skill snapshot was handed in above: write them (at most 20 s), the rest to recovery files.
+        if (skillStore != null) skillStore.shutdown(20_000);
 
         if (damageDisplayListener != null) damageDisplayListener.shutdown();
         if (trapManager != null)       trapManager.cleanup();
@@ -216,6 +210,33 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     private void initDatabase() {
         databaseManager = new DatabaseManager(this);
+        DatabaseManager db = databaseManager;
+        skillStore = new SkillStore(new SkillStore.Db() {
+            @Override public void write(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
+                    throws java.sql.SQLException {
+                db.writeSkills(customId, levels, xp, seq);
+            }
+            @Override public String customId(UUID player) throws java.sql.SQLException {
+                return db.customIdStrict(player);
+            }
+        }, getLogger(), new File(getDataFolder(), "skills-recovery"));
+        // Before anyone joins: progress a failed shutdown kept, then the save order after the newest stored snapshot.
+        long recovered = skillStore.applyRecovery();
+        try {
+            skillStore.continueAfter(Math.max(recovered, databaseManager.maxSkillSeq()));
+        } catch (java.sql.SQLException e) {
+            getLogger().severe("[Skills] Could not read the save order (" + e.getMessage() + "); continuing after the clock.");
+            skillStore.continueAfter(Math.max(recovered, System.currentTimeMillis()));
+        }
+        skillStore.onAlert(msg -> Bukkit.getGlobalRegionScheduler().execute(this, () -> {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.hasPermission("cerb.admin")) p.getScheduler().run(this, t -> p.sendMessage(ChatColor.RED + "[Cerberus] " + msg), null);
+            }
+        }));
+        Bukkit.getAsyncScheduler().runAtFixedRate(this, t -> {
+            skillStore.retryUnsaved();
+            if (classService != null) classService.retryUnsaved();
+        }, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private void initCoreManagers() {
@@ -545,6 +566,7 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         classService = new Classes.ClassService(this, databaseManager, skillManager, attributeService,
                 () -> pvpTag, classCatalog != null ? classCatalog : Classes.ClassCatalog.empty());
         classService.setAttributesChanged(p -> attributeEffects.refresh(p));
+        classService.applyRecovery(); // before anyone joins: documents the last shutdown could not write
         attributeService.addSource(classService);
         // Gathering and forging (docs/design/GATHERING.md): resources.yml, and forged gear as one more
         // attribute source. A file that can't be read leaves gathering paying nothing, touching nothing.

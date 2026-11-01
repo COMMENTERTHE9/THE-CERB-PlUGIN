@@ -73,14 +73,12 @@ public class DatabaseManager {
                     player_name TEXT
                 )""");
 
-            stmt.execute("""
-                CREATE TABLE IF NOT EXISTS player_skills (
-                    custom_id   TEXT,
-                    skill_name  TEXT,
-                    skill_level INTEGER DEFAULT 1,
-                    skill_xp    INTEGER DEFAULT 0,
-                    PRIMARY KEY (custom_id, skill_name)
-                )""");
+            stmt.execute(SkillRows.CREATE_TABLE);
+            // 2026-11 (reliability audit): every row says which snapshot wrote it, so an older save can't replace newer
+            // progress (SkillRows, Skills/SkillStore). A database from before gets the column with 0 in every row.
+            if (SkillRows.ensureSeqColumn(conn)) {
+                plugin.getLogger().info("[Database] player_skills: added saved_seq (save order); existing rows kept as they were.");
+            }
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS skill_effects (
@@ -180,6 +178,55 @@ public class DatabaseManager {
         }
     }
 
+    /**
+     * At join: the player's custom id, made (with every skill at level 1) when there is none. Throws when the database
+     * can't be read or written, so a failed load never looks like a new player: {@link #getOrCreateCustomId} logs a failed
+     * read and makes a new random id with 35 rows of its own (2026-11 audit: orphan rows from a busy database).
+     */
+    public String getOrCreateCustomIdStrict(UUID playerUUID, String playerName) throws SQLException {
+        try {
+            return customIdStrict(playerUUID);
+        } catch (SQLException e) {
+            if (!String.valueOf(e.getMessage()).startsWith("no custom_id row")) throw e; // a read that failed
+        }
+        String newId = "CUST-" + RandomStringUtils.randomAlphanumeric(6).toUpperCase();
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO player_custom_ids(player_uuid,custom_id,player_name) "
+                     + "VALUES(?,?,?) ON CONFLICT(player_uuid) DO NOTHING")) {
+            ps.setString(1, playerUUID.toString());
+            ps.setString(2, newId);
+            ps.setString(3, playerName);
+            ps.executeUpdate();
+        }
+        String id = customIdStrict(playerUUID); // ours, or one another join wrote first
+        String sql = "INSERT INTO player_skills(custom_id,skill_name,skill_level,skill_xp) "
+                + "VALUES(?,?," + Skills.SkillProgression.MIN_LEVEL + ",0) ON CONFLICT(custom_id,skill_name) DO NOTHING";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (String skill : ALL_SKILL_NAMES) {
+                ps.setString(1, id);
+                ps.setString(2, skill);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        return id;
+    }
+
+    /**
+     * The player's stored custom id, for saving their skills (Skills/SkillStore): throws when it can't be read or doesn't
+     * exist. Never makes a new one ({@link #getOrCreateCustomId} would, when a read fails, and the save would go to it).
+     */
+    public String customIdStrict(UUID playerUUID) throws SQLException {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT custom_id FROM player_custom_ids WHERE player_uuid = ?")) {
+            ps.setString(1, playerUUID.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getString(1) != null) return rs.getString(1);
+            }
+        }
+        throw new SQLException("no custom_id row for " + playerUUID);
+    }
+
     private String loadCustomId(UUID playerUUID) {
         String query = "SELECT custom_id FROM player_custom_ids WHERE player_uuid = ?";
         try (Connection     conn = getConnection();
@@ -217,8 +264,11 @@ public class DatabaseManager {
     }
 
 
-    /** A player's skill rows, loaded strictly (see {@link #loadPlayerSkillsStrict}). */
-    public record StrictSkills(String customId, Map<String, Integer> levels, Map<String, Integer> xp) {}
+    /**
+     * A player's skill rows, loaded strictly (see {@link #loadPlayerSkillsStrict}), and the newest snapshot they were
+     * written from ({@code saved_seq}).
+     */
+    public record StrictSkills(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long savedSeq) {}
 
     /**
      * Load a player's custom ID and skill rows, throwing on any database error.
@@ -253,7 +303,7 @@ public class DatabaseManager {
                     }
                 }
             }
-            return new StrictSkills(customId, levels, xp);
+            return new StrictSkills(customId, levels, xp, SkillRows.maxSeq(conn, customId));
         }
     }
 
@@ -309,36 +359,21 @@ public class DatabaseManager {
     }
 
     /**
-     * Save skills synchronously — callers already run on background threads.
-     * Must NOT use asyncSaver: throttle cooldown can silently drop writes.
+     * Writes one snapshot of a player's skills (Skills/SkillStore, on its writer thread): one transaction, kept only where
+     * no newer snapshot already wrote the row. Throws on a database error, so the caller can retry and report it.
      */
-    public void saveSkillsByCustomId(String customId,
-                                     Map<String,Integer> skillLevels,
-                                     Map<String,Integer> skillXP) {
-        String sql = "INSERT INTO player_skills(custom_id,skill_name,skill_level,skill_xp) "
-                + "VALUES(?,?,?,?) "
-                + "ON CONFLICT(custom_id,skill_name) DO UPDATE "
-                + "SET skill_level=excluded.skill_level,skill_xp=excluded.skill_xp";
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            for (Map.Entry<String,Integer> e : skillLevels.entrySet()) {
-                ps.setString(1, customId);
-                ps.setString(2, e.getKey());
-                ps.setInt(3, e.getValue());
-                ps.setInt(4, skillXP.getOrDefault(e.getKey(), 0));
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        } catch (SQLException ex) {
-            plugin.getLogger().severe("Failed to save skills for " + customId + ": " + ex.getMessage());
-            ex.printStackTrace();
+    public void writeSkills(String customId, Map<String, Integer> skillLevels, Map<String, Integer> skillXP, long seq)
+            throws SQLException {
+        try (Connection conn = getConnection()) {
+            SkillRows.write(conn, customId, skillLevels, skillXP, seq);
         }
     }
 
-    // Save player skills (wrapper method)
-    public void savePlayerSkills(UUID playerUUID, String playerName, Map<String, Integer> skillLevels, Map<String, Integer> skillXP) {
-        String customId = getOrCreateCustomId(playerUUID, playerName); // Retrieve or create custom_id
-        saveSkillsByCustomId(customId, skillLevels, skillXP); // Save skills using custom_id
+    /** The newest snapshot any skill row was written from (the save order continues from it after a restart). */
+    public long maxSkillSeq() throws SQLException {
+        try (Connection conn = getConnection()) {
+            return SkillRows.maxSeq(conn);
+        }
     }
 
     // Load player skill levels (wrapper method)
@@ -358,16 +393,6 @@ public class DatabaseManager {
             return new HashMap<>();
         }
         return loadSkillXPByCustomId(customId);
-    }
-
-    // Update a single skill for a player
-    public void updatePlayerSkill(UUID playerUUID, String playerName, String skillName, int level, int xp) {
-        String customId = getOrCreateCustomId(playerUUID, playerName);
-        Map<String, Integer> skillLevels = new HashMap<>();
-        Map<String, Integer> skillXP = new HashMap<>();
-        skillLevels.put(skillName, level);
-        skillXP.put(skillName, xp);
-        saveSkillsByCustomId(customId, skillLevels, skillXP);
     }
 
     // Fix null custom_ids in the player_skills table
@@ -521,6 +546,15 @@ public class DatabaseManager {
      * delayed save can never overwrite newer progress, whichever thread finishes first.
      */
     public void saveClassData(UUID playerUUID, int version, String data, long stamp) {
+        try {
+            writeClassData(playerUUID, version, data, stamp);
+        } catch (SQLException ex) {
+            plugin.getLogger().severe("Failed to save classes for " + playerUUID + ": " + ex.getMessage());
+        }
+    }
+
+    /** {@link #saveClassData}, throwing on a database error (Classes/ClassDocStore tries again and keeps it). */
+    public void writeClassData(UUID playerUUID, int version, String data, long stamp) throws SQLException {
         String sql = "INSERT INTO player_classes(player_uuid, version, data, updated_at) VALUES(?,?,?,?) "
                 + "ON CONFLICT(player_uuid) DO UPDATE SET version = excluded.version, data = excluded.data, "
                 + "updated_at = excluded.updated_at WHERE excluded.updated_at >= player_classes.updated_at";
@@ -531,8 +565,6 @@ public class DatabaseManager {
             ps.setString(3, data);
             ps.setLong(4, stamp);
             ps.executeUpdate();
-        } catch (SQLException ex) {
-            plugin.getLogger().severe("Failed to save classes for " + playerUUID + ": " + ex.getMessage());
         }
     }
 

@@ -89,7 +89,20 @@ public final class ClassService implements AttributeSource {
         this.attributes = attributes;
         this.pvp = pvp;
         this.catalog = catalog;
+        this.docs = new ClassDocStore(db::writeClassData, plugin.getLogger(),
+                new java.io.File(plugin.getDataFolder(), "classes-recovery"), writer, System::currentTimeMillis, ms -> {
+                    try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                });
     }
+
+    /** Failed writes: tried again, kept, used by a rejoin, recovery files at shutdown (docs/STATUS.md → reliability audit). */
+    private final ClassDocStore docs;
+
+    /** Startup, before anyone joins: write the documents the last shutdown could not (only where newer). */
+    public int applyRecovery() { return docs.applyRecovery(); }
+
+    /** Write the documents kept after failed writes again (a timer calls this). */
+    public void retryUnsaved() { docs.retryUnsaved(); }
 
     /** What to run after this player's class contributions changed (Manager.AttributeEffects#refresh). */
     public void setAttributesChanged(java.util.function.Consumer<Player> hook) {
@@ -115,7 +128,14 @@ public final class ClassService implements AttributeSource {
             // On the writer thread, behind any save still queued (a quick rejoin must read the quit save).
             read = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return Optional.ofNullable(db.loadClassData(id));
+                    DatabaseManager.ClassData row = db.loadClassData(id);
+                    ClassDocStore.Pending kept = docs.newerUnsaved(id, row == null ? Long.MIN_VALUE : row.stamp());
+                    if (kept != null) { // its last save failed: continue from the newer document kept in memory
+                        plugin.getLogger().warning("[Classes] " + p.getName() + " continues from classes kept in memory (their"
+                                + " last save failed; newer than the stored document). Saved when the database answers.");
+                        return Optional.of(new DatabaseManager.ClassData(kept.data(), kept.stamp()));
+                    }
+                    return Optional.ofNullable(row);
                 } catch (SQLException e) {
                     throw new CompletionException(e);
                 }
@@ -169,21 +189,15 @@ public final class ClassService implements AttributeSource {
      * then let the queued quit saves finish.
      */
     public void shutdown() {
+        docs.shuttingDown();
         long now = System.currentTimeMillis();
         for (Map.Entry<UUID, ClassProfile> e : profiles.entrySet()) {
             ClassProfile prof = e.getValue();
-            db.saveClassData(e.getKey(), ClassProfile.VERSION, prof.toYaml(now), prof.nextStamp(now));
+            write(e.getKey(), prof.snapshot(now), prof.nextStamp(now)); // behind the quit saves already queued
         }
         profiles.clear();
         for (UUID id : List.copyOf(contributions.keySet())) forgetRuntime(id);
-        writer.shutdown();
-        try {
-            if (!writer.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
-                plugin.getLogger().warning("[Classes] Quit saves did not finish within 5 s.");
-            }
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
+        docs.finish(10_000); // what still can't be written goes to classes-recovery/
     }
 
     private void forgetRuntime(UUID id) {
@@ -257,11 +271,8 @@ public final class ClassService implements AttributeSource {
     private static final long SAVE_DELAY_TICKS = 20;
 
     private void write(UUID id, ClassProfile.Snapshot snap, long stamp) {
-        try {
-            writer.execute(() -> db.saveClassData(id, ClassProfile.VERSION, snap.toYaml(), stamp));
-        } catch (java.util.concurrent.RejectedExecutionException e) {
-            db.saveClassData(id, ClassProfile.VERSION, snap.toYaml(), stamp); // shutting down: write here
-        }
+        Player online = plugin.getServer().getPlayer(id);
+        docs.save(id, online != null ? online.getName() : id.toString(), ClassProfile.VERSION, snap::toYaml, stamp); // in order; tried again, kept on failure
     }
 
     // ── learning and ranks ──────────────────────────────────────

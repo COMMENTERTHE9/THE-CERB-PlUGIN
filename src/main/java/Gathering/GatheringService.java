@@ -130,7 +130,7 @@ public final class GatheringService {
     /** Award {@code xp} of {@code skill}, keeping fractions per player until they make a whole point. Player's thread. */
     public void award(Player p, String skill, double xp) {
         if (skill == null || !(xp > 0)) return;
-        if (!skills.hasLoadedSkills(p.getUniqueId())) return; // not loaded yet (or leaving): nothing to add to
+        if (!skills.canEarnXp(p.getUniqueId())) return; // left: nothing to add to (while loading it is kept)
         long whole = carries.computeIfAbsent(p.getUniqueId(), id -> new GatherRules.Carry()).add(skill, xp);
         if (whole > 0) skills.addXpAndCheckLevelUp(skill, whole, p);
     }

@@ -244,7 +244,7 @@ public final class Woodcutting implements Listener {
     }
 
     private void discover(Player p, GatheringCatalog.ResourceDef r) {
-        if (!skills.hasLoadedSkills(p.getUniqueId())) return; // its XP would be lost: the next log discovers it instead
+        if (!skills.canEarnXp(p.getUniqueId())) return; // its XP would be lost: the next log discovers it instead
         Set<String> have = discovered(p);
         if (!have.add(r.id())) return;
         p.getPersistentDataContainer().set(WOODS, PersistentDataType.STRING, String.join(",", new LinkedHashSet<>(have)));

@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SkillManager {
     private final CerberusPlugin plugin; // Changed from cerb to CerberusPlugin
     private final AsyncSaveManager asyncSaver;
+    /** Where skills are written, in order (docs/STATUS.md → reliability audit). */
+    private final SkillStore store;
     private static String url;
     private final Map<String, Skill> skills;
     private final Map<String, Integer> skillLevels;
@@ -57,6 +59,7 @@ public class SkillManager {
                         PlayerStrengthManager strengthManager) {
 
         this.asyncSaver = plugin.getAsyncSaver();  // ← initialize it here
+        this.store = plugin.getSkillStore();
         this.plugin = plugin;
         this.skills = new HashMap<>();
         this.databaseManager = databaseManager;
@@ -105,6 +108,7 @@ public class SkillManager {
     }
 
     public void removePlayer(UUID playerUUID) {
+        loadingXp.remove(playerUUID); // a session that ended before its skills loaded: nothing to apply it to
         customPlayers.remove(playerUUID);
         playerSkillLevels.remove(playerUUID);
         playerSkillXP.remove(playerUUID);
@@ -278,7 +282,7 @@ public class SkillManager {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = playerSkillLevels.get(uid);
         Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) return; // data not loaded yet, or player already left
+        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, amount, true); return; } // loading, or left
 
         applyAward(player, skillName, levels, xp, amount, true);
         saveSkills(player);
@@ -310,18 +314,36 @@ public class SkillManager {
         return r;
     }
 
+    /**
+     * A change's save: a snapshot now (on the player's thread, so its sequence number orders it), written by the store
+     * at most once a second per player (the newest snapshot of a burst; SkillStore keeps the order).
+     */
     private void saveSkills(Player player) {
-        UUID uid = player.getUniqueId();
-        String playerName = player.getName();
-        Map<String, Integer> levels = new HashMap<>(playerSkillLevels.getOrDefault(uid, Map.of()));
-        Map<String, Integer> xp = new HashMap<>(playerSkillXP.getOrDefault(uid, Map.of()));
+        SkillStore.Snapshot s = snapshotOf(player);
+        if (s == null) return;
+        asyncSaver.scheduleDbSave("skills:" + s.player(), () -> store.save(s));
+    }
 
-        asyncSaver.scheduleDbSave("skills:" + uid, () -> databaseManager.savePlayerSkills(
-                uid,
-                playerName,
-                levels,
-                xp
-        ));
+    /**
+     * Save now, past the throttle (a quit, a backup): the snapshot goes to the store at once. Call on the player's
+     * thread. Nothing when their skills aren't loaded: maps that were never loaded are never written.
+     */
+    public void saveNow(Player player) {
+        SkillStore.Snapshot s = snapshotOf(player);
+        if (s != null) store.save(s);
+    }
+
+    private SkillStore.Snapshot snapshotOf(Player player) {
+        UUID uid = player.getUniqueId();
+        Map<String, Integer> levels = playerSkillLevels.get(uid);
+        Map<String, Integer> xp = playerSkillXP.get(uid);
+        if (levels == null || xp == null) return null;
+        return store.snapshot(uid, player.getName(), levels, xp);
+    }
+
+    /** Where skills are stored (loads run on its thread too). */
+    public SkillStore store() {
+        return store;
     }
 
 
@@ -384,7 +406,7 @@ public class SkillManager {
         // could overwrite the stored levels if the save landed first or the load then failed.
         Map<String, Integer> levels = playerSkillLevels.get(uid);
         Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) return false;
+        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, true); return false; }
 
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
         saveSkills(player);
@@ -399,7 +421,7 @@ public class SkillManager {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = playerSkillLevels.get(uid);
         Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) return 0;
+        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, true); return 0; }
         int levelBefore = levels.getOrDefault(skillName, 1), xpBefore = xp.getOrDefault(skillName, 0);
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
         saveSkills(player);
@@ -411,7 +433,7 @@ public class SkillManager {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = playerSkillLevels.get(uid);
         Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) return false;
+        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, false); return false; }
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, false);
         saveSkills(player);
         return r.levelsGained() > 0;
@@ -437,6 +459,58 @@ public class SkillManager {
     /** True once this player's skills are loaded (between a successful load and quit). */
     public boolean hasLoadedSkills(UUID uid) {
         return playerSkillLevels.containsKey(uid) && playerSkillXP.containsKey(uid);
+    }
+
+    // ── XP earned while loading (docs/STATUS.md → reliability audit) ──────────
+
+    /**
+     * XP a session earned before its skills finished loading: per skill, the amount with a level-up presentation and the
+     * amount without. Kept for that session only ({@code generation}); applied when its load completes, dropped when it
+     * ends or its load fails. Never maps of its own: nothing here can be saved over stored progress.
+     */
+    private static final class LoadingXp {
+        final long generation;
+        final Map<String, double[]> bySkill = new ConcurrentHashMap<>();
+        LoadingXp(long generation) { this.generation = generation; }
+    }
+
+    private final Map<UUID, LoadingXp> loadingXp = new ConcurrentHashMap<>();
+
+    /** Join: this session's skills are loading; XP earned meanwhile is kept for it. Player's thread. */
+    public void beginLoading(UUID player, long generation) {
+        loadingXp.put(player, new LoadingXp(generation));
+    }
+
+    /** The session's load failed, or it ended first: what it earned while loading is dropped. */
+    public void abandonLoading(UUID player, long generation) {
+        loadingXp.computeIfPresent(player, (k, l) -> l.generation == generation ? null : l);
+    }
+
+    /** True while an action can earn XP: skills loaded, or loading (kept for the session). */
+    public boolean canEarnXp(UUID player) {
+        return hasLoadedSkills(player) || loadingXp.containsKey(player);
+    }
+
+    private void keepWhileLoading(UUID player, String skill, double amount, boolean celebrate) {
+        LoadingXp l = loadingXp.get(player);
+        if (l == null || skill == null || !(amount > 0) || !Double.isFinite(amount)) return;
+        double[] a = l.bySkill.computeIfAbsent(skill, k -> new double[2]);
+        a[celebrate ? 0 : 1] = Math.min(1e12, a[celebrate ? 0 : 1] + amount);
+    }
+
+    /** What this session earned while loading, applied now that its maps exist (setPlayerSkills). Player's thread. */
+    private void applyLoadingXp(Player player, long generation, Map<String, Integer> levels, Map<String, Integer> xp) {
+        LoadingXp l = loadingXp.remove(player.getUniqueId());
+        if (l == null || l.generation != generation || l.bySkill.isEmpty()) return;
+        StringBuilder said = new StringBuilder();
+        for (Map.Entry<String, double[]> e : l.bySkill.entrySet()) {
+            if (e.getValue()[0] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[0], true);
+            if (e.getValue()[1] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[1], false);
+            if (said.length() > 0) said.append(", ");
+            said.append(e.getKey()).append(' ').append(Math.round(e.getValue()[0] + e.getValue()[1]));
+        }
+        saveSkills(player);
+        plugin.getLogger().info("[SkillManager] " + player.getName() + ": XP earned while loading applied (" + said + ").");
     }
 
     /**
@@ -534,10 +608,6 @@ public class SkillManager {
         return skills;
     }
 
-    public void savePlayerSkills(Player player) {
-        saveSkills(player);
-    }
-
     @Override
     public String toString() {
         return null;
@@ -558,6 +628,11 @@ public class SkillManager {
     }
 
     public void setPlayerSkills(Player player, Map<String,Integer> skillLevels, Map<String,Integer> skillXP) {
+        setPlayerSkills(player, skillLevels, skillXP, Long.MIN_VALUE);
+    }
+
+    /** The session {@code generation}'s load completed: its skills, then what it earned while loading. Player's thread. */
+    public void setPlayerSkills(Player player, Map<String,Integer> skillLevels, Map<String,Integer> skillXP, long generation) {
         UUID uid = player.getUniqueId();
         Map<String, Integer> levels = new ConcurrentHashMap<>();
         Map<String, Integer> xp = new ConcurrentHashMap<>();
@@ -572,6 +647,7 @@ public class SkillManager {
         playerSkillLevels.put(uid, levels);
         playerSkillXP    .put(uid, xp);
         levelListener.loaded(uid);
+        applyLoadingXp(player, generation, levels, xp);
         // Every skill starts at level 1; older versions wrote a new character's skills at level 0 (the menu said
         // "level 0, 0 / 115"). Written back now, so the database says what the game shows.
         if (read.started() > 0) {
