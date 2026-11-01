@@ -1,6 +1,6 @@
-# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal, Herbalism, Alchemy
+# Playtest checklist: Admin Control Panel 2.0, Attributes 2.0, decisions A–E, Player Menu 2.1, classes and ability controls, mining and forging, level-ups, Woodcutting, Fishing, your XP reports, Farming and Cooking, Active effects, combat improvements, Replant on the hoe, lifesteal, Herbalism, Alchemy, saving and loading
 
-*2026-10-28, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New this time: section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes), section 21, Herbalism (about 20 minutes), and section 22, Alchemy (about 25 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
+*2026-11-01, branch `claude/quirky-mccarthy-nhaz58`. Everything below was checked on the cloud sandbox server; this list is for your own world. **New since: section 24, saving and loading after the reliability audit (about 10 minutes; nothing to set up).** From 2026-10-28: **section 17, Active effects (about 20 minutes), section 18, Martial Expertise's Agility and Iron Reprisal (about 20 minutes), section 19, Replant on the hoe (about 10 minutes), section 20, lifesteal: nothing changed, one fight to judge it (about 10 minutes), section 21, Herbalism (about 20 minutes), and section 22, Alchemy (about 25 minutes).** You played section 16 (Farming and Cooking) on 2026-10-28; section 15 (Fishing equipment, with the bite cue, step 14b) and the sections before it are from earlier builds and still wait for your playtest where you haven't done them.*
 
 **Before you start.** Start with `run.bat`, which backs up the plugin data before deploying. Test as an operator. Skill levels you set are saved, so **note your levels first** (Player Menu → Skills) and set them back at the end. The simulator and dev buffs change nothing permanent, so prefer them. Never use `/reload`.
 
@@ -428,6 +428,21 @@ Player Menu → **Recipes** (the crafting table in the hub): how to make every C
 | 4 | Click **Meals**, then Back; **Brews**, then Back; **Rod parts**, then Back. | The Cookbook, the Brews list and Fishing Equipment open; Back returns to Recipes each time. |
 | 5 | Overall. | Can you find how to make anything new without asking? |
 
-## 24. Afterwards
+## 24. Saving and loading (the reliability audit)
+
+Nothing to set up and nothing to undo: normal play, a quit, a restart. What changed is underneath (`docs/STATUS.md` → "Done: reliability audit"): saves are written in order and never replace newer progress, a save that fails is kept and written later, XP earned the moment you join counts. Checked on the cloud sandbox only, **not on Windows**.
+
+| # | Do | Expected |
+|---|---|---|
+| 1 | After updating, start the server once and read the start of the log. | Once, on that first start only: `[Database] player_skills: added saved_seq (save order); existing rows kept as they were.` Your levels and XP as before (Player Menu → Skills). |
+| 2 | Mine a few ores, then quit and rejoin at once (within a second or two). | The same level and XP as when you left. |
+| 3 | `/cerb saves` | `written …, failed 0, kept in memory 0, …`. **failed** should stay 0. |
+| 4 | Rejoin and mine or harvest the moment you appear. | Those first blocks' XP counts (the XP display shows it). A herb, crop or wood found for the first time in that first moment is discovered on the next one instead. |
+| 5 | With a friend online if you can: `stop`, then start again. | Everyone's skills and class ranks as they were. The stop takes a few seconds at most; the log line `[Skills] Saves this run: …` shows `failed 0`. |
+| 6 | Look in `test-server\plugins\CerberusPlugin\`. | No `skills-recovery` or `classes-recovery` folder, or an empty one. A file there means a stop couldn't reach the database (the log says why); the next start writes it. |
+| 7 | Only if you run other plugins that change drops or brews: gather herbs and brew with them on. | Herbalism pays when the herb really drops; a brew another plugin replaces or cancels pays nothing. |
+| 8 | Overall. | Any `[Skills] Could not save` or `[Classes] Could not save` line in the log? Send it with what was going on (an antivirus scan, a backup program, many players at once). |
+
+## 25. Afterwards
 
 Set your skill levels back, then tell me "works and feels right" or what feels off: too strong, too weak, too slow, or confusing. Include any red error lines from the server window. Once you confirm, I'll prepare a reviewed pull request into `master`. It won't be merged automatically.

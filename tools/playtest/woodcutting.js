@@ -401,8 +401,11 @@ async function sourcesPhase() {
   await hold('wind_charge');
   await bot.lookAt(at(20, 0, 2).offset(0.5, 0.5, 0.5), true);
   bot.activateItem(); await sleep(150); bot.deactivateItem();
-  await sleep(1200);
-  const reached = !!(bot.blockAt(at(20, 1, 2)) && bot.blockAt(at(20, 1, 2)).getProperties().open);
+  // the trapdoor's change reaches the bot's copy of the world a moment later, later still on a busy server (2026-11: a
+  // 1.2 s wait missed it once under three sandboxes' load): up to 5 s
+  const opened = () => !!(bot.blockAt(at(20, 1, 2)) && bot.blockAt(at(20, 1, 2)).getProperties().open);
+  for (let i = 0; i < 25 && !opened(); i++) await sleep(200);
+  const reached = opened();
   await setblock(20, 1, 2, 'air');
   await stand(20, 0);
   await hold('iron_axe');

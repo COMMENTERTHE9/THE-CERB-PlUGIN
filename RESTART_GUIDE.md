@@ -99,6 +99,8 @@ Test mobs spawned from the panel are never saved into the world, and cleanup rem
 | Per-player combat logs | `test-server\plugins\CerberusPlugin\logs\sessions\` (`/cerb log <player>` dumps the live one) |
 | Automatic plugin-data backups | `test-server\backups\plugin-data\<date-time>\`, made before every deploy/start; the last 10 are kept |
 | Full backup (worlds + data + configs) | `backup.bat` (server stopped) → `test-server\backups\full-<date-time>\` |
+| Player progress | `test-server\plugins\CerberusPlugin\cerberus.db` (SQLite: skills, classes, discovered chunks) |
+| Saves a stop couldn't write | `test-server\plugins\CerberusPlugin\skills-recovery\` and `classes-recovery\`: normally empty; the next start writes them to the database (only where newer) and deletes them |
 | Built plugin | `target\Cerberus.jar` |
 
 ## When something goes wrong
@@ -111,6 +113,8 @@ Test mobs spawned from the panel are never saved into the world, and cleanup rem
 | `Outdated client` / `Outdated server` | Your launcher is not on release 1.21.11. |
 | `Connection refused` | The server window isn't open or hasn't finished starting. `localhost` only works on the same PC. |
 | Kicked: `Cerberus could not load your saved data` | The database couldn't be read. Your data was not changed. Rejoin; if it repeats, send `latest.log`. |
+| `[Skills] Could not save …'s skills` or `[Classes] Could not save …` | Something else held `cerberus.db` (an antivirus scan, a backup or database program). The progress is kept in memory and written as soon as the file is free; a stop puts what it still can't write into the recovery folders above. `/cerb saves` shows `kept in memory` going back to 0. If it keeps happening, send `latest.log`. |
+| Going back to an older Cerberus build | Works on the same database. Older builds don't read the recovery folders: start the newer build once first so they are written, and if you update again later, empty `skills-recovery\` and `classes-recovery\` first if they still hold files from before you went back. |
 | Build fails | The error is just above `[FAIL] Build failed`. A failed test means real code broke. |
 
 ## Linux / macOS / cloud sessions

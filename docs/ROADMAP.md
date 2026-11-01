@@ -88,6 +88,10 @@ The owner's two-phase milestone, built in verified increments on the development
 
 Not in this milestone: reflected damage, any lifesteal change, the proposals in `docs/AUTOMATION_REVIEW.md`, the cultivation realm system, a Folia upgrade.
 
+## Reliability audit, repairs and release verification (owner, 2026-11-01, approved): done, waiting for the owner's playtest
+
+Before the playtest of the branch: the suspected save race, XP lost while a player loads, Herbalism and Alchemy beside other plugins, the last regression's open exceptions, a full regression and the performance before/after on the final build, with independent reviews. Results and evidence: `docs/STATUS.md` → "Done: reliability audit"; the owner's checks: `docs/PLAYTEST_CHECKLIST.md` §24. No gameplay rule changed; Phase 4 not started; nothing merged into `master`.
+
 ## Next: proposed order (2026-10-28, waiting for the owner)
 
 After playing the Farming and Cooking build ("everything seems to work"), the owner asked for the list of what comes next. A proposal: the order is the owner's to set, and nothing here is approved except item 1, the owner's own request.
