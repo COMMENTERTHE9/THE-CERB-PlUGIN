@@ -197,4 +197,21 @@ class ClassDocStoreTest {
         assertNull(db.data(ann), "nothing written");
         assertTrue(f.exists(), "left for a person to look at");
     }
+
+    @Test
+    void aRealMultiLineDocumentComesBackFromItsRecoveryFileExactlyAndPassesItsCheck() {
+        String doc = "version: 1\nclasses:\n  warrior:\n    rank: 8\n    xp: 0\nloadouts:\n  '0':\n    name: Loadout 1\n"
+                + "    actives:\n    - ''\n    - execute\n    passives:\n    - ''\n    keystone: ''\nactive: 0\n"
+                + "note: \"tabs\\tand trailing spaces  \"\n";
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore first = new ClassDocStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.shuttingDown();
+        first.save(ann, "Ann", 1, () -> doc, 800);
+        assertEquals(1, first.finish(100));
+        db.failAll = false;
+        assertEquals(1, new ClassDocStore(db, log, recovery, new HandRun(), () -> 0, ms -> { }).applyRecovery(), "its check matches");
+        assertEquals(doc, db.data(ann), "byte for byte");
+    }
 }

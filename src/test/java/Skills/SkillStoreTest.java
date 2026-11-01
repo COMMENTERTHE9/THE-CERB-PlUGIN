@@ -505,4 +505,21 @@ class SkillStoreTest {
         Map<String, Integer> kept = Map.of("Mining", 12, "Farming", 4);
         assertEquals(Map.of("Mining", 12, "Farming", 4, "Fishing", 7), SkillStore.overlay(stored, kept));
     }
+
+    @Test
+    void aFullSnapshotComesBackFromItsRecoveryFileAndPassesItsCheck() {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore first = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.knowCustomId(ann, db.customId(ann));
+        Map<String, Integer> levels = new HashMap<>(), xp = new HashMap<>();
+        String[] names = {"Blade_Mastery", "Mining", "Navigation", "Spell_Weaving", "Heavy_Armor_Training", "Fishing"};
+        for (int i = 0; i < names.length; i++) { levels.put(names[i], 1 + i * 17); xp.put(names[i], 123_456 * i); }
+        first.save(first.snapshot(ann, "Ann", levels, xp));
+        first.shutdown(100);
+        db.failAll = false;
+        new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { }).applyRecovery();
+        for (int i = 0; i < names.length; i++) assertEquals(123_456L * i, db.xpOf(ann, names[i]), names[i]);
+    }
 }
