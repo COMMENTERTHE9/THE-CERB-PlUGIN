@@ -7,7 +7,11 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDropItemEvent;
+import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Set;
@@ -24,6 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code /testnoreel <player>|off} refuses that player's empty reel-ins (REEL_IN): the bobber stays out (fishgear.js bait).
  * {@code /testnodrops <player>|off} cancels the drops of that player's block breaks (BlockDropItemEvent, after Cerberus
  * at HIGH has seen them), the way a "no drops" plugin may: nothing drops, and nothing may pay (herbalism.js nodrops).
+ * {@code /testdrops <player> clear|replace|double|off} changes that player's block drops at HIGHEST without cancelling,
+ * after Cerberus's HIGH: clears them, replaces each with dirt, or doubles each amount (herbalism.js compat).
+ * {@code /testbrew cancel|replace|off} cancels every brew, or replaces its results with water bottles, at HIGHEST after
+ * Cerberus's own HIGHEST (the listener is registered when the command runs, after Cerberus's; alchemy.js compat).
  */
 public final class Protect extends JavaPlugin implements Listener {
 
@@ -32,6 +40,9 @@ public final class Protect extends JavaPlugin implements Listener {
     private final Set<UUID> noCatch = ConcurrentHashMap.newKeySet();
     private final Set<UUID> noReel = ConcurrentHashMap.newKeySet();
     private final Set<UUID> noDrops = ConcurrentHashMap.newKeySet();
+    private final java.util.Map<UUID, String> dropMode = new ConcurrentHashMap<>();
+    private volatile String brewMode = "off";
+    private volatile boolean brewListening;
 
     @Override
     public void onEnable() {
@@ -40,6 +51,43 @@ public final class Protect extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("testdrops")) {
+            if (args.length == 1 && args[0].equalsIgnoreCase("off")) { dropMode.clear(); sender.sendMessage("testdrops: off"); return true; }
+            if (args.length != 2) return false;
+            org.bukkit.entity.Player p = getServer().getPlayerExact(args[0]);
+            if (p == null) { sender.sendMessage("testdrops: no such player"); return true; }
+            String mode = args[1].toLowerCase(java.util.Locale.ROOT);
+            if (!java.util.Set.of("clear", "replace", "double", "off").contains(mode)) return false;
+            if (mode.equals("off")) dropMode.remove(p.getUniqueId()); else dropMode.put(p.getUniqueId(), mode);
+            sender.sendMessage("testdrops: " + p.getName() + " " + mode);
+            return true;
+        }
+        if (command.getName().equalsIgnoreCase("testbrew")) {
+            if (args.length != 1) return false;
+            String mode = args[0].toLowerCase(java.util.Locale.ROOT);
+            if (!java.util.Set.of("cancel", "replace", "off").contains(mode)) return false;
+            if (!brewListening) { // now, so it runs after Cerberus's own HIGHEST (registered after a delayed start)
+                brewListening = true;
+                getServer().getPluginManager().registerEvents(new Listener() {
+                    @EventHandler(priority = EventPriority.HIGHEST)
+                    public void onBrew(BrewEvent e) {
+                        if (brewMode.equals("cancel")) e.setCancelled(true);
+                        else if (brewMode.equals("replace")) {
+                            for (int i = 0; i < e.getResults().size(); i++) {
+                                ItemStack water = new ItemStack(org.bukkit.Material.POTION);
+                                PotionMeta m = (PotionMeta) water.getItemMeta();
+                                m.setBasePotionType(PotionType.WATER);
+                                water.setItemMeta(m);
+                                e.getResults().set(i, water);
+                            }
+                        }
+                    }
+                }, this);
+            }
+            brewMode = mode;
+            sender.sendMessage("testbrew: " + mode);
+            return true;
+        }
         if (command.getName().equalsIgnoreCase("testnocatch")) {
             if (args.length != 1) return false;
             if (args[0].equalsIgnoreCase("off")) { noCatch.clear(); sender.sendMessage("testnocatch: off"); return true; }
@@ -105,6 +153,14 @@ public final class Protect extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDrops(BlockDropItemEvent e) {
         if (noDrops.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
+        String mode = dropMode.get(e.getPlayer().getUniqueId());
+        if (mode == null) return;
+        switch (mode) {
+            case "clear" -> e.getItems().clear();
+            case "replace" -> e.getItems().forEach(it -> it.setItemStack(new ItemStack(org.bukkit.Material.DIRT, it.getItemStack().getAmount())));
+            case "double" -> e.getItems().forEach(it -> { ItemStack s = it.getItemStack(); s.setAmount(Math.min(s.getMaxStackSize(), s.getAmount() * 2)); it.setItemStack(s); });
+            default -> { }
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

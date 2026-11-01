@@ -160,6 +160,39 @@ async function drink(name) {
 }
 
 // ════════════════════════════════════════════════════════════════
+async function compatPhase() {
+  // Another plugin cancels a brew, or replaces its results after Cerberus set them (the sandbox's /testbrew, at HIGHEST
+  // after Cerberus's own): only bottles that really come out as a Cerberus brew pay and are announced.
+  await lab();
+  await setLevel(10);
+  const draughts = o => o.filter(b => b && /Draught of Mending/.test(b.custom)).length;
+  let x0 = await alchXp();
+  let out = await brew(AWKWARD, '/give @s poppy 1');
+  const base = (await alchXp()) - x0;
+  check('Control: three Draughts of Mending, paid', draughts(out) === 3 && base > 0, `${draughts(out)} draughts, +${base}`);
+  let a = await cmd('/testbrew cancel', 600);
+  const on = !!saw(/testbrew: cancel/, a);
+  x0 = await alchXp();
+  out = await brew(AWKWARD, '/give @s poppy 1');
+  const cancelled = (await alchXp()) - x0;
+  check('Another plugin cancels the brew: nothing is made, nothing paid', on && draughts(out) === 0 && cancelled === 0,
+    on ? `${draughts(out)} draughts, +${cancelled}` : 'the sandbox plugin has no /testbrew');
+  await cmd('/testbrew replace', 600);
+  x0 = await alchXp();
+  a = chat.length;
+  out = await brew(AWKWARD, '/give @s poppy 1');
+  const replaced = (await alchXp()) - x0;
+  const announced = chat.slice(a).some(m => /Draught of Mending .*×/.test(m));
+  check('Another plugin replaces the results after Cerberus set them: water comes out, nothing paid or announced',
+    draughts(out) === 0 && out.every(b => b && b.name === 'potion' && !b.custom) && replaced === 0 && !announced,
+    `${JSON.stringify(out.map(b => b && (b.custom || b.name)))}, +${replaced}${announced ? ', announced' : ''}`);
+  await cmd('/testbrew off', 600);
+  x0 = await alchXp();
+  out = await brew(AWKWARD, '/give @s poppy 1');
+  const after = (await alchXp()) - x0;
+  check('Control again: three Draughts, paid as before', draughts(out) === 3 && after === base, `+${after} vs +${base}`);
+}
+
 async function vanillaPhase() {
   await lab();
   await setLevel(1);
@@ -294,6 +327,77 @@ async function reloadPhase() {
   const out = await brew(AWKWARD, '/give @s poppy 1');
   check('...and a brew after the reload: Draughts of Mending', out.every(o => o && /Draught of Mending/.test(o.custom)), JSON.stringify(out.map(o => o && o.custom)));
   await setLevel(1);
+}
+
+async function midbrewPhase() {
+  // A reload that removes the very brew a stand is making (resources.yml "mending: off" in the sandbox's own file, put
+  // back after): the stand can't finish it, so nothing is made or paid, and nothing breaks. Then it is back.
+  const file = require('path').join(process.env.SERVER_DIR || '/tmp/claude-0/-home-user-THE-CERB-PlUGIN/0abccdf5-ab39-5f77-aec2-ee72d6d35cbc/scratchpad/server',
+    'plugins/CerberusPlugin/resources.yml');
+  const fs = require('fs');
+  const keep = fs.readFileSync(file, 'utf8');
+  const off = keep.replace(/^(\s+)mending:\n((?:\1\s+.*\n)+)/m, '$1mending: off\n');
+  if (off === keep) { check('midbrew: found the mending brew in the sandbox\'s resources.yml', false); return; }
+  await lab();
+  await setLevel(10);
+  const x0 = await alchXp();
+  let w;
+  try { w = await fillStand(AWKWARD, 3, '/give @s poppy 1'); await sleep(2500); bot.closeWindow(w); } catch (e) { note('midbrew: ' + e.message); }
+  fs.writeFileSync(file, off);
+  let at = await cmd('/cerb reload', 3000);
+  await sleep(24000); // past the brew's 20 s
+  let out = [];
+  try {
+    w = await openStand();
+    await sleep(800);
+    out = w.slots.slice(0, 4).map(it => it && { name: it.name, custom: nameOf(it) });
+    bot.closeWindow(w);
+  } catch (e) { note('midbrew stand: ' + e.message); }
+  fs.writeFileSync(file, keep);
+  await cmd('/cerb reload', 3000);
+  const g = (await alchXp()) - x0;
+  check('A reload removed the brew a stand was making: no Draught of Mending, nothing paid, the poppy still in the stand',
+    !out.some(o => o && /Draught of Mending/.test(o.custom)) && g === 0 && out[3] && out[3].name === 'poppy',
+    `${JSON.stringify(out.map(o => o && (o.custom || o.name)))}, +${g}`);
+  check('...and the sandbox\'s resources.yml is put back', fs.readFileSync(file, 'utf8') === keep);
+}
+
+async function leave1Phase() {
+  const file = process.env.LEAVE_FILE;
+  if (!file) { check('leave1 needs LEAVE_FILE', false); return; }
+  await lab();
+  await setLevel(10);
+  await cmd(`/forceload add ${X + 2} ${Z + 2}`, 600); // the stand keeps ticking with nobody near
+  const x0 = await alchXp();
+  try { const w = await fillStand(AWKWARD, 3, '/give @s poppy 1'); await sleep(1500); bot.closeWindow(w); } catch (e) { note('leave1: ' + e.message); }
+  require('fs').writeFileSync(file, JSON.stringify({ X, Y, Z, x0 }));
+  note('a Draught of Mending brewing; the starter leaves now');
+}
+
+async function leave2Phase() {
+  const file = process.env.LEAVE_FILE;
+  const saved = file && require('fs').existsSync(file) ? JSON.parse(require('fs').readFileSync(file, 'utf8')) : null;
+  if (!saved) { check('leave2 needs leave1\'s LEAVE_FILE', false); return; }
+  ({ X, Y, Z } = saved);
+  // Read before going near: the brew finished while the starter was away. leave1's own clean-up set Alchemy to level 1
+  // with 0 XP, so anything paid since would show here.
+  const v = await skill('Alchemy');
+  await cmd(`/tp @s ${X + 0.5} ${Y} ${Z + 0.5} 0 20`, 2000);
+  try { await bot.waitForChunksToLoad(); } catch (e) { /* the stand is near */ }
+  const out = [];
+  try {
+    await cmd('/clear @s', 400);
+    const w = await openStand();
+    await sleep(1000);
+    for (let i = 0; i < 3; i++) if (w.slots[i]) await click(i, 0, 1); // the bottles into the inventory, read there
+    bot.closeWindow(w);
+    await sleep(500);
+    for (const it of bot.inventory.items().filter(i => i.name === 'potion')) out.push(nameOf(it));
+  } catch (e) { note('leave2: ' + e.message); }
+  await cmd(`/forceload remove ${X + 2} ${Z + 2}`, 600);
+  check('A brew that finished while its starter was away: made (three Draughts of Mending), and nobody paid',
+    out.filter(n => /Draught of Mending/.test(n || '')).length === 3 && v.level === 1 && v.xp === 0,
+    `${JSON.stringify(out)}, Alchemy ${JSON.stringify(v)}`);
 }
 
 async function restart1Phase() {
@@ -511,9 +615,9 @@ async function menuPhase() {
 (async () => {
   await connect();
   await sleep(3000);
-  const phases = { vanilla: vanillaPhase, brews: brewsPhase, drink: drinkPhase, persist: persistPhase, menu: menuPhase, claim: claimPhase, pvp: pvpPhase,
-    restart1: restart1Phase, restart2: restart2Phase, reload: reloadPhase };
-  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'brews', 'drink', 'pvp', 'persist', 'menu', 'reload'] : phaseArg.split(',');
+  const phases = { compat: compatPhase, vanilla: vanillaPhase, brews: brewsPhase, drink: drinkPhase, persist: persistPhase, menu: menuPhase, claim: claimPhase, pvp: pvpPhase,
+    restart1: restart1Phase, restart2: restart2Phase, reload: reloadPhase, midbrew: midbrewPhase, leave1: leave1Phase, leave2: leave2Phase };
+  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'compat', 'brews', 'drink', 'pvp', 'persist', 'menu', 'reload'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);

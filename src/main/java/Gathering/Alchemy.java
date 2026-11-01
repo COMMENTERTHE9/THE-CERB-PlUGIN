@@ -150,6 +150,7 @@ public final class Alchemy implements Listener, AttributeSource {
     private final Map<UUID, Set<String>> made = new ConcurrentHashMap<>();
     private final Set<NamespacedKey> mixes = ConcurrentHashMap.newKeySet();
     private volatile String registered = "";
+    private final LongAdder replacedByOthers = new LongAdder(); // bottles another plugin changed after Cerberus set them
     private final LongAdder vanillaBottles = new LongAdder(), brewBottles = new LongAdder(), mundane = new LongAdder(), unbound = new LongAdder(),
             elixirs = new LongAdder(), draughtsDrunk = new LongAdder(), refused = new LongAdder(), healTicks = new LongAdder(), warnings = new LongAdder(),
             mixRegistrations = new LongAdder(), resumed = new LongAdder();
@@ -396,8 +397,12 @@ public final class Alchemy implements Listener, AttributeSource {
     // ── the brew completes ───────────────────────────────────────
 
     /** A brew's outcome, set while its results can still change (HIGHEST), counted and paid once it is final (MONITOR). */
-    private record Brewed(BrewEvent event, Binding starter, int vanilla, int ours, int mundaneMade, double xp,
-                          AlchemyRules.Brew brew, Quality tier, AlchemyRules.Brew below) {}
+    /**
+     * A brew's results as Cerberus set them (HIGHEST), per slot: the brew made there (null for none), its tier, a Mundane
+     * Potion of ours, a Cerberus brew carried over unchanged. {@link #onBrewed} counts the final results against these.
+     */
+    private record Brewed(BrewEvent event, Binding starter, AlchemyRules.Brew[] slotBrew, Quality[] slotTier,
+                          boolean[] slotMundane, boolean[] carried, AlchemyRules.Brew below) {}
 
     private final ThreadLocal<Brewed> brewedNow = new ThreadLocal<>();
 
@@ -417,19 +422,19 @@ public final class Alchemy implements Listener, AttributeSource {
         List<ItemStack> results = e.getResults();
         GatheringCatalog c = gathering.catalog();
         ItemStack ingredient = inv.getIngredient();
-        int vanilla = 0, ours = 0, mundaneMade = 0;
-        double xp = 0;
-        AlchemyRules.Brew brewed = null, refusedBrew = null;
-        Quality tierMade = null;
+        AlchemyRules.Brew refusedBrew = null;
+        AlchemyRules.Brew[] slotBrew = new AlchemyRules.Brew[3];
+        Quality[] slotTier = new Quality[3];
+        boolean[] slotMundane = new boolean[3], carried = new boolean[3];
         for (int i = 0; i < results.size() && i < 3; i++) {
             ItemStack in = inv.getItem(i), out = results.get(i);
-            if (brewOf(in) != null) { results.set(i, in.clone()); continue; } // a Cerberus brew is never brewed again
+            if (brewOf(in) != null) { results.set(i, in.clone()); carried[i] = true; continue; } // never brewed again
             String[] made = brewOf(out);
             if (made != null) {
                 AlchemyRules.Brew b = r.enabled() ? r.brew(made[0]) : null;
                 if (b == null || who == null || who.level() < b.level()) {
                     results.set(i, mundane());
-                    mundaneMade++;
+                    slotMundane[i] = true;
                     if (b != null) refusedBrew = b;
                     continue;
                 }
@@ -437,16 +442,11 @@ public final class Alchemy implements Listener, AttributeSource {
                 // The reagent's own quality lifts the brew, a rare reagent's too (Herbalism rolls theirs as it does a herb's).
                 Quality q = r.tier(who.level(), kind == null ? null : GearItems.cropQuality(ingredient), "lift".equals(kind));
                 results.set(i, makeBrew(b, q, r));
-                ours++;
-                xp += b.xp();
-                brewed = b;
-                tierMade = q;
-            } else if (out != null && !out.getType().isAir() && (in == null || !out.isSimilar(in))) {
-                vanilla++;
-                if (r.enabled()) xp += r.vanillaXp();
+                slotBrew[i] = b;
+                slotTier[i] = q;
             }
         }
-        brewedNow.set(new Brewed(e, who, vanilla, ours, mundaneMade, xp, brewed, tierMade, refusedBrew));
+        brewedNow.set(new Brewed(e, who, slotBrew, slotTier, slotMundane, carried, refusedBrew));
     }
 
     /**
@@ -458,25 +458,53 @@ public final class Alchemy implements Listener, AttributeSource {
         Brewed d = brewedNow.get();
         if (d == null || d.event() != e) return;
         brewedNow.remove();
-        vanillaBottles.add(d.vanilla());
-        brewBottles.add(d.ours());
-        mundane.add(d.mundaneMade());
-        if (d.starter() == null) { if (d.vanilla() + d.ours() > 0) unbound.increment(); return; } // a hopper's brew: vanilla's output, nobody paid
+        // What really comes out (2026-11 audit): another plugin may have replaced results after Cerberus set them, without
+        // cancelling. A slot pays only when its final result is the brew Cerberus made there, or (vanilla) a changed bottle.
         AlchemyRules r = rules();
+        List<ItemStack> results = e.getResults();
+        BrewerInventory inv = e.getContents();
+        int vanilla = 0, ours = 0, mundaneMade = 0, replaced = 0;
+        double xp = 0;
+        AlchemyRules.Brew b = null;
+        Quality q = null;
+        for (int i = 0; i < results.size() && i < 3; i++) {
+            if (d.carried()[i]) continue;
+            ItemStack in = inv.getItem(i), out = results.get(i);
+            String[] made = brewOf(out);
+            if (d.slotBrew()[i] != null) {
+                if (made != null && made[0].equals(d.slotBrew()[i].id())) {
+                    ours++;
+                    xp += d.slotBrew()[i].xp();
+                    b = d.slotBrew()[i];
+                    q = d.slotTier()[i];
+                } else replaced++;
+            } else if (d.slotMundane()[i]) {
+                if (out != null && out.isSimilar(mundane())) mundaneMade++; else replaced++;
+            } else if (made == null && out != null && !out.getType().isAir() && (in == null || !out.isSimilar(in))) {
+                vanilla++;
+                if (r.enabled()) xp += r.vanillaXp();
+            }
+        }
+        vanillaBottles.add(vanilla);
+        brewBottles.add(ours);
+        mundane.add(mundaneMade);
+        if (replaced > 0) replacedByOthers.add(replaced);
+        if (d.starter() == null) { if (vanilla + ours > 0) unbound.increment(); return; } // a hopper's brew: vanilla's output, nobody paid
         Binding starter = d.starter();
         Player p = Bukkit.getPlayer(starter.player());
         if (p == null || !r.enabled()) return; // the starter has left: the brew still finished
-        double pay = d.xp();
-        AlchemyRules.Brew b = d.brew(), below = d.below();
-        Quality q = d.tier();
-        int bottles = d.ours();
+        double pay = xp;
+        AlchemyRules.Brew below = mundaneMade > 0 ? d.below() : null;
+        int bottles = ours;
+        AlchemyRules.Brew brewed = b;
+        Quality tier = q;
         p.getScheduler().run(plugin, t -> {
             if (below != null) notice.accept(p, "§7" + below.name() + " needs Alchemy " + below.level() + ": the stand brewed a Mundane Potion.");
             if (starter.creative()) { if (pay > 0) gathering.withheld(p, r.skill(), Manager.XpIntegrity.whyNot(p)); return; }
             if (pay > 0) gathering.award(p, r.skill(), pay);
-            if (b != null) {
-                notice.accept(p, "§d✦ " + q.color + q.displayName + " §d" + b.name() + " §7× " + bottles);
-                discover(p, b);
+            if (brewed != null) {
+                notice.accept(p, "§d✦ " + tier.color + tier.displayName + " §d" + brewed.name() + " §7× " + bottles);
+                discover(p, brewed);
             }
         }, null);
     }
@@ -747,7 +775,7 @@ public final class Alchemy implements Listener, AttributeSource {
     /** Diagnostics for /cerb alchemy stats. */
     public String stats() {
         return "vanilla bottles " + vanillaBottles.sum() + ", Cerberus brews " + brewBottles.sum() + ", Mundane instead " + mundane.sum()
-                + ", brews nobody started " + unbound.sum() + ", elixirs drunk " + elixirs.sum() + ", draughts " + draughtsDrunk.sum()
+                + ", brews nobody started " + unbound.sum() + ", bottles another plugin changed " + replacedByOthers.sum() + ", elixirs drunk " + elixirs.sum() + ", draughts " + draughtsDrunk.sum()
                 + " (refused " + refused.sum() + "), healing ticks " + healTicks.sum() + ", heads-ups " + warnings.sum()
                 + ", running now " + active.size() + ", stands bound " + bound.size() + ", resumed after a restart " + resumed.sum()
                 + ", brewing mixes registered " + mixRegistrations.sum() + "x";

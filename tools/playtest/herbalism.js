@@ -528,6 +528,34 @@ async function nodropsPhase() {
   await cmd('/kill @e[type=item,distance=..20]', 300);
 }
 
+async function compatPhase() {
+  // Another plugin changes a gather's drops at HIGHEST without cancelling the event (the sandbox's /testdrops, after
+  // Herbalism's HIGH): only a herb that really drops pays, once per gather however many drop.
+  await arena();
+  await setLevel(1);
+  await stand(0, -2, 0);
+  const spots = [[1, 0, 0], [-1, 0, 0], [2, 0, 0], [-2, 0, 0], [0, 0, 2], [0, 0, -2]];
+  for (const [x, y, z] of spots) await setblock(x, y, z, 'poppy');
+  for (let i = 0; i < 20 && spots.some(([x, y, z]) => blockName(x, y, z) !== 'poppy'); i++) await sleep(250);
+  await brkXp(...spots[0]); // a first gather (its discovery, if any)
+  const base = await brkXp(...spots[1]);
+  let at = await cmd(`/testdrops ${NAME} clear`, 600);
+  const on = !!saw(/testdrops: .* clear/, at);
+  const cleared = await brkXp(...spots[2]);
+  await cmd(`/testdrops ${NAME} replace`, 600);
+  const replaced = await brkXp(...spots[3]);
+  await cmd(`/testdrops ${NAME} double`, 600);
+  const doubled = await brkXp(...spots[4]);
+  await cmd('/testdrops off', 600);
+  const after = await brkXp(...spots[5]);
+  await cmd('/kill @e[type=item,distance=..20]', 300);
+  check('Control: a wild poppy pays the same before and after', base > 0 && after === base, `+${base}, +${after}`);
+  check('Another plugin clears the drops without cancelling: nothing pays', on && cleared === 0,
+    on ? `+${cleared}` : 'the sandbox plugin has no /testdrops');
+  check('...replaces them with something else: nothing pays', replaced === 0, `+${replaced}`);
+  check('...doubles them: the gather pays once', doubled === base, `+${doubled} vs +${base}`);
+}
+
 async function waterPhase() {
   // Wildcrafting tall seagrass under water: both halves of every plant it takes become water again, never an air pocket
   // (an air pocket under water stays: the water above it is never told to fall in). A stone basin three blocks deep under
@@ -758,8 +786,8 @@ async function techniquePhase() {
   const phases = { gather: gatherPhase, placed: placedPhase, shears: shearsPhase, creative: creativePhase, machines: machinesPhase,
     bonemealtop: bonemealTopPhase, nodrops: nodropsPhase,
     fortune: fortunePhase, rare: rarePhase, quality: qualityPhase, wild: wildPhase, protect: protectPhase, menu: menuPhase,
-    relog: relogPhase, technique: techniquePhase, bonemeal: bonemealPhase, water: waterPhase };
-  const run = phaseArg === 'all' ? ['gather', 'placed', 'bonemeal', 'bonemealtop', 'nodrops', 'shears', 'creative', 'machines', 'fortune', 'rare', 'quality', 'wild', 'water', 'menu', 'relog', 'technique']
+    relog: relogPhase, technique: techniquePhase, bonemeal: bonemealPhase, water: waterPhase, compat: compatPhase };
+  const run = phaseArg === 'all' ? ['gather', 'placed', 'bonemeal', 'bonemealtop', 'nodrops', 'compat', 'shears', 'creative', 'machines', 'fortune', 'rare', 'quality', 'wild', 'water', 'menu', 'relog', 'technique']
     : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }

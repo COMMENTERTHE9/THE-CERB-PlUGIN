@@ -88,7 +88,7 @@ public final class Herbalism implements Listener {
     private final Map<String, Long> hints = new ConcurrentHashMap<>();
     private final LongAdder gathers = new LongAdder(), placedGathers = new LongAdder(), withoutHerb = new LongAdder(),
             bonuses = new LongAdder(), rareDrops = new LongAdder(), discoveries = new LongAdder(), sweeps = new LongAdder(),
-            swept = new LongAdder(), refusals = new LongAdder();
+            swept = new LongAdder(), refusals = new LongAdder(), removedByOthers = new LongAdder();
     private final LongAdder[] qualities = new LongAdder[Quality.values().length];
 
     public Herbalism(Plugin plugin, GatheringService gathering, SkillManager skills, BiConsumer<Player, String> notice) {
@@ -201,6 +201,16 @@ public final class Herbalism implements Listener {
         Gathered g = gathered.get();
         if (g == null || g.event() != e) return;
         gathered.remove();
+        // Another plugin may have changed the drops after HIGH without cancelling (cleared them, replaced the herb): it is
+        // the final list that says what was gathered (2026-11 audit). Read only: MONITOR never changes the event.
+        boolean herbDropped = false, qualityKept = g.quality() == Quality.COMMON;
+        for (Item it : e.getItems()) {
+            ItemStack s = it.getItemStack();
+            if (s.getAmount() <= 0 || !g.herb().produce().contains(s.getType())) continue;
+            herbDropped = true;
+            if (!qualityKept && GearItems.cropQuality(s) == g.quality()) qualityKept = true;
+        }
+        if (!herbDropped) { removedByOthers.increment(); return; } // nothing of the herb really dropped: nothing gathered
         HerbalismRules r = rules();
         Player p = g.player();
         gathers.increment();
@@ -210,7 +220,7 @@ public final class Herbalism implements Listener {
             bonuses.increment();
             p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.8f);
         }
-        if (g.quality() != Quality.COMMON) announceQuality(p, g.herb().name(), g.quality());
+        if (g.quality() != Quality.COMMON && qualityKept) announceQuality(p, g.herb().name(), g.quality());
         ItemStack rare = rollRare(p, r, g.herb(), g.level());
         if (rare != null) e.getBlock().getWorld().dropItemNaturally(e.getBlock().getLocation().add(0.5, 0.5, 0.5), rare);
     }
@@ -477,7 +487,7 @@ public final class Herbalism implements Listener {
     /** One line for /cerb herb stats. */
     public String stats() {
         return "gathered " + gathers.sum() + " (placed by hand " + placedGathers.sum() + ", nothing of the herb " + withoutHerb.sum()
-                + "), Fortune extra " + bonuses.sum() + ", rare reagents " + rareDrops.sum() + ", discoveries " + discoveries.sum()
+                + ", herb taken out of the drops by another plugin " + removedByOthers.sum() + "), Fortune extra " + bonuses.sum() + ", rare reagents " + rareDrops.sum() + ", discoveries " + discoveries.sum()
                 + ", Wildcrafting " + sweeps.sum() + " sweeps / " + swept.sum() + " plants (refused " + refusals.sum() + "), quality fine "
                 + qualities[Quality.FINE.ordinal()].sum() + " superior " + qualities[Quality.SUPERIOR.ordinal()].sum()
                 + " masterwork " + qualities[Quality.MASTERWORK.ordinal()].sum();
