@@ -1,6 +1,6 @@
 # Cerberus — Project Status
 
-*Last updated 2026-10-28 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
+*Last updated 2026-11-01 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
 **Current milestone:** Steps 0–2 of `docs/ROADMAP.md` are done and verified in game on the cloud sandbox:
 - **Step 0**, the owner's decisions: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis.
@@ -34,6 +34,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Your playtest (2026-10-28):** "everything seems to work". Your request: show the effects running on you (a meal and its time left) in the Player Menu; it comes next. What follows is proposed in `docs/ROADMAP.md` → "Next: proposed order", for you to set.
 - **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting. **Increment 5, Alchemy** (section "Done: Alchemy", checklist §22): completed brews pay their starter, eight draughts and elixirs, tiers and Essence, with an independent review's findings fixed. **Increment 6, integration** (section "Done: integration"): the full regression, an independent review of the whole milestone with its six findings fixed, and the before/after. **The milestone is built and waits for your playtest** (checklist §17–§22).
 - **Your request (2026-10-28):** the hub's Recipes tile is no longer a placeholder: it opens every Cerberus recipe (section "Done: Recipes screen").
+- **Your request (2026-11-01), the reliability audit:** the suspected save race was real (an older save could replace newer progress, a failed save lost it) and is fixed; XP earned while a player's data loads is no longer lost; Herbalism and Alchemy pay for what really came out; the last regression's open exceptions traced; two independent reviews settled; the full regression and the before/after on the final build (section "Done: reliability audit"; your checklist §24). Not merged; nothing run on Windows.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -90,7 +91,7 @@ The foundation runs. The plugin loads cleanly on Folia 1.21.11 under Java 21 and
 |---|---|
 | Labels on *every* mob (`apply-to: ALL`): each fish, bat and villager gets an extra entity | Performance on busy servers; mob pools are also kept for a whole session after chunk unload |
 | Void kills of high-tier mobs take minutes (void damage drains the pool slowly) | Cosmetic / odd |
-| SQLite opens a connection per call, no WAL (suspected) | "database is locked" if several players save at once for > 3 s |
+| SQLite opens a connection per call, no WAL | Skills and classes are now written in order by one thread each, and a save that meets "database is locked" is retried, kept and written later (section "Done: reliability audit"). Other writes (discovered chunks) still open their own connection |
 | Same-day session logs overwrite each other | Debugging only |
 
 ## Fixed and verified on 2026-10-24
@@ -1441,6 +1442,146 @@ No plugin errors in any server log. Each failure above was traced; none was the 
 - **Server logs:** no errors on either server.
 
 **For you:** Player Menu → Recipes (checklist §23).
+
+## Done: reliability audit, repairs and release verification (2026-11-01, your request)
+
+**What it was for:** checking the suspected save race and the other open reliability questions before your next playtest, fixing what was real, and re-verifying the whole plugin on its final build. **Not merged into `master`;** branch `claude/quirky-mccarthy-nhaz58`, from `d06f1ed`. No gameplay rule, formula, recipe, attribute or ability changed. Everything ran on disposable sandbox servers in the cloud: **nothing was run on Windows**, and nothing touched your world, server or database.
+
+**Evidence key** (as everywhere in this file): *Played* = a real Folia 1.21.11 server driven by scripted test clients (bots); *Tested* = unit tests; *Read* = code inspection. No real player took part.
+
+### 1. Skill progress could roll back or be lost (genuine, fixed)
+
+**What was wrong** (Read, then Played on `d06f1ed`): an XP gain, a quit, `/cerb backup` and shutdown each saved skills their own way, on different threads, with nothing ordering them. An older save could reach the database after a newer one and replace it, and a quick rejoin could read the database before the quit's save had landed. A save that failed (SQLite busy: another program, a backup tool, several writes at once past SQLite's 3 s wait) was logged and the progress since the last good save was gone, at shutdown too.
+
+**Shown on `d06f1ed`** (`tools/playtest/persist.js`, another program holding SQLite's write lock with `dblock.py`):
+- XP gains and a quit while the database was busy: **5 of 10 trials rolled back** to an older value.
+- The database busy past every attempt across a quit: after it let go and the bot rejoined, **[10,0] instead of the [10,80] the game had shown**.
+- A stop with the database busy: the log said "Failed to save skills … database is locked" and "Failed to save classes …"; after the restart the Warrior rank was the old one (8, the game had shown 4).
+
+**The fix** (`Skills/SkillStore`, `cerberus/world/cerb/SkillRows`):
+- **One writer, in order.** Every save is a snapshot taken on the player's own thread with a number that only grows; one thread writes them; a player's newest snapshot is written and an older one skipped.
+- **The database keeps a row only from a snapshot at least as new** (a new column, `saved_seq`), so even a late write can't replace newer progress. Each snapshot is written whole or not at all.
+- **Loads run on the same thread,** after every save handed in before them: a rejoin reads what the quit wrote.
+- **A failed write** is tried three times, then logged as an error and told to admins online; the progress stays in memory, a rejoin continues from it, and it is written as soon as the database answers (every 30 s) or at shutdown. What shutdown still can't write goes to `plugins/CerberusPlugin/skills-recovery/`, written at the next start where newer. Class documents (`player_classes`) get the same failure handling (`Classes/ClassDocStore`, `classes-recovery/`).
+- **`/cerb saves`** shows how saving is going: written, skipped as older, failed, kept in memory, recovered at startup, the writer's queue.
+
+**Shown on the final build** (Played, `tools/playtest/persist.js`, section 6): contention 10 of 10 trials with nothing rolled back (`d06f1ed`: 5 of 10); the busy-past-every-attempt quit [10,80] in game and stored; six bots gaining XP fast, quitting and rejoining at once, each exactly what it showed; `/cerb backup` while a bot gains XP, 5 of 5 trials; a stop with a save pending, clean and with the database busy across the stop: skills and Warrior rank back after the restart (2/2 each); a stop and the next start both busy: the join continues from the recovery file and it is stored once the database answers (4/4; `a1fc5fa` 1/4). A database left from before the update gets the column with every row kept (unit-tested on real SQLite), and the previous build (`d06f1ed`) runs on the updated database (shown on the sandbox).
+
+**What it does not protect against:** a crash, a killed process or a power cut between an XP gain and its save (at most about a second of play, the save window), and losing the disk. A recovery file is only written by a clean stop.
+
+### 2. XP earned while a player's data was still loading was lost (genuine, fixed)
+
+**What was wrong:** for the moment after a join while skills load (milliseconds normally, seconds when the database is busy), Mining, Woodcutting, Farming and Herbalism XP was thrown away. **Shown on `d06f1ed`:** a bot that mined coal, picked a poppy and harvested wheat while its load waited got **+0, +0, +0**. This is the likeliest cause of the early-session Herbalism XP that went missing in the last regression.
+
+**The fix:** XP earned while loading is kept for that session only (`Skills/LoadingXpBuffer`, checked by session number), applied once when its load completes, and dropped if the load fails or the player leaves first; never given to another session. A discovery waits for the load (its record would stay while its XP could be dropped).
+
+**Shown on the final build:** the same blocks while loading pay exactly what they pay a loaded player, once; leaving before the load completes changes nothing stored; a load that fails disconnects the player with a message and changes nothing.
+
+**Known limit (accepted, yours to change):** XP earned during the load is worked out before the player's levels are known, as level 1: the "20 levels above pays a quarter" rules and the weak-mob reduction don't apply to it, and Herbalism's rare-reagent and quality rolls use level 1. It is bounded by the load (milliseconds, at most about 3 s on a busy database). Making it exact means deferring each level-dependent rule to the moment the load completes; say if you want it.
+
+### 3. Herbalism and Alchemy and other plugins (genuine, fixed; limits stated)
+
+**Herbalism** pays at the end of the drop event, from the drops that really fell (Played, with the sandbox's test plugin changing drops after Cerberus): drops cleared → nothing paid; replaced by something else → nothing; doubled → paid once; control poppies before and after pay the same. On `d06f1ed` a gather whose drops another plugin cleared still paid.
+
+**Alchemy** recounts every bottle from the brew's final results (Played): another plugin cancelling the brew → nothing made or paid; replacing the results → nothing paid or announced; writing results into empty slots → nothing paid (it made Cerberus pay +4 for two bottles from nothing on the build before the review's fix); a hopper-fed stand pays nobody; a restart mid-brew pays its starter; a reload that removes the brew a stand is making → nothing made, nothing paid, the ingredient still in the stand; a starter who leaves before it finishes → the brew is made and nobody is paid (as designed).
+
+**API limits, stated rather than claimed:** a plugin that changes drops or brew results at MONITOR breaks Bukkit's contract and can't be seen by anyone; Cerberus reads the final state at MONITOR and never changes it there. Mining, Woodcutting and Farming pay for the break itself, not its drops (by design: a protection plugin that cancels the break is respected, one that only removes the drops is not checked).
+
+### 4. The open regression exceptions (each traced)
+
+| Exception (last regression) | Cause | Whose | What changed | Final build |
+|---|---|---|---|---|
+| Iron Reprisal 16/17 (a raised shield let one husk blow through, once, on a busy machine) | Not reproduced since; the check now reports where a landed blow came from (a shield covers 90° either side of where you face) | Harness timing under load (not shown to be the plugin's) | Diagnostic only; nothing in the shield code changed | 17/17 three times (two sandboxes and the final build), the shield's own checks 6/6 three more times |
+| Your XP reports 23/25 (new chunks paid no Pathfinding XP, in survival either) | Reproduced (23/25 again on the build before the harness fix): the sandbox worlds have real terrain (not superflat, as an older note said), so the walk at Y −60 started inside deepslate and never entered a chunk | Harness | The walk digs its own corridor; same assertions | 25/25 |
+| Woodcutting 38/39 (the wind charge's burst didn't show) | The trapdoor's change reached the bot after the check's 1.2 s on a busy machine | Harness timing | Waits up to 5 s; same assertion | 39/39 three times, and 23/23 for protection, heartwood, custom woods, the canopy and machines |
+| Active effects 46/48 (War Cry never cast) | The sword hadn't reached the bot when it pressed Q (fixed in the integration run) | Harness | War Cry cast again after its cooldown if the head is read after its 8 s (said in the output; not needed in the final run); health read once it stops changing | 48/48 (a second sandbox), then 47/48 and the one 2/2 on the final build (section 6) |
+| Herbalism XP early in a session | The loading window (section 2) | **Plugin** | Fixed | 65/65 four times, each with a character that had never played |
+| Small dripleaf (a lone stem after bone meal) | The server's own behaviour: with Cerberus removed, 7 of 16 bone-mealed dripleaf became lone stems | Server (vanilla) | Nothing changed in Cerberus; the harness sets such a plant up again | 3/3 |
+
+### 5. Independent review
+
+An independent reviewer (a separate agent, not the one that wrote the code) read `d06f1ed..a1fc5fa` and found twelve things; each is settled:
+
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| 1 | A recovery file that can't be written at startup was ignored by joins and later discarded | Medium | **Fixed and shown in game:** kept in memory, used by the join, written when the database answers, file removed only then. On `a1fc5fa` the join loaded the older [10,0] and rank; on the final build the file's [10,33] and rank, stored once the lock went (4/4; the old build 1/4). |
+| 2 | A database busy during the first start after the update never got the new column; every join was then refused | Low-medium | **Fixed and shown in game:** the column is added before the first load or save that can. On `a1fc5fa` every join was kicked ("no such column: saved_seq"); on the final build the join loads. |
+| 3 | A save order started from the clock could fall below the stored rows; saves would silently change nothing | Low | **Fixed:** each load moves the order past that player's stored rows; a write that changes nothing is logged and counted, never counted as written (unit-tested). |
+| 4 | A discovery made while loading kept its record but could lose its XP | Low | **Fixed:** discoveries wait for the load again. |
+| 5 | XP earned while loading is worked out at level 1 | Low | **Accepted limit** (section 2), yours to change. |
+| 6 | Alchemy paid for results another plugin wrote into empty slots | Low | **Fixed and shown in game:** +4 on `a1fc5fa`, +0 now. |
+| 7 | Shutdown could skip writing skills if an earlier step threw | Low | **Fixed:** every step runs; one class document that can't be built never stops the others; the admin alert stays quiet once the plugin is stopping. |
+| 8 | A narrow window where a snapshot got no recovery file at shutdown | Low | **Fixed** (read order); a write still running when shutdown stops waiting gets its file (unit-tested). |
+| 9 | XP racing the end of a load could be dropped; snapshots assume the player's own thread | Info | **Fixed** for the load (the buffer is closed under a lock, unit-tested with four threads); **accepted** for the rest: kill XP from another region while that player quits can make one snapshot mix old and new values until the next save. Rare, older than this work. |
+| 10 | Going back to an older Cerberus and forward again can apply an old recovery file over progress made meanwhile | Info | **Accepted, with a procedure** (section 8). |
+| 11 | Harness checks that could pass without testing anything | Low | **Fixed:** `persist.js` needs `SERVER_DIR` and counts a trial with nothing to compare as a failure; `joinact` compares with a loaded player's XP exactly; `herbalism.js compat` checks the poppy was really gathered; `alchemy.js midbrew` puts the sandbox file back in a `finally`. |
+| 12 | Missing tests, two weak assertions | Low | **Fixed:** tests for the buffer, unwritable recovery files, writes that change nothing, the order after a load, a write in flight at shutdown, one player's saves handed in out of order from four threads, the column added after a busy first try (real SQLite). The fake database gave every test player the same id; each has its own now. |
+
+**A second independent review** (another separate agent) read the fixes above (`8042f29..09d6995`): no high-severity defect; each finding is settled:
+
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| M1 | Class documents at shutdown were read in the order finding 8 fixed for skills: a write failing at that moment could leave a document without a recovery file | Medium | **Fixed;** the test fails with the old order put back. |
+| L1 | A recovery file's progress that can never be written (a hand-edited file) was retried all run, and its failures made other players' saves give up after one attempt | Low | **Fixed:** one attempt each retry, never counted against the others (tested; fails without the fix). |
+| L2 | An error right after a "changed nothing" warning wasn't logged (one shared once-a-minute limit) | Low | **Fixed** (separate limits, tested). |
+| L3 | A recovery file cut short (a crash while writing it) could pass for a good one, and a join replaced every skill with what the file held | Low | **Fixed:** files are written whole (a temporary file moved over the old one) with a check; one that doesn't match is not used and is left for a person; a join lays kept progress over the stored rows. A real multi-line class document and a full snapshot pass their check byte for byte (tested). |
+| L4 | Fishing: a win from while its owner was away is recorded at the next join, before the skills load; its XP could be lost with a failed load | Low | **Fixed:** it waits for the load (the same rule as discoveries). |
+| L5 | Shutdown: closing menus wasn't guarded, a LinkageError wasn't caught, one player's cleanup could stop the others' final saves | Low | **Fixed** (every step guarded, the skill drain in a `finally`). |
+| I1 | XP earned while loading: another session's hand-over could drop this one's (not reachable today) | Info | **Fixed** anyway. |
+| I2 | An award from another region racing the end of a load still meets the skill maps' unlocked read-modify-write | Info | **Accepted:** older than this work, rare (section 5, finding 9). |
+| I3 | A recovery file with no skills said "older than stored" | Info | **Fixed** (says what it is). |
+| I4 | This section was missing | Info | Written. |
+| T1 | Three new tests didn't test what their names said (they passed with the fix removed) | Test | **Fixed:** rebuilt with exact interleavings; each new test now fails with its fix reverted (checked on a scratch copy). |
+| H | Harness checks that could pass vacuously (empty slots not filled, an unloaded block read as gathered, another player's recovery file) | Harness | **Fixed.** |
+
+### 6. Full regression on the final build
+
+**The final build:** `452e412` (code), with the unit tests of `53aa46d`. **Unit tests:** 453, all passing (Tested); 415 before this work. **In game** (Played), the three sandboxes side by side (four cores), each warmed up first (`tools/playtest/warmup.js`):
+
+| Area | Result |
+|---|---|
+| Menus, admin, progression | smoke 14/14; menu navigation 63/63, names 4/4, Smithing 11/11, safety 18/18, motion 22/22, Recipes 16/16; admin 40/40 and 14/14; Stats 14/14; kill XP 5/5 |
+| XP rules, effects, meals | XP integrity 35/35; your XP reports 25/25; level-ups 19/19 and skill needs 6/6; labels 11/11; Active effects 47/48 (below), the meal heads-up 6/6; Cooking 33/33 |
+| Saving and loading | contention 10/10 trials, failure 2/2, rapid 1/1 (6 bots), backup 1/1 (5 trials), joining while loading 2/2, leaving while loading 1/1, a failed load 2/2; a stop with a save pending, clean 2/2 and with the database busy 2/2; a recovery file the start can't write 4/4; the first start after the update with the database busy: the column added at the first load and the join works |
+| Gathering | Farming 67/67; Herbalism 65/65, protection 2/2, waterlogged dripleaf 3/3; Mining and Smithing 78/78, custom resources 9/9; Woodcutting 39/39 and 23/23 |
+| Fishing | Fishing 52/53 (below); Fishing equipment 179/186 (below) |
+| Alchemy | 37/38 (below), a reload mid-brew 2/2, the starter leaving 1/1, a restart mid-brew 2/2 |
+| Combat and classes | Iron Reprisal 17/17, PvP switch 3/3, cooldown 1/1, the shield's checks 6/6 three times; Warrior 21/21, Duelist 15/15, Mage 24/24, mixed loadouts 20/20, earlier fixes 20/20, click combos 13/13; class exploits 22/22, class menus 15/15 |
+
+**Server logs:** two errors on the main sandbox, both the expected result of the failed-load test (the database held past the load's timeout: the player disconnected, nothing changed); none elsewhere.
+
+**Each failure traced, none the plugin's** (each fixed in the harness, the assertion unchanged, and passing on the final build):
+- **Fishing equipment 179/186:** all seven in the bite cue. The harness counted every text display as a "!", and mob labels are text displays too; at this pond on real terrain, labelled creatures were near it, so their labels were the "red", the "!" that never went and the 135 "seen" by the other player. Counting only a display whose text is "!": **8/8**.
+- **Fishing 52/53:** a creature only its owner can hurt lost 1 health while another player hit it. In three reruns with every one of that player's hits made from within reach (18 hits), it lost nothing and showed no hurt flash: the guard holds. The point lost was something else (most likely the drowned burning a moment in daylight out of the water, as drowned do). The check now makes each hit from within reach (before, the creature had often walked out of reach, so the check could pass without a hit landing) and keeps the creature from burning during it: **11/11**.
+- **Alchemy 37/38:** a draught drunk in a fight must heal its full quarter once the fight tag ends. The harness's one 40-damage blow, meant to leave room below full health, was taken by the full defense bar (health stayed at 90 of 103), and it read the health after the heal had begun. Blows until health is at most 70%, read just before the tag ends: **3/3 twice** (+28%).
+- **Active effects 47/48:** Resistance IV changes nothing (the same hit with and without it, 11 and 12, within the check's margin); the harness flagged that one hit didn't start on a full defense bar (`/cerb heal` fills health, the bar refills by itself). Waiting up to 60 s for the bar: **2/2**.
+- **On the build before the second review's fixes** (`09d6995`, a run stopped half-way for those fixes), three more: a farm field and a brewing stand at freshly generated far terrain not ready for a suite's first phase right after a restart (hence the warm-up; both passed on the final build), and the same Active effects timing.
+
+### 7. Performance before and after
+
+`docs/PERFORMANCE.md` → "Reliability audit before/after": `d06f1ed` against the final build on the main sandbox alone, twelve loads, among them mining, Felling, the Active Effects menu (left out last time), **18 players** fighting, and a **join/quit churn** (about 230 joins in 80 s). TPS 20 throughout; every difference within one run's spread and traced in the profile (Cerberus 0.082–0.116 ms a tick in combat, 0.023 mining, 0.055 Felling, 0.087 under the churn). A join's skills loaded 83 ms after spawning on average (437 ms at the slowest), with no rollback. 5,233 snapshots written, none failed. **The brewing-stand fix holds** (no Alchemy samples in the idle-stands load). Saving runs on its own thread, never on a region thread. After every load, nothing of this work was left in memory (no snapshot, no loading buffer, no session). What these runs don't show: a busy database under load, more than 18 players or several regions, a real client, Windows.
+
+### 8. Updating and going back
+
+- **Updating** adds the `saved_seq` column to `player_skills` at the first start (every row kept, the log says "added saved_seq"). If the database is busy then, it is added before the first load or save instead. Back up `plugins/CerberusPlugin/cerberus.db` first (`run.bat` does, `backup.bat` for everything).
+- **Going back to an older Cerberus** works on the updated database (older versions name their columns and ignore `saved_seq`; shown on the sandbox). Older versions don't know the recovery folders: before going back, start the new version once so any recovery files are written, and if you later update again, delete `skills-recovery/` and `classes-recovery/` first if they still hold files from before you went back.
+- **Recovery folders** (`plugins/CerberusPlugin/skills-recovery/`, `classes-recovery/`) are empty normally. A file there means a clean stop couldn't reach the database; the next start writes it (only where newer) and deletes it, or keeps it in memory until the database answers.
+
+### 9. For you on Windows (not verified there)
+
+Nothing in this work was run on Windows. What differs there and could matter: SQLite file locking (an antivirus or a backup tool scanning `cerberus.db` holds it like another program would: saves wait, retry and are kept, and the log says so), file paths for the recovery folders, and the shutdown time (a stop waits at most 20 s for skill saves and 10 s for classes). Checklist §24.
+
+### 10. Still open (none blocks the playtest)
+
+- **Your decision:** XP earned while loading is worked out at level 1 (section 2; `docs/DECISIONS.md`).
+- **Accepted, rare, older than this work:** kill XP from another region landing while that player quits can mix old and new values in one save until the next one (review finding 9).
+- **Going back to an older build:** follow section 8 for the recovery folders (review finding 10).
+- **Two older per-player entries stay after a player leaves** (ability-key state, damage-number state): one per player name ever seen, small; worth clearing at quit in a later milestone.
+- **Other database writes** (discovered chunks) still open their own connection and are not part of the ordered writer; a failure there is logged as before.
+- **Not tested as such:** two players working one brewing stand; more than 18 players; several Folia regions under load; a real client; Windows.
+- **Harness:** `xpbugs.js`'s pond arena relies on the main sandbox's area cleared by earlier runs (on fresh terrain its fishing and bow checks can't run; its Pathfinding walk now digs its own corridor).
+
+**Verdict for the branch:** CONDITIONAL PASS: every genuine defect found is fixed and shown fixed on the final build; two independent reviews settled; the full regression and the before/after done. The conditions: your playtest on Windows (checklist §24 and the sections before it), and your answer on the loading-XP question.
 
 ## Roadmap
 
