@@ -1379,22 +1379,29 @@ async function cue() {
   await survival(10);
   await cmd('/fishing cue on', 400);
   const tdType = bot.registry.entitiesByName.text_display.id;
-  const cues = [], bells = [];
-  const onSpawn = p => { if (p.type === tdType) cues.push({ id: p.entityId, t: Date.now(), colors: [], gone: 0 }); };
+  // A text display is the cue only when its text is "!": mob labels are text displays too, and a pond on real terrain has
+  // labelled creatures near it (2026-11 audit: their labels were counted as cues, seen by the other player and never gone)
+  const isBang = str => /"value":"!"|"text":"!"/.test(str);
+  const seen = new Map(), cues = [], bells = [];
+  const onSpawn = p => { if (p.type === tdType) seen.set(p.entityId, { id: p.entityId, t: Date.now(), colors: [], gone: 0, bang: false }); };
   const onMeta = p => {
-    const c = cues.find(x => x.id === p.entityId);
+    const c = seen.get(p.entityId);
     if (!c) return;
     const str = JSON.stringify(p.metadata);
+    if (!c.bang && isBang(str)) { c.bang = true; cues.push(c); }
+    if (!c.bang) return;
     for (const col of ['green', 'yellow', 'red']) if (str.includes('"' + col + '"') && !c.colors.includes(col)) c.colors.push(col);
   };
-  const onGone = p => { for (const c of cues) if (!c.gone && p.entityIds.includes(c.id)) c.gone = Date.now(); };
+  const onGone = p => { for (const c of seen.values()) if (!c.gone && p.entityIds.includes(c.id)) c.gone = Date.now(); };
   const onSound = p => { if (Math.abs((p.volume || 0) - 0.8) < 0.01 && Math.abs((p.pitch || 0) - 1.6) < 0.01) bells.push(Date.now()); };
   bot._client.on('spawn_entity', onSpawn); bot._client.on('entity_metadata', onMeta);
   bot._client.on('entity_destroy', onGone); bot._client.on('sound_effect', onSound);
   // Another player at the pond: the "!" is only its owner's.
   const watcher = mineflayer.createBot({ host: '127.0.0.1', port: Number(process.env.MC_PORT || 25565), username: 'CerbWatch', version: '1.21.11', auth: 'offline' });
   let watcherSaw = 0;
-  watcher._client.on('spawn_entity', p => { if (p.type === tdType) watcherSaw++; });
+  const watcherSeen = new Set();
+  watcher._client.on('spawn_entity', p => { if (p.type === tdType) watcherSeen.add(p.entityId); });
+  watcher._client.on('entity_metadata', p => { if (watcherSeen.has(p.entityId) && isBang(JSON.stringify(p.metadata))) { watcherSeen.delete(p.entityId); watcherSaw++; } });
   await new Promise(r => watcher.once('spawn', r));
   await sleep(1500);
   await cmd(`/tp CerbWatch ${X + 1.5} ${Y} ${Z + 0.5}`, 1500);

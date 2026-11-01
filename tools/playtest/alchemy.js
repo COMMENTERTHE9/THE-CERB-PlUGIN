@@ -561,10 +561,18 @@ async function pvpPhase() {
   check('...while the fight lasts it heals nothing (paused)', endFight.hp <= start.hp + 2, `${start.hp} → ${endFight.hp} of ${endFight.max} over ${Math.round((lastHit - t0) / 1000)} s`);
   // Room for the heal to show: natural regeneration refills part of the pool meanwhile, so 40 more damage just before the
   // tag ends (not from a player: the tag isn't renewed). Then the draught's own state and the pool over the next seconds.
-  await sleep(Math.max(0, lastHit + 13000 - Date.now()));
-  await cmd('/damage @s 40 minecraft:generic', 300);
-  await sleep(Math.max(0, lastHit + 15500 - Date.now())); // the tag ends 15 s after the last hit
+  // The defense bar takes damage before health, and a full bar (308 here) took all of a single 40 (2026-11: health stayed
+  // at 90 of 103, too little room to show a quarter): blows of 60 until health is at most 70% of max, so the quarter
+  // fits whatever the bar held.
+  await sleep(Math.max(0, lastHit + 11500 - Date.now()));
+  for (let i = 0; i < 8 && Date.now() < lastHit + 14500 && !(hud().hp <= 0.7 * hud().max); i++) {
+    await cmd('/damage @s 60 minecraft:generic', 300);
+  }
+  // the health just before the tag ends (15 s after the last hit): read after it, the first heal had already come (2026-11:
+  // +22% counted of a full quarter)
+  await sleep(Math.max(0, lastHit + 14700 - Date.now()));
   const tagEnd = hud();
+  await sleep(Math.max(0, lastHit + 15500 - Date.now()));
   const at = await cmd('/alchemy', 900);
   const healing = chat.slice(at).some(m => /A draught is healing/.test(m));
   await sleep(5600);
@@ -573,7 +581,8 @@ async function pvpPhase() {
   // (+1% to +12% over these 6.5 s on the build before the fix, where the draught heals nothing), so it is not counted on.
   check('...once the tag ends, it heals: "A draught is healing", and its full quarter of max health',
     healing && after.hp - tagEnd.hp >= Math.floor(0.25 * after.max),
-    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%)`);
+    `${healing ? 'healing' : 'no draught running'}; ${tagEnd.hp} → ${after.hp} of ${after.max} (+${Math.round((after.hp - tagEnd.hp) / after.max * 100)}%)`
+      + (tagEnd.hp > 0.75 * tagEnd.max ? ' (less than a quarter below full when the tag ended: the case could not show)' : ''));
   other.quit();
   await cmd('/effect give @s resistance infinite 4 true', 300);
   await cmd(`/cerb heal ${NAME}`, 400);

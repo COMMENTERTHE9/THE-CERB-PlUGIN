@@ -332,13 +332,30 @@ async function call() {
     const s = target.inventory.slots.findIndex((it, i) => it && it.name === 'netherite_sword' && i >= 36 && i <= 44);
     if (s >= 0) target.setQuickBarSlot(s - 36);
     const h0 = (await mobsHp(30)).find(m => /drowned/.test(m.line));
+    // what else could take health meanwhile, for the record (the check itself is unchanged): fire (a drowned out of the
+    // water burns in daylight) and each hit's own result
+    const onFire = e => !!(e && e.metadata && typeof e.metadata[0] === 'number' && (e.metadata[0] & 0x01));
+    // a drowned that walks out of the pond burns in daylight (vanilla): the check is about hits, so not that
+    target.chat('/effect give @e[type=drowned,distance=..30] fire_resistance 15 0 true'); await sleep(300);
+    const trail = [];
+    let hurt = 0, inReach = 0;
+    const onHurt = x => { if (x && x.name === 'drowned') hurt++; };
+    target.on('entityHurt', onHurt);
     for (let i = 0; i < 6; i++) {
-      const e = Object.values(target.entities).find(x => x.name === 'drowned');
+      let e = Object.values(target.entities).find(x => x.name === 'drowned');
+      // each hit from right beside it (it walks toward its owner): a hit out of reach would prove nothing
+      if (e) { target.chat(`/tp @s ${e.position.x.toFixed(1)} ${(e.position.y + 0.3).toFixed(1)} ${(e.position.z - 1.5).toFixed(1)}`); await sleep(500); }
+      e = Object.values(target.entities).find(x => x.name === 'drowned');
+      if (e && e.position.distanceTo(target.entity.position) <= 3) inReach++;
       if (e) { try { await target.lookAt(e.position.offset(0, 1.2, 0), true); target.attack(e); } catch (x) { /* ignore */ } }
       await sleep(700);
+      const h = (await mobsHp(30)).find(m => /drowned/.test(m.line));
+      trail.push(`${h ? h.cur : '?'}${onFire(e) ? ' burning' : ''}`);
     }
+    target.removeListener('entityHurt', onHurt);
+    trail.push(`${inReach} of 6 hits from within reach, ${hurt} hurt flashes`);
     const h1 = (await mobsHp(30)).find(m => /drowned/.test(m.line));
-    check('Another player\'s hits do nothing to it', h0 && h1 && h1.cur === h0.cur, `${h0 && h0.line} -> ${h1 && h1.line}`);
+    check('Another player\'s hits do nothing to it', h0 && h1 && h1.cur === h0.cur, `${h0 && h0.line} -> ${h1 && h1.line}; after each hit: ${trail.join(', ')}`);
     target.chat('/tp @s ~ ~ ~20'); await sleep(800);
   } else check('Another player\'s hits do nothing to it', false, 'no creature to hit');
   // The owner fights it and steps away as it falls, so the drops stay on the ground for the ownership check.

@@ -423,7 +423,9 @@ async function vanillaPhase() {
   // (vanilla's Resistance IV would take 80% off). Each hit lands on full health and a full defense bar.
   const full = async () => {
     await cmd(`/cerb heal ${NAME}`, 600);
-    for (let i = 0; i < 40; i++) {
+    // /cerb heal fills health, not the defense bar: it refills by itself, slower on a busy machine (2026-11: 20 s wasn't
+    // always enough): up to 60 s
+    for (let i = 0; i < 120; i++) {
       const m = (bars.length ? bars[bars.length - 1].m : '').match(/([\d,]+)\/([\d,]+)⛨/);
       if (m && m[1] === m[2] && hud().hp === hud().max) return true;
       await sleep(500);
