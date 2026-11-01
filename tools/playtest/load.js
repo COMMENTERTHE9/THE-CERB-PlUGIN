@@ -725,10 +725,11 @@ async function menuidle(b, deadline, keepMode = false) {
   // ticks, a sweep's steps, a throw).
   const STAT_CMDS = { farm: ['/cerb farm stats'], widefarm: ['/cerb farm stats'], herb: ['/cerb herb stats'], wildcraft: ['/cerb herb stats'],
     brew: ['/cerb alchemy stats'], drink: ['/cerb alchemy stats'], hurtheavy: ['/cerb reprisal'], hurt: ['/cerb reprisal'] }[MODE] || [];
+  STAT_CMDS.push('/cerb saves'); // every load: how many skill snapshots were written (builds since the 2026-11 audit)
   const readStats = async label => {
     if (!STAT_CMDS.length) return;
     const got = [];
-    const onMsg = m => { const t = m.toString(); if (/^\[(Farming|Herbalism|Alchemy)\]|Thrown|Iron Reprisal/.test(t)) got.push(t); };
+    const onMsg = m => { const t = m.toString(); if (/^\[(Farming|Herbalism|Alchemy|Saves)\]|Thrown|Iron Reprisal/.test(t)) got.push(t); };
     controller.on('message', onMsg);
     for (const c of STAT_CMDS) { controller.chat(c); await sleep(900); }
     controller.removeListener('message', onMsg);

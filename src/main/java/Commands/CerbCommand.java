@@ -21,12 +21,12 @@ import java.util.Map;
 public class CerbCommand implements CommandExecutor {
 
     private static final java.util.List<String> CONSOLE_SAFE =
-            java.util.List.of("reload", "status", "backup", "skill", "heal", "log", "class");
+            java.util.List.of("reload", "status", "backup", "skill", "heal", "log", "class", "saves");
 
     private static final String USAGE =
             ChatColor.YELLOW + "Usage: /cerb <panel|reload|backup|debug|combatdebug|scalingpreview|log|healthstate|status|heal|mana|skill|class|resetdata|"
                     + "worldgen|repairchunk|quest|event|"
-                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|labels|gather|fish|farm|cook|herb|alchemy|reprisal>";
+                    + "timings|profiler|listentities|showqueues|speed|spawn|mobs|labels|gather|fish|farm|cook|herb|alchemy|reprisal|saves>";
     private final CerberusPlugin plugin;
 
     public CerbCommand(CerberusPlugin plugin) {
@@ -243,6 +243,14 @@ public class CerbCommand implements CommandExecutor {
 
             case "reprisal":
                 if (plugin.getIronReprisal() != null) plugin.getIronReprisal().admin(sender, args); // /cerb reprisal [player|reset]
+                break;
+
+            case "saves": // diagnostics (docs/STATUS.md → reliability audit): how player progress is being written
+                if (plugin.getSkillStore() != null) {
+                    sender.sendMessage(ChatColor.GRAY + "[Saves] skills: " + plugin.getSkillStore().stats() + ", queued "
+                            + plugin.getSkillStore().queued() + "; classes kept in memory "
+                            + (plugin.getClassService() != null ? plugin.getClassService().unsavedCount() : 0));
+                }
                 break;
 
             default:

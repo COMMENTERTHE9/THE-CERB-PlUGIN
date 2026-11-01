@@ -14,7 +14,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -81,11 +80,17 @@ public final class SkillStore {
             recovered = new AtomicLong();
 
     public SkillStore(Db db, Logger log, File recoveryDir) {
-        this(db, log, recoveryDir, Executors.newSingleThreadExecutor(r -> {
+        this(db, log, recoveryDir, new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<>(), r -> {
             Thread t = new Thread(r, "Cerb-DB-Skills");
             t.setDaemon(true);
             return t;
         }), System::currentTimeMillis, SkillStore::pause);
+    }
+
+    /** Diagnostics: tasks waiting for the writer (saves and loads), or -1 when the writer can't say. */
+    public int queued() {
+        return writer instanceof java.util.concurrent.ThreadPoolExecutor tpe ? tpe.getQueue().size() : -1;
     }
 
     /** For tests: a writer, a clock and a way to wait of their own. */

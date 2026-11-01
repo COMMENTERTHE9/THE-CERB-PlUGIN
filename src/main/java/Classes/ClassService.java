@@ -104,6 +104,9 @@ public final class ClassService implements AttributeSource {
     /** Write the documents kept after failed writes again (a timer calls this). */
     public void retryUnsaved() { docs.retryUnsaved(); }
 
+    /** Diagnostics: class documents kept in memory after a failed write. */
+    public int unsavedCount() { return docs.unsavedCount(); }
+
     /** What to run after this player's class contributions changed (Manager.AttributeEffects#refresh). */
     public void setAttributesChanged(java.util.function.Consumer<Player> hook) {
         this.attributesChanged = hook == null ? p -> { } : hook;
