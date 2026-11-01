@@ -542,7 +542,7 @@ async function compatPhase() {
   let at = await cmd(`/testdrops ${NAME} clear`, 600);
   const on = !!saw(/testdrops: .* clear/, at);
   // each gather must really have happened (the poppy gone): a +0 from a poppy that never broke would prove nothing
-  const gone = ([x, y, z]) => blockName(x, y, z) !== 'poppy';
+  const gone = ([x, y, z]) => blockName(x, y, z) === 'air'; // an unloaded block reads '?': not proof of a gather
   const cleared = await brkXp(...spots[2]);
   const clearedBroke = gone(spots[2]);
   await cmd(`/testdrops ${NAME} replace`, 600);

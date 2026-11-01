@@ -365,7 +365,7 @@ class SkillStoreTest {
     }
 
     @Test
-    void aSaveTheDatabaseKeepsNewerRowsAgainstIsSaidAndNotCountedAsWritten() {
+    void aSaveTheDatabaseKeepsNewerRowsAgainstIsSaidNotCountedAsWrittenAndContinuingAfterTheStoredRowsWritesIt() {
         FakeDb db = new FakeDb();
         db.rows.computeIfAbsent(db.customId(ann), k -> new HashMap<>()).put("Mining", new long[]{12, 9, 5_000}); // written by something else
         HandRun w = new HandRun();
@@ -384,7 +384,7 @@ class SkillStoreTest {
     }
 
     @Test
-    void aWriteStillRunningWhenShutdownGivesUpWaitingGetsARecoveryFile() throws Exception {
+    void aWriteStillRunningWhenShutdownStopsWaitingStillGetsARecoveryFile() throws Exception {
         CountDownLatch inWrite = new CountDownLatch(1), release = new CountDownLatch(1);
         FakeDb db = new FakeDb() {
             @Override public synchronized int write(String id, Map<String, Integer> levels, Map<String, Integer> xp, long seq) throws SQLException {
@@ -401,5 +401,108 @@ class SkillStoreTest {
         assertEquals(1, s.shutdown(50), "the snapshot being written is kept in a recovery file");
         release.countDown();
         assertTrue(writer.awaitTermination(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void aWriteThatFailsWhileShutdownReadsWhatIsLeftIsStillKeptInARecoveryFile() {
+        // The exact interleaving the read order is for: shutdown has read the waiting snapshots when the write still running
+        // fails and moves its snapshot to the failed ones (kept, then no longer waiting).
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        HandRun w = new HandRun() {
+            @Override public boolean awaitTermination(long t, TimeUnit u) { return false; } // shutdown stops waiting
+            @Override public List<Runnable> shutdownNow() { shut = true; return List.of(); } // the write is still running
+        };
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore s = new SkillStore(db, log, recovery, w, () -> 0, ms -> { });
+        s.knowCustomId(ann, db.customId(ann));
+        s.save(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", 70)));
+        Runnable inFlight = w.queue.poll();
+        s.betweenReads = inFlight; // it fails right between the two reads
+        assertEquals(1, s.shutdown(10), "found in one of the two, whichever moment it moved");
+        assertEquals(1, recovery.listFiles((d, n) -> n.endsWith(".yml")).length);
+    }
+
+    @Test
+    void aRecoveryFileThatIsIncompleteOrChangedIsNotUsedAndIsLeftWhereItIs() throws Exception {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore first = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.knowCustomId(ann, db.customId(ann));
+        first.save(first.snapshot(ann, "Ann", Map.of("Mining", 12, "Farming", 3), Map.of("Mining", 45, "Farming", 7)));
+        first.shutdown(100);
+        File f = recovery.listFiles((d, n) -> n.endsWith(".yml"))[0];
+        String text = java.nio.file.Files.readString(f.toPath());
+        assertTrue(text.contains("check:"), "the file carries its check");
+        java.nio.file.Files.writeString(f.toPath(), text.replace("Mining: 45", "Mining: 4")); // cut short mid-number
+        db.failAll = false;
+        SkillStore next = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        assertEquals(0, next.applyRecovery(), "nothing taken from it");
+        assertEquals(-1, db.xpOf(ann, "Mining"), "nothing written");
+        assertNull(next.newerUnsaved(ann, 0), "nor kept for a join");
+        assertTrue(f.exists(), "left for a person to look at");
+        assertTrue(logged.records.stream().anyMatch(r -> r.getLevel() == Level.SEVERE && r.getMessage().contains("incomplete or was changed")));
+        java.nio.file.Files.writeString(f.toPath(), text.replaceAll("(?m)^check:.*\\n", "")); // no check at all
+        assertEquals(0, new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { }).applyRecovery());
+        assertEquals(-1, db.xpOf(ann, "Mining"));
+        assertEquals(0, recovery.listFiles((d, n) -> n.endsWith(".tmp")).length, "no temporary file left behind");
+    }
+
+    @Test
+    void aRecoveryFilesProgressThatKeepsFailingNeverMakesAnotherPlayersSaveGiveUpEarly() {
+        UUID bob = new UUID(0, 2);
+        // Ann's progress from a recovery file can't be written (in this test: never); Bob's save fails once, then works.
+        class Db2 extends FakeDb {
+            int bobFails = 1;
+            @Override public synchronized int write(String id, Map<String, Integer> levels, Map<String, Integer> xp, long seq) throws SQLException {
+                if (id.equals(customId(ann))) throw new SQLException("[SQLITE_CONSTRAINT] cannot be written");
+                if (id.equals(customId(bob)) && bobFails-- > 0) throw new SQLException("[SQLITE_BUSY] database is locked");
+                return super.write(id, levels, xp, seq);
+            }
+        }
+        FakeDb old = new FakeDb();
+        old.failAll = true;
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore first = new SkillStore(old, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.knowCustomId(ann, old.customId(ann));
+        first.save(first.snapshot(ann, "Ann", mining(10), Map.of("Mining", 50)));
+        first.shutdown(100);
+        Db2 db = new Db2();
+        HandRun w = new HandRun();
+        long[] now = {1_000_000};
+        SkillStore s = new SkillStore(db, log, recovery, w, () -> now[0], ms -> now[0] += ms);
+        s.continueAfter(s.applyRecovery());
+        s.retryUnsaved();
+        w.runAll(); // Ann's kept progress fails again: one attempt
+        s.knowCustomId(bob, db.customId(bob));
+        s.save(s.snapshot(bob, "Bob", mining(4), Map.of("Mining", 9)));
+        w.runAll();
+        assertEquals(9, db.xpOf(bob, "Mining"), "Bob's second attempt stores it");
+        assertTrue(s.unsavedNow().stream().noneMatch(x -> x.player().equals(bob)));
+        assertEquals(1, recovery.listFiles((d, n) -> n.endsWith(".yml")).length, "Ann's file stays until her progress is stored");
+    }
+
+    @Test
+    void aFailureRightAfterAChangedNothingWarningIsStillLoggedAsAnError() {
+        FakeDb db = new FakeDb();
+        db.rows.computeIfAbsent(db.customId(ann), k -> new HashMap<>()).put("Mining", new long[]{12, 9, 5_000});
+        HandRun w = new HandRun();
+        long[] now = {0};
+        SkillStore s = store(db, w, now);
+        s.save(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", 1))); // changes nothing: a warning
+        w.runAll();
+        db.failAll = true;
+        s.save(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", 2))); // a real failure seconds later
+        w.runAll();
+        assertEquals(1, logged.at(Level.WARNING));
+        assertEquals(1, logged.at(Level.SEVERE), "the failure is not swallowed by the warning's once-a-minute limit");
+    }
+
+    @Test
+    void aJoinLaysTheKeptProgressOverTheStoredRowsKeepingWhatTheKeptSnapshotDoesNotHold() {
+        Map<String, Integer> stored = Map.of("Mining", 10, "Farming", 4, "Fishing", 7);
+        Map<String, Integer> kept = Map.of("Mining", 12, "Farming", 4);
+        assertEquals(Map.of("Mining", 12, "Farming", 4, "Fishing", 7), SkillStore.overlay(stored, kept));
     }
 }

@@ -29,6 +29,8 @@ final class LoadingXpBuffer {
     }
 
     private final Map<UUID, Entry> loading = new ConcurrentHashMap<>();
+    /** Tests only: runs in {@link #keep} between finding the buffer and locking it (to put a hand-over exactly there). */
+    Runnable afterGet = () -> { };
 
     /** A session's load has begun: XP it earns is kept for it. */
     void begin(UUID player, long generation) {
@@ -60,6 +62,7 @@ final class LoadingXpBuffer {
     boolean keep(UUID player, String skill, double amount, boolean celebrate) {
         Entry e = loading.get(player);
         if (e == null) return false;
+        afterGet.run();
         synchronized (e) {
             if (e.closed) return false;
             if (skill == null || !(amount > 0) || !Double.isFinite(amount)) return true;
@@ -72,14 +75,14 @@ final class LoadingXpBuffer {
 
     /**
      * The load of {@code generation} completed: closes the buffer and returns what it kept (skill → {celebrated, quiet}),
-     * once. Null when there is none, or it belongs to another generation (that one is dropped: never applied to a session
-     * it wasn't earned in).
+     * once. Null when there is none, or it belongs to another generation: that one is left for its own session's load
+     * (never applied to a session it wasn't earned in, never dropped by another's).
      */
     Map<String, double[]> drain(UUID player, long generation) {
-        Entry e = loading.remove(player);
-        if (e == null) return null;
+        Entry e = loading.get(player);
+        if (e == null || e.generation != generation || !loading.remove(player, e)) return null;
         close(e);
-        return e.generation == generation ? e.bySkill : null; // closed: nothing changes it any more
+        return e.bySkill; // closed: nothing changes it any more
     }
 
     private static void close(Entry e) {

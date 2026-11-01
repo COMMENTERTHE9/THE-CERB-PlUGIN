@@ -37,7 +37,8 @@ class LoadingXpBufferTest {
         b.begin(ann, 1);
         b.keep(ann, "Mining", 5, true);
         assertNull(b.drain(ann, 2), "a different session's load: not applied");
-        assertFalse(b.isLoading(ann), "and that buffer is gone");
+        assertTrue(b.isLoading(ann), "and never dropped by it: the buffer waits for its own session's load");
+        assertArrayEquals(new double[]{5, 0}, b.drain(ann, 1).get("Mining"));
         b.begin(ann, 3);
         b.keep(ann, "Mining", 1, true);
         b.begin(ann, 4); // a rejoin started a new session before the old one's load came back
@@ -72,6 +73,18 @@ class LoadingXpBufferTest {
         b.keep(ann, "Mining", 9e11, true);
         b.keep(ann, "Mining", 9e11, true);
         assertEquals(LoadingXpBuffer.CAP, b.drain(ann, 1).get("Mining")[0]);
+    }
+
+    @Test
+    void anAwardThatFindsTheBufferJustBeforeItIsHandedOverIsToldItWasNotKept() {
+        // the exact interleaving: the award has found the buffer, then the load completes and takes it, then the award locks it
+        LoadingXpBuffer b = new LoadingXpBuffer();
+        b.begin(ann, 1);
+        b.keep(ann, "Mining", 2, true);
+        Map<String, double[]>[] handed = new Map[1];
+        b.afterGet = () -> { if (handed[0] == null) handed[0] = b.drain(ann, 1); };
+        assertFalse(b.keep(ann, "Mining", 7, true), "not kept: the caller awards it the normal way (the skills are loaded by then)");
+        assertArrayEquals(new double[]{2, 0}, handed[0].get("Mining"), "what was handed over doesn't change afterwards");
     }
 
     @Test

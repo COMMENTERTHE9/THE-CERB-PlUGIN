@@ -245,7 +245,9 @@ async function recoveryCheck() {
   const want = JSON.parse(fs.readFileSync(process.env.OUT || path.join(SERVER_DIR, 'persist-shutdown.json')).toString());
   const shown = want.skills;
   const dir = path.join(SERVER_DIR, 'plugins/CerberusPlugin/skills-recovery');
-  const files = () => (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter(f => f.endsWith('.yml'));
+  // this player's recovery file only (another player's left over from elsewhere proves nothing here)
+  const files = () => (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter(f => f.endsWith('.yml')
+    && new RegExp(`^name: ${name}$`, 'm').test(fs.readFileSync(path.join(dir, f), 'utf8')));
   const storedBefore = stored(name), filesBefore = files().length;
   let rankBefore = null;
   try { rankBefore = JSON.parse(execFileSync('python3', [TOOL, 'rank', DB, name, 'warrior']).toString()); } catch (e) { /* null */ }

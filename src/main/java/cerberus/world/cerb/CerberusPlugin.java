@@ -162,23 +162,30 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
-        // Empty open menus first: once our click listener is gone their items must not be takeable.
-        if (menuManager != null) menuManager.closeAll();
-
-        // Centralized player cleanup + async skill save. Each step runs whatever the one before it threw: the skill store's
-        // drain must never be skipped (the final snapshots would be neither written nor kept in recovery files).
+        // Each step runs whatever the one before it threw (a LinkageError too: a plugin jar replaced while the server runs).
+        // The skill store's drain is never skipped: the final snapshots would be neither written nor kept in recovery files.
         try {
-            if (playerSessionManager != null) playerSessionManager.shutdown();
-        } catch (RuntimeException e) {
-            getLogger().log(java.util.logging.Level.SEVERE, "Player cleanup at shutdown failed; saving goes on", e);
+            // Empty open menus first: once our click listener is gone their items must not be takeable.
+            try {
+                if (menuManager != null) menuManager.closeAll();
+            } catch (RuntimeException | LinkageError e) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Closing menus at shutdown failed; saving goes on", e);
+            }
+            // Centralized player cleanup: every online player's final skill snapshot is handed in here.
+            try {
+                if (playerSessionManager != null) playerSessionManager.shutdown();
+            } catch (RuntimeException | LinkageError e) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Player cleanup at shutdown failed; saving goes on", e);
+            }
+            try {
+                if (classService != null) classService.shutdown(); // writes every loaded class profile now
+            } catch (RuntimeException | LinkageError e) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Saving classes at shutdown failed; saving skills goes on", e);
+            }
+        } finally {
+            // Every player's final skill snapshot was handed in above: write them (at most 20 s), the rest to recovery files.
+            if (skillStore != null) skillStore.shutdown(20_000);
         }
-        try {
-            if (classService != null) classService.shutdown(); // writes every loaded class profile now
-        } catch (RuntimeException e) {
-            getLogger().log(java.util.logging.Level.SEVERE, "Saving classes at shutdown failed; saving skills goes on", e);
-        }
-        // Every player's final skill snapshot was handed in above: write them (at most 20 s), the rest to recovery files.
-        if (skillStore != null) skillStore.shutdown(20_000);
 
         if (damageDisplayListener != null) damageDisplayListener.shutdown();
         if (trapManager != null)       trapManager.cleanup();

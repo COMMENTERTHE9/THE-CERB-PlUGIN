@@ -209,8 +209,11 @@ async function emptySlotsPhase() {
   out = await brew(WATER, '/give @s nether_wart 1', { bottles: 1 });
   const g = (await alchXp()) - x0;
   await cmd('/testbrew off', 600);
+  // the case only means something if the two empty slots were really filled: three bottles came out of one
+  const filled = out.filter(b => b && b.name === 'potion').length === 3;
   check('Another plugin writes water bottles into every result slot, the two empty ones too: nothing paid for them',
-    on && g === 0, on ? `+${g}; out ${JSON.stringify(out.map(b => b && (b.custom || b.name)))}` : 'the sandbox plugin has no /testbrew');
+    on && filled && g === 0, on ? `+${g}; out ${JSON.stringify(out.map(b => b && (b.custom || b.name)))}${filled ? '' : ' (the empty slots were not filled)'}`
+      : 'the sandbox plugin has no /testbrew');
 }
 
 async function vanillaPhase() {

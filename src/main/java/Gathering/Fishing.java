@@ -1280,8 +1280,24 @@ public final class Fishing implements Listener {
         FishingJournal.Active a = j.active();
         if (a == null || fights.containsKey(a.entity())) return;
         Fight won = wins.get(a.entity());
-        if (won != null) defeated(p, won, a.entity());
+        if (won != null) settleWhenLoaded(p, won, a.entity(), 15);
         else refund(p, a.entity(), "the server restarted");
+    }
+
+    /**
+     * A win from while its owner was away is recorded once their skills have loaded (looked at every second, 15 times):
+     * its first defeat is written to the journal at once, while XP earned during a load is dropped if that load fails
+     * (2026-11 review). Not loaded by then, or gone again: the win stays for their next join.
+     */
+    private void settleWhenLoaded(Player p, Fight won, UUID entity, int tries) {
+        p.getScheduler().runDelayed(plugin, t -> {
+            if (!p.isOnline()) return;
+            if (!skills.hasLoadedSkills(p.getUniqueId())) {
+                if (tries > 1) settleWhenLoaded(p, won, entity, tries - 1);
+                return;
+            }
+            defeated(p, won, entity);
+        }, null, 20L);
     }
 
     // ── presentation ─────────────────────────────────────────────

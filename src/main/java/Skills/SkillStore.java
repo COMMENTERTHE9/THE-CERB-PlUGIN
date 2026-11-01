@@ -77,7 +77,10 @@ public final class SkillStore {
     /** A recovery file that couldn't be written at startup: deleted once its progress (or newer) is stored. */
     private record PendingFile(File file, long seq) {}
     private final Map<UUID, PendingFile> pendingFiles = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> reported = new ConcurrentHashMap<>();
+    /** When each player's failure, and separately each player's "changed nothing", was last logged (once a minute each). */
+    private final Map<UUID, Long> reported = new ConcurrentHashMap<>(), reportedNoop = new ConcurrentHashMap<>();
+    /** Tests only: runs in {@link #shutdown} between reading the waiting snapshots and the failed ones. */
+    Runnable betweenReads = () -> { };
     private volatile Consumer<String> alert = m -> { };
     private volatile long lastAlert;
     private volatile long lastFailure = -REPORT_EVERY_MS;
@@ -162,7 +165,11 @@ public final class SkillStore {
             return;
         }
         boolean failing = clock.getAsLong() - lastFailure < REPORT_EVERY_MS;
-        int attempts = shuttingDown || failing ? 1 : ATTEMPTS;
+        // a recovery file's progress the start couldn't write: one attempt each time, and its failures never make other
+        // players' saves give up early (it may fail for a reason of its own; 2026-11 review)
+        PendingFile file = pendingFiles.get(player);
+        boolean fromFile = file != null && file.seq() == s.seq();
+        int attempts = shuttingDown || failing || fromFile ? 1 : ATTEMPTS;
         SQLException last = null;
         for (int a = 1; a <= attempts; a++) {
             try {
@@ -187,7 +194,7 @@ public final class SkillStore {
             }
         }
         failures.incrementAndGet();
-        lastFailure = clock.getAsLong();
+        if (!fromFile) lastFailure = clock.getAsLong();
         unsaved.merge(player, s, (a, b) -> b.seq() > a.seq() ? b : a);
         newest.remove(player, s);
         report(s, last);
@@ -201,9 +208,9 @@ public final class SkillStore {
     private void noteOlderThanStored(Snapshot s) {
         olderThanStored.incrementAndGet();
         long now = clock.getAsLong();
-        Long before = reported.get(s.player());
+        Long before = reportedNoop.get(s.player());
         if (before == null || now - before >= REPORT_EVERY_MS) {
-            reported.put(s.player(), now);
+            reportedNoop.put(s.player(), now);
             log.warning("[Skills] " + s.name() + "'s save #" + s.seq() + " changed nothing: the database already holds a newer"
                     + " save of their skills (written by something else than this server's save order). The stored rows were kept.");
         }
@@ -267,6 +274,7 @@ public final class SkillStore {
         // newest removed), so read in this order it is seen in at least one of them
         Map<UUID, Snapshot> left = new HashMap<>();
         for (Snapshot s : newest.values()) left.merge(s.player(), s, (a, b) -> b.seq() > a.seq() ? b : a);
+        betweenReads.run();
         for (Snapshot s : unsaved.values()) left.merge(s.player(), s, (a, b) -> b.seq() > a.seq() ? b : a);
         left.values().removeIf(s -> s.seq() <= stored.getOrDefault(s.player(), 0L));
         log.info("[Skills] Saves this run: " + stats());
@@ -301,14 +309,51 @@ public final class SkillStore {
             y.set("seq", s.seq());
             for (Map.Entry<String, Integer> e : s.levels().entrySet()) y.set("levels." + e.getKey(), e.getValue());
             for (Map.Entry<String, Integer> e : s.xp().entrySet()) y.set("xp." + e.getKey(), e.getValue());
+            y.set("check", check(s.player(), s.seq(), s.levels(), s.xp()));
             try {
-                y.save(new File(recoveryDir, s.player() + ".yml"));
+                saveAtomically(y, new File(recoveryDir, s.player() + ".yml"));
                 ok++;
             } catch (java.io.IOException e) {
                 log.severe("[Skills] Could not write the recovery file for " + s.name() + ": " + e.getMessage());
             }
         }
         return ok;
+    }
+
+    /**
+     * A file is written whole or not at all: to a temporary file beside it, then moved over it (a stop cut short can't
+     * leave half a file where the last good one was).
+     */
+    public static void saveAtomically(YamlConfiguration y, File target) throws java.io.IOException {
+        File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
+        y.save(tmp);
+        try {
+            java.nio.file.Files.move(tmp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            java.nio.file.Files.move(tmp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /** What a recovery file says it holds, as a number: a file whose content doesn't match it was cut short or edited. */
+    static long check(UUID player, long seq, Map<String, Integer> levels, Map<String, Integer> xp) {
+        StringBuilder b = new StringBuilder().append(player).append('|').append(seq);
+        for (String k : new java.util.TreeSet<>(levels.keySet())) b.append('|').append(k).append('=').append(levels.get(k));
+        b.append("|xp");
+        for (String k : new java.util.TreeSet<>(xp.keySet())) b.append('|').append(k).append('=').append(xp.get(k));
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return crc.getValue();
+    }
+
+    /**
+     * The progress a join continues from: the stored rows with the kept snapshot laid over them (the kept snapshot is newer
+     * for every skill it holds; a skill it doesn't hold keeps its stored value).
+     */
+    public static Map<String, Integer> overlay(Map<String, Integer> stored, Map<String, Integer> kept) {
+        Map<String, Integer> out = new HashMap<>(stored);
+        out.putAll(kept);
+        return out;
     }
 
     /**
@@ -332,10 +377,15 @@ public final class SkillStore {
                 continue;
             }
             long s = y.getLong("seq");
-            newestSeen = Math.max(newestSeen, s);
             String name = y.getString("name", player.toString());
             Map<String, Integer> levels = ints(y.getConfigurationSection("levels"));
             Map<String, Integer> xp = ints(y.getConfigurationSection("xp"));
+            if (!y.isLong("check") && !y.isInt("check") || y.getLong("check") != check(player, s, levels, xp)) {
+                log.severe("[Skills] " + f.getPath() + " (" + name + ") is incomplete or was changed by hand (its check doesn't"
+                        + " match): it is not used, and left where it is for a person to look at.");
+                continue;
+            }
+            newestSeen = Math.max(newestSeen, s);
             String id = y.getString("custom-id");
             try {
                 if (id == null) id = db.customId(player);
@@ -344,6 +394,8 @@ public final class SkillStore {
                     recovered.incrementAndGet();
                     log.warning("[Skills] Wrote " + name + "'s skills from " + f.getName()
                             + " (progress that could not be saved at the last shutdown; kept only where newer).");
+                } else if (levels.isEmpty()) {
+                    log.warning("[Skills] " + f.getName() + " (" + name + ") held no skills: nothing to write.");
                 } else {
                     log.warning("[Skills] " + f.getName() + " (" + name + ") was older than their stored skills, which a later"
                             + " save replaced: nothing to write.");

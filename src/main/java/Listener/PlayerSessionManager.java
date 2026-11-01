@@ -105,9 +105,9 @@ public class PlayerSessionManager implements Listener {
             store.continueAfter(loaded.savedSeq()); // this player's next save is newer than their stored rows, always
             Map<String, Integer> levels = loaded.levels(), xp = loaded.xp();
             Skills.SkillStore.Snapshot kept = store.newerUnsaved(uuid, loaded.savedSeq());
-            if (kept != null) {
-                levels = new java.util.HashMap<>(kept.levels());
-                xp = new java.util.HashMap<>(kept.xp());
+            if (kept != null) { // laid over the stored rows: a skill the kept snapshot doesn't hold keeps its stored value
+                levels = Skills.SkillStore.overlay(levels, kept.levels());
+                xp = Skills.SkillStore.overlay(xp, kept.xp());
                 log.warning("[PlayerSession] " + player.getName() + " continues from progress kept in memory (its last save"
                         + " failed; newer than the stored rows). It is saved when the database answers.");
             }
@@ -372,7 +372,11 @@ public class PlayerSessionManager implements Listener {
     /** Every online player's session ends, each handing in their final skill snapshot (the plugin then drains the store). */
     public void shutdown() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            cleanupPlayer(player);
+            try {
+                cleanupPlayer(player);
+            } catch (RuntimeException | LinkageError e) { // one player's cleanup never stops the others' final saves
+                log.log(java.util.logging.Level.SEVERE, "[PlayerSession] Shutdown cleanup failed for " + player.getName(), e);
+            }
         }
     }
 

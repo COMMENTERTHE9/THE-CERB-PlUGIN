@@ -58,6 +58,8 @@ final class ClassDocStore {
     /** A recovery file that couldn't be written at startup: deleted once its document (or a newer one) is stored. */
     private record PendingFile(File file, long stamp) {}
     private final Map<UUID, PendingFile> pendingFiles = new ConcurrentHashMap<>();
+    /** Tests only: runs in {@link #finish} between reading the documents handed in and the ones kept after a failure. */
+    Runnable betweenReads = () -> { };
     private volatile long lastFailure = -REPORT_EVERY_MS;
     private volatile boolean shuttingDown;
 
@@ -92,7 +94,11 @@ final class ClassDocStore {
         }
         String data = h.data().get();
         boolean failing = clock.getAsLong() - lastFailure < REPORT_EVERY_MS;
-        int attempts = shuttingDown || failing ? 1 : ATTEMPTS;
+        // a recovery file's document the start couldn't write: one attempt, and its failures never make other players'
+        // saves give up early (2026-11 review)
+        PendingFile file = pendingFiles.get(player);
+        boolean fromFile = file != null && file.stamp() == h.stamp();
+        int attempts = shuttingDown || failing || fromFile ? 1 : ATTEMPTS;
         SQLException last = null;
         for (int a = 1; a <= attempts; a++) {
             try {
@@ -119,7 +125,7 @@ final class ClassDocStore {
                 else break; // shutting down: the final documents waiting behind this one need the time
             }
         }
-        lastFailure = clock.getAsLong();
+        if (!fromFile) lastFailure = clock.getAsLong();
         unsaved.merge(player, new Pending(h.version(), data, h.stamp(), h.name()), (a, b) -> b.stamp() > a.stamp() ? b : a);
         handedIn.remove(player, h);
         long now = clock.getAsLong();
@@ -165,9 +171,13 @@ final class ClassDocStore {
             writer.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        // What is still not stored: kept after a failed write, or handed in and never run (the writer was stopped)
+        // What is still not stored: handed in and never run (the writer was stopped), or kept after a failed write. Read in
+        // this order: a write still running moves a failed document from the first to the second (kept, then removed), so it
+        // is seen in at least one of them (2026-11 review).
+        Map<UUID, Handed> handed = new java.util.HashMap<>(handedIn);
+        betweenReads.run();
         Map<UUID, Pending> left = new java.util.HashMap<>(unsaved);
-        for (Map.Entry<UUID, Handed> e : handedIn.entrySet()) {
+        for (Map.Entry<UUID, Handed> e : handed.entrySet()) {
             Handed h = e.getValue();
             Pending was = left.get(e.getKey());
             if (was != null && h.stamp() <= was.stamp()) continue;
@@ -192,8 +202,9 @@ final class ClassDocStore {
             y.set("version", p.version());
             y.set("stamp", p.stamp());
             y.set("data", p.data());
+            y.set("check", check(e.getKey(), p.version(), p.stamp(), p.data()));
             try {
-                y.save(new File(recoveryDir, e.getKey() + ".yml"));
+                Skills.SkillStore.saveAtomically(y, new File(recoveryDir, e.getKey() + ".yml"));
                 files++;
             } catch (java.io.IOException ex) {
                 log.severe("[Classes] Could not write the recovery file for " + e.getKey() + ": " + ex.getMessage());
@@ -230,6 +241,11 @@ final class ClassDocStore {
             int version = y.getInt("version");
             long stamp = y.getLong("stamp");
             String name = y.getString("name", player.toString());
+            if (!y.isLong("check") && !y.isInt("check") || y.getLong("check") != check(player, version, stamp, data)) {
+                log.severe("[Classes] " + f.getPath() + " (" + name + ") is incomplete or was changed by hand (its check doesn't"
+                        + " match): it is not used, and left where it is for a person to look at.");
+                continue;
+            }
             try {
                 if (db.write(player, version, data, stamp) > 0) {
                     done++;
@@ -248,6 +264,13 @@ final class ClassDocStore {
             }
         }
         return done;
+    }
+
+    /** What a recovery file says it holds, as a number: a file whose content doesn't match it was cut short or edited. */
+    static long check(UUID player, int version, long stamp, String data) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update((player + "|" + version + "|" + stamp + "|" + data).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return crc.getValue();
     }
 
     /** For tests and diagnostics: how many documents are kept after failed writes. */

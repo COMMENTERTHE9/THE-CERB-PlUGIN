@@ -161,4 +161,40 @@ class ClassDocStoreTest {
         assertEquals("ann: warrior 9", db.data(ann));
         assertEquals(0, recovery.listFiles().length, "removed once written");
     }
+
+    @Test
+    void aWriteThatFailsWhileShutdownReadsWhatIsLeftIsStillKeptInARecoveryFile() {
+        // shutdown has read the documents handed in when the write still running fails and moves its document to the kept ones
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        HandRun w = new HandRun() {
+            @Override public boolean awaitTermination(long t, TimeUnit u) { return false; }
+            @Override public List<Runnable> shutdownNow() { shut = true; return List.of(); }
+        };
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore s = new ClassDocStore(db, log, recovery, w, () -> 0, ms -> { });
+        s.save(ann, "Ann", 3, () -> "ann: warrior 6", 600);
+        Runnable inFlight = w.queue.poll();
+        s.shuttingDown();
+        s.betweenReads = inFlight;
+        assertEquals(1, s.finish(10), "found in one of the two, whichever moment it moved");
+    }
+
+    @Test
+    void aRecoveryFileThatIsIncompleteOrChangedIsNotUsedAndIsLeftWhereItIs() throws Exception {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore first = new ClassDocStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.shuttingDown();
+        first.save(ann, "Ann", 3, () -> "warrior: rank 7", 700);
+        first.finish(100);
+        File f = recovery.listFiles((d, n) -> n.endsWith(".yml"))[0];
+        String text = java.nio.file.Files.readString(f.toPath());
+        java.nio.file.Files.writeString(f.toPath(), text.replace("rank 7", "rank 9"));
+        db.failAll = false;
+        assertEquals(0, new ClassDocStore(db, log, recovery, new HandRun(), () -> 0, ms -> { }).applyRecovery());
+        assertNull(db.data(ann), "nothing written");
+        assertTrue(f.exists(), "left for a person to look at");
+    }
 }

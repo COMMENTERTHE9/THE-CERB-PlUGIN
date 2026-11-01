@@ -62,7 +62,12 @@ class SkillRowsTest {
                 st.execute("INSERT INTO player_skills VALUES ('CUST-A','Mining',37,1234)");
                 st.execute("PRAGMA busy_timeout = 200");
             }
-            try (Statement h = holder.createStatement()) { h.execute("BEGIN EXCLUSIVE"); } // another program holds it
+            // another program holds the write lock (BEGIN IMMEDIATE, as a backup or database tool does): reads still work, so
+            // the column check runs and the ALTER itself is what has to wait
+            try (Statement h = holder.createStatement()) { h.execute("BEGIN IMMEDIATE"); }
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("PRAGMA table_info(player_skills)")) {
+                assertTrue(rs.next(), "the table can still be read");
+            }
             assertThrows(SQLException.class, () -> SkillRows.ensureSeqColumn(c), "busy: it can't be added now");
             try (Statement h = holder.createStatement()) { h.execute("ROLLBACK"); }
             assertTrue(SkillRows.ensureSeqColumn(c), "the next try (before a load or save) adds it");

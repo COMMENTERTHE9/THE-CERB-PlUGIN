@@ -430,12 +430,15 @@ async function vanillaPhase() {
     }
     return false;
   };
-  const hit = async () => { await full(); const a = hud().hp; await cmd('/damage @s 40 minecraft:generic', 1500); return a - hud().hp; };
-  const plainHit = await hit();
+  // the health shown once it stops changing (a busy server sends the bar's and the pool's updates a moment apart)
+  const settled = async () => { let last = hud().hp, same = 0; for (let i = 0; i < 24 && same < 3; i++) { await sleep(250); const v = hud().hp; same = v === last ? same + 1 : 0; last = v; } return last; };
+  const hit = async () => { const ok = await full(); const a = hud().hp; await cmd('/damage @s 40 minecraft:generic', 800); return { took: a - await settled(), ok }; };
+  const plain = await hit();
   await cmd('/effect give @s resistance 60 3', 400);
   const resisted = await hit();
   check('Resistance IV ("No effect" here): a 40-damage hit takes the same health as without it (vanilla would take 80% off)',
-    plainHit >= 5 && Math.abs(resisted - plainHit) <= Math.max(1, plainHit * 0.05), `${plainHit} vs ${resisted}`);
+    plain.ok && resisted.ok && plain.took >= 5 && Math.abs(resisted.took - plain.took) <= Math.max(1, plain.took * 0.05),
+    `${plain.took} vs ${resisted.took}${plain.ok && resisted.ok ? '' : ' (a hit did not land on full health and a full bar)'}`);
   await cmd('/effect clear @s', 300);
   await cmd('/gamerule natural_regeneration true', 300);
   await cmd(`/cerb heal ${NAME}`, 600);
@@ -448,9 +451,17 @@ async function comboPhase() {
   await devBuff();
   await cmd('/effect give @s speed 300 0', 400);
   await cmd('/effect give @s luck infinite 0', 400);
-  const cast = await warCry();
-  const lore = await hub();
-  const listed = (lore.split('Active effects:')[1] || '').split('|').map(s => s.trim()).filter(s => /—|more/.test(s));
+  const parse = l => (l.split('Active effects:')[1] || '').split('|').map(s => s.trim()).filter(s => /—|more/.test(s));
+  let cast = await warCry(), t = Date.now();
+  let listed = parse(await hub());
+  if (!listed.some(l => /^War Cry/.test(l))) {
+    // War Cry lasts 8 s: on a busy machine the head can be read after it ended. Once more after its 30 s cooldown (said here).
+    note(`War Cry not on the head (cast: ${cast}, read ${((Date.now() - t) / 1000).toFixed(1)} s after it): once more after its cooldown`);
+    closeAny();
+    await sleep(31000);
+    cast = await warCry();
+    listed = parse(await hub());
+  }
   check('The head lists four, meal first, then "+1 more"', listed.length === 5 && /^Hearty Stew/.test(listed[0]) && /^\+1 more$/.test(listed[4]), listed.join(' / '));
   await click(4, 800);
   await waitTitle(/Active Effects/);
