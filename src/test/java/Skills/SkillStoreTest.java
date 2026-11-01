@@ -48,25 +48,33 @@ class SkillStoreTest {
     }
 
     /** The database's rule (SkillRows): a row is kept unless the write's snapshot is at least as new. */
-    static final class FakeDb implements SkillStore.Db {
+    static class FakeDb implements SkillStore.Db {
         final Map<String, Map<String, long[]>> rows = new HashMap<>();
         final List<Long> writes = new ArrayList<>();
+        /** Per custom id, the seq of every write in the order they reached the database. */
+        final Map<String, List<Long>> writesBy = new HashMap<>();
         int failNext;
         boolean failAll;
-        @Override public synchronized void write(String id, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
+        @Override public synchronized int write(String id, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
                 throws SQLException {
             if (failAll || failNext > 0) {
                 if (failNext > 0) failNext--;
                 throw new SQLException("[SQLITE_BUSY] database is locked");
             }
             writes.add(seq);
+            writesBy.computeIfAbsent(id, k -> new ArrayList<>()).add(seq);
             Map<String, long[]> r = rows.computeIfAbsent(id, k -> new HashMap<>());
+            int changed = 0;
             for (Map.Entry<String, Integer> e : levels.entrySet()) {
                 long[] cur = r.get(e.getKey());
-                if (cur == null || seq >= cur[2]) r.put(e.getKey(), new long[]{e.getValue(), xp.getOrDefault(e.getKey(), 0), seq});
+                if (cur == null || seq >= cur[2]) {
+                    r.put(e.getKey(), new long[]{e.getValue(), xp.getOrDefault(e.getKey(), 0), seq});
+                    changed++;
+                }
             }
+            return changed;
         }
-        @Override public String customId(UUID p) { return "CUST-" + p.toString().substring(0, 6); }
+        @Override public String customId(UUID p) { return "CUST-" + p; } // one per player
         synchronized long xpOf(UUID p, String skill) {
             long[] r = rows.getOrDefault(customId(p), Map.of()).get(skill);
             return r == null ? -1 : r[1];
@@ -211,9 +219,10 @@ class SkillStoreTest {
         next.rows.computeIfAbsent(next.customId(bob), k -> new HashMap<>()).put("Mining", new long[]{6, 0, bobs.seq() + 5});
         Map<String, long[]> annRows = new HashMap<>();
         SkillStore later = new SkillStore(new SkillStore.Db() {
-            @Override public void write(String id, Map<String, Integer> lv, Map<String, Integer> xp, long seq) throws SQLException {
-                if (id.equals("CUST-ANN")) for (var e : lv.entrySet()) annRows.put(e.getKey(), new long[]{e.getValue(), xp.get(e.getKey()), seq});
-                else next.write(id, lv, xp, seq);
+            @Override public int write(String id, Map<String, Integer> lv, Map<String, Integer> xp, long seq) throws SQLException {
+                if (!id.equals("CUST-ANN")) return next.write(id, lv, xp, seq);
+                for (var e : lv.entrySet()) annRows.put(e.getKey(), new long[]{e.getValue(), xp.get(e.getKey()), seq});
+                return lv.size();
             }
             @Override public String customId(UUID p) { return next.customId(p); }
         }, log, recovery, new HandRun(), () -> 0, ms -> { });
@@ -271,6 +280,126 @@ class SkillStoreTest {
         for (Thread t : threads) t.join();
         assertEquals(0, s.shutdown(5000));
         for (UUID id : ids) assertEquals(gains, db.xpOf(id, "Mining"), "player " + id);
-        assertTrue(db.writes.size() <= players * gains);
+        for (Map.Entry<String, List<Long>> e : db.writesBy.entrySet()) {
+            List<Long> seqs = e.getValue();
+            for (int i = 1; i < seqs.size(); i++) assertTrue(seqs.get(i) > seqs.get(i - 1), "each player's writes only go forward: " + e.getKey());
+        }
+    }
+
+    @Test
+    void snapshotsOfOnePlayerHandedInOutOfOrderFromSeveralThreadsEndWithTheNewest() throws Exception {
+        FakeDb db = new FakeDb();
+        SkillStore s = new SkillStore(db, log, dir.resolve("r").toFile(), Executors.newSingleThreadExecutor(), System::currentTimeMillis, ms -> { });
+        int n = 2000;
+        List<SkillStore.Snapshot> snaps = new ArrayList<>();
+        for (int k = 1; k <= n; k++) snaps.add(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", k))); // taken in order
+        java.util.Collections.shuffle(snaps, new java.util.Random(7));
+        CountDownLatch go = new CountDownLatch(1);
+        List<Thread> threads = new ArrayList<>();
+        for (int t = 0; t < 4; t++) {
+            List<SkillStore.Snapshot> part = snaps.subList(t * n / 4, (t + 1) * n / 4);
+            Thread th = new Thread(() -> {
+                try { go.await(); } catch (InterruptedException e) { return; }
+                for (SkillStore.Snapshot x : part) s.save(x); // handed in out of order, from four threads at once
+            });
+            threads.add(th);
+            th.start();
+        }
+        go.countDown();
+        for (Thread t : threads) t.join();
+        assertEquals(0, s.shutdown(5000));
+        assertEquals(n, db.xpOf(ann, "Mining"), "the newest snapshot is what is stored");
+        List<Long> seqs = db.writesBy.get(db.customId(ann));
+        for (int i = 1; i < seqs.size(); i++) assertTrue(seqs.get(i) > seqs.get(i - 1), "no older snapshot was written after a newer one");
+    }
+
+    @Test
+    void aRecoveryFileThatCannotBeWrittenAtStartupIsKeptInMemoryUsedByAJoinAndWrittenWhenTheDatabaseAnswers() {
+        // Run 1: the shutdown can't write Ann's 80 XP; it goes to a recovery file.
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore first = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.knowCustomId(ann, db.customId(ann));
+        SkillStore.Snapshot lost = first.snapshot(ann, "Ann", mining(10), Map.of("Mining", 80));
+        first.save(lost);
+        assertEquals(1, first.shutdown(100));
+        // Run 2: the database still fails at startup.
+        HandRun w = new HandRun();
+        SkillStore second = new SkillStore(db, log, recovery, w, () -> 0, ms -> { });
+        long newest = second.applyRecovery();
+        assertEquals(lost.seq(), newest, "the save order continues after the file's snapshot");
+        assertEquals(1, recovery.listFiles().length, "the file stays while its progress isn't stored");
+        SkillStore.Snapshot kept = second.newerUnsaved(ann, 0); // a join reading the older stored rows (seq 0)
+        assertNotNull(kept, "a join continues from the file's progress, not the older stored rows");
+        assertEquals(80, kept.xp().get("Mining"));
+        second.continueAfter(newest);
+        assertTrue(second.snapshot(ann, "Ann", mining(10), Map.of("Mining", 85)).seq() > lost.seq());
+        // The database answers: the retry writes it, and only then is the file removed.
+        db.failAll = false;
+        second.retryUnsaved();
+        w.runAll();
+        assertEquals(80, db.xpOf(ann, "Mining"));
+        assertEquals(0, recovery.listFiles().length);
+        assertTrue(second.unsavedNow().isEmpty());
+    }
+
+    @Test
+    void aRecoveryFileOlderThanTheStoredRowsIsRemovedAndNotCountedAsWritten() {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("skills-recovery").toFile();
+        SkillStore first = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.knowCustomId(ann, db.customId(ann));
+        SkillStore.Snapshot old = first.snapshot(ann, "Ann", mining(10), Map.of("Mining", 80));
+        first.save(old);
+        first.shutdown(100);
+        db.failAll = false;
+        db.rows.computeIfAbsent(db.customId(ann), k -> new HashMap<>()).put("Mining", new long[]{11, 5, old.seq() + 10}); // saved since
+        SkillStore next = new SkillStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        next.applyRecovery();
+        assertEquals(5, db.xpOf(ann, "Mining"), "the newer stored rows stay");
+        assertEquals(0, recovery.listFiles().length);
+        assertTrue(next.stats().contains("recovered at startup 0"), next.stats());
+        assertTrue(logged.records.stream().anyMatch(r -> r.getMessage().contains("was older than their stored skills")));
+    }
+
+    @Test
+    void aSaveTheDatabaseKeepsNewerRowsAgainstIsSaidAndNotCountedAsWritten() {
+        FakeDb db = new FakeDb();
+        db.rows.computeIfAbsent(db.customId(ann), k -> new HashMap<>()).put("Mining", new long[]{12, 9, 5_000}); // written by something else
+        HandRun w = new HandRun();
+        SkillStore s = store(db, w, new long[]{0});
+        s.continueAfter(100); // e.g. the startup read failed and the order started from an earlier clock
+        s.save(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", 1)));
+        w.runAll();
+        assertEquals(9, db.xpOf(ann, "Mining"));
+        assertTrue(s.stats().contains("written 0") && s.stats().contains("changed nothing (database newer) 1"), s.stats());
+        assertEquals(1, logged.at(Level.WARNING));
+        // A load moves the order past that player's stored rows: their next save is written.
+        s.continueAfter(5_000);
+        s.save(s.snapshot(ann, "Ann", mining(12), Map.of("Mining", 10)));
+        w.runAll();
+        assertEquals(10, db.xpOf(ann, "Mining"));
+    }
+
+    @Test
+    void aWriteStillRunningWhenShutdownGivesUpWaitingGetsARecoveryFile() throws Exception {
+        CountDownLatch inWrite = new CountDownLatch(1), release = new CountDownLatch(1);
+        FakeDb db = new FakeDb() {
+            @Override public synchronized int write(String id, Map<String, Integer> levels, Map<String, Integer> xp, long seq) throws SQLException {
+                inWrite.countDown();
+                try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                throw new SQLException("[SQLITE_BUSY] database is locked");
+            }
+        };
+        var writer = Executors.newSingleThreadExecutor();
+        SkillStore s = new SkillStore(db, log, dir.resolve("skills-recovery").toFile(), writer, () -> 0, ms -> { });
+        s.knowCustomId(ann, "CUST-ANN");
+        s.save(s.snapshot(ann, "Ann", mining(10), Map.of("Mining", 70)));
+        assertTrue(inWrite.await(5, TimeUnit.SECONDS));
+        assertEquals(1, s.shutdown(50), "the snapshot being written is kept in a recovery file");
+        release.countDown();
+        assertTrue(writer.awaitTermination(5, TimeUnit.SECONDS));
     }
 }

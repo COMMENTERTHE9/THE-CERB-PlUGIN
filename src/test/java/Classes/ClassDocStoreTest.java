@@ -45,11 +45,13 @@ class ClassDocStoreTest {
         final Map<UUID, Object[]> rows = new HashMap<>();
         boolean failAll;
         int attempts;
-        @Override public void write(UUID p, int version, String data, long stamp) throws SQLException {
+        @Override public int write(UUID p, int version, String data, long stamp) throws SQLException {
             attempts++;
             if (failAll) throw new SQLException("[SQLITE_BUSY] database is locked");
             Object[] cur = rows.get(p);
-            if (cur == null || stamp >= (long) cur[1]) rows.put(p, new Object[]{data, stamp});
+            if (cur != null && stamp < (long) cur[1]) return 0;
+            rows.put(p, new Object[]{data, stamp});
+            return 1;
         }
         String data(UUID p) { Object[] r = rows.get(p); return r == null ? null : (String) r[0]; }
     }
@@ -133,9 +135,30 @@ class ClassDocStoreTest {
         FakeDb next = new FakeDb();
         next.rows.put(bob, new Object[]{"bob: duelist 5", 80L}); // Bob's stored document is newer than his file
         ClassDocStore later = new ClassDocStore(next, log, recovery, new HandRun(), () -> 0, ms -> { });
-        assertEquals(2, later.applyRecovery());
+        assertEquals(1, later.applyRecovery(), "Ann's written; Bob's file was older than his stored document: nothing written");
         assertEquals("ann: mage 4", next.data(ann));
         assertEquals("bob: duelist 5", next.data(bob));
         assertEquals(0, recovery.listFiles().length);
+    }
+
+    @Test
+    void aRecoveryFileThatCannotBeWrittenAtStartupIsKeptUsedByAJoinAndRemovedOnceWritten() {
+        FakeDb db = new FakeDb();
+        db.failAll = true;
+        File recovery = dir.resolve("classes-recovery").toFile();
+        ClassDocStore first = new ClassDocStore(db, log, recovery, new HandRun(), () -> 0, ms -> { });
+        first.shuttingDown();
+        first.save(ann, "Ann", 3, () -> "ann: warrior 9", 900);
+        assertEquals(1, first.finish(100));
+        HandRun w = new HandRun();
+        ClassDocStore second = new ClassDocStore(db, log, recovery, w, () -> 0, ms -> { });
+        assertEquals(0, second.applyRecovery(), "the database still fails at startup");
+        assertEquals(1, recovery.listFiles().length, "the file stays");
+        assertEquals("ann: warrior 9", second.newerUnsaved(ann, 100).data(), "a join continues from it, not the older stored one");
+        db.failAll = false;
+        second.retryUnsaved();
+        w.runAll();
+        assertEquals("ann: warrior 9", db.data(ann));
+        assertEquals(0, recovery.listFiles().length, "removed once written");
     }
 }

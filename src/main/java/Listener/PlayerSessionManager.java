@@ -102,6 +102,7 @@ public class PlayerSessionManager implements Listener {
                 throw new java.util.concurrent.CompletionException(e);
             }
             store.knowCustomId(uuid, loaded.customId());
+            store.continueAfter(loaded.savedSeq()); // this player's next save is newer than their stored rows, always
             Map<String, Integer> levels = loaded.levels(), xp = loaded.xp();
             Skills.SkillStore.Snapshot kept = store.newerUnsaved(uuid, loaded.savedSeq());
             if (kept != null) {

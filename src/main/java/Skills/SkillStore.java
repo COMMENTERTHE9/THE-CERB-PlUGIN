@@ -43,8 +43,11 @@ public final class SkillStore {
 
     /** The database side (DatabaseManager), for tests to stand in for. */
     public interface Db {
-        /** One snapshot in one transaction; a row a newer snapshot wrote is kept. Throws on a database error. */
-        void write(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq) throws SQLException;
+        /**
+         * One snapshot in one transaction; a row a newer snapshot wrote is kept. Returns the rows written (0: the database
+         * already held a newer save of every skill). Throws on a database error.
+         */
+        int write(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq) throws SQLException;
 
         /** The player's stored custom id; throws when it can't be read or doesn't exist (never makes a new one). */
         String customId(UUID player) throws SQLException;
@@ -71,13 +74,16 @@ public final class SkillStore {
     /** The newest snapshot whose write failed (kept until a write of it, or of something newer, succeeds). */
     private final Map<UUID, Snapshot> unsaved = new ConcurrentHashMap<>();
     private final Map<UUID, String> customIds = new ConcurrentHashMap<>();
+    /** A recovery file that couldn't be written at startup: deleted once its progress (or newer) is stored. */
+    private record PendingFile(File file, long seq) {}
+    private final Map<UUID, PendingFile> pendingFiles = new ConcurrentHashMap<>();
     private final Map<UUID, Long> reported = new ConcurrentHashMap<>();
     private volatile Consumer<String> alert = m -> { };
     private volatile long lastAlert;
     private volatile long lastFailure = -REPORT_EVERY_MS;
     private volatile boolean shuttingDown;
     private final AtomicLong writes = new AtomicLong(), skipped = new AtomicLong(), failures = new AtomicLong(),
-            recovered = new AtomicLong();
+            recovered = new AtomicLong(), olderThanStored = new AtomicLong();
 
     public SkillStore(Db db, Logger log, File recoveryDir) {
         this(db, log, recoveryDir, new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
@@ -114,7 +120,11 @@ public final class SkillStore {
         this.alert = alert == null ? m -> { } : alert;
     }
 
-    /** Continue the save order after {@code storedMax}, the newest snapshot in the database (startup). */
+    /**
+     * Continue the save order after {@code storedMax}: at startup the newest snapshot in the database, and at each load
+     * that player's own newest stored row, so their next save is always newer than what is stored (even when the startup
+     * read failed and the order had to start from the clock).
+     */
     public void continueAfter(long storedMax) {
         seq.accumulateAndGet(storedMax, Math::max);
     }
@@ -156,7 +166,7 @@ public final class SkillStore {
         SQLException last = null;
         for (int a = 1; a <= attempts; a++) {
             try {
-                db.write(customId(s), s.levels(), s.xp(), s.seq());
+                int rows = db.write(customId(s), s.levels(), s.xp(), s.seq());
                 stored.merge(player, s.seq(), Math::max);
                 newest.remove(player, s); // a newer one handed in meanwhile stays, its own task writes it
                 Snapshot kept = unsaved.get(player);
@@ -164,7 +174,11 @@ public final class SkillStore {
                     unsaved.remove(player, kept);
                     log.info("[Skills] " + s.name() + "'s skills are saved again (the progress kept in memory is stored).");
                 }
-                writes.incrementAndGet();
+                PendingFile pf = pendingFiles.get(player);
+                if (pf != null && pf.seq() <= s.seq() && pendingFiles.remove(player, pf) && !pf.file().delete() && pf.file().exists()) {
+                    log.warning("[Skills] Could not delete " + pf.file().getPath() + "; it is harmless (older than what is stored now).");
+                }
+                if (rows == 0 && !s.levels().isEmpty()) noteOlderThanStored(s); else writes.incrementAndGet();
                 return;
             } catch (SQLException e) {
                 last = e;
@@ -177,6 +191,22 @@ public final class SkillStore {
         unsaved.merge(player, s, (a, b) -> b.seq() > a.seq() ? b : a);
         newest.remove(player, s);
         report(s, last);
+    }
+
+    /**
+     * The database held a newer save of every skill than this snapshot (its saved_seq is higher), so nothing was written.
+     * The save order continues after each player's stored rows ({@link #continueAfter} at their load), so this means
+     * something else wrote them: said, never silent.
+     */
+    private void noteOlderThanStored(Snapshot s) {
+        olderThanStored.incrementAndGet();
+        long now = clock.getAsLong();
+        Long before = reported.get(s.player());
+        if (before == null || now - before >= REPORT_EVERY_MS) {
+            reported.put(s.player(), now);
+            log.warning("[Skills] " + s.name() + "'s save #" + s.seq() + " changed nothing: the database already holds a newer"
+                    + " save of their skills (written by something else than this server's save order). The stored rows were kept.");
+        }
     }
 
     private String customId(Snapshot s) throws SQLException {
@@ -233,9 +263,11 @@ public final class SkillStore {
             writer.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        // newest before unsaved: a write still running moves a failed snapshot from the first to the second (unsaved, then
+        // newest removed), so read in this order it is seen in at least one of them
         Map<UUID, Snapshot> left = new HashMap<>();
-        for (Snapshot s : unsaved.values()) left.merge(s.player(), s, (a, b) -> b.seq() > a.seq() ? b : a);
         for (Snapshot s : newest.values()) left.merge(s.player(), s, (a, b) -> b.seq() > a.seq() ? b : a);
+        for (Snapshot s : unsaved.values()) left.merge(s.player(), s, (a, b) -> b.seq() > a.seq() ? b : a);
         left.values().removeIf(s -> s.seq() <= stored.getOrDefault(s.player(), 0L));
         log.info("[Skills] Saves this run: " + stats());
         if (left.isEmpty()) return 0;
@@ -248,7 +280,9 @@ public final class SkillStore {
     /** Diagnostics: snapshots written, skipped as older than what was stored, failed writes, kept in memory now. */
     public String stats() {
         return "written " + writes.get() + ", skipped (older than stored) " + skipped.get() + ", failed " + failures.get()
-                + ", kept in memory " + unsaved.size() + ", recovered at startup " + recovered.get();
+                + ", kept in memory " + unsaved.size() + ", recovered at startup " + recovered.get()
+                + (pendingFiles.isEmpty() ? "" : ", recovery files waiting " + pendingFiles.size())
+                + (olderThanStored.get() == 0 ? "" : ", changed nothing (database newer) " + olderThanStored.get());
     }
 
     // ── recovery files ───────────────────────────────────────────
@@ -279,8 +313,10 @@ public final class SkillStore {
 
     /**
      * At startup, before anyone joins: write each recovery file to the database (kept only where it is newer than what
-     * is stored) and delete the files written. A file that can't be written stays for the next start. Returns the
-     * newest sequence number seen in them (the save order continues after it).
+     * is stored) and delete the files written. A file that can't be written now (the database is still failing) is kept
+     * in memory like a failed save: a join continues from it, it is written as soon as the database answers, and its file
+     * is deleted only then (a shutdown before that writes it again). Returns the newest sequence number seen in them (the
+     * save order continues after it).
      */
     public long applyRecovery() {
         File[] files = recoveryDir.listFiles((d, n) -> n.endsWith(".yml"));
@@ -288,21 +324,39 @@ public final class SkillStore {
         long newestSeen = 0;
         for (File f : files) {
             YamlConfiguration y = YamlConfiguration.loadConfiguration(f);
+            UUID player;
             try {
-                UUID player = UUID.fromString(y.getString("player", ""));
-                long s = y.getLong("seq");
-                newestSeen = Math.max(newestSeen, s);
-                Map<String, Integer> levels = ints(y.getConfigurationSection("levels"));
-                Map<String, Integer> xp = ints(y.getConfigurationSection("xp"));
-                String id = y.getString("custom-id");
+                player = UUID.fromString(y.getString("player", ""));
+            } catch (IllegalArgumentException e) {
+                log.severe("[Skills] Could not read " + f.getPath() + " (no player in it); it is left where it is.");
+                continue;
+            }
+            long s = y.getLong("seq");
+            newestSeen = Math.max(newestSeen, s);
+            String name = y.getString("name", player.toString());
+            Map<String, Integer> levels = ints(y.getConfigurationSection("levels"));
+            Map<String, Integer> xp = ints(y.getConfigurationSection("xp"));
+            String id = y.getString("custom-id");
+            try {
                 if (id == null) id = db.customId(player);
-                db.write(id, levels, xp, s);
-                recovered.incrementAndGet();
-                log.warning("[Skills] Wrote " + y.getString("name", player.toString()) + "'s skills from " + f.getName()
-                        + " (progress that could not be saved at the last shutdown; kept only where newer).");
+                int rows = db.write(id, levels, xp, s);
+                if (rows > 0) {
+                    recovered.incrementAndGet();
+                    log.warning("[Skills] Wrote " + name + "'s skills from " + f.getName()
+                            + " (progress that could not be saved at the last shutdown; kept only where newer).");
+                } else {
+                    log.warning("[Skills] " + f.getName() + " (" + name + ") was older than their stored skills, which a later"
+                            + " save replaced: nothing to write.");
+                }
                 if (!f.delete()) log.warning("[Skills] Could not delete " + f.getPath() + "; it is harmless to write again.");
-            } catch (IllegalArgumentException | SQLException e) {
-                log.severe("[Skills] Could not apply " + f.getPath() + ": " + e.getMessage() + " (kept for the next start).");
+            } catch (SQLException e) {
+                if (id != null) customIds.putIfAbsent(player, id);
+                unsaved.merge(player, new Snapshot(player, name, Map.copyOf(levels), Map.copyOf(xp), s),
+                        (a, b) -> b.seq() > a.seq() ? b : a);
+                pendingFiles.put(player, new PendingFile(f, s));
+                log.severe("[Skills] Could not write " + f.getPath() + " (" + e.getMessage() + "). " + name + "'s progress in it"
+                        + " is kept in memory: used if they join, and written as soon as the database answers; the file stays"
+                        + " until then.");
             }
         }
         return newestSeen;

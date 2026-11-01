@@ -425,7 +425,9 @@ public final class Herbalism implements Listener {
     }
 
     private void discover(Player p, HerbalismRules.Herb h) {
-        if (!skills.canEarnXp(p.getUniqueId())) return; // its XP would be lost: the next gather discovers it instead
+        // Only once loaded: a discovery is recorded at once, but XP earned while loading is dropped if the load fails or the
+        // player leaves first (2026-11 review), so the next gather discovers it instead.
+        if (!skills.hasLoadedSkills(p.getUniqueId())) return;
         Set<String> have = discovered(p);
         if (!have.add(h.id())) return;
         p.getPersistentDataContainer().set(HERBS, PersistentDataType.STRING, String.join(",", new LinkedHashSet<>(have)));

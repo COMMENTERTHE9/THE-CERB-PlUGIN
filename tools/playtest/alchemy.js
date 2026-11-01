@@ -123,12 +123,12 @@ async function openStand() {
  * Brew at a fresh stand: three bottles of {@code bottle}, blaze powder, then {@code reagent} (a /give or /cerb command's
  * argument); all shift-clicked in by the bot, as a player does. Returns the three bottles as they came out.
  */
-async function brew(bottle, reagentCmd, { wait = 23000 } = {}) {
+async function brew(bottle, reagentCmd, { wait = 23000, bottles = 3 } = {}) {
   const bs = at(2, 0, 2);
   await cmd('/clear @s', 300);
   await setblock(2, 0, 2, 'air', 300);
   await setblock(2, 0, 2, 'brewing_stand', 600);
-  for (let i = 0; i < 3; i++) await give(bottle, 1, 300);
+  for (let i = 0; i < bottles; i++) await give(bottle, 1, 300);
   await give('blaze_powder', 1, 400);
   await cmd(reagentCmd, 600);
   const out = [];
@@ -191,6 +191,26 @@ async function compatPhase() {
   out = await brew(AWKWARD, '/give @s poppy 1');
   const after = (await alchXp()) - x0;
   check('Control again: three Draughts, paid as before', draughts(out) === 3 && after === base, `+${after} vs +${base}`);
+}
+
+async function emptySlotsPhase() {
+  // A plugin that writes results into a stand's empty slots (Paper hands it all three) makes bottles from nothing:
+  // Cerberus pays only for bottles the brew changed (2026-11 review, finding 6). One water bottle and nether wart.
+  await lab();
+  await setLevel(1);
+  let x0 = await alchXp();
+  let out = await brew(WATER, '/give @s nether_wart 1', { bottles: 1 });
+  const base = (await alchXp()) - x0;
+  check('Control: one water bottle and nether wart, one Awkward Potion: 2 XP', base === 2,
+    `+${base}; ${JSON.stringify(out.map(b => b && (b.custom || b.name)))}`);
+  const a = await cmd('/testbrew replace', 600);
+  const on = !!saw(/testbrew: replace/, a);
+  x0 = await alchXp();
+  out = await brew(WATER, '/give @s nether_wart 1', { bottles: 1 });
+  const g = (await alchXp()) - x0;
+  await cmd('/testbrew off', 600);
+  check('Another plugin writes water bottles into every result slot, the two empty ones too: nothing paid for them',
+    on && g === 0, on ? `+${g}; out ${JSON.stringify(out.map(b => b && (b.custom || b.name)))}` : 'the sandbox plugin has no /testbrew');
 }
 
 async function vanillaPhase() {
@@ -332,8 +352,9 @@ async function reloadPhase() {
 async function midbrewPhase() {
   // A reload that removes the very brew a stand is making (resources.yml "mending: off" in the sandbox's own file, put
   // back after): the stand can't finish it, so nothing is made or paid, and nothing breaks. Then it is back.
-  const file = require('path').join(process.env.SERVER_DIR || '/tmp/claude-0/-home-user-THE-CERB-PlUGIN/0abccdf5-ab39-5f77-aec2-ee72d6d35cbc/scratchpad/server',
-    'plugins/CerberusPlugin/resources.yml');
+  // The sandbox server's folder, always given: a default could edit another server's file than the one on MC_PORT.
+  if (!process.env.SERVER_DIR) { check('midbrew needs SERVER_DIR (the sandbox server\'s folder)', false); return; }
+  const file = require('path').join(process.env.SERVER_DIR, 'plugins/CerberusPlugin/resources.yml');
   const fs = require('fs');
   const keep = fs.readFileSync(file, 'utf8');
   const off = keep.replace(/^(\s+)mending:\n((?:\1\s+.*\n)+)/m, '$1mending: off\n');
@@ -343,17 +364,20 @@ async function midbrewPhase() {
   const x0 = await alchXp();
   let w;
   try { w = await fillStand(AWKWARD, 3, '/give @s poppy 1'); await sleep(2500); bot.closeWindow(w); } catch (e) { note('midbrew: ' + e.message); }
-  fs.writeFileSync(file, off);
-  let at = await cmd('/cerb reload', 3000);
-  await sleep(24000); // past the brew's 20 s
   let out = [];
   try {
-    w = await openStand();
-    await sleep(800);
-    out = w.slots.slice(0, 4).map(it => it && { name: it.name, custom: nameOf(it) });
-    bot.closeWindow(w);
-  } catch (e) { note('midbrew stand: ' + e.message); }
-  fs.writeFileSync(file, keep);
+    fs.writeFileSync(file, off);
+    await cmd('/cerb reload', 3000);
+    await sleep(24000); // past the brew's 20 s
+    try {
+      w = await openStand();
+      await sleep(800);
+      out = w.slots.slice(0, 4).map(it => it && { name: it.name, custom: nameOf(it) });
+      bot.closeWindow(w);
+    } catch (e) { note('midbrew stand: ' + e.message); }
+  } finally { // the sandbox's file is put back whatever happened above
+    fs.writeFileSync(file, keep);
+  }
   await cmd('/cerb reload', 3000);
   const g = (await alchXp()) - x0;
   check('A reload removed the brew a stand was making: no Draught of Mending, nothing paid, the poppy still in the stand',
@@ -616,8 +640,9 @@ async function menuPhase() {
   await connect();
   await sleep(3000);
   const phases = { compat: compatPhase, vanilla: vanillaPhase, brews: brewsPhase, drink: drinkPhase, persist: persistPhase, menu: menuPhase, claim: claimPhase, pvp: pvpPhase,
-    restart1: restart1Phase, restart2: restart2Phase, reload: reloadPhase, midbrew: midbrewPhase, leave1: leave1Phase, leave2: leave2Phase };
-  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'compat', 'brews', 'drink', 'pvp', 'persist', 'menu', 'reload'] : phaseArg.split(',');
+    restart1: restart1Phase, restart2: restart2Phase, reload: reloadPhase, midbrew: midbrewPhase, leave1: leave1Phase, leave2: leave2Phase,
+    emptyslots: emptySlotsPhase };
+  const run = phaseArg === 'all' ? ['vanilla', 'claim', 'compat', 'emptyslots', 'brews', 'drink', 'pvp', 'persist', 'menu', 'reload'] : phaseArg.split(',');
   for (const p of run) {
     if (!phases[p]) { console.log('unknown phase ' + p); continue; }
     console.log(`\n── ${p} ──`);

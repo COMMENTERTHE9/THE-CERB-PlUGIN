@@ -541,18 +541,23 @@ async function compatPhase() {
   const base = await brkXp(...spots[1]);
   let at = await cmd(`/testdrops ${NAME} clear`, 600);
   const on = !!saw(/testdrops: .* clear/, at);
+  // each gather must really have happened (the poppy gone): a +0 from a poppy that never broke would prove nothing
+  const gone = ([x, y, z]) => blockName(x, y, z) !== 'poppy';
   const cleared = await brkXp(...spots[2]);
+  const clearedBroke = gone(spots[2]);
   await cmd(`/testdrops ${NAME} replace`, 600);
   const replaced = await brkXp(...spots[3]);
+  const replacedBroke = gone(spots[3]);
   await cmd(`/testdrops ${NAME} double`, 600);
   const doubled = await brkXp(...spots[4]);
   await cmd('/testdrops off', 600);
   const after = await brkXp(...spots[5]);
   await cmd('/kill @e[type=item,distance=..20]', 300);
   check('Control: a wild poppy pays the same before and after', base > 0 && after === base, `+${base}, +${after}`);
-  check('Another plugin clears the drops without cancelling: nothing pays', on && cleared === 0,
-    on ? `+${cleared}` : 'the sandbox plugin has no /testdrops');
-  check('...replaces them with something else: nothing pays', replaced === 0, `+${replaced}`);
+  check('Another plugin clears the drops without cancelling: the poppy is gathered, nothing pays', on && clearedBroke && cleared === 0,
+    on ? `+${cleared}, poppy ${clearedBroke ? 'gone' : 'STILL THERE'}` : 'the sandbox plugin has no /testdrops');
+  check('...replaces them with something else: the poppy is gathered, nothing pays', replacedBroke && replaced === 0,
+    `+${replaced}, poppy ${replacedBroke ? 'gone' : 'STILL THERE'}`);
   check('...doubles them: the gather pays once', doubled === base, `+${doubled} vs +${base}`);
 }
 

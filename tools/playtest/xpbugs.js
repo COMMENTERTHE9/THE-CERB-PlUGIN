@@ -436,24 +436,40 @@ async function creative() {
   // New chunks in creative: no Pathfinding XP (it used to pay), and the chunks still pay later in survival.
   const nav = async label => {
     const far = 20000 + Math.floor(Math.random() * 50000);
-    await cmd(`/tp @s ${far + 0.5} -60 ${o.Z + 0.5} 0 0`, 2500);
+    // The sandboxes have real terrain: at Y -60 a fresh place is deepslate, and a bot put there can't walk into any new
+    // chunk (2026-11 audit: both checks failed that way, +0 and no HUD line). From the air above it, a corridor is dug
+    // south through three chunk borders (air on a stone floor), filled until the bot's copy of the world reads clear.
+    await cmd('/effect give @s slow_falling 60 0 true', 300); // no fall to take while it waits in the air (survival)
+    await cmd(`/tp @s ${far + 0.5} 300 ${o.Z + 0.5} 0 0`, 2500);
+    let dug = false;
+    for (let pass = 0; pass < 5 && !dug; pass++) {
+      await cmd(`/fill ${far - 1} -60 ${o.Z - 1} ${far + 1} -57 ${o.Z + 50} air`, 1200);
+      await cmd(`/fill ${far - 1} -61 ${o.Z - 1} ${far + 1} -61 ${o.Z + 50} stone`, 900);
+      await sleep(600);
+      dug = [0, 16, 32, 48].every(dz => [-60, -59].every(y => { const b = bot.blockAt(new Vec3(far, y, o.Z + dz)); return b && b.name === 'air'; }));
+      if (!dug) note(`${label}: corridor at ${far} not clear yet, filling again`);
+    }
+    await cmd(`/tp @s ${far + 0.5} -60 ${o.Z + 0.5} 0 0`, 1500);
+    await cmd('/effect clear @s slow_falling', 300);
+    const from = bot.entity.position.clone();
     const n0 = await skill('Navigation'), t = Date.now();
     bot.setControlState('forward', true); bot.setControlState('sprint', true);
     await sleep(6000);
     bot.setControlState('forward', false); bot.setControlState('sprint', false);
     await sleep(800);
     const n1 = await skill('Navigation');
-    note(`${label}: Pathfinding ${show(n0)} -> ${show(n1)}; HUD ${hudSince(t).filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160)}`);
-    return { gain: gain(n0, n1), hud: hudSince(t) };
+    const walked = bot.entity.position.distanceTo(from);
+    note(`${label}: corridor ${dug ? 'clear' : 'NOT clear'}, walked ${walked.toFixed(1)} blocks; Pathfinding ${show(n0)} -> ${show(n1)}; HUD ${hudSince(t).filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160)}`);
+    return { gain: gain(n0, n1), hud: hudSince(t), walked };
   };
   const navC = await nav('creative, new chunks');
   check('Creative: walking into new chunks pays no Pathfinding XP, and the HUD says why', navC.gain === 0 && navC.hud.some(m => /No Pathfinding XP in creative mode/.test(m)),
-    `+${navC.gain}; ` + (navC.hud.filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160) || 'nothing on the HUD'));
+    `+${navC.gain}, walked ${navC.walked.toFixed(1)} blocks; ` + (navC.hud.filter(m => /Pathfinding/.test(m)).join(' | ').slice(0, 160) || 'nothing on the HUD'));
 
   // Positive control: the same in survival.
   await cmd('/gamemode survival', 800);
   const navS = await nav('survival, new chunks');
-  check('Control, survival: new chunks pay Pathfinding XP', navS.gain > 0, `+${navS.gain}`);
+  check('Control, survival: new chunks pay Pathfinding XP', navS.gain > 0, `+${navS.gain}, walked ${navS.walked.toFixed(1)} blocks`);
   await cmd(`/tp @s ${o.X + 0.5} ${o.Y} ${o.Z + 0.5} 0 30`, 900);
   await bot.lookAt(new Vec3(o.X + 0.5, o.Y - 1, o.Z + 4.5), true);
   const s = await fishSome(2);

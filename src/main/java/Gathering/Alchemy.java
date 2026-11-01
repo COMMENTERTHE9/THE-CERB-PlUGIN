@@ -480,7 +480,8 @@ public final class Alchemy implements Listener, AttributeSource {
                 } else replaced++;
             } else if (d.slotMundane()[i]) {
                 if (out != null && out.isSimilar(mundane())) mundaneMade++; else replaced++;
-            } else if (made == null && out != null && !out.getType().isAir() && (in == null || !out.isSimilar(in))) {
+            } else if (made == null && in != null && !in.getType().isAir() && out != null && !out.getType().isAir() && !out.isSimilar(in)) {
+                // a bottle the brew changed (vanilla never fills an empty slot; another plugin that does is not paid for it)
                 vanilla++;
                 if (r.enabled()) xp += r.vanillaXp();
             }

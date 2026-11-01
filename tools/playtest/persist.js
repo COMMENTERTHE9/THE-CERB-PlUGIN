@@ -1,6 +1,6 @@
 // Skill progress persistence (docs/STATUS.md → reliability audit): what the database holds after XP gains, quits,
 // rejoins, contention and failures, read straight from the database file (dblock.py), never trusted from the plugin.
-// Sandbox only. MC_PORT; SERVER_DIR (default the main sandbox) for the database. The bots must be op (/cerb skill).
+// Sandbox only. MC_PORT; SERVER_DIR (required: the server on MC_PORT) for the database. The bots must be op (/cerb skill).
 //
 //   node persist.js contention [trials] [name]  another program holds the database's write lock while a bot gains XP and
 //                                               quits: every save waits, then they run in some order. The stored XP
@@ -18,6 +18,8 @@
 //                                               bot is told and disconnected, nothing stored changes, a rejoin works.
 //   node persist.js shutdown-set [name]         XP gains, then the caller stops the server right away (writes the expected
 //                                               value to $OUT); shutdown-check [name] after the restart compares.
+//   node persist.js recovery-check [name]       after shutdown-set, a stop and a start both under the database's write
+//                                               lock: the join continues from the recovery file; stored once the lock goes.
 const mineflayer = require('mineflayer');
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -25,9 +27,12 @@ const path = require('path');
 
 const phase = process.argv[2] || 'contention';
 const PORT = Number(process.env.MC_PORT || 25565);
-const SP = '/tmp/claude-0/-home-user-THE-CERB-PlUGIN/0abccdf5-ab39-5f77-aec2-ee72d6d35cbc/scratchpad';
-const SERVER_DIR = process.env.SERVER_DIR || path.join(SP, 'server');
+// The sandbox server's folder, always given: a default could point at another server's database than the one on MC_PORT,
+// and every check would then read the wrong file (2026-11 review).
+const SERVER_DIR = process.env.SERVER_DIR;
+if (!SERVER_DIR) { console.log('Set SERVER_DIR to the sandbox server\'s folder (the one listening on MC_PORT).'); process.exit(2); }
 const DB = path.join(SERVER_DIR, 'plugins/CerberusPlugin/cerberus.db');
+if (!fs.existsSync(DB)) { console.log('No database at ' + DB + ': is SERVER_DIR the sandbox server\'s folder?'); process.exit(2); }
 const TOOL = path.join(__dirname, 'dblock.py');
 const SKILL = 'Mining';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -103,7 +108,7 @@ const same = (a, b) => Array.isArray(a) && Array.isArray(b) && a[0] === b[0] && 
 
 async function contention() {
   const trials = Number(process.argv[3] || 12), name = process.argv[4] || 'CerbSave';
-  let rolledBack = 0, lost = 0;
+  let rolledBack = 0, lost = 0, invalid = 0;
   for (let t = 1; t <= trials; t++) {
     let bot = await connect(name);
     await loaded(bot, name);
@@ -120,11 +125,13 @@ async function contention() {
     await sleep(3000);
     const after = stored(name);
     const ok = same(after, shown);
-    if (!ok && Array.isArray(after) && Array.isArray(shown)) (after[0] < shown[0] || after[1] < shown[1]) ? rolledBack++ : lost++;
+    // a trial that couldn't read the game's value or the stored one proves nothing: it counts against the check
+    if (!Array.isArray(after) || !Array.isArray(shown) || !Array.isArray(base)) invalid++;
+    else if (!ok) (after[0] < shown[0] || after[1] < shown[1]) ? rolledBack++ : lost++;
     console.log(`  trial ${t}: before ${JSON.stringify(base)}, the game showed ${JSON.stringify(shown)}, stored ${JSON.stringify(after)}${ok ? '' : '  <<<'}`);
   }
-  check(`Contention: the stored XP is the last value the game showed in every trial (${trials})`, rolledBack === 0 && lost === 0,
-    `${rolledBack} rolled back, ${lost} other`);
+  check(`Contention: the stored XP is the last value the game showed in every trial (${trials})`, rolledBack === 0 && lost === 0 && invalid === 0,
+    `${rolledBack} rolled back, ${lost} other, ${invalid} without a value to compare`);
 }
 
 async function failure() {
@@ -184,16 +191,23 @@ async function shutdownSet() {
   await loaded(bot, name);
   await setLevel(bot, name, 10);
   await sleep(1500);
-  awardNow(bot, name, 30);
+  // LOCK_SECONDS: the database's write lock is taken here, before the gains, and held that long (past the stop and the
+  // next start, for recovery-check): nothing of them can reach the database before the stop.
+  if (process.env.LOCK_SECONDS) await holdLock(Number(process.env.LOCK_SECONDS));
+  const a1 = 10 + Date.now() % 37, a2 = 10 + Math.floor(Date.now() / 13) % 41; // differs from run to run
+  awardNow(bot, name, a1);
   await sleep(200);
-  const shown = await award(bot, name, 30, 800); // inside the save window: its save is pending when the server stops
+  const shown = await award(bot, name, a2, 2500); // inside the save window: its save is pending when the server stops
   // Class progress too: a Warrior rank that differs from run to run (a stale stored value can't pass)
-  const rank = 2 + (Date.now() % 7);
+  let storedRank = null;
+  try { storedRank = JSON.parse(execFileSync('python3', [TOOL, 'rank', DB, name, 'warrior']).toString()); } catch (e) { /* none yet */ }
+  let rank = 2 + (Date.now() % 7);
+  if (rank === storedRank) rank = rank === 8 ? 2 : rank + 1; // never the stored one: a stale value can't pass
   const at = bot.chatLog.length;
   bot.chat(`/cerb class ${name} warrior rank ${rank}`);
   let ranked = false;
   for (let i = 0; i < 40 && !ranked; i++) { await sleep(50); ranked = bot.chatLog.slice(at).some(m => new RegExp('Warrior is now rank ' + rank).test(m)); }
-  fs.writeFileSync(process.env.OUT || path.join(SP, 'persist-shutdown.json'), JSON.stringify({ skills: shown, warrior: rank }));
+  fs.writeFileSync(process.env.OUT || path.join(SERVER_DIR, 'persist-shutdown.json'), JSON.stringify({ skills: shown, warrior: rank }));
   console.log(`  the game showed ${JSON.stringify(shown)} and Warrior rank ${rank}; stop the server now`);
   check('shutdown-set: the game showed the skill and the class rank', Array.isArray(shown) && ranked);
   // Stay online until the server stops (a quit first would be the quit's save, not shutdown's).
@@ -202,7 +216,7 @@ async function shutdownSet() {
 
 async function shutdownCheck() {
   const name = process.argv[3] || 'CerbDown';
-  const want = JSON.parse(fs.readFileSync(process.env.OUT || path.join(SP, 'persist-shutdown.json')).toString());
+  const want = JSON.parse(fs.readFileSync(process.env.OUT || path.join(SERVER_DIR, 'persist-shutdown.json')).toString());
   const shown = want.skills;
   const after = stored(name);
   const bot = await connect(name);
@@ -219,6 +233,45 @@ async function shutdownCheck() {
   console.log(`  before the stop: skills ${JSON.stringify(shown)}, Warrior rank ${want.warrior}; stored ${JSON.stringify(after)}; after the restart the game shows ${JSON.stringify(back)}, Warrior rank ${rank}`);
   check('Shutdown: the skill progress the game showed before the stop is stored and loads after the restart', same(after, shown) && same(back, shown));
   check('Shutdown: and the class rank', rank === want.warrior, `rank ${rank}, expected ${want.warrior}`);
+}
+
+/**
+ * After shutdown-set, a stop with the database's write lock held, and a start with it still held (so the recovery file
+ * can't be written at startup): the join continues from the file's progress, not the older stored rows, and once the
+ * lock is let go the progress is stored and the file removed (2026-11 review, finding 1).
+ */
+async function recoveryCheck() {
+  const name = process.argv[3] || 'CerbDown';
+  const want = JSON.parse(fs.readFileSync(process.env.OUT || path.join(SERVER_DIR, 'persist-shutdown.json')).toString());
+  const shown = want.skills;
+  const dir = path.join(SERVER_DIR, 'plugins/CerberusPlugin/skills-recovery');
+  const files = () => (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter(f => f.endsWith('.yml'));
+  const storedBefore = stored(name), filesBefore = files().length;
+  let rankBefore = null;
+  try { rankBefore = JSON.parse(execFileSync('python3', [TOOL, 'rank', DB, name, 'warrior']).toString()); } catch (e) { /* null */ }
+  const bot = await connect(name);
+  const back = await loaded(bot, name);
+  console.log(`  before the stop the game showed ${JSON.stringify(shown)}; stored now ${JSON.stringify(storedBefore)}; recovery files ${filesBefore}; the join shows ${JSON.stringify(back)}`);
+  check('The stop could not write the progress (the stored rows are older) and kept it in a recovery file', !same(storedBefore, shown) && filesBefore > 0,
+    `stored ${JSON.stringify(storedBefore)}, files ${filesBefore}`);
+  check('...the start could not write that file either (the lock still held): the join continues from it, not the older stored rows',
+    same(back, shown), `the game shows ${JSON.stringify(back)}, expected ${JSON.stringify(shown)}`);
+  let rank = null;
+  for (let tries = 0; tries < 20 && rank === null; tries++) { // classes load a moment after skills
+    const at = bot.chatLog.length;
+    bot.chat(`/cerb class ${name} info`);
+    await sleep(500);
+    const line = bot.chatLog.slice(at).find(m => /Warrior: rank \d+/.test(m));
+    if (line) rank = Number(/Warrior: rank (\d+)/.exec(line)[1]);
+  }
+  check('...and the class rank comes from its recovery file too (the stored document has another)', rank === want.warrior && rankBefore !== want.warrior,
+    `rank ${rank}, expected ${want.warrior}; stored before the join ${rankBefore}`);
+  let after = null;
+  for (let i = 0; i < 150 && !(same(after, shown) && files().length === 0); i++) { await sleep(1000); after = stored(name); }
+  await quit(bot);
+  console.log(`  once the lock was let go: stored ${JSON.stringify(after)}, recovery files ${files().length}`);
+  check('...once the database answers it is stored, and its recovery file removed', same(after, shown) && files().length === 0,
+    `stored ${JSON.stringify(after)}, files ${files().length}`);
 }
 
 async function backup() {
@@ -330,8 +383,29 @@ async function busyDatabase(name, seconds) {
 }
 const SKILLS3 = ['Mining', 'Herbalism', 'Farming'];
 
+/** XP from level 1 to [level, xp] on the plugin's curve (Skills.SkillManager.xpForLevel), so gains compare across level-ups. */
+const xpForLevel = l => Math.round(75 * Math.pow(Math.max(1, l), 1.85) + 40 * Math.max(1, l));
+function total(v) { if (!Array.isArray(v)) return NaN; let t = v[1]; for (let l = 1; l < v[0]; l++) t += xpForLevel(l); return t; }
+
+/** The four blocks broken by a bot whose skills are loaded the normal way: the XP each skill gained. */
+async function loadedBreak(name) {
+  await arenaSession(name);
+  const bot = await connect(name);
+  await untilLoaded(bot, name, 'Mining');
+  const b0 = {}, a0 = {};
+  for (const s of SKILLS3) b0[s] = await valueOf(bot, name, s);
+  const broke = await breakAll(bot);
+  await sleep(800);
+  for (const s of SKILLS3) a0[s] = await valueOf(bot, name, s);
+  await quit(bot);
+  return { broke, gain: Object.fromEntries(SKILLS3.map(s => [s, total(a0[s]) - total(b0[s])])) };
+}
+
 async function joinact() {
   const name = process.argv[3] || 'CerbJoin';
+  // First the same four blocks once loaded: a herb or crop this bot never found is discovered here, so the runs compared
+  // below pay alike (a discovery waits for a loaded session; 2026-11 review).
+  await loadedBreak(name);
   await arenaSession(name);
   const before = Object.fromEntries(SKILLS3.map(s => [s, storedOf(name, s)]));
   const { released } = await busyDatabase(name, 7);
@@ -344,11 +418,15 @@ async function joinact() {
   const after = {};
   for (const s of SKILLS3) after[s] = await valueOf(bot, name, s);
   await quit(bot);
-  const gain = s => Array.isArray(after[s]) && Array.isArray(before[s]) ? (after[s][0] - before[s][0]) * 100000 + after[s][1] - before[s][1] : NaN;
+  const gain = s => total(after[s]) - total(before[s]);
   console.log(`  broke ${broke} blocks while ${during ? 'ALREADY LOADED (inconclusive)' : 'loading'}; before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`);
+  // The control: the same blocks broken once loaded, the normal way
+  const control = await loadedBreak(name);
+  console.log(`  control (loaded): broke ${control.broke}, ${SKILLS3.map(s => `${s} +${control.gain[s]}`).join(', ')}`);
   check('Joining: the bot broke the four blocks while its skills were still loading', broke === 4 && during === null, `broke ${broke}, loaded then: ${JSON.stringify(during)}`);
-  check('...and the XP it earned meanwhile arrived once they loaded (Mining, Herbalism, Farming)', SKILLS3.every(s => gain(s) > 0),
-    SKILLS3.map(s => `${s} +${gain(s)}`).join(', '));
+  check('...and the XP it earned meanwhile arrived once they loaded, once: exactly what the same blocks pay a loaded player',
+    control.broke === 4 && SKILLS3.every(s => gain(s) > 0 && gain(s) === control.gain[s]),
+    SKILLS3.map(s => `${s} +${gain(s)} (loaded: +${control.gain[s]})`).join(', '));
 }
 
 async function joinquit() {
@@ -393,7 +471,8 @@ async function joinfail() {
   check('...nothing stored changes, and a rejoin once the database answers loads it', same(after, before) && same(back, before));
 }
 
-const PHASES = { contention, failure, rapid, backup, joinact, joinquit, joinfail, 'shutdown-set': shutdownSet, 'shutdown-check': shutdownCheck };
+const PHASES = { contention, failure, rapid, backup, joinact, joinquit, joinfail, 'shutdown-set': shutdownSet, 'shutdown-check': shutdownCheck,
+  'recovery-check': recoveryCheck };
 (async () => {
   try { await PHASES[phase](); } catch (e) { check('phase ran without errors', false, e.stack); }
   const failed = results.filter(r => !r).length;

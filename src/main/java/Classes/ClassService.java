@@ -194,13 +194,20 @@ public final class ClassService implements AttributeSource {
     public void shutdown() {
         docs.shuttingDown();
         long now = System.currentTimeMillis();
-        for (Map.Entry<UUID, ClassProfile> e : profiles.entrySet()) {
-            ClassProfile prof = e.getValue();
-            write(e.getKey(), prof.snapshot(now), prof.nextStamp(now)); // behind the quit saves already queued
+        try {
+            for (Map.Entry<UUID, ClassProfile> e : profiles.entrySet()) {
+                ClassProfile prof = e.getValue();
+                try {
+                    write(e.getKey(), prof.snapshot(now), prof.nextStamp(now)); // behind the quit saves already queued
+                } catch (RuntimeException ex) { // one profile that can't be copied never stops the others' saves
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "[Classes] Could not save " + e.getKey() + "'s classes at shutdown", ex);
+                }
+            }
+            profiles.clear();
+            for (UUID id : List.copyOf(contributions.keySet())) forgetRuntime(id);
+        } finally {
+            docs.finish(10_000); // what still can't be written goes to classes-recovery/
         }
-        profiles.clear();
-        for (UUID id : List.copyOf(contributions.keySet())) forgetRuntime(id);
-        docs.finish(10_000); // what still can't be written goes to classes-recovery/
     }
 
     private void forgetRuntime(UUID id) {

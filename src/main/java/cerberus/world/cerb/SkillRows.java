@@ -49,9 +49,10 @@ public final class SkillRows {
 
     /**
      * Writes one snapshot of a player's skills in one transaction. A row whose stored {@code saved_seq} is newer than
-     * {@code seq} is kept as it is. Throws on any database error (nothing of the snapshot is then written).
+     * {@code seq} is kept as it is. Returns how many rows the snapshot wrote (0: the database already held a newer save
+     * of every skill). Throws on any database error (nothing of the snapshot is then written).
      */
-    public static void write(Connection conn, String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
+    public static int write(Connection conn, String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
             throws SQLException {
         boolean auto = conn.getAutoCommit();
         conn.setAutoCommit(false);
@@ -64,8 +65,11 @@ public final class SkillRows {
                 ps.setLong(5, seq);
                 ps.addBatch();
             }
-            ps.executeBatch();
+            int[] counts = ps.executeBatch();
             conn.commit();
+            int changed = 0;
+            for (int c : counts) changed += c > 0 ? c : c == Statement.SUCCESS_NO_INFO ? 1 : 0; // unknown: count it as written
+            return changed;
         } catch (SQLException ex) {
             try { conn.rollback(); } catch (SQLException ignored) { /* the original error says more */ }
             throw ex;

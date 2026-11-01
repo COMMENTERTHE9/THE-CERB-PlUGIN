@@ -72,6 +72,12 @@
 //            (on later builds the Active Effects screen, whose timers count down while it is open).
 //   levels - each bot mines diamond ore with its Mining set back to level 1 at the start, so it levels up again and
 //            again from real XP: many level-ups at once across the server (the progression feedback's workload).
+//   joins  - each bot leaves and joins again, over and over (online 1.5-2.5 s, offline 0.2-0.6 s), adding 7 Mining XP each
+//            time it is online (/cerb skill, an admin's quiet XP): every quit writes a skill snapshot and every join loads
+//            one (the 2026-11 reliability audit put both on one ordered writer). After each join the bot asks for its Mining
+//            XP until its skills answer: the time from spawn to loaded, and whether it finds the XP it last had (ROLLBACK
+//            when it finds less). Bots join from one address, so real churn needs bukkit.yml connection-throttle: 0 (a
+//            throttled join waits a second and tries again, counted).
 // All bots stand in a small grid next to world spawn, so they share one Folia region (the worst
 // case: one region thread does all the work). A controller bot (CerbSmoke, already op) ops the
 // load bots, places them, and cleans everything up at the end (test zombies killed, bots deopped).
@@ -695,6 +701,72 @@ async function menuidle(b, deadline, keepMode = false) {
   if (b.currentWindow) b.closeWindow(b.currentWindow);
 }
 
+// joins: one connection attempt that fails fast (a kick, an error or the end before spawning), unlike join()
+function joinOnce(name) {
+  return new Promise((resolve, reject) => {
+    const b = mineflayer.createBot({ ...HOST, username: name });
+    let done = false;
+    const fail = why => { if (done) return; done = true; try { b.end(); } catch { } reject(new Error(why)); };
+    b.on('kicked', r => { if (done) console.log(`${name} KICKED`, plain(r)); else fail('kicked ' + plain(r)); });
+    b.on('error', e => { if (done) console.log(`${name} error`, e.message); else fail('error ' + e.message); });
+    b.on('end', () => fail('ended'));
+    b.once('spawn', () => { if (done) return; done = true; resolve(b); });
+    setTimeout(() => fail('timeout'), 30000);
+  });
+}
+
+const joinStats = { latencies: [], rollbacks: 0, ahead: 0 };
+
+async function joins(i, bots, deadline, controller) {
+  const name = bots[i].username;
+  let b = bots[i];
+  // /cerb skill <self> Mining xp <n>: the answer is the level and XP after it, or "not loaded yet"
+  const ask = (bot, cmd, ms) => new Promise(resolve => {
+    let t = null;
+    const on = m => {
+      const text = m.toString();
+      const lv = text.match(/^(\S+): .*?is now level (\d+) \((\d+) XP\)/);
+      const r = lv && lv[1] === name ? { level: +lv[2], xp: +lv[3] }
+          : text.startsWith(name + "'s skills are not loaded yet") || text.startsWith('Player not online') ? { notLoaded: true } : null;
+      if (r) { clearTimeout(t); bot.removeListener('message', on); resolve(r); }
+    };
+    t = setTimeout(() => { bot.removeListener('message', on); resolve(null); }, ms);
+    bot.on('message', on);
+    bot.chat(cmd);
+  });
+  controller.chat(`/cerb skill ${name} Mining level 30`); await sleep(800);
+  let last = null;
+  while (Date.now() < deadline) {
+    await sleep(1500 + Math.random() * 1000);
+    const added = await ask(b, `/cerb skill ${name} Mining xp 7`, 1500);
+    if (added && added.xp != null) { last = added; bump(name, 'xp+7'); }
+    if (Date.now() > deadline) break;
+    b.quit(); bump(name, 'quits');
+    await sleep(200 + Math.random() * 400);
+    let nb = null;
+    for (let a = 0; a < 20 && !nb; a++) {
+      try { nb = await joinOnce(name); }
+      catch (e) { bump(name, /throttl/i.test(e.message) ? 'throttled' : 'refused'); await sleep(1000); }
+    }
+    if (!nb) { bump(name, 'gaveUp'); return; }
+    b = nb; bots[i] = nb;
+    const t0 = Date.now();
+    let got = null;
+    for (let a = 0; a < 200 && !got; a++) {
+      const r = await ask(b, `/cerb skill ${name} Mining xp 0`, 1000);
+      if (r && r.xp != null) got = r; else await sleep(50);
+    }
+    if (!got) { bump(name, 'neverLoaded'); continue; }
+    joinStats.latencies.push(Date.now() - t0); bump(name, 'joins');
+    if (last) {
+      const cmp = got.level !== last.level ? got.level - last.level : got.xp - last.xp;
+      if (cmp < 0) { joinStats.rollbacks++; bump(name, 'ROLLBACK'); console.log(`${name} ROLLBACK: had level ${last.level} ${last.xp} XP, loaded level ${got.level} ${got.xp} XP`); }
+      if (cmp > 0) { joinStats.ahead++; bump(name, 'ahead'); } // an add whose answer was lost: applied, not seen
+    }
+    last = got;
+  }
+}
+
 (async () => {
   const controller = await join('CerbSmoke');
   await sleep(2000);
@@ -754,10 +826,16 @@ async function menuidle(b, deadline, keepMode = false) {
         : m === 'gearmenu' ? gearmenu(b, deadline, controller)
         : m === 'mealidle' ? mealidle(b, deadline, controller) : m === 'effectsmenu' ? effectsmenu(b, deadline, controller)
         : m === 'effectsidle' ? effectsidle(b, deadline, controller)
+        : m === 'joins' ? joins(i, bots, deadline, controller)
         : sleep(Math.max(0, deadline - Date.now()));
     return run.catch(e => console.log(b.username, m, 'error', e.message));
   }));
   console.log(`LOAD END ${new Date().toISOString()}`);
+  if (MODE === 'joins') {
+    const l = joinStats.latencies.slice().sort((a, b) => a - b), q = f => l.length ? l[Math.min(l.length - 1, Math.floor(f * l.length))] : 0;
+    console.log(`  JOINS joins=${l.length} loaded-after ms: mean=${l.length ? Math.round(l.reduce((a, b) => a + b, 0) / l.length) : 0}`
+        + ` p50=${q(0.5)} p95=${q(0.95)} max=${l.length ? l[l.length - 1] : 0} rollbacks=${joinStats.rollbacks} ahead=${joinStats.ahead}`);
+  }
   await readStats('after');
   for (const [name, c] of Object.entries(counts)) console.log(`  ${name}: ${JSON.stringify(c)}`);
   controller.chat('/kill @e[type=zombie,distance=..60]'); if (MODE === 'fishing' || MODE === 'autofish') controller.chat('/kill @e[type=guardian,distance=..80]'); await sleep(600);

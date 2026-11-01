@@ -108,7 +108,7 @@ public class SkillManager {
     }
 
     public void removePlayer(UUID playerUUID) {
-        loadingXp.remove(playerUUID); // a session that ended before its skills loaded: nothing to apply it to
+        loadingXp.forget(playerUUID); // a session that ended before its skills loaded: nothing to apply it to
         customPlayers.remove(playerUUID);
         playerSkillLevels.remove(playerUUID);
         playerSkillXP.remove(playerUUID);
@@ -280,9 +280,9 @@ public class SkillManager {
             boolean isBoss
     ) {
         UUID uid = player.getUniqueId();
-        Map<String, Integer> levels = playerSkillLevels.get(uid);
-        Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, amount, true); return; } // loading, or left
+        Maps m = mapsOrKeep(uid, skillName, amount, true); // loading: kept for the session; left: nothing to add to
+        if (m == null) return;
+        Map<String, Integer> levels = m.levels(), xp = m.xp();
 
         applyAward(player, skillName, levels, xp, amount, true);
         saveSkills(player);
@@ -404,9 +404,9 @@ public class SkillManager {
         // Maps exist only between a successful load (setPlayerSkills) and quit (removePlayer).
         // Awarding before the load used to create default maps (level 1) and SAVE them, which
         // could overwrite the stored levels if the save landed first or the load then failed.
-        Map<String, Integer> levels = playerSkillLevels.get(uid);
-        Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, true); return false; }
+        Maps m = mapsOrKeep(uid, skillName, xpGained, true);
+        if (m == null) return false;
+        Map<String, Integer> levels = m.levels(), xp = m.xp();
 
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
         saveSkills(player);
@@ -419,9 +419,9 @@ public class SkillManager {
      */
     public long addXpCounted(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();
-        Map<String, Integer> levels = playerSkillLevels.get(uid);
-        Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, true); return 0; }
+        Maps m = mapsOrKeep(uid, skillName, xpGained, true);
+        if (m == null) return 0;
+        Map<String, Integer> levels = m.levels(), xp = m.xp();
         int levelBefore = levels.getOrDefault(skillName, 1), xpBefore = xp.getOrDefault(skillName, 0);
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, true);
         saveSkills(player);
@@ -431,9 +431,9 @@ public class SkillManager {
     /** An admin's XP grant or correction: the same award, without the level-up presentation. */
     public boolean addXpQuietly(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();
-        Map<String, Integer> levels = playerSkillLevels.get(uid);
-        Map<String, Integer> xp = playerSkillXP.get(uid);
-        if (levels == null || xp == null) { keepWhileLoading(uid, skillName, xpGained, false); return false; }
+        Maps m = mapsOrKeep(uid, skillName, xpGained, false);
+        if (m == null) return false;
+        Map<String, Integer> levels = m.levels(), xp = m.xp();
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, false);
         saveSkills(player);
         return r.levelsGained() > 0;
@@ -463,47 +463,45 @@ public class SkillManager {
 
     // ── XP earned while loading (docs/STATUS.md → reliability audit) ──────────
 
-    /**
-     * XP a session earned before its skills finished loading: per skill, the amount with a level-up presentation and the
-     * amount without. Kept for that session only ({@code generation}); applied when its load completes, dropped when it
-     * ends or its load fails. Never maps of its own: nothing here can be saved over stored progress.
-     */
-    private static final class LoadingXp {
-        final long generation;
-        final Map<String, double[]> bySkill = new ConcurrentHashMap<>();
-        LoadingXp(long generation) { this.generation = generation; }
-    }
-
-    private final Map<UUID, LoadingXp> loadingXp = new ConcurrentHashMap<>();
+    private final LoadingXpBuffer loadingXp = new LoadingXpBuffer();
 
     /** Join: this session's skills are loading; XP earned meanwhile is kept for it. Player's thread. */
     public void beginLoading(UUID player, long generation) {
-        loadingXp.put(player, new LoadingXp(generation));
+        loadingXp.begin(player, generation);
     }
 
     /** The session's load failed, or it ended first: what it earned while loading is dropped. */
     public void abandonLoading(UUID player, long generation) {
-        loadingXp.computeIfPresent(player, (k, l) -> l.generation == generation ? null : l);
+        loadingXp.abandon(player, generation);
     }
 
     /** True while an action can earn XP: skills loaded, or loading (kept for the session). */
     public boolean canEarnXp(UUID player) {
-        return hasLoadedSkills(player) || loadingXp.containsKey(player);
+        return hasLoadedSkills(player) || loadingXp.isLoading(player);
     }
 
-    private void keepWhileLoading(UUID player, String skill, double amount, boolean celebrate) {
-        LoadingXp l = loadingXp.get(player);
-        if (l == null || skill == null || !(amount > 0) || !Double.isFinite(amount)) return;
-        double[] a = l.bySkill.computeIfAbsent(skill, k -> new double[2]);
-        a[celebrate ? 0 : 1] = Math.min(1e12, a[celebrate ? 0 : 1] + amount);
+    private record Maps(Map<String, Integer> levels, Map<String, Integer> xp) {}
+
+    /**
+     * The player's skill maps; or null when the award was kept for the session that is still loading (or the player has
+     * left: nothing to add to). An award racing the hand-over of the loading XP is told it wasn't kept, and finds the
+     * maps the load has just set (LoadingXpBuffer).
+     */
+    private Maps mapsOrKeep(UUID player, String skill, double amount, boolean celebrate) {
+        Map<String, Integer> levels = playerSkillLevels.get(player), xp = playerSkillXP.get(player);
+        if (levels != null && xp != null) return new Maps(levels, xp);
+        if (loadingXp.keep(player, skill, amount, celebrate)) return null;
+        levels = playerSkillLevels.get(player);
+        xp = playerSkillXP.get(player);
+        return levels != null && xp != null ? new Maps(levels, xp) : null;
     }
 
     /** What this session earned while loading, applied now that its maps exist (setPlayerSkills). Player's thread. */
     private void applyLoadingXp(Player player, long generation, Map<String, Integer> levels, Map<String, Integer> xp) {
-        LoadingXp l = loadingXp.remove(player.getUniqueId());
-        if (l == null || l.generation != generation || l.bySkill.isEmpty()) return;
+        Map<String, double[]> kept = loadingXp.drain(player.getUniqueId(), generation);
+        if (kept == null || kept.isEmpty()) return;
         StringBuilder said = new StringBuilder();
-        for (Map.Entry<String, double[]> e : l.bySkill.entrySet()) {
+        for (Map.Entry<String, double[]> e : kept.entrySet()) {
             if (e.getValue()[0] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[0], true);
             if (e.getValue()[1] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[1], false);
             if (said.length() > 0) said.append(", ");

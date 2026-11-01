@@ -7,6 +7,7 @@ lock <db> <seconds>   hold SQLite's write lock (BEGIN IMMEDIATE) for that long, 
 xlock <db> <seconds>  the same with BEGIN EXCLUSIVE: reads wait too, so a player's load is delayed (or fails).
 read <db> <player> <skill>   that player's stored level and XP for a skill, read-only: [level, xp] or null.
 seq <db> <player>     the highest saved_seq of that player's rows (null when the column doesn't exist yet).
+rank <db> <player> <class>   that player's stored rank in a class (from their classes document), or null.
 """
 import json
 import sqlite3
@@ -50,6 +51,16 @@ def seq(db, player):
     print(json.dumps(row[0] if row else None))
 
 
+def rank(db, player, klass):
+    import re
+    con = ro(db)
+    row = con.execute('SELECT c.data FROM player_classes c JOIN player_custom_ids p ON p.player_uuid = c.player_uuid '
+                      'WHERE p.player_name = ?', (player,)).fetchone()
+    con.close()
+    m = re.search(r'^  ' + re.escape(klass) + r':\n    rank: (\d+)', row[0], re.M) if row else None
+    print(json.dumps(int(m.group(1)) if m else None))
+
+
 if __name__ == '__main__':
     cmd = sys.argv[1]
     if cmd == 'lock':
@@ -60,5 +71,7 @@ if __name__ == '__main__':
         read(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == 'seq':
         seq(sys.argv[2], sys.argv[3])
+    elif cmd == 'rank':
+        rank(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         sys.exit('unknown command ' + cmd)

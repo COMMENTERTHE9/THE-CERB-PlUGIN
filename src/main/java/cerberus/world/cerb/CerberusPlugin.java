@@ -165,9 +165,18 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         // Empty open menus first: once our click listener is gone their items must not be takeable.
         if (menuManager != null) menuManager.closeAll();
 
-        // Centralized player cleanup + async skill save
-        if (playerSessionManager != null) playerSessionManager.shutdown();
-        if (classService != null) classService.shutdown(); // writes every loaded class profile now
+        // Centralized player cleanup + async skill save. Each step runs whatever the one before it threw: the skill store's
+        // drain must never be skipped (the final snapshots would be neither written nor kept in recovery files).
+        try {
+            if (playerSessionManager != null) playerSessionManager.shutdown();
+        } catch (RuntimeException e) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Player cleanup at shutdown failed; saving goes on", e);
+        }
+        try {
+            if (classService != null) classService.shutdown(); // writes every loaded class profile now
+        } catch (RuntimeException e) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Saving classes at shutdown failed; saving skills goes on", e);
+        }
         // Every player's final skill snapshot was handed in above: write them (at most 20 s), the rest to recovery files.
         if (skillStore != null) skillStore.shutdown(20_000);
 
@@ -212,9 +221,9 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         databaseManager = new DatabaseManager(this);
         DatabaseManager db = databaseManager;
         skillStore = new SkillStore(new SkillStore.Db() {
-            @Override public void write(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
+            @Override public int write(String customId, Map<String, Integer> levels, Map<String, Integer> xp, long seq)
                     throws java.sql.SQLException {
-                db.writeSkills(customId, levels, xp, seq);
+                return db.writeSkills(customId, levels, xp, seq);
             }
             @Override public String customId(UUID player) throws java.sql.SQLException {
                 return db.customIdStrict(player);
@@ -225,14 +234,21 @@ public class CerberusPlugin extends JavaPlugin implements Listener {
         try {
             skillStore.continueAfter(Math.max(recovered, databaseManager.maxSkillSeq()));
         } catch (java.sql.SQLException e) {
+            // Each player's load moves the order past their own stored rows as well (PlayerSessionManager), so their saves
+            // are never older than what is stored even if the clock is behind an earlier run's numbers.
             getLogger().severe("[Skills] Could not read the save order (" + e.getMessage() + "); continuing after the clock.");
             skillStore.continueAfter(Math.max(recovered, System.currentTimeMillis()));
         }
-        skillStore.onAlert(msg -> Bukkit.getGlobalRegionScheduler().execute(this, () -> {
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                if (p.hasPermission("cerb.admin")) p.getScheduler().run(this, t -> p.sendMessage(ChatColor.RED + "[Cerberus] " + msg), null);
-            }
-        }));
+        skillStore.onAlert(msg -> {
+            if (!isEnabled()) return; // shutting down: the log has it, and the scheduler takes no new tasks
+            try {
+                Bukkit.getGlobalRegionScheduler().execute(this, () -> {
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (p.hasPermission("cerb.admin")) p.getScheduler().run(this, t -> p.sendMessage(ChatColor.RED + "[Cerberus] " + msg), null);
+                    }
+                });
+            } catch (org.bukkit.plugin.IllegalPluginAccessException e) { /* disabled meanwhile: the log has it */ }
+        });
         Bukkit.getAsyncScheduler().runAtFixedRate(this, t -> {
             skillStore.retryUnsaved();
             if (classService != null) classService.retryUnsaved();

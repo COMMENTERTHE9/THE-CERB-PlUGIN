@@ -30,8 +30,8 @@ import java.util.logging.Logger;
 final class ClassDocStore {
 
     interface Db {
-        /** Write a document; the database keeps a newer stored one. Throws on a database error. */
-        void write(UUID player, int version, String data, long stamp) throws SQLException;
+        /** Write a document; the database keeps a newer stored one (returns 0 then, else 1). Throws on a database error. */
+        int write(UUID player, int version, String data, long stamp) throws SQLException;
     }
 
     /** A document kept after a failed write. */
@@ -55,6 +55,9 @@ final class ClassDocStore {
     /** The newest document handed in per player, until it is written or kept (shutdown keeps it if never run). */
     private final Map<UUID, Handed> handedIn = new ConcurrentHashMap<>();
     private final Map<UUID, Long> reported = new ConcurrentHashMap<>();
+    /** A recovery file that couldn't be written at startup: deleted once its document (or a newer one) is stored. */
+    private record PendingFile(File file, long stamp) {}
+    private final Map<UUID, PendingFile> pendingFiles = new ConcurrentHashMap<>();
     private volatile long lastFailure = -REPORT_EVERY_MS;
     private volatile boolean shuttingDown;
 
@@ -93,13 +96,21 @@ final class ClassDocStore {
         SQLException last = null;
         for (int a = 1; a <= attempts; a++) {
             try {
-                db.write(player, h.version(), data, h.stamp());
+                int rows = db.write(player, h.version(), data, h.stamp());
                 stored.merge(player, h.stamp(), Math::max);
                 handedIn.remove(player, h); // a newer one handed in meanwhile stays, its own task writes it
                 Pending kept = unsaved.get(player);
                 if (kept != null && kept.stamp() <= h.stamp()) {
                     unsaved.remove(player, kept);
                     log.info("[Classes] " + h.name() + "'s classes are saved again (the document kept in memory is stored).");
+                }
+                PendingFile pf = pendingFiles.get(player);
+                if (pf != null && pf.stamp() <= h.stamp() && pendingFiles.remove(player, pf) && !pf.file().delete() && pf.file().exists()) {
+                    log.warning("[Classes] Could not delete " + pf.file().getPath() + "; it is harmless (older than what is stored now).");
+                }
+                if (rows == 0) {
+                    log.warning("[Classes] " + h.name() + "'s classes (stamp " + h.stamp() + ") changed nothing: the database"
+                            + " already holds a newer document. The stored one was kept.");
                 }
                 return;
             } catch (SQLException e) {
@@ -159,13 +170,22 @@ final class ClassDocStore {
         for (Map.Entry<UUID, Handed> e : handedIn.entrySet()) {
             Handed h = e.getValue();
             Pending was = left.get(e.getKey());
-            if (was == null || h.stamp() > was.stamp()) left.put(e.getKey(), new Pending(h.version(), h.data().get(), h.stamp(), h.name()));
+            if (was != null && h.stamp() <= was.stamp()) continue;
+            try {
+                left.put(e.getKey(), new Pending(h.version(), h.data().get(), h.stamp(), h.name()));
+            } catch (RuntimeException ex) { // its text can't be built: the others still get their files
+                log.severe("[Classes] Could not build " + h.name() + "'s classes document at shutdown: " + ex);
+            }
         }
         int files = 0;
         for (Map.Entry<UUID, Pending> e : left.entrySet()) {
             Pending p = e.getValue();
             if (p.stamp() <= stored.getOrDefault(e.getKey(), Long.MIN_VALUE)) continue;
-            if (!recoveryDir.isDirectory() && !recoveryDir.mkdirs()) break;
+            if (!recoveryDir.isDirectory() && !recoveryDir.mkdirs()) {
+                log.severe("[Classes] Could not create " + recoveryDir.getPath() + ": the classes that could not be saved"
+                        + " above are lost.");
+                break;
+            }
             YamlConfiguration y = new YamlConfiguration();
             y.set("player", e.getKey().toString());
             y.set("name", p.name());
@@ -188,7 +208,9 @@ final class ClassDocStore {
 
     /**
      * At startup, before anyone joins: write each recovery file (the database keeps a newer stored document) and delete
-     * the files written; one that can't be written stays for the next start. Returns how many were written.
+     * the files written. A file that can't be written now (the database is still failing) is kept in memory like a failed
+     * save: a join continues from it, it is written as soon as the database answers, and its file is deleted only then.
+     * Returns how many were written.
      */
     int applyRecovery() {
         File[] files = recoveryDir.listFiles((d, n) -> n.endsWith(".yml"));
@@ -196,17 +218,33 @@ final class ClassDocStore {
         int done = 0;
         for (File f : files) {
             YamlConfiguration y = YamlConfiguration.loadConfiguration(f);
+            UUID player;
+            String data = y.getString("data");
             try {
-                UUID player = UUID.fromString(y.getString("player", ""));
-                String data = y.getString("data");
+                player = UUID.fromString(y.getString("player", ""));
                 if (data == null) throw new IllegalArgumentException("no data");
-                db.write(player, y.getInt("version"), data, y.getLong("stamp"));
-                done++;
-                log.warning("[Classes] Wrote " + player + "'s classes from " + f.getName()
-                        + " (a document that could not be saved at the last shutdown; kept only where newer).");
+            } catch (IllegalArgumentException e) {
+                log.severe("[Classes] Could not read " + f.getPath() + " (" + e.getMessage() + "); it is left where it is.");
+                continue;
+            }
+            int version = y.getInt("version");
+            long stamp = y.getLong("stamp");
+            String name = y.getString("name", player.toString());
+            try {
+                if (db.write(player, version, data, stamp) > 0) {
+                    done++;
+                    log.warning("[Classes] Wrote " + name + "'s classes from " + f.getName()
+                            + " (a document that could not be saved at the last shutdown; kept only where newer).");
+                } else {
+                    log.warning("[Classes] " + f.getName() + " (" + name + ") was older than their stored classes: nothing to write.");
+                }
                 if (!f.delete()) log.warning("[Classes] Could not delete " + f.getPath() + "; it is harmless to write again.");
-            } catch (IllegalArgumentException | SQLException e) {
-                log.severe("[Classes] Could not apply " + f.getPath() + ": " + e.getMessage() + " (kept for the next start).");
+            } catch (SQLException e) {
+                unsaved.merge(player, new Pending(version, data, stamp, name), (a, b) -> b.stamp() > a.stamp() ? b : a);
+                pendingFiles.put(player, new PendingFile(f, stamp));
+                log.severe("[Classes] Could not write " + f.getPath() + " (" + e.getMessage() + "). " + name + "'s classes in it"
+                        + " are kept in memory: used if they join, and written as soon as the database answers; the file"
+                        + " stays until then.");
             }
         }
         return done;

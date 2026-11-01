@@ -75,9 +75,14 @@ public class DatabaseManager {
 
             stmt.execute(SkillRows.CREATE_TABLE);
             // 2026-11 (reliability audit): every row says which snapshot wrote it, so an older save can't replace newer
-            // progress (SkillRows, Skills/SkillStore). A database from before gets the column with 0 in every row.
-            if (SkillRows.ensureSeqColumn(conn)) {
-                plugin.getLogger().info("[Database] player_skills: added saved_seq (save order); existing rows kept as they were.");
+            // progress (SkillRows, Skills/SkillStore). A database from before gets the column with 0 in every row. If the
+            // database is busy now (another program holds it), the column is added before the first load or save instead.
+            try {
+                ensureSeq(conn);
+            } catch (SQLException e) {
+                plugin.getLogger().severe("[Database] Could not add saved_seq to player_skills now (" + e.getMessage()
+                        + "); it is tried again before each skill load or save until it works. Until then those fail"
+                        + " safely (a join is refused with nothing changed; a save is kept in memory).");
             }
 
             stmt.execute("""
@@ -127,6 +132,21 @@ public class DatabaseManager {
         } catch (SQLException ex) {
             plugin.getLogger().severe("[Database] Failed to initialize tables! " + ex.getMessage());
             ex.printStackTrace();
+        }
+    }
+
+    /** saved_seq is in player_skills (added at startup, or before the first skill load or save that could add it). */
+    private volatile boolean seqReady;
+
+    /** Adds saved_seq if it isn't there yet (once per run); throws while the database can't be changed. */
+    private void ensureSeq(Connection conn) throws SQLException {
+        if (seqReady) return;
+        synchronized (this) {
+            if (seqReady) return;
+            if (SkillRows.ensureSeqColumn(conn)) {
+                plugin.getLogger().info("[Database] player_skills: added saved_seq (save order); existing rows kept as they were.");
+            }
+            seqReady = true;
         }
     }
 
@@ -280,6 +300,7 @@ public class DatabaseManager {
      */
     public StrictSkills loadPlayerSkillsStrict(UUID playerUUID) throws SQLException {
         try (Connection conn = getConnection()) {
+            ensureSeq(conn);
             String customId;
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT custom_id FROM player_custom_ids WHERE player_uuid = ?")) {
@@ -362,16 +383,18 @@ public class DatabaseManager {
      * Writes one snapshot of a player's skills (Skills/SkillStore, on its writer thread): one transaction, kept only where
      * no newer snapshot already wrote the row. Throws on a database error, so the caller can retry and report it.
      */
-    public void writeSkills(String customId, Map<String, Integer> skillLevels, Map<String, Integer> skillXP, long seq)
+    public int writeSkills(String customId, Map<String, Integer> skillLevels, Map<String, Integer> skillXP, long seq)
             throws SQLException {
         try (Connection conn = getConnection()) {
-            SkillRows.write(conn, customId, skillLevels, skillXP, seq);
+            ensureSeq(conn);
+            return SkillRows.write(conn, customId, skillLevels, skillXP, seq);
         }
     }
 
     /** The newest snapshot any skill row was written from (the save order continues from it after a restart). */
     public long maxSkillSeq() throws SQLException {
         try (Connection conn = getConnection()) {
+            ensureSeq(conn);
             return SkillRows.maxSeq(conn);
         }
     }
@@ -553,8 +576,11 @@ public class DatabaseManager {
         }
     }
 
-    /** {@link #saveClassData}, throwing on a database error (Classes/ClassDocStore tries again and keeps it). */
-    public void writeClassData(UUID playerUUID, int version, String data, long stamp) throws SQLException {
+    /**
+     * {@link #saveClassData}, throwing on a database error (Classes/ClassDocStore tries again and keeps it). Returns 1 when
+     * the document was written, 0 when the stored one is newer (kept as it is).
+     */
+    public int writeClassData(UUID playerUUID, int version, String data, long stamp) throws SQLException {
         String sql = "INSERT INTO player_classes(player_uuid, version, data, updated_at) VALUES(?,?,?,?) "
                 + "ON CONFLICT(player_uuid) DO UPDATE SET version = excluded.version, data = excluded.data, "
                 + "updated_at = excluded.updated_at WHERE excluded.updated_at >= player_classes.updated_at";
@@ -564,7 +590,7 @@ public class DatabaseManager {
             ps.setInt(2, version);
             ps.setString(3, data);
             ps.setLong(4, stamp);
-            ps.executeUpdate();
+            return ps.executeUpdate();
         }
     }
 

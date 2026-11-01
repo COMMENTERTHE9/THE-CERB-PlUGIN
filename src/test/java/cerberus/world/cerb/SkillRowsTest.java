@@ -35,11 +35,12 @@ class SkillRowsTest {
     void anOlderSnapshotThatCommitsLaterLeavesTheNewerRowsAsTheyAre() throws Exception {
         try (Connection c = open()) {
             try (Statement st = c.createStatement()) { st.execute(SkillRows.CREATE_TABLE); }
-            SkillRows.write(c, "CUST-A", Map.of("Mining", 10, "Farming", 3), Map.of("Mining", 80, "Farming", 5), 5);
-            SkillRows.write(c, "CUST-A", Map.of("Mining", 10, "Farming", 2), Map.of("Mining", 40, "Farming", 9), 3); // late, older
+            assertEquals(2, SkillRows.write(c, "CUST-A", Map.of("Mining", 10, "Farming", 3), Map.of("Mining", 80, "Farming", 5), 5));
+            assertEquals(0, SkillRows.write(c, "CUST-A", Map.of("Mining", 10, "Farming", 2), Map.of("Mining", 40, "Farming", 9), 3),
+                    "late and older: nothing written, and the count says so"); // late, older
             assertArrayEquals(new int[]{10, 80, 5}, row(c, "CUST-A", "Mining"));
             assertArrayEquals(new int[]{3, 5, 5}, row(c, "CUST-A", "Farming"));
-            SkillRows.write(c, "CUST-A", Map.of("Mining", 10), Map.of("Mining", 80), 5); // the same snapshot again (a retry)
+            assertEquals(1, SkillRows.write(c, "CUST-A", Map.of("Mining", 10), Map.of("Mining", 80), 5)); // the same snapshot again (a retry)
             assertArrayEquals(new int[]{10, 80, 5}, row(c, "CUST-A", "Mining"));
             SkillRows.write(c, "CUST-A", Map.of("Mining", 11), Map.of("Mining", 2), 6);  // newer
             assertArrayEquals(new int[]{11, 2, 6}, row(c, "CUST-A", "Mining"));
@@ -49,6 +50,23 @@ class SkillRowsTest {
             assertEquals(6, SkillRows.maxSeq(c, "CUST-A"));
             assertEquals(2, SkillRows.maxSeq(c, "CUST-B"));
             assertEquals(0, SkillRows.maxSeq(c, "CUST-NONE"));
+        }
+    }
+
+    @Test
+    void theColumnCanBeAddedOnceTheDatabaseIsFreeAfterFailingWhileItWasLocked() throws Exception {
+        try (Connection c = open(); Connection holder = open()) {
+            try (Statement st = c.createStatement()) { // a table from before saved_seq
+                st.execute("CREATE TABLE player_skills (custom_id TEXT, skill_name TEXT, skill_level INTEGER DEFAULT 1, "
+                        + "skill_xp INTEGER DEFAULT 0, PRIMARY KEY (custom_id, skill_name))");
+                st.execute("INSERT INTO player_skills VALUES ('CUST-A','Mining',37,1234)");
+                st.execute("PRAGMA busy_timeout = 200");
+            }
+            try (Statement h = holder.createStatement()) { h.execute("BEGIN EXCLUSIVE"); } // another program holds it
+            assertThrows(SQLException.class, () -> SkillRows.ensureSeqColumn(c), "busy: it can't be added now");
+            try (Statement h = holder.createStatement()) { h.execute("ROLLBACK"); }
+            assertTrue(SkillRows.ensureSeqColumn(c), "the next try (before a load or save) adds it");
+            assertArrayEquals(new int[]{37, 1234, 0}, row(c, "CUST-A", "Mining"), "every row kept");
         }
     }
 

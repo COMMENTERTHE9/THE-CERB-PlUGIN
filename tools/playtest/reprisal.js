@@ -148,7 +148,7 @@ async function attack(o, type = 'husk', { dist = 3, watchMs = 1300, extra = '', 
   bot.on('soundEffectHeard', onSound);
   await cmd(`/summon ${type} ${o.X + 0.5} ${o.Y} ${o.Z - dist + 0.5} {PersistenceRequired:1b,Tags:["reprisal"]${extra}}`, 200);
   const t0 = Date.now();
-  let atHit = null, far = 0, mob = null, nearest_ = Infinity, back = 0;
+  let atHit = null, far = 0, mob = null, nearest_ = Infinity, back = 0, bearing = null;
   while (Date.now() - t0 < 8000) {
     await sleep(50);
     mob = mob && bot.entities[mob.id] ? mob : nearest(type);
@@ -156,7 +156,12 @@ async function attack(o, type = 'husk', { dist = 3, watchMs = 1300, extra = '', 
     const d = flat(mob.position, bot.entity.position);
     nearest_ = Math.min(nearest_, d);
     back = Math.max(back, d - nearest_); // how far it was put back from its closest approach (the game pushes nobody on a block)
-    if (hurtAt && atHit === null) atHit = d;
+    if (hurtAt && atHit === null) {
+      atHit = d;
+      // where the blow came from, against the bot's facing (north, -Z): a shield covers only the front (90° either side)
+      const dx = mob.position.x - bot.entity.position.x, dz = mob.position.z - bot.entity.position.z;
+      bearing = Math.round(Math.acos(Math.max(-1, Math.min(1, -dz / (Math.hypot(dx, dz) || 1)))) * 180 / Math.PI);
+    }
     if (atHit !== null) far = Math.max(far, d - atHit);
     if (hurtAt && Date.now() - hurtAt > watchMs) break;
   }
@@ -166,7 +171,7 @@ async function attack(o, type = 'husk', { dist = 3, watchMs = 1300, extra = '', 
   await clear();
   if (shield) bot.deactivateItem();
   const after = await counters();
-  return { hit: !!hurtAt, flew: far, back, atHit, blockSounds, raised, healthBefore, healthAfter, c: diff(before, after) };
+  return { hit: !!hurtAt, flew: far, back, atHit, bearing, blockSounds, raised, healthBefore, healthAfter, c: diff(before, after) };
 }
 
 /** The bot's Cerberus health pool, from /cerb healthstate ("Custom HP: 102.75/102.75"). */
@@ -242,7 +247,7 @@ async function shieldChecks(o) {
   r = await attack(o, 'husk', { dist: 3, shield: true, pool: true });
   check('A raised shield takes the husk\'s blows: no hurt, nothing off the Cerberus health pool, nobody thrown by Iron Reprisal (its counter says the shield took them)',
     !r.hit && r.c.thrown === 0 && r.c.shield >= 1 && r.healthAfter === r.healthBefore,
-    `hit ${r.hit}, health ${r.healthBefore} -> ${r.healthAfter}, hand state ${r.raised} (3 = the off hand's shield in use), block sounds ${r.blockSounds}, put back ${r.back.toFixed(2)} blocks, ${JSON.stringify(r.c)}`);
+    `hit ${r.hit}${r.hit ? ` from ${r.bearing}° off the bot's facing (a shield covers 90° either side)` : ''}, health ${r.healthBefore} -> ${r.healthAfter}, hand state ${r.raised} (3 = the off hand's shield in use), block sounds ${r.blockSounds}, put back ${r.back.toFixed(2)} blocks, ${JSON.stringify(r.c)}`);
   // The control: the same shield held but lowered. The blow lands, the pool loses health, the husk is thrown.
   r = await attack(o, 'husk', { dist: 3, pool: true });
   check('...the shield lowered (the control): the blow lands, the pool loses health, and the husk is thrown',
