@@ -511,7 +511,41 @@ Not in this pass: `gather` and `felling` (mining and Felling share the break lis
   The server tests every brewing mix for every bottle of every loaded stand that holds an ingredient, every tick; a predicate that copies an item costs that much. Native choices (an exact base potion, herbs by material) cost Cerberus nothing. The fix stays.
 - **The `idle` load on the final build** was measured on a freshly restarted server, after the other 12 loads. A container restart had stopped the server in the middle of the first attempt.
 
+## Reliability audit before/after (2026-11-01)
+
+**What changed on frequent paths:** every skill save is a snapshot (two map copies) handed to one writer thread, which writes it as one transaction of 35 rows instead of the earlier per-skill upserts; loads run on that thread too; XP earned during a load goes to a small per-session buffer; Herbalism and Alchemy read their event's final state at MONITOR. Nothing new runs per tick.
+
+**Method:** as before (9 bots, a 30 s warm-up of every load before the first recording, one 80 s run per load with a 60 s JFR recording from 10 s in, Folia's `/tps` 30 s in), on the main sandbox **with the other two stopped**, each build right after a restart with mobs cleared. **Before:** `d06f1ed`, where this work started. **After:** the final build (`53aa46d`; its code is `452e412`'s). One run per load and build. New loads: `gather` (mining), `felling` and `effectsmenu`, left out of the last pass; `combat18`, the combat load with **18 players**; and `joins`, 9 players leaving and joining again over and over (online 1.5–2.5 s, offline 0.2–0.6 s, about 230 joins in 80 s; `bukkit.yml connection-throttle` set to 0 for this pass only, so one address can reconnect that fast), each adding 7 Mining XP while online and then asking for it after every join: how long the load takes and whether the XP it finds is the XP it last had. `/cerb saves` (after builds) is read before and after each load.
+
+**Results.** TPS was 20.0 in every run but `gather` before (19.93).
+
+| Load | Cerberus ms per tick, before → after | Region MSPT, before → after | Work (bot 1) |
+|---|---|---|---|
+| `combat` | 0.087 → 0.082 | 3.90 → 3.24 | 109 hits |
+| `combat18` (18 players) | 0.110 → 0.116 | 4.26 → 4.10 | 109 hits |
+| `gather` | 0.019 → 0.023 | 4.38 → 4.49 | 124 → 125 stone, 10 ores |
+| `felling` | 0.061 → 0.055 | 5.74 → 5.22 | 97 → 96 logs, 45 → 46 fellings |
+| `widefarm` | 0.056 → 0.043 | 4.99 → 5.04 | 108 harvested |
+| `herb` | 0.044 → 0.028 | 4.02 → 3.35 | 265 gathered |
+| `wildcraft` | 0.040 → 0.042 | 3.08 → 2.99 | 97 gathered |
+| `brew` | 0.018 → 0.015 | 2.96 → 2.84 | 4 brews |
+| `standidle` | 0.010 → 0.022 | 3.81 → 3.57 | 12 stands |
+| `effectsmenu` | 0.320 → 0.359 | 3.37 → 3.13 | 50 opens, 150 clicks |
+| `idle` | 0.009 → 0.013 | 1.85 → 1.63 | |
+| `joins` | 0.083 → 0.087 | 8.08 → 8.17 | 26 → 25 joins (all bots: 235 → 232) |
+
+- **Joins and loading:** from spawn to skills loaded, mean 86 → 83 ms, median 76 → 76, 95th percentile 157 → 120, slowest 391 → 437 ms, over 235 and 232 joins. **No rollback in either** (every join found the XP it last had) at this rate with a free database; the rollbacks the old build had needed a busy database (`docs/STATUS.md` → reliability audit).
+- **Saving:** `/cerb saves` on the final build: 5,233 snapshots written over the whole pass, none failed, none skipped as older, nothing kept in memory, the writer's queue empty after every load. During `joins` alone, 710 snapshots in 80 s.
+- **The differences are within one run's spread,** each looked at in the profile: `standidle`'s samples (12 → 26 of about 2,200) are all the per-player HUD and regeneration tasks, none Alchemy's: **the brewing-stand fix holds** (0 Alchemy samples, as in the last pass). `effectsmenu`'s extra samples are all in the menu code (the `/menu` command and clicks), which this work didn't touch; nothing of the save path is in that profile. `herb` and `widefarm` are lower after.
+- **Allocation:** the server allocated the same in both builds (for `wildcraft` 24.6 GB before, 23.6 GB after, in 60 s). In `wildcraft` after, JFR put 16.4 GB "on Cerberus": one allocation sample carries everything the region thread allocated since its previous sample (here most of the minute), and that sample happened to be taken inside `Woodcutting.wouldBreak` (an item's meta copied for the protection check). Without it Cerberus shows 2.5 MB/s against 1.6 before. The save path allocates somewhat more per minute on the final build (`SkillRows.write`'s batch: about 50–100 MB a minute in `felling` and `joins`, against 15–35 GB a minute for the whole server), on the writer thread, never on a region thread; at this sampling one sample stands for about 20 MB, so these figures are rough.
+- **Leaks:** a class histogram after every load, with all bots gone: no snapshot waiting, no loading buffer, no player session or profile left on the final build after 232 joins and quits; the heap's object count and size were the same (5.16 → 5.06 million objects, 249 → 247 MB). Two older per-player entries stay after a player leaves on both builds (`AbilityListener$State`, `DamageDisplayListener$CombatData`: one per player name seen, 19 here) and so does the skill store's record of each player's last stored save: bounded by the number of different players, not by joins.
+- **Folia safety:** no error and no thread-ownership exception in either server log; the writer and the loads never touch a player or the world.
+
+What these runs don't show: a busy database under load (the reliability tests cover it, not timed), more than 18 players or several regions, a real client's network and chunk work, and anything on Windows.
+
 ## Budgets for the next milestones
+
+- **Reliability audit:** met. Saves and loads run on one writer thread, off the tick; 18 players fighting cost what 9 did per player; a join's load took 83 ms on average and 437 ms at the slowest with nine players reconnecting non-stop. For the next milestone: keep every database access on that writer (a new table gets the same snapshot-and-sequence rule if it can be saved from more than one place).
 
 - **Combat Improvements, Replant, Herbalism and Alchemy:** met. A herb gathered costs about 8 µs and a Wildcrafting sweep about 50 µs (bounded at 16 plants a tick). Alchemy's handlers show in a few samples a minute with nine players brewing or drinking non-stop, and idle brewing stands cost nothing (0.36 ms a tick before the review's fix). Iron Reprisal shows in about one sample a minute with every landed blow throwing. For the next milestone: keep anything the server runs every tick (brewing stands, hoppers, block ticks) on native matching rather than plugin predicates, give each such path an idle load, and put `gather` and `felling` back in the pass if the break listeners change.
 
