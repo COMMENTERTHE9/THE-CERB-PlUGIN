@@ -1,6 +1,6 @@
 # Cerberus — Owner Decisions
 
-*The register of the owner's decisions, with the state of each. **Check it before asking the owner anything:** a question answered here is not asked again. New decisions are added when the owner makes them. Last updated 2026-10-28.*
+*The register of the owner's decisions, with the state of each. **Check it before asking the owner anything:** a question answered here is not asked again. New decisions are added when the owner makes them. Last updated 2026-11-01.*
 
 **States:**
 - **Approved, built:** decided and in the game.
@@ -45,6 +45,16 @@ Cerberus is a deep, challenging and rewarding RPG. It does not copy Hypixel SkyB
   - **server protection:** entity limits, bounded work per tick;
   - **pacing that applies equally to active and passive play:** for example a mob's XP budget.
 - "The player wasn't pressing keys" is never a reason.
+
+## Reliability audit, repairs and release verification (owner, 2026-11-01)
+
+A reliability milestone before the playtest, on the development branch (`docs/STATUS.md` → "Done: reliability audit"). The owner's rulings in it:
+- **Persistence first:** progress must never roll back because saves finished out of order; failed saves are reported; buffered rewards are never applied to another or expired session; default skill maps must never overwrite saved progress. Approved, built.
+- **No gameplay change to make tests pass;** no disabled tests or weakened assertions; independent review; nothing claimed for Windows unless run there; no Phase 4. Followed.
+- **Not authorized:** merging into `master`, deploying to the owner's server or world, altering balance without asking, a destructive data migration (the one migration adds a column and keeps every row).
+
+**Waiting for the owner (one question from this work):**
+- **XP earned in the moment a player's data is still loading** is now kept and given once the load completes (it used to be lost). It is worked out as if the player were level 1, because their levels aren't known yet: the "20 levels above pays a quarter" rules and the weak-mob reduction don't apply to it, and Herbalism's rare and quality rolls use level 1. The window is milliseconds normally, a few seconds on a busy database. **Keep it like this, or make it exact** (each level-dependent rule deferred to the moment the load completes)? Kept as is until the owner decides.
 
 ## Combat Improvements, Replant Enchantment, Herbalism & Alchemy (owner, 2026-10-28)
 
