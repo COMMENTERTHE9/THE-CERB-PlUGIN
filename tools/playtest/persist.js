@@ -544,7 +544,7 @@ async function startOn(name, start, give = ['diamond_pickaxe'], extra = []) {
   await sleep(800);
   console_(`fill ${AX - 3} ${AY - 1} ${AZ - 3} ${AX + 3} ${AY + 4} ${AZ + 3} air`); await sleep(400);
   console_(`fill ${AX - 3} ${AY - 1} ${AZ - 3} ${AX + 3} ${AY - 1} ${AZ + 3} stone`); await sleep(400);
-  console_(`kill @e[type=!player,x=${AX},y=${AY},z=${AZ},distance=..8]`);
+  bot.chat('/kill @e[type=!player,distance=..8]'); await sleep(300); // the bot's own command: Folia's console can't select a region's entities
   console_(`tp ${name} ${AX + 0.5} ${AY} ${AZ + 0.5} 0 0`); await sleep(600);
   console_(`gamemode survival ${name}`); console_(`clear ${name}`); await sleep(300);
   for (const g of give) console_(`give ${name} ${g}`);
