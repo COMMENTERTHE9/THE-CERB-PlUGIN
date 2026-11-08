@@ -1613,7 +1613,22 @@ Each build is compared with its own loaded control: the two sandbox worlds have 
 
 **Unit tests:** 461, all passing (Tested; 453 before). `ClassKillShareTest` new (3: the kill share's fight window, the review's finding 1); `LoadingXpBufferTest` rewritten for ordered actions (6: the order, each action once, sessions, a failed load, the cap, the race at the hand-over with four threads) and `LoadingXpReplayTest` new (5: the cases above on the plugin's own rules, each also run the previous buffer's way, which they tell apart). On a scratch copy, six deliberately broken buffers (ignoring the closed flag, reversed order, a load taking another session's actions, a failure dropping another session's, no cap, a new session not replacing the old) each fail these tests.
 
-**Regression:** rerunning on the build with the review's fixes (`e1255ab`) on the three sandboxes (the exact-XP phases, persistence, progression, XP rules, Cooking, gathering, Herbalism, Alchemy, classes, the recovery-file and migration tests). On `76fa619`, before the fixes, the part that had run passed: smoke 14/14, Stats 14/14, kill XP 5/5, level-ups 19/19 and 6/6, Farming 67/67, Alchemy 38/38, a reload mid-brew 2/2, the starter leaving 1/1, a restart mid-brew 2/2. Results on `e1255ab` are added here when done.
+**Regression** (Played, the three sandboxes side by side, each warmed up first). On `e1255ab`, the build with the review's fixes; the final code `8436b9a` differs from it only on the loading path (a replay's notices, the hand-over in a `finally`), so the six exact-XP phases ran on `8436b9a` too, twice, with the suites that a harness fault had disturbed:
+
+| Area | Result |
+|---|---|
+| Exact XP while loading | 23/23 on `e1255ab`; 23/23 and 23/23 on `8436b9a` (the second run with the harness's arena fix, for a clean server log) |
+| Saving and loading | contention 10 of 10 trials, failure 2/2, six bots at once 1/1, backup 1/1 (5 trials), joining while loading 2/2, leaving while loading 1/1, a failed load 2/2; a stop with a save pending, clean 2/2 and with the database locked 2/2; a recovery file the start can't write 4/4; a database from before the update gets its column and the join works |
+| Progression and XP rules | smoke 14/14, Stats 14/14, kill XP 5/5, XP integrity 35/35 (kills, per-hit, casts, origins), your XP reports 25/25, skill needs 6/6; level-ups 18/19, then **19/19 on `8436b9a`** (below) |
+| Classes | class exploits 22/22 (cast XP, kill share), the Mage's abilities 24/24 |
+| Gathering, Cooking | Herbalism 65/65, protection 2/2, dripleaf 3/3; Mining and Smithing 78/78, custom resources 9/9; Woodcutting running; Cooking 33/33; Farming 66/67, rerunning on `8436b9a` (below) |
+| Alchemy | 38/38, a reload mid-brew 2/2, the starter leaving 1/1, a restart mid-brew 2/2 |
+| Server logs | only the expected lines: the failed-load tests' "DB load failed", the busy-database tests' "Could not save … kept in memory" for their helper bots, Mojang's session server unreachable from the sandbox |
+
+**The two failures, both the harness's, each fixed with the assertion unchanged:**
+- **Level-ups 18/19:** the class rank-up's title and sound were missing because the bot's Critical Strike, carrying XP from earlier phases and runs, reached level 2 in the same moment, and a second celebration within 1.5 s shows text without effects (by design; the suite's own `together` phase checks it). The rank phase now sets the skills its hits train back to level 1 first: 19/19 on `8436b9a`.
+- **Farming 66/67:** the Replant check allowed at most 3 carrots on the ground after the seed, from "vanilla 1-4"; the server's loot table (`blocks/carrots.json`, read from the server jar) gives a ripe carrot 2-5, so a harvest of 5 (19%) failed it. The bound is now the real 1-4 after the seed; rerunning on `8436b9a`.
+- **A harness fault without a failure:** `persist.js` cleared the arena's entities with a console command, which Folia refuses for a region's entities (a stack trace in the log each time, nothing cleared); the bot's own command now. Before the fixes, on `76fa619`, the part that had run passed: smoke 14/14, Stats 14/14, kill XP 5/5, level-ups 19/19 and 6/6, Farming 67/67, Alchemy 38/38, 2/2, 1/1, 2/2.
 
 **Independent review** (a separate agent, not the one that wrote the code, read `76fa619`; "approve with fixes", no high-severity finding). Each finding settled in `e1255ab`:
 
