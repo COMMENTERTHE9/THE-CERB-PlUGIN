@@ -1,6 +1,6 @@
 # Cerberus — Project Status
 
-*Last updated 2026-11-01 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
+*Last updated 2026-11-08 (branch `claude/quirky-mccarthy-nhaz58`). Update this file when a milestone lands.*
 
 **Current milestone:** Steps 0–2 of `docs/ROADMAP.md` are done and verified in game on the cloud sandbox:
 - **Step 0**, the owner's decisions: the 75% damage-reduction cap (resistance × armor; the defense bar is not counted), PvP playing as before Attributes 2.0, and the Weapon Mastery stacking analysis.
@@ -35,6 +35,7 @@ The owner has playtested Player Menu 2.0 and, on 2026-10-25, the class prototype
 - **Now: your milestone "Combat Improvements, Replant Enchantment, Herbalism & Alchemy"** (`docs/ROADMAP.md`), increment by increment: Active effects finished first (section "Done: Active effects", checklist §17); **increment 1, Martial Expertise's Agility and Iron Reprisal** (section "Done: Combat improvements", checklist §18), where checking it found and fixed shields doing nothing against creatures. **Increment 2, Replant on the hoe** (section "Done: Replant on the hoe", checklist §19): the Replanting hoe upgrade from a Sower's Charm, with an independent review's findings fixed. **Increment 3, the lifesteal review** (section "Done: lifesteal review", checklist §20): measured, a recommendation for you, nothing changed. **Increment 4, Herbalism** (section "Done: Herbalism", checklist §21): 35 herbs, rare reagents, reagent quality and Wildcrafting. **Increment 5, Alchemy** (section "Done: Alchemy", checklist §22): completed brews pay their starter, eight draughts and elixirs, tiers and Essence, with an independent review's findings fixed. **Increment 6, integration** (section "Done: integration"): the full regression, an independent review of the whole milestone with its six findings fixed, and the before/after. **The milestone is built and waits for your playtest** (checklist §17–§22).
 - **Your request (2026-10-28):** the hub's Recipes tile is no longer a placeholder: it opens every Cerberus recipe (section "Done: Recipes screen").
 - **Your request (2026-11-01), the reliability audit:** the suspected save race was real (an older save could replace newer progress, a failed save lost it) and is fixed; XP earned while a player's data loads is no longer lost; Herbalism and Alchemy pay for what really came out; the last regression's open exceptions traced; two independent reviews settled; the full regression and the before/after on the final build (section "Done: reliability audit"; your checklist §24). Not merged; nothing run on Windows.
+- **Your decision on item 10 (2026-11-08): XP is exact while loading.** What a player does while their saved progress loads is paid once it has loaded, in order, each action once, at their real levels, not level 1 (section "Done: exact XP while loading"; checklist §24 row 9). Not merged; nothing run on Windows; nothing deployed.
 
 **Evidence key.** **Played** = exercised on a real Folia 1.21.11 server with a scripted test client (cloud sandbox, not your PC). **Tested** = unit tests. **Read** = code inspection only. A green build alone proves nothing about gameplay.
 
@@ -1477,7 +1478,7 @@ No plugin errors in any server log. Each failure above was traced; none was the 
 
 **Shown on the final build:** the same blocks while loading pay exactly what they pay a loaded player, once; leaving before the load completes changes nothing stored; a load that fails disconnects the player with a message and changes nothing.
 
-**Known limit (accepted, yours to change):** XP earned during the load is worked out before the player's levels are known, as level 1: the "20 levels above pays a quarter" rules and the weak-mob reduction don't apply to it, and Herbalism's rare-reagent and quality rolls use level 1. It is bounded by the load (milliseconds, at most about 3 s on a busy database). Making it exact means deferring each level-dependent rule to the moment the load completes; say if you want it.
+**Known limit then, since made exact (your decision on item 10, 2026-11-08; section "Done: exact XP while loading"):** XP earned during the load was worked out before the player's levels were known, as level 1. It is now worked out at the restored level once the load completes. Herbalism's rare-reagent and quality rolls (items, not XP) still use level 1 in that window.
 
 ### 3. Herbalism and Alchemy and other plugins (genuine, fixed; limits stated)
 
@@ -1508,7 +1509,7 @@ An independent reviewer (a separate agent, not the one that wrote the code) read
 | 2 | A database busy during the first start after the update never got the new column; every join was then refused | Low-medium | **Fixed and shown in game:** the column is added before the first load or save that can. On `a1fc5fa` every join was kicked ("no such column: saved_seq"); on the final build the join loads. |
 | 3 | A save order started from the clock could fall below the stored rows; saves would silently change nothing | Low | **Fixed:** each load moves the order past that player's stored rows; a write that changes nothing is logged and counted, never counted as written (unit-tested). |
 | 4 | A discovery made while loading kept its record but could lose its XP | Low | **Fixed:** discoveries wait for the load again. |
-| 5 | XP earned while loading is worked out at level 1 | Low | **Accepted limit** (section 2), yours to change. |
+| 5 | XP earned while loading is worked out at level 1 | Low | **Accepted limit** then (section 2); **made exact** on your decision (2026-11-08, section "Done: exact XP while loading"). |
 | 6 | Alchemy paid for results another plugin wrote into empty slots | Low | **Fixed and shown in game:** +4 on `a1fc5fa`, +0 now. |
 | 7 | Shutdown could skip writing skills if an earlier step threw | Low | **Fixed:** every step runs; one class document that can't be built never stops the others; the admin alert stays quiet once the plugin is stopping. |
 | 8 | A narrow window where a snapshot got no recovery file at shutdown | Low | **Fixed** (read order); a write still running when shutdown stops waiting gets its file (unit-tested). |
@@ -1573,7 +1574,7 @@ Nothing in this work was run on Windows. What differs there and could matter: SQ
 
 ### 10. Still open (none blocks the playtest)
 
-- **Your decision:** XP earned while loading is worked out at level 1 (section 2; `docs/DECISIONS.md`).
+- ~~**Your decision:** XP earned while loading is worked out at level 1~~: decided 2026-11-08, made exact (section "Done: exact XP while loading").
 - **Accepted, rare, older than this work:** kill XP from another region landing while that player quits can mix old and new values in one save until the next one (review finding 9).
 - **Going back to an older build:** follow section 8 for the recovery folders (review finding 10).
 - **Two older per-player entries stay after a player leaves** (ability-key state, damage-number state): one per player name ever seen, small; worth clearing at quit in a later milestone.
@@ -1581,7 +1582,59 @@ Nothing in this work was run on Windows. What differs there and could matter: SQ
 - **Not tested as such:** two players working one brewing stand; more than 18 players; several Folia regions under load; a real client; Windows.
 - **Harness:** `xpbugs.js`'s pond arena relies on the main sandbox's area cleared by earlier runs (on fresh terrain its fishing and bow checks can't run; its Pathfinding walk now digs its own corridor).
 
-**Verdict for the branch:** CONDITIONAL PASS: every genuine defect found is fixed and shown fixed on the final build; two independent reviews settled; the full regression and the before/after done. The conditions: your playtest on Windows (checklist §24 and the sections before it), and your answer on the loading-XP question.
+**Verdict for the branch:** CONDITIONAL PASS: every genuine defect found is fixed and shown fixed on the final build; two independent reviews settled; the full regression and the before/after done. The conditions: your playtest on Windows (checklist §24 and the sections before it), and your answer on the loading-XP question (answered 2026-11-08: exact; see the next section).
+
+## Done: exact XP while loading (2026-11-08, your decision on item 10)
+
+**What you decided:** a player whose saved progress is still loading must not be paid as if they were level 1. **Not merged into `master`;** same branch. No gameplay rule, formula, recipe, attribute or ability changed, and nothing in saving or loading changed (`Skills/SkillStore`, `SkillRows`, `DatabaseManager`, the recovery files and the column migration are untouched). Everything ran on disposable sandbox servers in the cloud: **nothing was run on Windows**, and nothing touched your world, server or database.
+
+**What was wrong** (Played, on the previous build `051f973`): what a player did while their skills loaded was worked out at that moment, when every level still read 1, and added once the load completed. Every rule that depends on the level was skipped for it: the "20 levels above pays a quarter" rule for ores, logs, crops and herbs, kill XP's anti-grind quarter, per-hit XP's weak-mob reduction and per-mob budget. A level-60 player breaking twelve level-1 blocks in that window got **Mining +16, Herbalism +12, Farming +12**; the same blocks pay a loaded level-60 player **+4, +3, +3**.
+
+**The fix** (`Skills/LoadingXpBuffer`, `SkillManager.whenLoaded`):
+- **What an action needs is read when it happens; the XP is worked out when the load completes.** Each XP source reads the world at once (the block and its origin, the tool, the mob's level, tier and origin, whether the hit killed it) and keeps the rule it pays by. Once the player's skills are set, the kept actions run on the player's thread, **in the order they happened, each once**, at the restored level. Each one reads the level after the ones before it, so a level-up in the window changes what the later actions pay, exactly as in play.
+- **Kept per session** (checked by session number), as before: a failed load or a player who leaves before it completes drops the session's actions (nothing paid, nothing saved), and a rejoin never receives an earlier session's actions. An action racing the end of the load is either in what is handed over or runs at once with the loaded skills, never both (unit-tested with four threads).
+- **Sources made exact:** Mining and Woodcutting (a cut log), Farming (a harvest or a pick), Herbalism (a gather), kills (and the class share of a kill), per-hit XP (Critical Strike, Heavy Armor Training, Survival) and spell casts (Spell Weaving, Intelligence, the school; a cast still pays once, from the first mob with budget left when it is paid). Fixed amounts (smelting, forging, cooking, brewing, Navigation, admin grants) are kept as they were and added in order, which is already exact. Fishing, Felling, Wildcrafting and Wide Harvest already wait for the load.
+- **A player whose skills are already loaded** is paid exactly as before: the same numbers, on the same thread, at the same moment (the in-game controls below are such players).
+- **A guard:** at most 10,000 actions kept for one load (a real load keeps a few; ten seconds of busy play a few dozen); past it, actions are dropped and the log says how many. When a load completes with kept actions, the log says how many and what each skill gained.
+
+**Shown** (Played, `tools/playtest/persist.js`, new phases; each compares the loading window with a loaded session doing the same from the same start; the database held busy by another program so the load waits several seconds; the previous build `051f973` on a second sandbox server, the new build on the first):
+
+| Case | Previous build | This build |
+|---|---|---|
+| A new player (level 1): two coal, a poppy, ripe wheat | the same as a loaded player (5/5) | the same (5/5) |
+| Level 60: twelve level-1 blocks, each paying a quarter | **Mining +16, Herbalism +12, Farming +12**; loaded +4, +3, +3 (fails, 3/5) | +4, +3, +3, as loaded (5/5) |
+| Mining 20, two XP short of 21: two coal | **Mining 21 with 6 XP**; loaded 21 with 3 (fails, 3/5) | 21 with 3, as loaded: the first coal pays 4 and levels up, the second a quarter at 21; the level-up shown once (5/5) |
+| Rapid reconnect (level 60): a session breaks four blocks and quits before its load; the rejoin breaks four and loads | **Mining +8, Herbalism +3, Farming +3**; one loaded session +2, +0, +0 (fails, 3/4) | +2, +0, +0, as one loaded session: the first session's dropped, the rejoin's paid once; stored = shown (4/4) |
+| The load fails while the bot breaks four blocks | disconnected with the reason; nothing stored or paid (2/2) | the same (2/2) |
+| Blade Mastery 60 kills a husk while loading | **+64**, level 1's XP for that sandbox's level-5 husk; loaded +16 (fails, 1/2) | +17, as loaded for the level-6 husk there (2/2) |
+
+Each build is compared with its own loaded control: the two sandbox worlds have their spawn points in different places, so the same arena holds a level-5 husk on one and a level-6 husk on the other. Herbalism and Farming +0 in the rapid case: a quarter of 3 is 0.75, a fraction kept for the next whole point and lost at the quit, as for any session. When a load completes with kept actions the log says what they paid, for example `[SkillManager] CerbExactL: 2 action(s) taken while loading, paid at the restored levels (Mining +5 XP (level 20 -> 21)).` The first run of these phases also found a harness fault, fixed before the final run: on a fresh world a new bot joins at the world's spawn, so building the arena before it stood there did nothing ("That position is not loaded") and the discovery run happened later than intended; the arena is now built once the bot stands at it, and a check fails if the setup run doesn't break every block.
+
+**Unit tests:** 458, all passing (Tested; 453 before). `LoadingXpBufferTest` rewritten for ordered actions (6: the order, each action once, sessions, a failed load, the cap, the race at the hand-over with four threads) and `LoadingXpReplayTest` new (5: the cases above on the plugin's own rules, each also run the previous buffer's way, which they tell apart). On a scratch copy, six deliberately broken buffers (ignoring the closed flag, reversed order, a load taking another session's actions, a failure dropping another session's, no cap, a new session not replacing the old) each fail these tests.
+
+**Regression on this build:** running on the three sandboxes (persistence, progression, XP rules, Cooking, gathering, Herbalism, Alchemy, classes, the recovery-file and migration tests); so far smoke 14/14, Stats 14/14, kill XP 5/5. Results are added here when done.
+
+**Independent review:** in progress (a separate agent reviewing `76fa619`'s code change); its findings and their disposition are added here when done.
+
+**What stays as it was (limits):**
+- **Item rolls and attributes during the window** still read level 1 and base attributes, because the drop or the hit happens at once: Fortune's extra drop, crop and reagent quality, rare reagents, heartwood, an Alchemy brew's tier, damage dealt and taken. Bounded by the load (milliseconds normally, a few seconds on a busy database).
+- **Techniques gated by a level** (Felling, Wildcrafting, Wide Harvest) and Fishing start once the load completes, as before.
+- **A stop while a player is still loading** drops what that player did in the window (nothing is saved for skills that never loaded: their stored progress stays as it was).
+- **The rare cross-region kill-XP race (accepted, older than this work, reliability audit findings 9 and I2):** once a player's skills are loaded, a kill of a mob standing in another Folia region than the player is paid on the mob's region thread, as before. Landing at the very instant of another award to the same skill on the player's own thread, one of the two can in theory be lost; landing during that player's quit, one save can mix old and new values until the next save. While the player's skills load, such a kill is now kept and paid on the player's own thread like everything else, so the loading window no longer has it.
+- **Older per-player memory retention (accepted, older than this work):** two per-player entries stay in memory after a player leaves (the ability keys' state, `AbilityListener`, and the damage numbers' state, `DamageDisplayListener`): one small entry per player who joined since the start, gone at a restart; worth clearing at quit in a later milestone. This change keeps nothing after a quit: a session's kept actions go with its load, its failure or the quit.
+- **A class share of a kill made while loading** goes to the classes used in the last 10 seconds when the load completes (seconds later at most), and only once the class profile has loaded, as a kill's share always did.
+
+### For you on Windows: the playtest build (not verified there; nothing deployed)
+
+Nothing here has run on Windows, and nothing was copied to your server. These steps are yours to run when you decide; each is safe to stop after.
+
+1. **Stop the server** if it runs: type `stop` in its window and wait for `[ok] server stopped cleanly`.
+2. **Back up first:** double-click **`backup.bat`**. It copies your worlds, plugin data (`cerberus.db` included) and configs into `test-server\backups\full-<date-time>\`. Check that the folder holds your world folders and `CerberusPlugin\cerberus.db`. Also copy your current plugin, `test-server\plugins\Cerberus.jar`, to `test-server\backups\Cerberus-before-exact-xp.jar`, so you can go back.
+3. **Get the build:** in the repo folder, `git fetch`, `git checkout claude/quirky-mccarthy-nhaz58`, `git pull` (commit `76fa619` or later). To build without installing anything: `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cerb.ps1 build`; the unit tests run first (458, all must pass) and the plugin lands in `target\Cerberus.jar`.
+4. **Install it (your call):** `run.bat` builds again, backs up plugin data, copies the jar into `test-server\plugins\` and starts the server. Ready at `Cerberus Plugin has been enabled!`.
+5. **Check:** `docs/PLAYTEST_CHECKLIST.md` §24, rows 1–9 (row 9 is the new one: Mining 30, rejoin and mine coal at once: +1 XP, not +4), then whatever earlier sections you want to replay. Nothing in it destroys anything; row 9 asks you to set Mining back afterwards.
+6. **Going back:** `stop`, put `test-server\backups\Cerberus-before-exact-xp.jar` back as `test-server\plugins\Cerberus.jar`, then `start.bat`. This update changes nothing in the database, so the older plugin reads it as before (the `saved_seq` column from the reliability audit is ignored by older builds). To undo everything, restore the `full-<date-time>` backup with the server stopped.
+7. **Tell me** "works" or what's off, with any red lines from the server window or `test-server\logs\latest.log`.
 
 ## Roadmap
 
