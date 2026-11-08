@@ -320,6 +320,10 @@ async function rank() {
   await clearMobs(); await stand(0, 0);
   await hold('netherite_sword');
   await cmd(`/cerb skill ${NAME} Blade_Mastery level 50`, 400);
+  // The skills this fight's hits train, back at level 1 with no XP: XP the bot carried over from earlier phases and runs
+  // once made Critical Strike reach level 2 in the same moment as the rank, and a second celebration within 1.5 s shows
+  // text without effects (by design, the 'together' phase) - the rank's title and sound were held back (2026-11-08).
+  for (const s of ['Critical_Strike', 'Survival', 'Heavy_Armor_Training']) await cmd(`/cerb skill ${NAME} ${s} level 1`, 250);
   await cmd(`/cerb class ${NAME} warrior rank 2`, 500);
   await cmd(`/cerb class ${NAME} warrior xp ${151 - 4}`, 600); // 4 short of rank 3 (151 XP from rank 2), quietly
   for (const s of ['a1', 'a2', 'a3', 'a4', 'a5']) await equip(s, s === 'a1' ? 'cleave' : 'none');
