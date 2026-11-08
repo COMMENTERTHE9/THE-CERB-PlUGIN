@@ -150,7 +150,10 @@ public class SkillManager {
      */
     public void xpWithheld(Player player, String skill, String why) {
         XpListener feed = xpListener;
-        if (feed != null && player != null && skill != null && !skill.isEmpty() && why != null) feed.withheld(player, skill, why);
+        if (feed == null || player == null || skill == null || skill.isEmpty() || why == null) return;
+        Replay replay = replayFor(player);
+        if (replay != null) replay.withheld.add(new String[]{skill, why}); // said after the replay's XP lines, never under them
+        else feed.withheld(player, skill, why);
     }
 
     /**
@@ -528,6 +531,8 @@ public class SkillManager {
         final UUID player;
         final Map<String, Long> shown = new java.util.LinkedHashMap<>();
         final Map<String, SkillProgression.Result> last = new HashMap<>();
+        /** Why-no-XP notices ({skill, why}) from the replay, said after its XP lines (the HUD has one XP slot). */
+        final java.util.List<String[]> withheld = new java.util.ArrayList<>();
         Replay(UUID player) { this.player = player; }
         void gained(String skill, long whole, SkillProgression.Result r) {
             shown.merge(skill, whole, Long::sum);
@@ -568,7 +573,10 @@ public class SkillManager {
         }
         saveSkills(player); // what the replay changed, in one snapshot (the save throttle and SkillStore's order as ever)
         XpListener feed = xpListener;
-        if (feed != null) replay.shown.forEach((skill, whole) -> feed.gained(player, skill, whole, replay.last.get(skill)));
+        if (feed != null) {
+            replay.shown.forEach((skill, whole) -> feed.gained(player, skill, whole, replay.last.get(skill)));
+            for (String[] w : replay.withheld) feed.withheld(player, w[0], w[1]); // last: an XP line never covers why one paid nothing
+        }
         StringBuilder said = new StringBuilder();
         for (Map.Entry<String, Integer> e : levels.entrySet()) {
             String skill = e.getKey();
@@ -719,8 +727,11 @@ public class SkillManager {
         }
         playerSkillLevels.put(uid, levels);
         playerSkillXP    .put(uid, xp);
-        levelListener.loaded(uid);
-        applyLoadingXp(player, generation, levels, xp);
+        try {
+            levelListener.loaded(uid);
+        } finally {
+            applyLoadingXp(player, generation, levels, xp); // always handed over once the skills are set, so nothing waits for a buffer that never drains
+        }
         // Every skill starts at level 1; older versions wrote a new character's skills at level 0 (the menu said
         // "level 0, 0 / 115"). Written back now, so the database says what the game shows.
         if (read.started() > 0) {
