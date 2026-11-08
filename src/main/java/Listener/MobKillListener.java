@@ -102,33 +102,45 @@ public class MobKillListener implements Listener {
 
         // Kill XP v2: mob level x tier (attributes.yml). The old HP-based rule stays as fallback.
         var killCfg = plugin.getAttributesConfig() != null ? plugin.getAttributesConfig().killXp() : null;
-        double xpGained;
-        if (killCfg != null && killCfg.enabled()) {
-            int mobLevel = mobRegistry.getLevel(mob);
-            int skillLevel = skillManager.getSkillLevel(player, skillName);
-            xpGained = Attributes.KillXp.compute(mobLevel, ctx.xpMultiplier(), skillLevel, killCfg);
-            if (Attributes.KillXp.isGreyKill(mobLevel, skillLevel, killCfg) && greyHintDue(player)) {
-                player.sendMessage(ChatColor.GRAY + "(Low-level mob: reduced XP. Fight stronger enemies for full XP.)");
-            }
-        } else {
-            xpGained = skillManager.calculateDynamicXp(health, damage, ctx);
-        }
+        boolean v2 = killCfg != null && killCfg.enabled();
+        // What the kill pays is read off the mob now (its level, tier, origin; it may be gone later), and worked out at the
+        // player's skill level when it is paid: now, or once their skills have loaded (in order, at the restored level: a
+        // kill made while they load is never paid as if they were level 1; SkillManager.whenLoaded).
+        int mobLevel = v2 ? mobRegistry.getLevel(mob) : 0;
+        double tierMult = ctx.xpMultiplier();
+        double fallbackXp = v2 ? 0 : skillManager.calculateDynamicXp(health, damage, ctx);
         // A farm's mob (a monster spawner's, a bred animal, a spawn egg's) pays its share or nothing (xp-integrity).
         double origin = integrity != null ? integrity.originFactor(mob) : 1.0;
-        xpGained *= origin;
-        if (plugin.isCombatDebugEnabled(player.getUniqueId())) {
-            player.sendMessage(ChatColor.DARK_GRAY + "[KillXp] " + skillName + (skillName.equals(held) ? "" : " (last hit; in hand: " + (held.isEmpty() ? "nothing" : held) + ")")
-                    + ", origin " + (integrity != null ? integrity.origin(mob) : mob.getEntitySpawnReason()) + " x" + origin + " -> " + String.format(java.util.Locale.ROOT, "%.1f", xpGained));
-        }
-        if (!(xpGained > 0)) {
-            if (origin <= 0 && integrity != null) skillManager.xpWithheld(player, skillName, Manager.XpIntegrity.originWhy(integrity.origin(mob))); // a spawn egg's, a bred animal
-            return;
-        }
-        skillManager.addXpAndCheckLevelUp(skillName, xpGained, player); // shown on the HUD by the XP display (Skills.XpDisplay)
-        // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
-        Classes.ClassService classes = plugin.getClassService();
+        boolean debug = plugin.isCombatDebugEnabled(player.getUniqueId());
+        Object originShown = debug ? (integrity != null ? integrity.origin(mob) : mob.getEntitySpawnReason()) : null;
+        String originWhy = origin <= 0 && integrity != null ? Manager.XpIntegrity.originWhy(integrity.origin(mob)) : null;
         // Only enemies pay class XP (as casts already did): farm animals can't be bred into class ranks.
-        if (classes != null && mob instanceof org.bukkit.entity.Enemy && !(mob instanceof Player)) classes.onKill(player, xpGained);
+        boolean enemy = mob instanceof org.bukkit.entity.Enemy && !(mob instanceof Player);
+        skillManager.whenLoaded(player, p -> {
+            double xpGained;
+            if (v2) {
+                int skillLevel = skillManager.getSkillLevel(p, skillName);
+                xpGained = Attributes.KillXp.compute(mobLevel, tierMult, skillLevel, killCfg);
+                if (Attributes.KillXp.isGreyKill(mobLevel, skillLevel, killCfg) && greyHintDue(p)) {
+                    p.sendMessage(ChatColor.GRAY + "(Low-level mob: reduced XP. Fight stronger enemies for full XP.)");
+                }
+            } else {
+                xpGained = fallbackXp;
+            }
+            xpGained *= origin;
+            if (debug) {
+                p.sendMessage(ChatColor.DARK_GRAY + "[KillXp] " + skillName + (skillName.equals(held) ? "" : " (last hit; in hand: " + (held.isEmpty() ? "nothing" : held) + ")")
+                        + ", origin " + originShown + " x" + origin + " -> " + String.format(java.util.Locale.ROOT, "%.1f", xpGained));
+            }
+            if (!(xpGained > 0)) {
+                if (originWhy != null) skillManager.xpWithheld(p, skillName, originWhy); // a spawn egg's, a bred animal
+                return;
+            }
+            skillManager.addXpAndCheckLevelUp(skillName, xpGained, p); // shown on the HUD by the XP display (Skills.XpDisplay)
+            // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
+            Classes.ClassService classes = plugin.getClassService();
+            if (classes != null && enemy) classes.onKill(p, xpGained);
+        });
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

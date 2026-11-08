@@ -154,19 +154,38 @@ public final class XpIntegrity implements Listener {
      */
     public double payHit(Player p, LivingEntity mob, String skill, double xp) {
         if (p == null || mob == null || mob instanceof Player || !(xp > 0) || !earns(p)) return 0;
+        HitSource s = source(mob);
+        if (skills.hasLoadedSkills(p.getUniqueId())) return pay(p, s, skill, xp);
+        // Still loading: paid once the skills have loaded, in order, at the restored level (never as if level 1). What
+        // was paid isn't known yet: 0 (a cast never asks a second mob for it, payCast).
+        skills.whenLoaded(p, pl -> pay(pl, s, skill, xp));
+        return 0;
+    }
+
+    /**
+     * What per-hit XP needs of a mob, read on the mob's thread when the hit happens: the XP itself is worked out from it at
+     * the player's skill level when it is paid (SkillManager.whenLoaded), when the mob may be gone.
+     */
+    private record HitSource(java.util.UUID id, int level, double multiplier, double origin, boolean dead) {}
+
+    private HitSource source(LivingEntity mob) {
+        return new HitSource(mob.getUniqueId(), registry.getLevel(mob), registry.xpMultiplierOf(mob), originFactor(mob),
+                !mob.isValid() || mob.isDead());
+    }
+
+    /** {@link #payHit}'s rule at the player's skill level now: the origin share, the weak-mob share, the mob's budget. */
+    private double pay(Player p, HitSource s, String skill, double xp) {
         KillXp.Params k = killXp.get();
-        int mobLevel = registry.getLevel(mob);
         int own = skills.getSkillLevel(p, skill);
-        double origin = originFactor(mob);
-        double amount = xp * origin;
-        if (KillXp.isGreyKill(mobLevel, own, k)) amount *= Math.max(0.0, Math.min(1.0, k.antiGrindFactor()));
+        double amount = xp * s.origin();
+        if (KillXp.isGreyKill(s.level(), own, k)) amount *= Math.max(0.0, Math.min(1.0, k.antiGrindFactor()));
         if (!(amount > 0)) return 0;
         if (rules.get().hitBudget()) {
-            double budget = KillXp.compute(mobLevel, registry.xpMultiplierOf(mob), own, k) * origin;
-            amount = ledger.pay(mob.getUniqueId(), skill, amount, budget, System.currentTimeMillis());
+            double budget = KillXp.compute(s.level(), s.multiplier(), own, k) * s.origin();
+            amount = ledger.pay(s.id(), skill, amount, budget, System.currentTimeMillis());
         }
         if (amount > 0) award(p, skill, amount);
-        if (!mob.isValid() || mob.isDead()) ledger.died(mob.getUniqueId(), System.currentTimeMillis()); // killed by this hit
+        if (s.dead()) ledger.died(s.id(), System.currentTimeMillis()); // killed by this hit
         return amount;
     }
 
@@ -214,7 +233,15 @@ public final class XpIntegrity implements Listener {
 
     /** One skill's cast XP, from the first mob in {@code mobs} with that skill's budget left. */
     private void payCast(Player p, java.util.List<LivingEntity> mobs, String skill, double xp) {
-        for (LivingEntity mob : mobs) if (payHit(p, mob, skill, xp) > 0) return;
+        if (skills.hasLoadedSkills(p.getUniqueId())) {
+            for (LivingEntity mob : mobs) if (payHit(p, mob, skill, xp) > 0) return;
+            return;
+        }
+        // Still loading: the mobs as they are now, and the same rule once the skills have loaded (in order, at the
+        // restored level), so the cast still pays once, from the first mob with budget left then.
+        java.util.List<HitSource> sources = new java.util.ArrayList<>(mobs.size());
+        for (LivingEntity mob : mobs) sources.add(source(mob));
+        skills.whenLoaded(p, pl -> { for (HitSource s : sources) if (pay(pl, s, skill, xp) > 0) return; });
     }
 
     /** The school a spell trains: Elemental Mastery for fire, frost, lightning and earth, Arcane Knowledge for arcane. */

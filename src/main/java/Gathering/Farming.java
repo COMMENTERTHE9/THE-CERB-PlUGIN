@@ -124,8 +124,18 @@ public final class Farming implements Listener {
 
     /** XP one harvest of {@code c} pays a player at {@code level} (the weak-crop rule: weak-resources). */
     private double xp(FarmingRules.Crop c, int level) {
+        return xpAt(c).applyAsDouble(level);
+    }
+
+    /**
+     * The same at whatever Farming level the player has when it is paid, by the rule of now: a harvest made while their
+     * skills load is paid at the restored level (GatheringService.award, SkillManager.whenLoaded).
+     */
+    private java.util.function.IntToDoubleFunction xpAt(FarmingRules.Crop c) {
         GatheringCatalog cat = gathering.catalog();
-        return GatherRules.xp(c.xp(), c.level(), level, cat.weakGap(), cat.weakFactor());
+        int gap = cat.weakGap();
+        double factor = cat.weakFactor();
+        return level -> GatherRules.xp(c.xp(), c.level(), level, gap, factor);
     }
 
     // ── a player's own break ─────────────────────────────────────
@@ -167,7 +177,8 @@ public final class Farming implements Listener {
         }
         int level = skills.getSkillLevel(p, f.skill());
         harvests.add(count);
-        gathering.award(p, f.skill(), xp(c, level) * count);
+        java.util.function.IntToDoubleFunction each = xpAt(c);
+        gathering.award(p, f.skill(), lvl -> each.applyAsDouble(lvl) * count);
         discover(p, c);
         int extra = rollBonuses(p.getUniqueId(), count);
         Quality q = ripe ? roll(f, c, level) : Quality.COMMON;
@@ -346,7 +357,7 @@ public final class Farming implements Listener {
         int level = skills.getSkillLevel(p, f.skill());
         harvests.increment();
         picks.increment();
-        gathering.award(p, f.skill(), xp(c, level));
+        gathering.award(p, f.skill(), xpAt(c));
         discover(p, c);
         List<ItemStack> items = e.getItemsHarvested();
         if (rollBonuses(p.getUniqueId(), 1) > 0) {

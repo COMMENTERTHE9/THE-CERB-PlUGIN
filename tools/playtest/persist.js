@@ -20,6 +20,15 @@
 //                                               value to $OUT); shutdown-check [name] after the restart compares.
 //   node persist.js recovery-check [name]       after shutdown-set, a stop and a start both under the database's write
 //                                               lock: the join continues from the recovery file; stored once the lock goes.
+//   Exact XP while loading (item 10): what a bot does while its load waits is paid once loaded, in order, at its restored
+//   level: exactly what a loaded session gets for the same from the same start (each phase runs that control too).
+//   node persist.js exact-new [name]            a new player (level 1): coal, a poppy, wheat (passes on every build)
+//   node persist.js exact-veteran [name]        level 60: twelve blocks, each paying a quarter (weak-resources)
+//   node persist.js exact-levelup [name]        Mining 20 two XP short of 21: two coal, the second paid at 21
+//   node persist.js exact-rapid [name]          a session breaks blocks and quits before its load; the rejoin does the same
+//                                               and loads: only the rejoin's are paid, once
+//   node persist.js exact-fail [name]           the load fails while the bot breaks blocks: disconnected, nothing paid
+//   node persist.js exact-kill [name]           Blade Mastery 60 kills a level-6 husk while loading: the anti-grind quarter
 const mineflayer = require('mineflayer');
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -373,8 +382,8 @@ async function breakAll(bot) {
  * saves hold the thread loads run on (Cerb-DB-Session before 2026-11, the skill store's writer since) for several
  * seconds. Reads still work, so the waiting load itself never fails. Resolves {released} once they have quit.
  */
-async function busyDatabase(name, seconds) {
-  const helpers = [name + 'B', name + 'C'];
+async function busyDatabase(name, seconds, n = 2) {
+  const helpers = ['B', 'C', 'D', 'E'].slice(0, n).map(s => name + s);
   const hb = [];
   for (const h of helpers) { const b = await connect(h); await untilLoaded(b, h, 'Mining'); hb.push(b); }
   const lock = await holdLock(seconds);
@@ -473,8 +482,274 @@ async function joinfail() {
   check('...nothing stored changes, and a rejoin once the database answers loads it', same(after, before) && same(back, before));
 }
 
+
+// ── Exact XP while loading (the owner's decision on item 10, 2026-11-08) ─────────────────────
+// What a player does while their skills load is paid once they have loaded, in order, at their restored level, seeing the
+// level-ups of what came before it. Each phase compares the loading window with a loaded session doing the same from the
+// same start (the control). On a build before the fix (amounts worked out at level 1 while loading, then added) the veteran,
+// levelup, rapid and kill phases FAIL; new and fail pass on both (level 1 was always right; a failed load pays nothing).
+const LAYOUTS = {
+  four: [['coal_ore', 1, 0, 0], ['coal_ore', -1, 0, 0], ['poppy', 0, 0, 2], ['wheat[age=7]', 0, 0, -2]],
+  coal2: [['coal_ore', 1, 0, 0], ['coal_ore', -1, 0, 0]],
+  twelve: [['coal_ore', 1, 0, 0], ['coal_ore', -1, 0, 0], ['coal_ore', 1, 1, 0], ['coal_ore', -1, 1, 0],
+    ['poppy', -1, 0, 2], ['poppy', 0, 0, 2], ['poppy', 1, 0, 2], ['poppy', 2, 0, 2],
+    ['wheat[age=7]', -1, 0, -2], ['wheat[age=7]', 0, 0, -2], ['wheat[age=7]', 1, 0, -2], ['wheat[age=7]', 2, 0, -2]],
+};
+/** Place a layout's blocks at the arena (a poppy on grass, wheat on wet farmland), while the bot is away. */
+async function place(layout) {
+  for (const [block, dx, dy, dz] of layout) {
+    const x = AX + dx, y = AY + dy, z = AZ + dz;
+    if (block === 'poppy') console_(`setblock ${x} ${AY - 1} ${z} grass_block`);
+    if (block.startsWith('wheat')) console_(`setblock ${x} ${AY - 1} ${z} farmland[moisture=7]`);
+    console_(`setblock ${x} ${y} ${z} ${block}`);
+  }
+  await sleep(900);
+}
+/** Break a layout's blocks in its order as fast as the bot can (after its world arrived); returns how many broke. */
+async function breakLayout(bot, layout) {
+  const spots = layout.map(([, dx, dy, dz]) => new Vec3(AX + dx, AY + dy, AZ + dz));
+  for (let i = 0; i < 60 && spots.some(v => !bot.blockAt(v)); i++) await sleep(50);
+  for (let i = 0; i < 40 && !bot.inventory.items().some(it => it.name === 'diamond_pickaxe'); i++) await sleep(50);
+  const pick = bot.inventory.items().find(i => i.name === 'diamond_pickaxe');
+  if (pick) await bot.equip(pick, 'hand');
+  let broke = 0;
+  for (const v of spots) {
+    const b = bot.blockAt(v);
+    if (!b || b.name === 'air') continue;
+    try { await bot.dig(b, true); broke++; } catch (e) { /* counted */ }
+  }
+  return broke;
+}
+/** "/cerb skill <name> <skill> level <l>", then "xp <n>": the game's value after it. */
+async function setSkill(bot, name, skill, level, xp = 0) {
+  for (const c of [`level ${level}`].concat(xp > 0 ? [`xp ${xp}`] : [])) {
+    const at = bot.chatLog.length;
+    bot.chat(`/cerb skill ${name} ${skill} ${c}`);
+    for (let i = 0; i < 40 && !bot.chatLog.slice(at).some(m => /is now level/.test(m)); i++) await sleep(50);
+  }
+  return valueOf(bot, name, skill);
+}
+/**
+ * A loaded session that sets the arena and the start up, then logs out on the arena: `start` is skill -> [level, xp];
+ * `give` the items. Returns the game's values after it (stored by the quit).
+ */
+async function startOn(name, start, give = ['diamond_pickaxe'], extra = []) {
+  const bot = await connect(name);
+  await untilLoaded(bot, name, 'Mining');
+  // At the arena first: a fill where no player is (a new bot joins at the world's spawn) does nothing, "That position is
+  // not loaded" (seen on a fresh sandbox world).
+  console_(`tp ${name} ${AX + 0.5} ${AY + 1} ${AZ + 0.5} 0 0`);
+  const at = new Vec3(AX + 0.5, AY + 1, AZ + 0.5);
+  for (let i = 0; i < 80 && !(bot.entity.position.distanceTo(at) < 3 && bot.blockAt(new Vec3(AX, AY - 1, AZ))); i++) await sleep(100);
+  await sleep(800);
+  console_(`fill ${AX - 3} ${AY - 1} ${AZ - 3} ${AX + 3} ${AY + 4} ${AZ + 3} air`); await sleep(400);
+  console_(`fill ${AX - 3} ${AY - 1} ${AZ - 3} ${AX + 3} ${AY - 1} ${AZ + 3} stone`); await sleep(400);
+  console_(`kill @e[type=!player,x=${AX},y=${AY},z=${AZ},distance=..8]`);
+  console_(`tp ${name} ${AX + 0.5} ${AY} ${AZ + 0.5} 0 0`); await sleep(600);
+  console_(`gamemode survival ${name}`); console_(`clear ${name}`); await sleep(300);
+  for (const g of give) console_(`give ${name} ${g}`);
+  for (const c of extra) console_(c);
+  const got = {};
+  for (const [skill, [level, xp]] of Object.entries(start)) got[skill] = await setSkill(bot, name, skill, level, xp);
+  await sleep(1500);
+  await quit(bot);
+  await sleep(500);
+  return got;
+}
+const valuesOf = async (bot, name, skills) => { const v = {}; for (const s of skills) v[s] = await valueOf(bot, name, s); return v; };
+/** Stored values by the skill's database key ("Blade Mastery"; commands take "Blade_Mastery"). */
+const storedAll = (name, skills) => Object.fromEntries(skills.map(s => [s, storedOf(name, s.replace(/_/g, ' '))]));
+/** The layout broken while the skills load (the database busy, `n` saves queued in front of the load). */
+async function duringLoad(name, layout, skills, seconds, n) {
+  await place(layout);
+  const before = storedAll(name, skills);
+  const { released } = await busyDatabase(name, seconds, n);
+  const bot = await connect(name);
+  const broke = await breakLayout(bot, layout);
+  const during = await valueOf(bot, name, 'Mining'); // null: still loading when the blocks broke
+  await released;
+  await untilLoaded(bot, name, 'Mining');
+  await sleep(500);
+  const after = await valuesOf(bot, name, skills);
+  await quit(bot);
+  return { broke, during, before, after };
+}
+/** The control: the same layout broken by a session whose skills are loaded. */
+async function loadedRun(name, layout, skills) {
+  await place(layout);
+  const bot = await connect(name);
+  await untilLoaded(bot, name, 'Mining');
+  const before = await valuesOf(bot, name, skills);
+  const broke = await breakLayout(bot, layout);
+  await sleep(800);
+  const after = await valuesOf(bot, name, skills);
+  await quit(bot);
+  return { broke, before, after };
+}
+const show = v => Object.entries(v).map(([s, x]) => `${s} ${JSON.stringify(x)}`).join(', ');
+const gainsOf = (r, skills) => skills.map(s => `${s} +${total(r.after[s]) - total(r.before[s])}`).join(', ');
+function opAll(names) { for (const n of names) console_(`op ${n}`); return sleep(600); }
+
+/** One comparison: from `start`, the layout during a load and once loaded; the same values after both, and `expect`. */
+async function exactCase(label, name, start, layout, { seconds = 7, n = 2, expect = null } = {}) {
+  const skills = Object.keys(start);
+  await opAll([name, ...['B', 'C', 'D', 'E'].slice(0, n).map(s => name + s)]);
+  await startOn(name, start);
+  const first = await loadedRun(name, layout, skills); // a herb or crop this bot never found is discovered here, not in the runs compared
+  check(`${label}: setup, the first loaded run (discoveries) broke every block`, first.broke === layout.length, `broke ${first.broke}`);
+  const from = await startOn(name, start);
+  const run = await duringLoad(name, layout, skills, seconds, n);
+  await startOn(name, start);
+  const control = await loadedRun(name, layout, skills);
+  console.log(`  start ${show(from)}`);
+  console.log(`  while loading: broke ${run.broke}/${layout.length} ${run.during ? 'ALREADY LOADED (inconclusive)' : 'while loading'}; after ${show(run.after)} (${gainsOf(run, skills)})`);
+  console.log(`  loaded control: broke ${control.broke}/${layout.length}; after ${show(control.after)} (${gainsOf(control, skills)})`);
+  check(`${label}: every block broke while the skills were still loading`, run.broke === layout.length && run.during === null,
+    `broke ${run.broke}, loaded then: ${JSON.stringify(run.during)}`);
+  check(`${label}: the start was set`, skills.every(s => same(from[s], start[s])), show(from));
+  check(`${label}: once loaded, the XP is exactly what a loaded player gets for the same blocks from the same start`,
+    control.broke === layout.length && skills.every(s => same(run.after[s], control.after[s])),
+    skills.map(s => `${s} ${JSON.stringify(run.after[s])} vs loaded ${JSON.stringify(control.after[s])}`).join(', '));
+  if (expect) check(`${label}: ${expect.what}`, skills.every(s => !expect[s] || same(run.after[s], expect[s])),
+    skills.filter(s => expect[s]).map(s => `${s} ${JSON.stringify(run.after[s])}, expected ${JSON.stringify(expect[s])}`).join(', '));
+}
+
+async function exactNew() {
+  const name = process.argv[3] || 'CerbExactN';
+  await exactCase('A new player (level 1)', name, { Mining: [1, 0], Herbalism: [1, 0], Farming: [1, 0] }, LAYOUTS.four,
+    { expect: { what: 'full XP at level 1 (coal 4 each, poppy 3, wheat 3; a level-1 skill holds its XP)', Mining: [1, 8], Herbalism: [1, 3], Farming: [1, 3] } });
+}
+async function exactVeteran() {
+  const name = process.argv[3] || 'CerbExactV';
+  await exactCase('An experienced player (level 60), twelve actions', name, { Mining: [60, 0], Herbalism: [60, 0], Farming: [60, 0] }, LAYOUTS.twelve,
+    { seconds: 14, n: 3, expect: { what: 'level-1 resources pay a quarter at level 60 (weak-resources): coal 1, poppy and wheat 0.75', Mining: [60, 4], Herbalism: [60, 3], Farming: [60, 3] } });
+}
+async function exactLevelup() {
+  const name = process.argv[3] || 'CerbExactL';
+  const need = xpForLevel(20);
+  await exactCase('Buffered actions that level up', name, { Mining: [20, need - 2] }, LAYOUTS.coal2,
+    { expect: { what: 'the first coal pays 4 at Mining 20 and levels up; the second pays a quarter at 21 (Mining 21, 3 XP)', Mining: [21, 3] } });
+}
+
+/** Two sessions in a row while the database is busy: the first quits before its load, the second loads. */
+async function exactRapid() {
+  const name = process.argv[3] || 'CerbExactR';
+  const start = { Mining: [60, 0], Herbalism: [60, 0], Farming: [60, 0] }, skills = Object.keys(start), layout = LAYOUTS.four;
+  await opAll([name, name + 'B', name + 'C', name + 'D', name + 'E']);
+  await startOn(name, start);
+  const first = await loadedRun(name, layout, skills); // discoveries
+  check('Rapid reconnect: setup, the first loaded run (discoveries) broke every block', first.broke === layout.length, `broke ${first.broke}`);
+  const from = await startOn(name, start);
+  await place(layout);
+  const before = storedAll(name, skills);
+  const { released } = await busyDatabase(name, 16, 4);
+  const a = await connect(name);
+  const brokeA = await breakLayout(a, layout);
+  const duringA = await valueOf(a, name, 'Mining');
+  await quit(a); // before its load completes
+  await place(layout);
+  const b = await connect(name); // the rejoin, while the first session's load is still waiting
+  const brokeB = await breakLayout(b, layout);
+  const duringB = await valueOf(b, name, 'Mining');
+  await released;
+  await untilLoaded(b, name, 'Mining');
+  await sleep(500);
+  const after = await valuesOf(b, name, skills);
+  await quit(b);
+  await sleep(2500);
+  const storedAfter = storedAll(name, skills);
+  await startOn(name, start);
+  const control = await loadedRun(name, layout, skills);
+  console.log(`  start ${show(from)}; stored before ${show(before)}`);
+  console.log(`  first session broke ${brokeA} ${duringA ? '(ALREADY LOADED)' : 'while loading'}, then quit; the rejoin broke ${brokeB} ${duringB ? '(ALREADY LOADED)' : 'while loading'}; after ${show(after)}; stored ${show(storedAfter)}`);
+  console.log(`  loaded control: ${show(control.after)} (${gainsOf(control, skills)})`);
+  check('Rapid reconnect: both sessions broke their blocks while loading', brokeA === 4 && brokeB === 4 && duringA === null && duringB === null,
+    `broke ${brokeA} and ${brokeB}; loaded then: ${JSON.stringify(duringA)}, ${JSON.stringify(duringB)}`);
+  check('Rapid reconnect: only the rejoined session\'s actions are paid, once, at the restored level (the first session\'s are dropped)',
+    skills.every(s => same(after[s], control.after[s])), skills.map(s => `${s} ${JSON.stringify(after[s])} vs one loaded session ${JSON.stringify(control.after[s])}`).join(', '));
+  check('Rapid reconnect: what is stored after the quit is what the game showed', skills.every(s => same(storedAfter[s], after[s])));
+}
+
+/** The database refuses every read past the busy timeout: the load fails while the bot breaks blocks. */
+async function exactFail() {
+  const name = process.argv[3] || 'CerbExactF';
+  const start = { Mining: [60, 0], Herbalism: [60, 0], Farming: [60, 0] }, skills = Object.keys(start), layout = LAYOUTS.four;
+  await opAll([name]);
+  await startOn(name, start);
+  await place(layout);
+  const before = storedAll(name, skills);
+  const { released } = await holdXLock(15);
+  const bot = await connect(name);
+  const kickedP = new Promise(r => { bot.once('kicked', reason => r(JSON.stringify(reason))); bot.once('end', () => r('ended')); setTimeout(() => r(null), 30000); });
+  const broke = await breakLayout(bot, layout);
+  const kicked = await kickedP;
+  await released;
+  await sleep(1500);
+  const storedAfter = storedAll(name, skills);
+  const again = await connect(name);
+  await untilLoaded(again, name, 'Mining');
+  await sleep(1000);
+  const back = await valuesOf(again, name, skills);
+  await quit(again);
+  console.log(`  broke ${broke} while the load waited; kicked: ${kicked}; stored before ${show(before)}, after ${show(storedAfter)}; the rejoin loads ${show(back)}`);
+  check('A failed load: the bot broke blocks while it waited, then was disconnected with the reason', broke > 0 && /could not load your saved data/i.test(kicked || ''), `broke ${broke}; ${kicked}`);
+  check('...and none of that XP is stored or paid at the rejoin', skills.every(s => same(storedAfter[s], before[s]) && same(back[s], before[s])));
+}
+
+/** A kill while loading: Blade Mastery 60 and a level-6 husk (persist.js's arena): the anti-grind quarter, as once loaded. */
+async function exactKill() {
+  const name = process.argv[3] || 'CerbExactK';
+  const skills = ['Blade_Mastery'], start = { Blade_Mastery: [60, 0] };
+  const give = ['diamond_sword'];
+  await opAll([name, name + 'B', name + 'C', name + 'D']);
+  const husk = () => { console_(`summon husk ${AX + 0.5} ${AY} ${AZ + 2.0} {NoAI:1b,PersistenceRequired:1b}`); return sleep(900); };
+  const strong = [`effect give ${name} strength infinite 20 true`]; // one swing kills (+63 damage): the kill lands inside the window
+  async function swingKill(bot) {
+    for (let i = 0; i < 60 && !bot.inventory.items().some(it => it.name === 'diamond_sword'); i++) await sleep(50);
+    const sword = bot.inventory.items().find(i => i.name === 'diamond_sword');
+    if (sword) await bot.equip(sword, 'hand');
+    let target = null;
+    for (let i = 0; i < 60 && !target; i++) { target = bot.nearestEntity(e => e.name === 'husk' && e.position.distanceTo(bot.entity.position) < 5); if (!target) await sleep(50); }
+    if (!target) return -1;
+    for (let s = 1; s <= 20; s++) {
+      await bot.lookAt(target.position.offset(0, target.height * 0.6, 0), true);
+      bot.attack(target);
+      await sleep(650);
+      if (!bot.entities[target.id] || !bot.entities[target.id].isValid) return s;
+    }
+    return -1;
+  }
+  async function session(during) {
+    await startOn(name, start, give, strong);
+    await husk();
+    const before = storedAll(name, skills);
+    let released = null;
+    if (during) released = (await busyDatabase(name, 14, 3)).released;
+    const bot = await connect(name);
+    if (!during) await untilLoaded(bot, name, 'Mining');
+    const b0 = during ? before : await valuesOf(bot, name, skills);
+    const swings = await swingKill(bot);
+    const loadedAtKill = await valueOf(bot, name, 'Mining');
+    if (released) await released;
+    await untilLoaded(bot, name, 'Mining');
+    await sleep(800);
+    const after = await valuesOf(bot, name, skills);
+    await quit(bot);
+    return { swings, loadedAtKill, before: b0, after };
+  }
+  const run = await session(true);
+  const control = await session(false);
+  console.log(`  while loading: killed in ${run.swings} swing(s), ${run.loadedAtKill ? 'ALREADY LOADED (inconclusive)' : 'still loading'}; ${show(run.before)} -> ${show(run.after)}`);
+  console.log(`  loaded control: killed in ${control.swings} swing(s); ${show(control.before)} -> ${show(control.after)}`);
+  const gain = r => total(r.after.Blade_Mastery) - total(r.before.Blade_Mastery);
+  check('A kill while loading: the husk died before the skills loaded', run.swings > 0 && run.loadedAtKill === null, `swings ${run.swings}, loaded then: ${JSON.stringify(run.loadedAtKill)}`);
+  check('...and its kill XP is what a loaded Blade Mastery 60 gets (the anti-grind quarter), not level 1\'s',
+    control.swings > 0 && gain(run) === gain(control) && gain(control) > 0, `while loading +${gain(run)}, loaded +${gain(control)}`);
+}
+
 const PHASES = { contention, failure, rapid, backup, joinact, joinquit, joinfail, 'shutdown-set': shutdownSet, 'shutdown-check': shutdownCheck,
-  'recovery-check': recoveryCheck };
+  'recovery-check': recoveryCheck, 'exact-new': exactNew, 'exact-veteran': exactVeteran, 'exact-levelup': exactLevelup,
+  'exact-rapid': exactRapid, 'exact-fail': exactFail, 'exact-kill': exactKill };
 (async () => {
   try { await PHASES[phase](); } catch (e) { check('phase ran without errors', false, e.stack); }
   const failed = results.filter(r => !r).length;

@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.IntToDoubleFunction;
 
 /**
  * Gathering (docs/design/GATHERING.md): what breaking a block earns, by the rules in
@@ -35,7 +36,7 @@ public final class GatheringService {
      */
     public record Evaluation(Block block, GatheringCatalog.ResourceDef resource, GatherRules.Method method, Origin origin,
                              boolean placed, GatherRules.Tool tool, boolean toolFits, boolean silk, GatherRules.Decision decision,
-                             double xp, double bonusChance, boolean weakTool) {}
+                             double xp, double bonusChance, boolean weakTool, IntToDoubleFunction xpAt) {}
 
     /** What a machine's extraction did: the drops, or why it couldn't. */
     public record Extraction(boolean done, List<ItemStack> drops, String why) {}
@@ -87,11 +88,20 @@ public final class GatheringService {
         boolean silk = !hand.getType().isAir() && hand.getEnchantmentLevel(Enchantment.SILK_TOUCH) > 0;
         boolean vanillaDrops = r.replacesDrops() || b.isPreferredTool(hand);
         GatherRules.Decision d = GatherRules.decide(method, wasPlaced, r.replacesDrops(), fits || weakTool, vanillaDrops, silk, r.fortune() && !weakTool);
-        double xp = d.xp() ? GatherRules.xp(r.xp(), r.level(), skills.getSkillLevel(p, r.skill()), c.weakGap(), c.weakFactor()) : 0;
-        if (weakTool) xp *= c.weakToolFactor();
-        if (r.isTree()) xp *= c.wood().xpShare(origin); // a tree grown from a planted sapling pays its share
+        // The XP at a skill level, by the rules of now: paid at the player's level when it is paid (XP earned while their
+        // skills load is worked out from the restored level, SkillManager.whenLoaded).
+        int gap = c.weakGap();
+        double weakFactor = c.weakFactor(), toolFactor = weakTool ? c.weakToolFactor() : 1.0;
+        double share = r.isTree() ? c.wood().xpShare(origin) : 1.0; // a tree grown from a planted sapling pays its share
+        IntToDoubleFunction xpAt = !d.xp() ? level -> 0 : level -> {
+            double x = GatherRules.xp(r.xp(), r.level(), level, gap, weakFactor);
+            if (weakTool) x *= toolFactor;
+            if (r.isTree()) x *= share;
+            return x;
+        };
+        double xp = xpAt.applyAsDouble(skills.getSkillLevel(p, r.skill()));
         double chance = d.bonus() ? bonusChance(p.getUniqueId(), r.fortuneYield()) : 0;
-        return new Evaluation(b, r, method, origin, wasPlaced, tool, fits, silk, d, xp, chance, weakTool);
+        return new Evaluation(b, r, method, origin, wasPlaced, tool, fits, silk, d, xp, chance, weakTool, xpAt);
     }
 
     /**
@@ -120,17 +130,30 @@ public final class GatheringService {
         skills.xpWithheld(p, skill, why);
     }
 
-    /** Pay an evaluation's XP (fractions carry over). Player's thread. */
+    /** Pay an evaluation's XP (fractions carry over), at the player's level when it is paid. Player's thread. */
     public void payXp(Player p, Evaluation ev) {
         if (!ev.decision().xp()) return;
         xpBlocks.increment();
-        award(p, ev.resource().skill(), ev.xp());
+        award(p, ev.resource().skill(), ev.xpAt());
     }
 
     /** Award {@code xp} of {@code skill}, keeping fractions per player until they make a whole point. Player's thread. */
     public void award(Player p, String skill, double xp) {
         if (skill == null || !(xp > 0)) return;
-        if (!skills.canEarnXp(p.getUniqueId())) return; // left: nothing to add to (while loading it is kept)
+        skills.whenLoaded(p, pl -> pay(pl, skill, xp)); // while loading: in order once loaded; left: nothing to add to
+    }
+
+    /**
+     * Award what {@code xpAt} gives at the player's level of {@code skill} when it is paid: now when their skills are
+     * loaded; while they load, once loaded, in order, at the restored level (never level 1). Player's thread.
+     */
+    public void award(Player p, String skill, IntToDoubleFunction xpAt) {
+        if (skill == null || xpAt == null) return;
+        skills.whenLoaded(p, pl -> pay(pl, skill, xpAt.applyAsDouble(skills.getSkillLevel(pl, skill))));
+    }
+
+    private void pay(Player p, String skill, double xp) {
+        if (!(xp > 0)) return;
         long whole = carries.computeIfAbsent(p.getUniqueId(), id -> new GatherRules.Carry()).add(skill, xp);
         if (whole > 0) skills.addXpAndCheckLevelUp(skill, whole, p);
     }

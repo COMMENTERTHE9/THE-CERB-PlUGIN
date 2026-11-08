@@ -430,7 +430,7 @@ Player Menu → **Recipes** (the crafting table in the hub): how to make every C
 
 ## 24. Saving and loading (the reliability audit)
 
-Nothing to set up and nothing to undo: normal play, a quit, a restart. What changed is underneath (`docs/STATUS.md` → "Done: reliability audit"): saves are written in order and never replace newer progress, a save that fails is kept and written later, XP earned the moment you join counts. Checked on the cloud sandbox only, **not on Windows**.
+Nothing to set up and nothing to undo: normal play, a quit, a restart. What changed is underneath (`docs/STATUS.md` → "Done: reliability audit"): saves are written in order and never replace newer progress, a save that fails is kept and written later, XP earned the moment you join counts, and since 2026-11-08 (your decision on item 10) it is worked out at your real levels, not level 1. Checked on the cloud sandbox only, **not on Windows**.
 
 | # | Do | Expected |
 |---|---|---|
@@ -442,6 +442,7 @@ Nothing to set up and nothing to undo: normal play, a quit, a restart. What chan
 | 6 | Look in `test-server\plugins\CerberusPlugin\`. | No `skills-recovery` or `classes-recovery` folder, or an empty one. A file there means a stop couldn't reach the database (the log says why); the next start writes it. |
 | 7 | Only if you run other plugins that change drops or brews: gather herbs and brew with them on. | Herbalism pays when the herb really drops; a brew another plugin replaces or cancels pays nothing. |
 | 8 | Overall. | Any `[Skills] Could not save` or `[Classes] Could not save` line in the log? Send it with what was going on (an antivirus scan, a backup program, many players at once). |
+| 9 | Exact XP at join (item 10). `/cerb skill <you> Mining level 30`, put a few coal ores in reach, quit, rejoin and mine one the moment you appear; mine another a few seconds later. | Each coal shows **+1 Mining XP** on the XP display (coal is 20+ levels below Mining 30, so a quarter of 4), the first one too. If the first one landed while your skills were still loading, the log says `[SkillManager] <you>: 1 action(s) taken while loading, paid at the restored levels (Mining +1 XP)`; on most joins the load is quicker than your first swing and there is no such line. The build before this change paid that first coal +4. Set Mining back afterwards. |
 
 ## 25. Afterwards
 

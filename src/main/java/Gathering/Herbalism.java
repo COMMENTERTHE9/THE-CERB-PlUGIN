@@ -115,8 +115,18 @@ public final class Herbalism implements Listener {
 
     /** XP one gather of {@code h} pays a player at {@code level} (the weak-plant rule: weak-resources). */
     private double xp(HerbalismRules.Herb h, int level) {
+        return xpAt(h).applyAsDouble(level);
+    }
+
+    /**
+     * The same at whatever Herbalism level the player has when it is paid, by the rule of now: a gather made while their
+     * skills load is paid at the restored level (GatheringService.award, SkillManager.whenLoaded).
+     */
+    private java.util.function.IntToDoubleFunction xpAt(HerbalismRules.Herb h) {
         GatheringCatalog cat = gathering.catalog();
-        return GatherRules.xp(h.xp(), h.level(), level, cat.weakGap(), cat.weakFactor());
+        int gap = cat.weakGap();
+        double factor = cat.weakFactor();
+        return level -> GatherRules.xp(h.xp(), h.level(), level, gap, factor);
     }
 
     // ── a player's own break ─────────────────────────────────────
@@ -214,7 +224,7 @@ public final class Herbalism implements Listener {
         HerbalismRules r = rules();
         Player p = g.player();
         gathers.increment();
-        gathering.award(p, r.skill(), xp(g.herb(), g.level()));
+        gathering.award(p, r.skill(), xpAt(g.herb())); // at the level when paid: the restored one if their skills still load
         discover(p, g.herb());
         if (g.bonus()) {
             bonuses.increment();

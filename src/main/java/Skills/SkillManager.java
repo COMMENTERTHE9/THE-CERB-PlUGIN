@@ -280,7 +280,8 @@ public class SkillManager {
             boolean isBoss
     ) {
         UUID uid = player.getUniqueId();
-        Maps m = mapsOrKeep(uid, skillName, amount, true); // loading: kept for the session; left: nothing to add to
+        // Loading: the same award once the session's skills have loaded (in order); left: nothing to add to.
+        Maps m = mapsOrKeep(uid, () -> addExperience(player, skillName, amount, health, damage, isRare, isBoss));
         if (m == null) return;
         Map<String, Integer> levels = m.levels(), xp = m.xp();
 
@@ -404,7 +405,7 @@ public class SkillManager {
         // Maps exist only between a successful load (setPlayerSkills) and quit (removePlayer).
         // Awarding before the load used to create default maps (level 1) and SAVE them, which
         // could overwrite the stored levels if the save landed first or the load then failed.
-        Maps m = mapsOrKeep(uid, skillName, xpGained, true);
+        Maps m = mapsOrKeep(uid, () -> addXpAndCheckLevelUp(skillName, xpGained, player));
         if (m == null) return false;
         Map<String, Integer> levels = m.levels(), xp = m.xp();
 
@@ -419,7 +420,7 @@ public class SkillManager {
      */
     public long addXpCounted(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();
-        Maps m = mapsOrKeep(uid, skillName, xpGained, true);
+        Maps m = mapsOrKeep(uid, () -> addXpCounted(skillName, xpGained, player));
         if (m == null) return 0;
         Map<String, Integer> levels = m.levels(), xp = m.xp();
         int levelBefore = levels.getOrDefault(skillName, 1), xpBefore = xp.getOrDefault(skillName, 0);
@@ -431,7 +432,7 @@ public class SkillManager {
     /** An admin's XP grant or correction: the same award, without the level-up presentation. */
     public boolean addXpQuietly(String skillName, double xpGained, Player player) {
         UUID uid = player.getUniqueId();
-        Maps m = mapsOrKeep(uid, skillName, xpGained, false);
+        Maps m = mapsOrKeep(uid, () -> addXpQuietly(skillName, xpGained, player));
         if (m == null) return false;
         Map<String, Integer> levels = m.levels(), xp = m.xp();
         SkillProgression.Result r = applyAward(player, skillName, levels, xp, xpGained, false);
@@ -461,54 +462,87 @@ public class SkillManager {
         return playerSkillLevels.containsKey(uid) && playerSkillXP.containsKey(uid);
     }
 
-    // ── XP earned while loading (docs/STATUS.md → reliability audit) ──────────
+    // ── XP earned while loading (docs/STATUS.md → reliability audit; item 10: exact XP while loading) ──────────
 
     private final LoadingXpBuffer loadingXp = new LoadingXpBuffer();
 
-    /** Join: this session's skills are loading; XP earned meanwhile is kept for it. Player's thread. */
+    /** Join: this session's skills are loading; what it does that earns XP meanwhile is kept for it. Player's thread. */
     public void beginLoading(UUID player, long generation) {
         loadingXp.begin(player, generation);
     }
 
-    /** The session's load failed, or it ended first: what it earned while loading is dropped. */
+    /** The session's load failed, or it ended first: what it did while loading is dropped, and pays nothing. */
     public void abandonLoading(UUID player, long generation) {
         loadingXp.abandon(player, generation);
     }
 
-    /** True while an action can earn XP: skills loaded, or loading (kept for the session). */
-    public boolean canEarnXp(UUID player) {
-        return hasLoadedSkills(player) || loadingXp.isLoading(player);
+    /**
+     * Run {@code action} once with the player's restored skills. Loaded: now, on this thread. Loading: kept, and run on
+     * the player's thread when the load completes, in the order it happened and before anything after it, so XP it works
+     * out from a skill level uses the player's real level and sees what the actions kept before it changed (never level
+     * 1 because the load hadn't finished). Neither (the load failed, the player left): dropped. Never run for another
+     * session. An XP source whose amount depends on the player's progression works it out inside {@code action}, from
+     * what it read of the world when it happened (the mob, the block), never from the world later.
+     */
+    public void whenLoaded(Player player, java.util.function.Consumer<Player> action) {
+        if (player == null || action == null) return;
+        UUID uid = player.getUniqueId();
+        // The buffer first: until the load hands it over, actions join it in order (also from another thread in the moment
+        // between the skills being set and the hand-over).
+        if (loadingXp.isLoading(uid) && loadingXp.keep(uid, () -> action.accept(player))) return;
+        if (hasLoadedSkills(uid)) action.accept(player);
     }
 
     private record Maps(Map<String, Integer> levels, Map<String, Integer> xp) {}
 
     /**
-     * The player's skill maps; or null when the award was kept for the session that is still loading (or the player has
-     * left: nothing to add to). An award racing the hand-over of the loading XP is told it wasn't kept, and finds the
-     * maps the load has just set (LoadingXpBuffer).
+     * The player's skill maps; or null when the award was kept for the session that is still loading ({@code again}: the
+     * same award, run when the load completes, in order with everything else the session did meanwhile), or the player
+     * has left (nothing to add to). An award racing the hand-over is told it wasn't kept, and finds the maps the load has
+     * just set (LoadingXpBuffer).
      */
-    private Maps mapsOrKeep(UUID player, String skill, double amount, boolean celebrate) {
+    private Maps mapsOrKeep(UUID player, Runnable again) {
         Map<String, Integer> levels = playerSkillLevels.get(player), xp = playerSkillXP.get(player);
         if (levels != null && xp != null) return new Maps(levels, xp);
-        if (loadingXp.keep(player, skill, amount, celebrate)) return null;
+        if (loadingXp.keep(player, again)) return null;
         levels = playerSkillLevels.get(player);
         xp = playerSkillXP.get(player);
         return levels != null && xp != null ? new Maps(levels, xp) : null;
     }
 
-    /** What this session earned while loading, applied now that its maps exist (setPlayerSkills). Player's thread. */
+    /**
+     * What this session did while loading, run now that its skills are loaded (setPlayerSkills): each action once, in the
+     * order it happened, at the restored levels and after the actions before it. Player's thread.
+     */
     private void applyLoadingXp(Player player, long generation, Map<String, Integer> levels, Map<String, Integer> xp) {
-        Map<String, double[]> kept = loadingXp.drain(player.getUniqueId(), generation);
-        if (kept == null || kept.isEmpty()) return;
-        StringBuilder said = new StringBuilder();
-        for (Map.Entry<String, double[]> e : kept.entrySet()) {
-            if (e.getValue()[0] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[0], true);
-            if (e.getValue()[1] > 0) applyAward(player, e.getKey(), levels, xp, e.getValue()[1], false);
-            if (said.length() > 0) said.append(", ");
-            said.append(e.getKey()).append(' ').append(Math.round(e.getValue()[0] + e.getValue()[1]));
+        LoadingXpBuffer.Kept kept = loadingXp.drain(player.getUniqueId(), generation);
+        if (kept == null || (kept.actions().isEmpty() && kept.dropped() == 0)) return;
+        Map<String, Integer> levelsBefore = new HashMap<>(levels), xpBefore = new HashMap<>(xp);
+        int failed = 0;
+        for (Runnable action : kept.actions()) {
+            try {
+                action.run();
+            } catch (RuntimeException ex) { // one action's fault never costs the others theirs
+                failed++;
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "[SkillManager] " + player.getName()
+                        + ": an action taken while loading failed when it was paid", ex);
+            }
         }
-        saveSkills(player);
-        plugin.getLogger().info("[SkillManager] " + player.getName() + ": XP earned while loading applied (" + said + ").");
+        StringBuilder said = new StringBuilder();
+        for (Map.Entry<String, Integer> e : levels.entrySet()) {
+            String skill = e.getKey();
+            int from = levelsBefore.getOrDefault(skill, 1), to = e.getValue();
+            long gained = SkillProgression.totalXp(to, xp.getOrDefault(skill, 0))
+                    - SkillProgression.totalXp(from, xpBefore.getOrDefault(skill, 0));
+            if (gained == 0 && from == to) continue;
+            if (said.length() > 0) said.append(", ");
+            said.append(skill).append(" +").append(gained).append(" XP");
+            if (to != from) said.append(" (level ").append(from).append(" -> ").append(to).append(')');
+        }
+        plugin.getLogger().info("[SkillManager] " + player.getName() + ": " + kept.actions().size()
+                + " action(s) taken while loading, paid at the restored levels (" + (said.length() == 0 ? "no XP" : said) + ")."
+                + (kept.dropped() > 0 ? " " + kept.dropped() + " more were dropped (over " + LoadingXpBuffer.MAX_ACTIONS + " kept)." : "")
+                + (failed > 0 ? " " + failed + " failed (logged above)." : ""));
     }
 
     /**
