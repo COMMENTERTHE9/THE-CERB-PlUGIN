@@ -155,7 +155,7 @@ public final class XpIntegrity implements Listener {
     public double payHit(Player p, LivingEntity mob, String skill, double xp) {
         if (p == null || mob == null || mob instanceof Player || !(xp > 0) || !earns(p)) return 0;
         HitSource s = source(mob);
-        if (skills.hasLoadedSkills(p.getUniqueId())) return pay(p, s, skill, xp);
+        if (skills.paysAtOnce(p.getUniqueId())) return pay(p, s, skill, xp);
         // Still loading: paid once the skills have loaded, in order, at the restored level (never as if level 1). What
         // was paid isn't known yet: 0 (a cast never asks a second mob for it, payCast).
         skills.whenLoaded(p, pl -> pay(pl, s, skill, xp));
@@ -233,7 +233,7 @@ public final class XpIntegrity implements Listener {
 
     /** One skill's cast XP, from the first mob in {@code mobs} with that skill's budget left. */
     private void payCast(Player p, java.util.List<LivingEntity> mobs, String skill, double xp) {
-        if (skills.hasLoadedSkills(p.getUniqueId())) {
+        if (skills.paysAtOnce(p.getUniqueId())) {
             for (LivingEntity mob : mobs) if (payHit(p, mob, skill, xp) > 0) return;
             return;
         }

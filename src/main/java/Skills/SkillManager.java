@@ -310,7 +310,9 @@ public class SkillManager {
         XpListener feed = xpListener;
         long whole = SkillProgression.wholeXp(amount);
         if (feed != null && whole > 0 && SkillProgression.clampLevel(currentLevel) < SkillProgression.MAX_LEVEL) {
-            feed.gained(player, skillName, whole, r);
+            Replay replay = replayFor(player);
+            if (replay != null) replay.gained(skillName, whole, r); // shown once per skill when the replay ends
+            else feed.gained(player, skillName, whole, r);
         }
         return r;
     }
@@ -320,6 +322,7 @@ public class SkillManager {
      * at most once a second per player (the newest snapshot of a burst; SkillStore keeps the order).
      */
     private void saveSkills(Player player) {
+        if (replayFor(player) != null) return; // a replay saves once, when it ends (applyLoadingXp)
         SkillStore.Snapshot s = snapshotOf(player);
         if (s == null) return;
         asyncSaver.scheduleDbSave("skills:" + s.player(), () -> store.save(s));
@@ -502,12 +505,41 @@ public class SkillManager {
      * just set (LoadingXpBuffer).
      */
     private Maps mapsOrKeep(UUID player, Runnable again) {
+        // The buffer first, as in whenLoaded: until the load hands it over, awards join it in order (also from another thread
+        // in the moment between the skills being set and the hand-over).
+        if (loadingXp.isLoading(player) && loadingXp.keep(player, again)) return null;
         Map<String, Integer> levels = playerSkillLevels.get(player), xp = playerSkillXP.get(player);
-        if (levels != null && xp != null) return new Maps(levels, xp);
-        if (loadingXp.keep(player, again)) return null;
-        levels = playerSkillLevels.get(player);
-        xp = playerSkillXP.get(player);
         return levels != null && xp != null ? new Maps(levels, xp) : null;
+    }
+
+    /**
+     * True when an award for this player is applied at once: their skills are loaded and no load is handing over what was
+     * kept for it. False while loading (an award is kept, {@link #whenLoaded}) and once they have left.
+     */
+    public boolean paysAtOnce(UUID player) {
+        return !loadingXp.isLoading(player) && hasLoadedSkills(player);
+    }
+
+    /**
+     * A replay in progress on this thread (applyLoadingXp): the XP its awards show, one line per skill at its end, and one
+     * save then, instead of one HUD update and one snapshot per kept action (a long load can keep thousands).
+     */
+    private static final class Replay {
+        final UUID player;
+        final Map<String, Long> shown = new java.util.LinkedHashMap<>();
+        final Map<String, SkillProgression.Result> last = new HashMap<>();
+        Replay(UUID player) { this.player = player; }
+        void gained(String skill, long whole, SkillProgression.Result r) {
+            shown.merge(skill, whole, Long::sum);
+            last.put(skill, r);
+        }
+    }
+
+    private final ThreadLocal<Replay> replaying = new ThreadLocal<>();
+
+    private Replay replayFor(Player player) {
+        Replay r = replaying.get();
+        return r != null && r.player.equals(player.getUniqueId()) ? r : null;
     }
 
     /**
@@ -519,15 +551,24 @@ public class SkillManager {
         if (kept == null || (kept.actions().isEmpty() && kept.dropped() == 0)) return;
         Map<String, Integer> levelsBefore = new HashMap<>(levels), xpBefore = new HashMap<>(xp);
         int failed = 0;
-        for (Runnable action : kept.actions()) {
-            try {
-                action.run();
-            } catch (RuntimeException ex) { // one action's fault never costs the others theirs
-                failed++;
-                plugin.getLogger().log(java.util.logging.Level.WARNING, "[SkillManager] " + player.getName()
-                        + ": an action taken while loading failed when it was paid", ex);
+        Replay replay = new Replay(player.getUniqueId());
+        replaying.set(replay);
+        try {
+            for (Runnable action : kept.actions()) {
+                try {
+                    action.run();
+                } catch (RuntimeException ex) { // one action's fault never costs the others theirs
+                    failed++;
+                    plugin.getLogger().log(java.util.logging.Level.WARNING, "[SkillManager] " + player.getName()
+                            + ": an action taken while loading failed when it was paid", ex);
+                }
             }
+        } finally {
+            replaying.remove();
         }
+        saveSkills(player); // what the replay changed, in one snapshot (the save throttle and SkillStore's order as ever)
+        XpListener feed = xpListener;
+        if (feed != null) replay.shown.forEach((skill, whole) -> feed.gained(player, skill, whole, replay.last.get(skill)));
         StringBuilder said = new StringBuilder();
         for (Map.Entry<String, Integer> e : levels.entrySet()) {
             String skill = e.getKey();

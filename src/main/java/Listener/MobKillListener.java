@@ -116,6 +116,7 @@ public class MobKillListener implements Listener {
         String originWhy = origin <= 0 && integrity != null ? Manager.XpIntegrity.originWhy(integrity.origin(mob)) : null;
         // Only enemies pay class XP (as casts already did): farm animals can't be bred into class ranks.
         boolean enemy = mob instanceof org.bukkit.entity.Enemy && !(mob instanceof Player);
+        long killedAt = System.currentTimeMillis(); // the class share counts the classes used in the fight this kill ended
         skillManager.whenLoaded(player, p -> {
             double xpGained;
             if (v2) {
@@ -139,7 +140,7 @@ public class MobKillListener implements Listener {
             skillManager.addXpAndCheckLevelUp(skillName, xpGained, p); // shown on the HUD by the XP display (Skills.XpDisplay)
             // Classes: a share of the same kill XP (grey mobs already reduced) for the classes used in this fight.
             Classes.ClassService classes = plugin.getClassService();
-            if (classes != null && enemy) classes.onKill(p, xpGained);
+            if (classes != null && enemy) classes.onKill(p, xpGained, killedAt);
         });
     }
 

@@ -492,30 +492,53 @@ public final class ClassService implements AttributeSource {
      */
     public void awardCastXp(Player p, String classId, Foe foe) {
         if (foe == null || !Manager.XpIntegrity.earns(p)) return; // nothing in creative or spectator mode, as kill XP
-        ClassDef c = catalog.classDef(classId);
-        int own = c == null ? 0 : classSkillLevel(p.getUniqueId(), c);
-        Attributes.KillXp.Params k = killXp.get();
-        double xp = ClassRanks.castXp(CAST_XP, foe.level(), own, k);
-        double budget = ClassRanks.castXp(foe.budget(), foe.level(), own, k); // the weak-mob rule shrinks the budget alike
-        double paid = castLedger.pay(foe.id(), xp, budget, System.currentTimeMillis());
-        if (paid > 0) awardXp(p, classId, paid);
+        // The weak-mob rule reads the player's skill levels: while their skills load, it waits for them (in order, at the
+        // restored levels; nothing if the load fails), as skill XP does (SkillManager.whenLoaded). The foe was read at the cast.
+        skills.whenLoaded(p, pl -> {
+            ClassDef c = catalog.classDef(classId);
+            int own = c == null ? 0 : classSkillLevel(pl.getUniqueId(), c);
+            Attributes.KillXp.Params k = killXp.get();
+            double xp = ClassRanks.castXp(CAST_XP, foe.level(), own, k);
+            double budget = ClassRanks.castXp(foe.budget(), foe.level(), own, k); // the weak-mob rule shrinks the budget alike
+            double paid = castLedger.pay(foe.id(), xp, budget, System.currentTimeMillis());
+            if (paid > 0) awardXp(pl, classId, paid);
+        });
     }
 
     /** A mob died to this player (any thread): part of its XP goes to the classes used in the fight. */
     public void onKill(Player p, double killXp) {
+        onKill(p, killXp, -1);
+    }
+
+    /**
+     * The same for a kill at {@code killedAt} (ms; -1: now): the classes used in the {@link #KILL_WINDOW_MS} before it (or
+     * since). A kill made while the killer's skills loaded is paid once they have, seconds later at most: its fight is the
+     * one it ended, not the moment it is paid.
+     */
+    public void onKill(Player p, double killXp, long killedAt) {
         if (!(killXp > 0)) return;
         Runnable share = () -> {
             ClassProfile prof = profiles.get(p.getUniqueId());
             if (prof == null) return;
-            long now = System.currentTimeMillis();
-            List<String> used = new ArrayList<>();
-            prof.lastUse.forEach((c, at) -> { if (now - at <= KILL_WINDOW_MS) used.add(c); });
+            List<String> used = usedInFight(prof.lastUse, killedAt, System.currentTimeMillis());
             if (used.isEmpty()) return;
             double each = killXp * KILL_SHARE / used.size();
             for (String c : used) awardXp(p, c, each);
         };
         if (Bukkit.isOwnedByCurrentRegion(p)) share.run();
         else p.getScheduler().run(plugin, t -> share.run(), null);
+    }
+
+    /**
+     * The classes a kill's share goes to: last used in the {@link #KILL_WINDOW_MS} before the kill at {@code killedAt}, or
+     * since ({@code -1}: the kill is now, {@code now}). Measured from the kill, so a share paid later (the killer's skills
+     * were loading) still finds the fight it ended. Pure.
+     */
+    static List<String> usedInFight(Map<String, Long> lastUse, long killedAt, long now) {
+        long from = (killedAt < 0 ? now : killedAt) - KILL_WINDOW_MS;
+        List<String> used = new ArrayList<>();
+        lastUse.forEach((c, at) -> { if (at >= from) used.add(c); });
+        return used;
     }
 
     // ── combat state ────────────────────────────────────────────
