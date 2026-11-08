@@ -456,8 +456,10 @@ async function replantPhase() {
   const s1 = statsOf(await cmd('/cerb farm stats', 600));
   const rolled = s1.fortune - s0.fortune; // Farming's Fortune on crops (1% at Farming 1) adds one after the seed is taken
   check('Farming 1 with the Replanting hoe: ripe carrots come back as a carrot at stage 0', blockName(0, 0, 0) === 'carrots' && age(0, 0, 0) === 0, `${blockName(0, 0, 0)} age ${age(0, 0, 0)}`);
-  check('...its seed from the harvest\'s own drops (no carrot in the inventory; on the ground a vanilla 1-4 less one, plus any Fortune extra the server counted)',
-    invCount('carrot') === 0 && count(d, 'carrot') <= 3 + rolled && s1.replanted - s0.replanted === 1,
+  // A ripe carrot drops 2-5 (the server's loot table, blocks/carrots.json: one, plus one more and binomial(3, 0.571)); this
+  // used to say 1-4, so a 5 (19% of harvests) failed the check though the seed came from the drops (2026-11-08).
+  check('...its seed from the harvest\'s own drops (no carrot in the inventory; on the ground a vanilla 2-5 less one, plus any Fortune extra the server counted)',
+    invCount('carrot') === 0 && count(d, 'carrot') >= 1 && count(d, 'carrot') <= 4 + rolled && s1.replanted - s0.replanted === 1,
     `inventory ${invCount('carrot')}; ${count(d, 'carrot')} on the ground; the server: replanted +${s1.replanted - s0.replanted}, Fortune +${rolled}`);
   const x0 = await farmXp();
   await brk(0, 0, 0);
