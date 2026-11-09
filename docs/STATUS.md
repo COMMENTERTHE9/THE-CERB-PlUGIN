@@ -1621,13 +1621,13 @@ Each build is compared with its own loaded control: the two sandbox worlds have 
 | Saving and loading | contention 10 of 10 trials, failure 2/2, six bots at once 1/1, backup 1/1 (5 trials), joining while loading 2/2, leaving while loading 1/1, a failed load 2/2; a stop with a save pending, clean 2/2 and with the database locked 2/2; a recovery file the start can't write 4/4; a database from before the update gets its column and the join works |
 | Progression and XP rules | smoke 14/14, Stats 14/14, kill XP 5/5, XP integrity 35/35 (kills, per-hit, casts, origins), your XP reports 25/25, skill needs 6/6; level-ups 18/19, then **19/19 on `8436b9a`** (below) |
 | Classes | class exploits 22/22 (cast XP, kill share), the Mage's abilities 24/24 |
-| Gathering, Cooking | Herbalism 65/65, protection 2/2, dripleaf 3/3; Mining and Smithing 78/78, custom resources 9/9; Woodcutting running; Cooking 33/33; Farming 66/67, rerunning on `8436b9a` (below) |
+| Gathering, Cooking | Herbalism 65/65, protection 2/2, dripleaf 3/3; Mining and Smithing 78/78, custom resources 9/9; Woodcutting 39/39 and 23/23 (protection, heartwood, custom woods, the canopy, machines); Cooking 33/33; Farming 66/67, then **67/67 on `8436b9a`** (below) |
 | Alchemy | 38/38, a reload mid-brew 2/2, the starter leaving 1/1, a restart mid-brew 2/2 |
 | Server logs | only the expected lines: the failed-load tests' "DB load failed", the busy-database tests' "Could not save … kept in memory" for their helper bots, Mojang's session server unreachable from the sandbox |
 
 **The two failures, both the harness's, each fixed with the assertion unchanged:**
 - **Level-ups 18/19:** the class rank-up's title and sound were missing because the bot's Critical Strike, carrying XP from earlier phases and runs, reached level 2 in the same moment, and a second celebration within 1.5 s shows text without effects (by design; the suite's own `together` phase checks it). The rank phase now sets the skills its hits train back to level 1 first: 19/19 on `8436b9a`.
-- **Farming 66/67:** the Replant check allowed at most 3 carrots on the ground after the seed, from "vanilla 1-4"; the server's loot table (`blocks/carrots.json`, read from the server jar) gives a ripe carrot 2-5, so a harvest of 5 (19%) failed it. The bound is now the real 1-4 after the seed; rerunning on `8436b9a`.
+- **Farming 66/67:** the Replant check allowed at most 3 carrots on the ground after the seed, from "vanilla 1-4"; the server's loot table (`blocks/carrots.json`, read from the server jar) gives a ripe carrot 2-5, so a harvest of 5 (19%) failed it. The bound is now the real 1-4 after the seed: 67/67 on `8436b9a`.
 - **A harness fault without a failure:** `persist.js` cleared the arena's entities with a console command, which Folia refuses for a region's entities (a stack trace in the log each time, nothing cleared); the bot's own command now. Before the fixes, on `76fa619`, the part that had run passed: smoke 14/14, Stats 14/14, kill XP 5/5, level-ups 19/19 and 6/6, Farming 67/67, Alchemy 38/38, 2/2, 1/1, 2/2.
 
 **Independent review** (a separate agent, not the one that wrote the code, read `76fa619`; "approve with fixes", no high-severity finding). Each finding settled in `e1255ab`:
@@ -1669,11 +1669,15 @@ Nothing here has run on Windows, and nothing was copied to your server. These st
 
 1. **Stop the server** if it runs: type `stop` in its window and wait for `[ok] server stopped cleanly`.
 2. **Back up first:** double-click **`backup.bat`**. It copies your worlds, plugin data (`cerberus.db` included) and configs into `test-server\backups\full-<date-time>\`. Check that the folder holds your world folders and `CerberusPlugin\cerberus.db`. Also copy your current plugin, `test-server\plugins\Cerberus.jar`, to `test-server\backups\Cerberus-before-exact-xp.jar`, so you can go back.
-3. **Get the build:** in the repo folder, `git fetch`, `git checkout claude/quirky-mccarthy-nhaz58`, `git pull` (commit `76fa619` or later). To build without installing anything: `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cerb.ps1 build`; the unit tests run first (458, all must pass) and the plugin lands in `target\Cerberus.jar`.
+3. **Get the build:** in the repo folder, `git fetch`, `git checkout claude/quirky-mccarthy-nhaz58`, `git pull` (the plugin's code is `8436b9a`; later commits are documents and test scripts only). To build without installing anything: `powershell -NoProfile -ExecutionPolicy Bypass -File tools\cerb.ps1 build`; the unit tests run first (458, all must pass) and the plugin lands in `target\Cerberus.jar`.
 4. **Install it (your call):** `run.bat` builds again, backs up plugin data, copies the jar into `test-server\plugins\` and starts the server. Ready at `Cerberus Plugin has been enabled!`.
 5. **Check:** `docs/PLAYTEST_CHECKLIST.md` §24, rows 1–9 (row 9 is the new one: Mining 30, rejoin and mine coal at once: +1 XP, not +4), then whatever earlier sections you want to replay. Nothing in it destroys anything; row 9 asks you to set Mining back afterwards.
 6. **Going back:** `stop`, put `test-server\backups\Cerberus-before-exact-xp.jar` back as `test-server\plugins\Cerberus.jar`, then `start.bat`. This update changes nothing in the database, so the older plugin reads it as before (the `saved_seq` column from the reliability audit is ignored by older builds). To undo everything, restore the `full-<date-time>` backup with the server stopped.
 7. **Tell me** "works" or what's off, with any red lines from the server window or `test-server\logs\latest.log`.
+
+The jar tested here (built from `8436b9a`, the same code `tools\cerb.ps1 build` makes from the branch) has SHA-256 `078c26656965c7badf7cdf1dfe0567cb9de94f16b21af48f1e9cfa56cdbc3107`; a jar you build yourself on Windows will differ in bytes (timestamps), not in code.
+
+**Proposed release decision:** keep CONDITIONAL PASS until your Windows playtest. Everything that could be checked here passes on the final code, the independent review approved, and saving and loading are unchanged and re-verified. What remains is yours: the Windows playtest (above, checklist §24 rows 1–9), then your word on merging into `master`; the `Farming.onPick` change at MONITOR (reported above) is yours to schedule. Nothing was deployed and nothing was merged.
 
 ## Roadmap
 
